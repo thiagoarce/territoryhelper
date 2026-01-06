@@ -38,9 +38,22 @@
 
     <div id="telaPoligonos" class="screen container-fluid py-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold m-0"><i class="fa-solid fa-pen-to-square text-info me-2"></i>Editor de Malha</h5>
-        <button class="btn btn-sm btn-outline-secondary" onclick="iniciarMapaPoligonos()">Recarregar</button>
+        <h5 class="fw-bold m-0"><i class="fa-solid fa-pen-to-square text-info me-2"></i>Editor</h5>
+        
+        <div class="d-flex gap-2">
+          <select class="form-select form-select-sm shadow-sm" style="width: auto;" onchange="mudarRotulos(this.value)">
+            <option value="id" selected>Ver Nome (ID)</option>
+            <option value="territory">Ver Território</option>
+            <option value="both">Ver Ambos</option>
+            <option value="none">Ocultar Rótulos</option>
+          </select>
+          
+          <button class="btn btn-sm btn-outline-secondary" onclick="iniciarMapaPoligonos()">
+            <i class="fa-solid fa-rotate-right"></i>
+          </button>
+        </div>
       </div>
+      
       <p class="text-muted small">Clique em uma quadra para editar.</p>
       <div class="map-wrapper"><div id="mapPoligonos"></div></div>
     </div>

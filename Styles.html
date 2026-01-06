@@ -11,6 +11,19 @@
   .popup-quadra h6 { font-weight: bold; margin-bottom: 5px; color: #0d6efd; }
   .btn-ver-quadra { width: 100%; margin-top: 5px; }
 
+  /* RÓTULOS NO MAPA (TOOLTIPS) - NOVO */
+  .label-quadra {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    font-weight: 800;
+    color: #333;
+    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; /* Contorno branco */
+    font-size: 12px;
+    text-align: center;
+    pointer-events: none; /* Permite clicar na quadra através do texto */
+  }
+
   /* Lista Detalhes (Accordion) */
   .accordion-button:not(.collapsed) { background-color: #e7f1ff; color: #0d6efd; }
   .check-visit { width: 22px; height: 22px; border: 2px solid #ccc; border-radius: 4px; cursor: pointer; }

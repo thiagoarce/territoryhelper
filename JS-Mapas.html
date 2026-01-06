@@ -1,5 +1,8 @@
 <script>
-  // --- MAPA GERAL ---
+  // Variável para guardar o modo de visualização atual (padrão: mostrar ID)
+  let modoRotuloAtual = 'id';
+
+  // --- MAPA GERAL (Visão Visitantes) ---
   function carregarMapaGeral() {
     google.script.run.withSuccessHandler(dados => {
       document.getElementById('totalQuadrasGeral').innerText = dados.length;
@@ -22,11 +25,20 @@
 
   // --- MAPA EDITOR (POLÍGONOS) ---
   function iniciarMapaPoligonos() {
-    mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
-    mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
+    // Se o mapa ainda não existe, cria.
+    if (!mapPoligonos) {
+      mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
+      mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
+    }
 
     showLoading(true, "Carregando Malha...");
+    
+    // Limpa camadas antigas para recarregar
+    mapPoligonos.eachLayer((layer) => { 
+      if(layer instanceof L.Polygon) mapPoligonos.removeLayer(layer); 
+    });
+
     google.script.run.withSuccessHandler(dados => {
       if(!dados || dados.length === 0) { showLoading(false); return; }
       
@@ -42,7 +54,11 @@
           });
           
           poly.metaData = { ...d }; // Guarda dados no objeto
-          poly.on('click', function() { abrirModalEdicao(this); }); // Chama função do JS-App
+          poly.on('click', function() { abrirModalEdicao(this); });
+          
+          // --- AQUI ADICIONAMOS O RÓTULO (TOOLTIP) ---
+          atualizarTextoTooltip(poly, modoRotuloAtual);
+          
           grupo.addLayer(poly);
         }
       });
@@ -52,13 +68,52 @@
     }).getPoligonosQuadras();
   }
 
+  // --- FUNÇÃO NOVA: GERENCIA A TROCA DE RÓTULOS ---
+  function mudarRotulos(modo) {
+    modoRotuloAtual = modo;
+    
+    // Varre todas as camadas do mapa e atualiza
+    if(mapPoligonos) {
+      mapPoligonos.eachLayer(layer => {
+        if (layer instanceof L.Polygon && layer.metaData) {
+          atualizarTextoTooltip(layer, modo);
+        }
+      });
+    }
+  }
+
+  // Helper para definir o texto do tooltip
+  function atualizarTextoTooltip(poly, modo) {
+    let texto = "";
+    const dados = poly.metaData;
+
+    if (modo === 'id') {
+      texto = dados.id;
+    } else if (modo === 'territory') {
+      texto = dados.territory;
+    } else if (modo === 'both') {
+      texto = `${dados.id}<br><span style="font-weight:normal; font-size:0.9em">${dados.territory}</span>`;
+    }
+
+    // Se tiver texto e não for 'none', mostra. Caso contrário, remove.
+    if (modo !== 'none' && texto) {
+      poly.bindTooltip(texto, {
+        permanent: true,     // Sempre visível
+        direction: "center", // No centro do polígono
+        className: "label-quadra" // Nossa classe CSS
+      }).openTooltip();
+    } else {
+      poly.unbindTooltip();
+    }
+  }
+
   // --- MAPA DETALHES ---
   function atualizarMapaDetalhes(grupos) {
     if(!mapDetalhe) {
       mapDetalhe = L.map('mapDetalhe');
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe);
     }
-    // Limpa marcadores antigos (gambiarra rápida: recriar o mapa seria melhor, mas limpar layers serve)
+    // Limpa marcadores antigos
     mapDetalhe.eachLayer((layer) => { if(layer instanceof L.Marker) mapDetalhe.removeLayer(layer); });
 
     const bounds = [];
