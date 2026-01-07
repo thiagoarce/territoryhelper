@@ -25,20 +25,32 @@
     pointer-events: none;
   }
 
-  /* NOVO: RÓTULOS DE TERRITÓRIOS (BOLINHA BRANCA COM NÚMERO) */
+  /* --- ATUALIZADO: BADGE DE TERRITÓRIO INTELIGENTE --- */
   .territory-badge {
     background: rgba(255, 255, 255, 0.95);
-    border: 2px solid #555;
-    border-radius: 50%; /* Faz ficar redondo */
-    text-align: center;
+    border: 1px solid #666; /* Borda mais fina */
+    border-radius: 8px;     /* Bordas levemente arredondadas */
+    padding: 3px 6px;       /* Padding compacto */
+    
     color: #000;
-    font-weight: 900;
-    font-size: 14px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    font-weight: 800;
+    font-size: 10px;        /* FONTE MENOR */
+    line-height: 1.1;       /* Linhas mais juntas */
+    text-transform: uppercase;
+    
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    
+    /* Posicionamento */
+    position: absolute;
+    transform: translate(-50%, -50%);
     display: flex;
     justify-content: center;
     align-items: center;
-    white-space: nowrap;
+    text-align: center;
+    
+    min-width: 18px; /* Mínimo para números sozinhos */
+    min-height: 18px;
+    white-space: normal; /* Permite quebra de linha */
   }
 
   /* Lista Detalhes (Accordion) */

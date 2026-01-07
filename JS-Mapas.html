@@ -4,8 +4,6 @@
   let modoRotuloAtual = 'id';
   let showTerritoryNumbers = true;
   let layerGroupQuadras, layerGroupTerritorios, layerGroupTerritoryLabels, layerGroupVerticesTemp;
-
-  // Variáveis para a Divisão por Vértices
   let verticesSelecionados = [];
 
   // --- MAPA GERAL ---
@@ -29,7 +27,7 @@
       layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritoryLabels = L.featureGroup().addTo(mapPoligonos);
-      layerGroupVerticesTemp = L.featureGroup().addTo(mapPoligonos); // Para as bolinhas de corte
+      layerGroupVerticesTemp = L.featureGroup().addTo(mapPoligonos);
     }
 
     showLoading(true, "Carregando Malha...");
@@ -54,6 +52,31 @@
     }).getPoligonosQuadras();
   }
 
+  // --- FUNÇÃO DE FORMATAÇÃO INTELIGENTE ---
+  function formatarTextoBadge(texto) {
+    if (!texto) return "";
+    let str = texto.toString();
+    const palavras = str.split(" ");
+    
+    // Se só tem uma palavra, retorna ela
+    if (palavras.length === 1) return str;
+
+    let novoTexto = palavras[0];
+    
+    for (let i = 1; i < palavras.length; i++) {
+      const palavra = palavras[i];
+      // Se a palavra for maior que 2 letras, quebra linha antes dela
+      // Ex: "Condomínio Parque Verde" -> "Condomínio<br>Parque<br>Verde"
+      // Ex: "Setor A" -> "Setor A" (A tem 1 letra, não quebra)
+      if (palavra.length > 2) {
+        novoTexto += "<br>" + palavra;
+      } else {
+        novoTexto += " " + palavra;
+      }
+    }
+    return novoTexto;
+  }
+
   function carregarTerritoriosSalvos() {
     google.script.run.withSuccessHandler(dados => {
       if (dados) dados.forEach(t => {
@@ -62,7 +85,17 @@
              const poly = L.polygon(latlngs, { color: t.color, weight: 2, fillColor: t.color, fillOpacity: 0.5 });
              layerGroupTerritorios.addLayer(poly);
              const centro = poly.getBounds().getCenter();
-             const myIcon = L.divIcon({ className: 'custom-div-icon', html: `<div class="territory-badge" style="width:30px; height:30px;">${t.name}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+             
+             // Usa a função formatadora aqui
+             const nomeFormatado = formatarTextoBadge(t.name);
+
+             const myIcon = L.divIcon({ 
+               className: 'custom-badge-wrapper', 
+               html: `<div class="territory-badge">${nomeFormatado}</div>`, 
+               iconSize: [0, 0], 
+               iconAnchor: [0, 0] 
+             });
+             
              layerGroupTerritoryLabels.addLayer(L.marker(centro, { icon: myIcon, interactive: false }));
            }
       });
@@ -86,7 +119,7 @@
     if(document.getElementById('countSelectedBadge')) atualizarBotoesSelecao();
   }
 
-  // --- FUSÃO (UNION) ---
+  // --- FUSÃO ---
   function calcularUniaoQuadras() { const coords = calcularUniaoQuadrasGeoJSON().geometry.coordinates[0]; return coords.map(c => `${c[1]},${c[0]}`).join(" | "); }
   function calcularUniaoQuadrasGeoJSON() {
     if (window.selectedQuadras.length === 0) return null;
@@ -96,38 +129,19 @@
     return unionPoly;
   }
 
-  // --- DIVISÃO POR VÉRTICES (LÓGICA GRÁFICA) ---
+  // --- DIVISÃO POR VÉRTICES ---
   function ativarSelecaoVerticesDivisao(quadraLayer) {
     layerGroupVerticesTemp.clearLayers();
     verticesSelecionados = [];
-
-    // Pega as coordenadas (o anel externo)
     const latlngs = quadraLayer.getLatLngs()[0];
-    
     latlngs.forEach((latlng, index) => {
-      // Cria uma bolinha branca clicável em cada vértice
-      const marker = L.circleMarker(latlng, {
-        color: '#3388ff',
-        fillColor: '#fff',
-        fillOpacity: 1,
-        radius: 6,
-        weight: 2
-      });
-
+      const marker = L.circleMarker(latlng, { color: '#3388ff', fillColor: '#fff', fillOpacity: 1, radius: 6, weight: 2 });
       marker.on('click', function(e) {
-        L.DomEvent.stopPropagation(e); // Não deixa clicar no mapa embaixo
-        
-        // Adiciona à seleção
+        L.DomEvent.stopPropagation(e);
         verticesSelecionados.push(latlng);
-        this.setStyle({ color: 'red', fillColor: 'red' }); // Fica vermelho
-
-        if (verticesSelecionados.length === 2) {
-          // TEMOS 2 PONTOS! EXECUTAR CORTE
-          executarCortePorPontos(quadraLayer, verticesSelecionados);
-          layerGroupVerticesTemp.clearLayers(); // Limpa bolinhas
-        }
+        this.setStyle({ color: 'red', fillColor: 'red' });
+        if (verticesSelecionados.length === 2) { executarCortePorPontos(quadraLayer, verticesSelecionados); layerGroupVerticesTemp.clearLayers(); }
       });
-
       layerGroupVerticesTemp.addLayer(marker);
     });
   }
@@ -135,41 +149,21 @@
   function executarCortePorPontos(polyLayer, pontos) {
     try {
       const polyGeoJSON = polyLayer.toGeoJSON();
-      
-      // Cria uma linha conectando os 2 pontos clicados
-      // Turf usa [lng, lat]
       const p1 = [pontos[0].lng, pontos[0].lat];
       const p2 = [pontos[1].lng, pontos[1].lat];
-      
       const lineString = turf.lineString([p1, p2]);
-
-      // TRUQUE DO BUFFER: Transforma a linha numa "faca" fina
       const faca = turf.buffer(lineString, 0.0001, { units: 'kilometers' });
-
-      // Subtrai a faca do polígono
       const resultado = turf.difference(polyGeoJSON, faca);
-
       if (!resultado) { alert("Falha no corte."); return; }
-
       let novasPartes = [];
       if (resultado.geometry.type === 'MultiPolygon') {
         resultado.geometry.coordinates.forEach(coords => { novasPartes.push(turf.polygon(coords)); });
       } else if (resultado.geometry.type === 'Polygon') {
-         // Se não separou, é porque a linha não cruzou tudo ou foi nos vizinhos
-         // Vamos tentar esticar a linha um pouco para garantir o corte nas bordas
          alert("O corte não dividiu a área. Tente escolher vértices opostos.");
-         iniciarMapaPoligonos();
-         return;
+         iniciarMapaPoligonos(); return;
       }
-      
-      // Manda para o JS-App
       receberCorteRealizado(novasPartes);
-
-    } catch(e) {
-      console.error(e);
-      alert("Erro matemático: " + e.message);
-      iniciarMapaPoligonos();
-    }
+    } catch(e) { console.error(e); alert("Erro: " + e.message); iniciarMapaPoligonos(); }
   }
 
   // --- VISUALIZAÇÃO ---
