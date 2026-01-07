@@ -77,22 +77,13 @@
     window.isSelectionMode = ativo;
     const msg = document.getElementById('msgHelp');
     const btns = [document.getElementById('btnSalvarTerritorio'), document.getElementById('btnJuntarQuadras')];
-    
-    if (ativo) { 
-      msg.innerText = "Selecione quadras."; 
-      msg.classList.add("text-primary", "fw-bold"); 
-    } else { 
-      msg.innerText = "Clique em uma quadra para editar."; 
-      msg.classList.remove("text-primary", "fw-bold"); 
-      limparSelecao(); 
-      btns.forEach(b => b.classList.add("disabled")); 
-    }
+    if (ativo) { msg.innerText = "Selecione quadras."; msg.classList.add("text-primary", "fw-bold"); }
+    else { msg.innerText = "Clique em uma quadra para editar."; msg.classList.remove("text-primary", "fw-bold"); limparSelecao(); btns.forEach(b => b.classList.add("disabled")); }
   }
 
   function atualizarBotoesSelecao() {
     const qtd = window.selectedQuadras.length;
     document.getElementById('countSelectedBadge').innerText = qtd + " selecionados";
-    // Em modo de edição de território, não usamos os botões normais
     if (isEditingTerritory) return;
     const btnTerritorio = document.getElementById('btnSalvarTerritorio');
     if(qtd > 0) btnTerritorio.classList.remove('disabled'); else btnTerritorio.classList.add('disabled');
@@ -106,31 +97,53 @@
     document.getElementById('lblCountTerritorio').innerText = window.selectedQuadras.length;
     modalNovoTerritorio.show();
   }
-
   function confirmarSalvarTerritorio() {
     const nome = document.getElementById('newTerritoryName').value;
     const cor = document.getElementById('newTerritoryColor').value;
     if(!nome) { alert("Digite um nome."); return; }
+    showLoading(true, "Unindo..."); modalNovoTerritorio.hide();
     
-    showLoading(true, "Unindo..."); 
-    modalNovoTerritorio.hide();
-    
+    // Calcula união do novo
     const uniao = calcularUniaoQuadras();
-    const payload = { name: nome, color: cor, idsQuadras: window.selectedQuadras.map(q => q.id), polyString: uniao };
+    const idsNovos = window.selectedQuadras.map(q => q.id);
+
+    // Prepara atualização do novo território
+    const updates = [{
+       name: nome, color: cor, idsQuadras: idsNovos, polyString: uniao
+    }];
     
-    google.script.run.withSuccessHandler(resp => {
-      if(resp.erro) alert(resp.erro); 
-      else { 
-        alert("Criado!"); 
-        
-        // --- CORREÇÃO: Reseta visualmente o switch ---
-        document.getElementById('toggleSelectionMode').checked = false;
-        alternarModoSelecao(false); 
-        
-        iniciarMapaPoligonos(); 
+    // Verifica VITIMAS (quem perdeu quadras)
+    const vitimasSet = new Set();
+    window.selectedQuadras.forEach(q => {
+      if(q.layer.metaData.territory && q.layer.metaData.territory !== "") {
+         vitimasSet.add(q.layer.metaData.territory);
       }
+    });
+
+    vitimasSet.forEach(nomeVitima => {
+       const dadosVitima = getDadosTerritorioPorNome(nomeVitima); // JS-Mapas
+       if (dadosVitima) {
+          const idsAntigos = dadosVitima.quadras.split(",");
+          // Remove os IDs que foram roubados
+          const idsSobraram = idsAntigos.filter(id => !idsNovos.includes(id));
+          
+          // Recalcula poligono da vítima
+          const polyVitima = calcularUniaoDeListaIds(idsSobraram); // JS-Mapas
+          
+          updates.push({
+             name: nomeVitima,
+             color: dadosVitima.color, // Mantém cor
+             idsQuadras: idsSobraram,
+             polyString: polyVitima,
+             originalName: nomeVitima // Chave de busca
+          });
+       }
+    });
+
+    google.script.run.withSuccessHandler(resp => {
+      if(resp.erro) alert(resp.erro); else { alert("Criado!"); document.getElementById('toggleSelectionMode').checked = false; alternarModoSelecao(false); iniciarMapaPoligonos(); }
       showLoading(false);
-    }).salvarCriacaoTerritorio(payload);
+    }).salvarLoteTerritorios(updates);
   }
 
   // --- EDIÇÃO DE TERRITÓRIO EXISTENTE ---
@@ -139,28 +152,23 @@
     document.getElementById('editTerrOriginalName').value = dadosTerritorio.name;
     document.getElementById('editTerrName').value = dadosTerritorio.name;
     document.getElementById('editTerrColor').value = dadosTerritorio.color;
-    
     const listaIds = dadosTerritorio.quadras ? dadosTerritorio.quadras.split(",") : [];
     document.getElementById('editTerrQtdQuadras').innerText = listaIds.length;
-    
     modalEditarTerritorio.show();
   }
 
   function iniciarSelecaoTerritorioExistente() {
     if (!editingTerritoryData) return;
     modalEditarTerritorio.hide();
-    
     isEditingTerritory = true;
     document.getElementById('divEditandoTerritorio').classList.remove('d-none');
     document.getElementById('barraBotoesPadrao').classList.add('d-none');
     document.getElementById('lblEditandoNome').innerText = editingTerritoryData.name;
     document.getElementById('toggleSelectionMode').checked = true;
-    document.getElementById('toggleSelectionMode').disabled = true; // Trava o switch
+    document.getElementById('toggleSelectionMode').disabled = true; 
     alternarModoSelecao(true);
-
     const listaIds = editingTerritoryData.quadras ? editingTerritoryData.quadras.split(",") : [];
     selecionarQuadrasPorIds(listaIds); 
-    
     const selVis = document.querySelector('select[onchange="mudarVisualizacao(this.value)"]');
     if(selVis) { selVis.value = "quadras"; mudarVisualizacao("quadras"); }
   }
@@ -169,71 +177,92 @@
     if (!isEditingTerritory) return;
     const novoNome = document.getElementById('editTerrName').value;
     const novaCor = document.getElementById('editTerrColor').value;
+    const nomeOriginal = editingTerritoryData.name;
     
     if (window.selectedQuadras.length === 0) {
-      if(!confirm("Nenhuma quadra selecionada. Isso vai excluir o território. Continuar?")) return;
+      if(!confirm("Nenhuma quadra selecionada. Isso excluirá o território. Continuar?")) return;
     }
 
-    showLoading(true, "Atualizando Território...");
-    const uniao = calcularUniaoQuadras(); 
-    
-    const payload = {
-      originalName: editingTerritoryData.name,
-      newName: novoNome,
-      newColor: novaCor,
-      idsQuadras: window.selectedQuadras.map(q => q.id),
-      polyString: uniao
-    };
+    showLoading(true, "Atualizando impacto...");
+
+    // 1. Dados do Território Principal (O que estamos editando)
+    const uniaoPrincipal = calcularUniaoQuadras();
+    const idsPrincipal = window.selectedQuadras.map(q => q.id);
+
+    const updates = [{
+      originalName: nomeOriginal,
+      name: novoNome,
+      color: novaCor,
+      idsQuadras: idsPrincipal,
+      polyString: uniaoPrincipal
+    }];
+
+    // 2. Identificar Vítimas (Outros territórios que perderam quadras para este)
+    const vitimasSet = new Set();
+    window.selectedQuadras.forEach(q => {
+      const donoAtual = q.layer.metaData.territory;
+      // Se a quadra tinha dono, e o dono NÃO era eu mesmo
+      if(donoAtual && donoAtual !== "" && donoAtual !== nomeOriginal) {
+         vitimasSet.add(donoAtual);
+      }
+    });
+
+    // 3. Recalcular Vítimas
+    vitimasSet.forEach(nomeVitima => {
+       const dadosVitima = getDadosTerritorioPorNome(nomeVitima);
+       if (dadosVitima) {
+          const idsAntigos = dadosVitima.quadras.split(",");
+          // Remove os que foram roubados pelo Principal
+          const idsSobraram = idsAntigos.filter(id => !idsPrincipal.includes(id));
+          
+          const polyVitima = calcularUniaoDeListaIds(idsSobraram);
+          
+          updates.push({
+             name: nomeVitima,
+             color: dadosVitima.color,
+             idsQuadras: idsSobraram,
+             polyString: polyVitima,
+             originalName: nomeVitima
+          });
+       }
+    });
 
     google.script.run.withSuccessHandler(resp => {
       if(resp.erro) alert(resp.erro);
       else {
-        alert("Território atualizado!");
+        alert("Território e afetados atualizados!");
         encerrarModoEdicaoTerritorio();
         iniciarMapaPoligonos();
       }
       showLoading(false);
-    }).editarTerritorio(payload);
+    }).salvarLoteTerritorios(updates);
   }
 
   function salvarTerritorioExistente() {
      const novoNome = document.getElementById('editTerrName').value;
      const novaCor = document.getElementById('editTerrColor').value;
      const listaIds = editingTerritoryData.quadras ? editingTerritoryData.quadras.split(",") : [];
-
      modalEditarTerritorio.hide();
      showLoading(true, "Atualizando dados...");
-     
-     const payload = {
+     const payload = [{
        originalName: editingTerritoryData.name,
-       newName: novoNome,
-       newColor: novaCor,
+       name: novoNome,
+       color: novaCor,
        idsQuadras: listaIds,
        polyString: editingTerritoryData.polyString
-     };
-
+     }];
      google.script.run.withSuccessHandler(resp => {
-        if(resp.erro) alert(resp.erro);
-        else {
-          alert("Dados atualizados!");
-          iniciarMapaPoligonos();
-        }
-        showLoading(false);
-     }).editarTerritorio(payload);
+        if(resp.erro) alert(resp.erro); else { alert("Dados atualizados!"); iniciarMapaPoligonos(); } showLoading(false);
+     }).salvarLoteTerritorios(payload);
   }
 
   function deletarTerritorioAtual() {
-    if(!confirm("Tem certeza? Isso apagará o território e as quadras ficarão sem dono.")) return;
+    if(!confirm("Tem certeza?")) return;
     const nome = document.getElementById('editTerrOriginalName').value;
     modalEditarTerritorio.hide();
     showLoading(true, "Excluindo...");
     google.script.run.withSuccessHandler(resp => {
-      if(resp.erro) alert(resp.erro);
-      else {
-        alert("Excluído.");
-        iniciarMapaPoligonos();
-      }
-      showLoading(false);
+      if(resp.erro) alert(resp.erro); else { alert("Excluído."); iniciarMapaPoligonos(); } showLoading(false);
     }).excluirTerritorio(nome);
   }
 
@@ -243,8 +272,6 @@
     document.getElementById('divEditandoTerritorio').classList.add('d-none');
     document.getElementById('barraBotoesPadrao').classList.remove('d-none');
     document.getElementById('toggleSelectionMode').disabled = false;
-    
-    // --- CORREÇÃO: Reseta visualmente o switch ---
     document.getElementById('toggleSelectionMode').checked = false;
     alternarModoSelecao(false);
   }
@@ -292,25 +319,9 @@
       novosItems.push({ id: nome, polyString: polyString, centro: [centro[1], centro[0]], area: 0, color: '#3388ff', territory: '' });
     }
     const payload = { toRemove: tempIdsOriginais, toAdd: novosItems };
-    
-    showLoading(true, "Salvando..."); 
-    modalNomear.hide();
-    
-    google.script.run.withSuccessHandler(resp => { 
-      if(resp.erro) alert(resp.erro); 
-      else { 
-        alert("Sucesso!"); 
-        
-        // --- CORREÇÃO: Reseta visualmente o switch ---
-        document.getElementById('toggleSelectionMode').checked = false;
-        alternarModoSelecao(false); 
-        
-        iniciarMapaPoligonos(); 
-      } 
-      showLoading(false); 
-    }).processarGeometriaEmLote(payload);
+    showLoading(true, "Salvando..."); modalNomear.hide();
+    google.script.run.withSuccessHandler(resp => { if(resp.erro) alert(resp.erro); else { alert("Sucesso!"); document.getElementById('toggleSelectionMode').checked = false; alternarModoSelecao(false); iniciarMapaPoligonos(); } showLoading(false); }).processarGeometriaEmLote(payload);
   }
-
   function cancelarOperacaoGeometrica() { iniciarMapaPoligonos(); }
   function abrirModalEdicao(layer) { if(window.isSelectionMode) return; currentEditLayer = layer; const dados = layer.metaData; document.getElementById('editOriginalId').value = dados.id; document.getElementById('editId').value = dados.id; document.getElementById('editTerritory').value = dados.territory; document.getElementById('editColor').value = dados.color; document.getElementById('btnToggleVertex').classList.remove('active'); if(layer.pm.enabled()) layer.pm.disable(); modalEdicao.show(); }
   function ativarEdicaoVertices() { if(!currentEditLayer)return; modalEdicao.hide(); currentEditLayer.pm.enable({ allowSelfIntersection:false, draggable:false }); alert("Arraste os pontos. Clique na quadra para SALVAR."); }

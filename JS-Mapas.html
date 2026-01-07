@@ -59,7 +59,6 @@
              const latlngs = t.polyString.split(" | ").map(par => { const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
              const poly = L.polygon(latlngs, { color: t.color, weight: 2, fillColor: t.color, fillOpacity: 0.5 });
              
-             // ARMAZENA DADOS NO POLÍGONO
              poly.metaData = { 
                name: t.name, 
                color: t.color, 
@@ -67,11 +66,9 @@
                polyString: t.polyString 
              };
 
-             // NOVO: CLIQUE PARA EDITAR O TERRITÓRIO
              poly.on('click', function() {
-               // Se estiver em seleção múltipla (de quadras), ignoramos o clique no território
                if (window.isSelectionMode) return;
-               abrirModalEditarTerritorio(this.metaData); // Função do JS-App
+               abrirModalEditarTerritorio(this.metaData);
              });
 
              layerGroupTerritorios.addLayer(poly);
@@ -87,20 +84,55 @@
     }).getDadosTerritorios();
   }
 
-  // --- NOVO: SELECIONAR QUADRAS PROGRAMATICAMENTE ---
+  // --- NOVO: SELEÇÃO PROGRAMÁTICA ---
   function selecionarQuadrasPorIds(listaIds) {
     if (!listaIds || listaIds.length === 0) return;
     layerGroupQuadras.eachLayer(layer => {
       if (listaIds.includes(layer.metaData.id)) {
-        // Marca como selecionado
         if (!window.selectedQuadras.find(q => q.id === layer.metaData.id)) {
            window.selectedQuadras.push({ id: layer.metaData.id, layer: layer });
            layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' });
         }
       }
     });
-    // Atualiza contadores (chama função do JS-App se existir)
     if(typeof atualizarBotoesSelecao === 'function') atualizarBotoesSelecao();
+  }
+
+  // --- NOVO: BUSCA DADOS DE TERRITÓRIO PELO NOME ---
+  function getDadosTerritorioPorNome(nome) {
+    let encontrado = null;
+    layerGroupTerritorios.eachLayer(layer => {
+      if (layer.metaData && layer.metaData.name === nome) {
+        encontrado = layer.metaData;
+      }
+    });
+    return encontrado;
+  }
+
+  // --- NOVO: CALCULA UNIÃO BASEADO EM LISTA DE IDS ---
+  function calcularUniaoDeListaIds(listaIds) {
+    if (!listaIds || listaIds.length === 0) return "";
+    
+    // Coleta os GeoJSONs das quadras listadas
+    const features = [];
+    layerGroupQuadras.eachLayer(layer => {
+      if (listaIds.includes(layer.metaData.id)) {
+        features.push(layer.toGeoJSON());
+      }
+    });
+
+    if (features.length === 0) return "";
+
+    let unionPoly = features[0];
+    for (let i = 1; i < features.length; i++) { 
+      try { unionPoly = turf.union(unionPoly, features[i]); } catch(e) { console.warn(e); } 
+    }
+    
+    if(!unionPoly || !unionPoly.geometry) return "";
+    
+    // Converte para string
+    const coords = unionPoly.geometry.type === "Polygon" ? unionPoly.geometry.coordinates[0] : unionPoly.geometry.coordinates[0][0];
+    return coords.map(c => `${c[1]},${c[0]}`).join(" | ");
   }
 
   function formatarTextoBadge(texto) {
@@ -127,7 +159,7 @@
     if(window.selectedQuadras.length === 0) return "";
     const geo = calcularUniaoQuadrasGeoJSON();
     if(!geo || !geo.geometry) return "";
-    const coords = geo.geometry.coordinates[0]; 
+    const coords = geo.geometry.type === "Polygon" ? geo.geometry.coordinates[0] : geo.geometry.coordinates[0][0];
     return coords.map(c => `${c[1]},${c[0]}`).join(" | "); 
   }
   function calcularUniaoQuadrasGeoJSON() {

@@ -74,103 +74,72 @@ function salvarEdicaoQuadra(dados) {
   return { sucesso: true };
 }
 
-function salvarCriacaoTerritorio(dados) {
+// --- CORREÇÃO AQUI: FUNÇÃO QUE SALVA UM LOTE (Criação ou Atualização) ---
+function salvarLoteTerritorios(listaUpdates) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetQuadras = ss.getSheetByName("Quadras");
   let sheetTerritorios = ss.getSheetByName("Territorios");
+  
   if (!sheetQuadras) return { erro: "Aba 'Quadras' não encontrada." };
-  if (!sheetTerritorios) { sheetTerritorios = ss.insertSheet("Territorios"); sheetTerritorios.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)"]); }
-  
-  const ids = sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow() - 1, 1).getValues().flat();
-  dados.idsQuadras.forEach(id => {
-    const idx = ids.indexOf(id);
-    if (idx > -1) {
-      sheetQuadras.getRange(idx + 2, 6).setValue(dados.color);
-      sheetQuadras.getRange(idx + 2, 7).setValue(dados.name);
-    }
-  });
-  sheetTerritorios.appendRow([dados.name, dados.color, dados.idsQuadras.join(","), dados.polyString]);
-  return { sucesso: true };
-}
-
-// NOVO: EDITA UM TERRITÓRIO EXISTENTE
-function editarTerritorio(dados) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetQuadras = ss.getSheetByName("Quadras");
-  const sheetTerritorios = ss.getSheetByName("Territorios");
-  
-  if (!sheetQuadras || !sheetTerritorios) return { erro: "Planilhas não encontradas." };
-  
-  // 1. Achar e atualizar a linha do Território
-  const nomesTerritorios = sheetTerritorios.getRange(2, 1, sheetTerritorios.getLastRow()-1, 1).getValues().flat();
-  const tIndex = nomesTerritorios.indexOf(dados.originalName);
-  
-  if (tIndex === -1) return { erro: "Território original não encontrado." };
-  
-  const rowT = tIndex + 2;
-  sheetTerritorios.getRange(rowT, 1).setValue(dados.newName);
-  sheetTerritorios.getRange(rowT, 2).setValue(dados.newColor);
-  sheetTerritorios.getRange(rowT, 3).setValue(dados.idsQuadras.join(","));
-  sheetTerritorios.getRange(rowT, 4).setValue(dados.polyString);
-
-  // 2. Atualizar as Quadras (Limpar as antigas e setar as novas)
-  const qData = sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow()-1, 7).getValues(); // Pega tudo pra ser rápido
-  
-  for (let i = 0; i < qData.length; i++) {
-    const qId = qData[i][0];
-    const qTerritory = qData[i][6];
-    
-    let mudou = false;
-    let novaCor = qData[i][5];
-    let novoTerritorio = qData[i][6];
-
-    // Se a quadra pertencia a esse território (pelo nome antigo), limpamos primeiro
-    if (qTerritory === dados.originalName) {
-      novaCor = "#3388ff"; // Volta pro azul padrão
-      novoTerritorio = "";
-      mudou = true;
-    }
-
-    // Se a quadra está na NOVA lista, aplicamos os dados novos
-    if (dados.idsQuadras.includes(qId)) {
-      novaCor = dados.newColor;
-      novoTerritorio = dados.newName;
-      mudou = true;
-    }
-
-    if (mudou) {
-      sheetQuadras.getRange(i + 2, 6).setValue(novaCor);
-      sheetQuadras.getRange(i + 2, 7).setValue(novoTerritorio);
-    }
+  if (!sheetTerritorios) {
+      sheetTerritorios = ss.insertSheet("Territorios");
+      sheetTerritorios.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)"]);
   }
 
+  // 1. Carrega dados para indexação rápida
+  const lastRowT = sheetTerritorios.getLastRow();
+  const nomesTerritorios = lastRowT > 1 ? sheetTerritorios.getRange(2, 1, lastRowT-1, 1).getValues().flat() : [];
+  
+  const lastRowQ = sheetQuadras.getLastRow();
+  const idsQuadras = lastRowQ > 1 ? sheetQuadras.getRange(2, 1, lastRowQ-1, 1).getValues().flat() : [];
+
+  // 2. Itera sobre cada território da lista (o Novo e as Vítimas)
+  listaUpdates.forEach(update => {
+    // A. Atualiza (ou Cria) na Aba TERRITORIOS
+    const nomeBusca = update.originalName || update.name;
+    const tIndex = nomesTerritorios.indexOf(nomeBusca);
+    
+    if (tIndex > -1) {
+      // --- CASO 1: ATUALIZAÇÃO (Já existe) ---
+      const rowT = tIndex + 2;
+      sheetTerritorios.getRange(rowT, 1).setValue(update.name);
+      sheetTerritorios.getRange(rowT, 2).setValue(update.color);
+      sheetTerritorios.getRange(rowT, 3).setValue(update.idsQuadras.join(","));
+      sheetTerritorios.getRange(rowT, 4).setValue(update.polyString);
+    } else {
+      // --- CASO 2: CRIAÇÃO (Novo Território) - [CORREÇÃO APLICADA] ---
+      sheetTerritorios.appendRow([
+        update.name, 
+        update.color, 
+        update.idsQuadras.join(","), 
+        update.polyString
+      ]);
+      // Adiciona ao array local para evitar duplicidade se houver lógica estranha no mesmo lote
+      nomesTerritorios.push(update.name); 
+    }
+
+    // B. Atualiza as Quadras Individuais (Cores e donos)
+    update.idsQuadras.forEach(qId => {
+      const qIndex = idsQuadras.indexOf(qId);
+      if (qIndex > -1) {
+        sheetQuadras.getRange(qIndex + 2, 6).setValue(update.color); 
+        sheetQuadras.getRange(qIndex + 2, 7).setValue(update.name);  
+      }
+    });
+  });
+
   return { sucesso: true };
 }
 
-// NOVO: EXCLUIR TERRITÓRIO
 function excluirTerritorio(nomeTerritorio) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetQuadras = ss.getSheetByName("Quadras");
   const sheetTerritorios = ss.getSheetByName("Territorios");
-
-  // 1. Remove da aba Territorios
   const nomes = sheetTerritorios.getRange(2, 1, sheetTerritorios.getLastRow()-1, 1).getValues().flat();
   const idx = nomes.indexOf(nomeTerritorio);
-  if (idx > -1) {
-    sheetTerritorios.deleteRow(idx + 2);
-  } else {
-    return { erro: "Território não encontrado." };
-  }
-
-  // 2. Limpa nas Quadras
-  const qData = sheetQuadras.getRange(2, 7, sheetQuadras.getLastRow()-1, 1).getValues().flat(); // Só coluna Territorio
-  qData.forEach((val, i) => {
-    if (val === nomeTerritorio) {
-      sheetQuadras.getRange(i + 2, 6).setValue("#3388ff"); // Reset cor
-      sheetQuadras.getRange(i + 2, 7).setValue("");        // Reset nome
-    }
-  });
-
+  if (idx > -1) { sheetTerritorios.deleteRow(idx + 2); } else { return { erro: "Território não encontrado." }; }
+  const qData = sheetQuadras.getRange(2, 7, sheetQuadras.getLastRow()-1, 1).getValues().flat();
+  qData.forEach((val, i) => { if (val === nomeTerritorio) { sheetQuadras.getRange(i + 2, 6).setValue("#3388ff"); sheetQuadras.getRange(i + 2, 7).setValue(""); } });
   return { sucesso: true };
 }
 
