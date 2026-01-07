@@ -1,248 +1,205 @@
 <script>
-  // Globais de Controle de Mapa
   window.isSelectionMode = false;
-  window.selectedQuadras = []; // Array de {id, layer}
+  window.selectedQuadras = [];
   let modoRotuloAtual = 'id';
-  let showTerritoryNumbers = true; // Controle dos números grandes
+  let showTerritoryNumbers = true;
+  let layerGroupQuadras, layerGroupTerritorios, layerGroupTerritoryLabels, layerGroupVerticesTemp;
 
-  // Grupos de Camadas (Layers)
-  let layerGroupQuadras, layerGroupTerritorios, layerGroupTerritoryLabels;
+  // Variáveis para a Divisão por Vértices
+  let verticesSelecionados = [];
 
   // --- MAPA GERAL ---
   function carregarMapaGeral() {
     google.script.run.withSuccessHandler(dados => {
       document.getElementById('totalQuadrasGeral').innerText = dados.length;
       document.getElementById('totalDomiciliosGeral').innerText = dados.reduce((acc, c) => acc + c.total, 0);
-
-      if(!mapGeral) {
-        mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
-      }
-      dados.forEach(q => {
-        if(q.lat && q.lng) {
-          L.marker([q.lat, q.lng]).addTo(mapGeral)
-           .bindPopup(`<div class="popup-quadra"><h6>${q.id}</h6><p>${q.total} Domicílios</p><button class="btn btn-sm btn-primary btn-ver-quadra" onclick="irParaDetalhes('${q.id}')">Ver</button></div>`);
-        }
-      });
+      if(!mapGeral) { mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 13); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral); }
+      dados.forEach(q => { if(q.lat && q.lng) { L.marker([q.lat, q.lng]).addTo(mapGeral).bindPopup(`<div class="popup-quadra"><h6>${q.id}</h6><p>${q.total} Domicílios</p><button class="btn btn-sm btn-primary btn-ver-quadra" onclick="irParaDetalhes('${q.id}')">Ver</button></div>`); } });
       showLoading(false);
     }).getVisaoGeral();
   }
 
-  // --- MAPA EDITOR (O Cérebro do App) ---
+  // --- MAPA EDITOR ---
   function iniciarMapaPoligonos() {
     if (!mapPoligonos) {
       mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
       mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
       
-      // Inicializa os grupos
       layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritoryLabels = L.featureGroup().addTo(mapPoligonos);
+      layerGroupVerticesTemp = L.featureGroup().addTo(mapPoligonos); // Para as bolinhas de corte
     }
 
     showLoading(true, "Carregando Malha...");
-    
-    // Limpa estado
-    layerGroupQuadras.clearLayers();
-    layerGroupTerritorios.clearLayers();
-    layerGroupTerritoryLabels.clearLayers();
-    
-    window.selectedQuadras = [];
-    if(document.getElementById('countSelected')) document.getElementById('countSelected').innerText = "0";
+    layerGroupQuadras.clearLayers(); layerGroupTerritorios.clearLayers(); layerGroupTerritoryLabels.clearLayers(); layerGroupVerticesTemp.clearLayers();
+    limparSelecao();
+    verticesSelecionados = [];
 
-    // 1. CARREGA AS QUADRAS
     google.script.run.withSuccessHandler(dados => {
       if(dados && dados.length > 0) {
         dados.forEach(d => {
           if (d.polyString && d.polyString.length > 5) {
-            const latlngs = d.polyString.split(" | ").map(par => {
-              const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])];
-            });
-            const poly = L.polygon(latlngs, {
-              color: d.color, fillColor: d.color, fillOpacity: 0.3, weight: 1, color: '#666'
-            });
-            
+            const latlngs = d.polyString.split(" | ").map(par => { const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
+            const poly = L.polygon(latlngs, { color: d.color, fillColor: d.color, fillOpacity: 0.3, weight: 1, color: '#666' });
             poly.metaData = { ...d };
-            
-            poly.on('click', function(e) {
-              if (window.isSelectionMode) {
-                toggleSelecaoQuadra(this);
-              } else {
-                abrirModalEdicao(this); // JS-App
-              }
-            });
-            
-            // Rótulo inicial das quadras
+            poly.on('click', function(e) { if (window.isSelectionMode) toggleSelecaoQuadra(this); else abrirModalEdicao(this); });
             atualizarTextoTooltip(poly, modoRotuloAtual);
-            
             layerGroupQuadras.addLayer(poly);
           }
         });
       }
-      
-      // 2. CARREGA OS TERRITÓRIOS
       carregarTerritoriosSalvos();
-
     }).getPoligonosQuadras();
   }
 
   function carregarTerritoriosSalvos() {
     google.script.run.withSuccessHandler(dados => {
-      if (dados && dados.length > 0) {
-        dados.forEach(t => {
+      if (dados) dados.forEach(t => {
            if (t.polyString && t.polyString.length > 5) {
-             const latlngs = t.polyString.split(" | ").map(par => {
-               const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])];
-             });
-             
-             // VISUAL 1: O POLÍGONO COLORIDO E TRANSLÚCIDO
-             const poly = L.polygon(latlngs, {
-               color: t.color,         // Borda da cor do território
-               weight: 2,              // Borda fina
-               fillColor: t.color,     // Preenchimento da cor do território
-               fillOpacity: 0.5,       // TRANSLÚCIDO (Como na imagem)
-             });
-             
+             const latlngs = t.polyString.split(" | ").map(par => { const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
+             const poly = L.polygon(latlngs, { color: t.color, weight: 2, fillColor: t.color, fillOpacity: 0.5 });
              layerGroupTerritorios.addLayer(poly);
-
-             // VISUAL 2: O NÚMERO GRANDE (BADGE)
-             // Calcula o centro do polígono para por a bolinha
              const centro = poly.getBounds().getCenter();
-             
-             // Cria ícone customizado com CSS
-             const myIcon = L.divIcon({
-                className: 'custom-div-icon', // Classe dummy para resetar
-                html: `<div class="territory-badge" style="width:30px; height:30px;">${t.name}</div>`,
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-             });
-
-             const labelMarker = L.marker(centro, { icon: myIcon, interactive: false });
-             layerGroupTerritoryLabels.addLayer(labelMarker);
+             const myIcon = L.divIcon({ className: 'custom-div-icon', html: `<div class="territory-badge" style="width:30px; height:30px;">${t.name}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+             layerGroupTerritoryLabels.addLayer(L.marker(centro, { icon: myIcon, interactive: false }));
            }
-        });
-      }
-      
-      // Aplica o estado inicial do switch de números
+      });
       toggleNumerosTerritorios(document.getElementById('toggleNumbers').checked);
-      
-      // Aplica visualização padrão ("Só Territórios" conforme pedido)
       mudarVisualizacao(document.querySelector('select[onchange="mudarVisualizacao(this.value)"]').value);
-
       showLoading(false);
     }).getDadosTerritorios();
   }
 
-  // --- SELEÇÃO DE QUADRAS ---
+  // --- SELEÇÃO ---
   function toggleSelecaoQuadra(layer) {
     const id = layer.metaData.id;
     const idx = window.selectedQuadras.findIndex(q => q.id === id);
-
-    if (idx === -1) {
-      window.selectedQuadras.push({ id: id, layer: layer });
-      layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' });
-    } else {
-      window.selectedQuadras.splice(idx, 1);
-      layer.setStyle({ color: '#666', weight: 1, dashArray: null });
-    }
-    document.getElementById('countSelected').innerText = window.selectedQuadras.length;
+    if (idx === -1) { window.selectedQuadras.push({ id: id, layer: layer }); layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' }); }
+    else { window.selectedQuadras.splice(idx, 1); layer.setStyle({ color: '#666', weight: 1, dashArray: null }); }
+    atualizarBotoesSelecao();
   }
-
   function limparSelecao() {
-    window.selectedQuadras.forEach(item => {
-      item.layer.setStyle({ color: '#666', weight: 1, dashArray: null });
-    });
+    window.selectedQuadras.forEach(item => { item.layer.setStyle({ color: '#666', weight: 1, dashArray: null }); });
     window.selectedQuadras = [];
-    document.getElementById('countSelected').innerText = "0";
+    if(document.getElementById('countSelectedBadge')) atualizarBotoesSelecao();
   }
 
-  // --- UNIÃO GEOMÉTRICA ---
-  function calcularUniaoQuadras() {
-    if (window.selectedQuadras.length === 0) return "";
+  // --- FUSÃO (UNION) ---
+  function calcularUniaoQuadras() { const coords = calcularUniaoQuadrasGeoJSON().geometry.coordinates[0]; return coords.map(c => `${c[1]},${c[0]}`).join(" | "); }
+  function calcularUniaoQuadrasGeoJSON() {
+    if (window.selectedQuadras.length === 0) return null;
     const features = window.selectedQuadras.map(item => item.layer.toGeoJSON());
     let unionPoly = features[0];
-    for (let i = 1; i < features.length; i++) {
-      try { unionPoly = turf.union(unionPoly, features[i]); } catch(e) { console.warn(e); }
-    }
-    if (!unionPoly || !unionPoly.geometry) return "";
-    let coords;
-    if (unionPoly.geometry.type === "Polygon") coords = unionPoly.geometry.coordinates[0];
-    else if (unionPoly.geometry.type === "MultiPolygon") coords = unionPoly.geometry.coordinates[0][0]; 
-    return coords.map(c => `${c[1]},${c[0]}`).join(" | ");
+    for (let i = 1; i < features.length; i++) { try { unionPoly = turf.union(unionPoly, features[i]); } catch(e) { console.warn(e); } }
+    return unionPoly;
   }
 
-  // --- CONTROLES VISUAIS ---
-  
-  // Alterna as Camadas (Só Quadras, Só Territórios, Ambos)
-  function mudarVisualizacao(modo) {
-    if (!mapPoligonos) return;
+  // --- DIVISÃO POR VÉRTICES (LÓGICA GRÁFICA) ---
+  function ativarSelecaoVerticesDivisao(quadraLayer) {
+    layerGroupVerticesTemp.clearLayers();
+    verticesSelecionados = [];
+
+    // Pega as coordenadas (o anel externo)
+    const latlngs = quadraLayer.getLatLngs()[0];
     
-    // Remove tudo primeiro
-    if (mapPoligonos.hasLayer(layerGroupQuadras)) layerGroupQuadras.remove();
-    if (mapPoligonos.hasLayer(layerGroupTerritorios)) layerGroupTerritorios.remove();
-    
-    if (modo === 'quadras') {
-      layerGroupQuadras.addTo(mapPoligonos);
-    } else if (modo === 'territorios') {
-      layerGroupTerritorios.addTo(mapPoligonos);
-    } else {
-      // Ambos (Quadras por cima)
-      layerGroupTerritorios.addTo(mapPoligonos);
-      layerGroupQuadras.addTo(mapPoligonos);
-    }
-  }
+    latlngs.forEach((latlng, index) => {
+      // Cria uma bolinha branca clicável em cada vértice
+      const marker = L.circleMarker(latlng, {
+        color: '#3388ff',
+        fillColor: '#fff',
+        fillOpacity: 1,
+        radius: 6,
+        weight: 2
+      });
 
-  // Liga/Desliga as bolinhas com números
-  function toggleNumerosTerritorios(ativo) {
-    showTerritoryNumbers = ativo;
-    if (!mapPoligonos) return;
+      marker.on('click', function(e) {
+        L.DomEvent.stopPropagation(e); // Não deixa clicar no mapa embaixo
+        
+        // Adiciona à seleção
+        verticesSelecionados.push(latlng);
+        this.setStyle({ color: 'red', fillColor: 'red' }); // Fica vermelho
 
-    if (ativo) {
-      if (!mapPoligonos.hasLayer(layerGroupTerritoryLabels)) {
-        layerGroupTerritoryLabels.addTo(mapPoligonos);
-      }
-    } else {
-      if (mapPoligonos.hasLayer(layerGroupTerritoryLabels)) {
-        layerGroupTerritoryLabels.remove();
-      }
-    }
-  }
-
-  function mudarRotulos(modo) {
-    modoRotuloAtual = modo;
-    if(mapPoligonos) {
-      mapPoligonos.eachLayer(layer => {
-        if (layer instanceof L.Polygon && layer.metaData) {
-          atualizarTextoTooltip(layer, modo);
+        if (verticesSelecionados.length === 2) {
+          // TEMOS 2 PONTOS! EXECUTAR CORTE
+          executarCortePorPontos(quadraLayer, verticesSelecionados);
+          layerGroupVerticesTemp.clearLayers(); // Limpa bolinhas
         }
       });
+
+      layerGroupVerticesTemp.addLayer(marker);
+    });
+  }
+
+  function executarCortePorPontos(polyLayer, pontos) {
+    try {
+      const polyGeoJSON = polyLayer.toGeoJSON();
+      
+      // Cria uma linha conectando os 2 pontos clicados
+      // Turf usa [lng, lat]
+      const p1 = [pontos[0].lng, pontos[0].lat];
+      const p2 = [pontos[1].lng, pontos[1].lat];
+      
+      const lineString = turf.lineString([p1, p2]);
+
+      // TRUQUE DO BUFFER: Transforma a linha numa "faca" fina
+      const faca = turf.buffer(lineString, 0.0001, { units: 'kilometers' });
+
+      // Subtrai a faca do polígono
+      const resultado = turf.difference(polyGeoJSON, faca);
+
+      if (!resultado) { alert("Falha no corte."); return; }
+
+      let novasPartes = [];
+      if (resultado.geometry.type === 'MultiPolygon') {
+        resultado.geometry.coordinates.forEach(coords => { novasPartes.push(turf.polygon(coords)); });
+      } else if (resultado.geometry.type === 'Polygon') {
+         // Se não separou, é porque a linha não cruzou tudo ou foi nos vizinhos
+         // Vamos tentar esticar a linha um pouco para garantir o corte nas bordas
+         alert("O corte não dividiu a área. Tente escolher vértices opostos.");
+         iniciarMapaPoligonos();
+         return;
+      }
+      
+      // Manda para o JS-App
+      receberCorteRealizado(novasPartes);
+
+    } catch(e) {
+      console.error(e);
+      alert("Erro matemático: " + e.message);
+      iniciarMapaPoligonos();
     }
   }
 
+  // --- VISUALIZAÇÃO ---
+  function mudarVisualizacao(modo) {
+    if (!mapPoligonos) return;
+    if (mapPoligonos.hasLayer(layerGroupQuadras)) layerGroupQuadras.remove();
+    if (mapPoligonos.hasLayer(layerGroupTerritorios)) layerGroupTerritorios.remove();
+    if (modo === 'quadras') { layerGroupQuadras.addTo(mapPoligonos); }
+    else if (modo === 'territorios') { layerGroupTerritorios.addTo(mapPoligonos); }
+    else { layerGroupTerritorios.addTo(mapPoligonos); layerGroupQuadras.addTo(mapPoligonos); }
+  }
+  function toggleNumerosTerritorios(ativo) {
+    showTerritoryNumbers = ativo; if (!mapPoligonos) return;
+    if (ativo) { if (!mapPoligonos.hasLayer(layerGroupTerritoryLabels)) layerGroupTerritoryLabels.addTo(mapPoligonos); }
+    else { if (mapPoligonos.hasLayer(layerGroupTerritoryLabels)) layerGroupTerritoryLabels.remove(); }
+  }
+  function mudarRotulos(modo) {
+    modoRotuloAtual = modo; if(mapPoligonos) { mapPoligonos.eachLayer(layer => { if (layer instanceof L.Polygon && layer.metaData) atualizarTextoTooltip(layer, modo); }); }
+  }
   function atualizarTextoTooltip(poly, modo) {
-    let texto = "";
-    const dados = poly.metaData;
-    if (modo === 'id') texto = dados.id;
-    else if (modo === 'territory') texto = dados.territory;
-    else if (modo === 'both') texto = `${dados.id}\n${dados.territory}`; // Quebra de linha
-
-    if (modo !== 'none' && texto) {
-      poly.bindTooltip(texto, { permanent: true, direction: "center", className: "label-quadra" }).openTooltip();
-    } else {
-      poly.unbindTooltip();
-    }
+    let texto = ""; const dados = poly.metaData;
+    if (modo === 'id') texto = dados.id; else if (modo === 'territory') texto = dados.territory; else if (modo === 'both') texto = `${dados.id}\n${dados.territory}`;
+    if (modo !== 'none' && texto) poly.bindTooltip(texto, { permanent: true, direction: "center", className: "label-quadra" }).openTooltip(); else poly.unbindTooltip();
   }
-
-  // --- MAPA DETALHES ---
+  
+  // --- DETALHES ---
   function atualizarMapaDetalhes(grupos) {
     if(!mapDetalhe) { mapDetalhe=L.map('mapDetalhe'); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe); }
     mapDetalhe.eachLayer((layer) => { if(layer instanceof L.Marker) mapDetalhe.removeLayer(layer); });
-    const bounds = [];
-    Object.values(grupos).forEach(g => {
-      if(g.lat && g.lng) { L.marker([g.lat, g.lng]).addTo(mapDetalhe).bindPopup(`<b>${g.numero}</b> ${g.logradouro}`); bounds.push([g.lat, g.lng]); }
-    });
-    if(bounds.length > 0) mapDetalhe.fitBounds(bounds, {padding:[30,30]});
-    setTimeout(() => mapDetalhe.invalidateSize(), 300);
+    const bounds = []; Object.values(grupos).forEach(g => { if(g.lat && g.lng) { L.marker([g.lat, g.lng]).addTo(mapDetalhe).bindPopup(`<b>${g.numero}</b> ${g.logradouro}`); bounds.push([g.lat, g.lng]); } });
+    if(bounds.length > 0) mapDetalhe.fitBounds(bounds, {padding:[30,30]}); setTimeout(() => mapDetalhe.invalidateSize(), 300);
   }
 </script>

@@ -1,5 +1,3 @@
-// Database.gs
-
 // --- LEITURA DE DADOS ---
 
 function getVisaoGeral() {
@@ -67,7 +65,7 @@ function getDadosDaQuadra(quadraId) {
   }));
 }
 
-// --- FUNÇÕES DA MALHA (QUADRAS) ---
+// --- FUNÇÕES DA MALHA (QUADRAS INDIVIDUAIS) ---
 function getPoligonosQuadras() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Quadras");
@@ -86,12 +84,13 @@ function getPoligonosQuadras() {
   }));
 }
 
-// --- NOVO: FUNÇÕES DE TERRITÓRIOS (GRUPOS) ---
+// --- FUNÇÕES DE TERRITÓRIOS (GRUPOS) ---
 function getDadosTerritorios() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Territorios");
   
   if (!sheet) {
+    // Cria aba se não existir
     sheet = ss.insertSheet("Territorios");
     sheet.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)"]);
     return [];
@@ -133,7 +132,6 @@ function salvarEdicaoQuadra(dados) {
   return { sucesso: true };
 }
 
-// NOVO: Salva o território e atualiza as quadras filhas
 function salvarCriacaoTerritorio(dados) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetQuadras = ss.getSheetByName("Quadras");
@@ -145,18 +143,17 @@ function salvarCriacaoTerritorio(dados) {
     sheetTerritorios.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)"]);
   }
   
-  // 1. Atualizar cor e nome do território nas quadras individuais
+  // 1. Atualizar cor e território nas quadras individuais
   const ids = sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow() - 1, 1).getValues().flat();
   dados.idsQuadras.forEach(id => {
     const idx = ids.indexOf(id);
     if (idx > -1) {
-      // Coluna F=6 (Cor), G=7 (Território)
-      sheetQuadras.getRange(idx + 2, 6).setValue(dados.color);
-      sheetQuadras.getRange(idx + 2, 7).setValue(dados.name);
+      sheetQuadras.getRange(idx + 2, 6).setValue(dados.color); // Coluna F
+      sheetQuadras.getRange(idx + 2, 7).setValue(dados.name);  // Coluna G
     }
   });
   
-  // 2. Salvar o novo território (polígono unificado)
+  // 2. Salvar o novo território
   sheetTerritorios.appendRow([
     dados.name,
     dados.color,
@@ -180,6 +177,47 @@ function excluirQuadra(idQuadra) {
     return { sucesso: true };
   }
   return { erro: "Quadra não encontrada." };
+}
+
+// --- NOVO: PROCESSAMENTO EM LOTE (JUNTAR/DIVIDIR) ---
+function processarGeometriaEmLote(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Quadras");
+  if (!sheet) return { erro: "Aba Quadras não encontrada" };
+
+  // 1. Apagar as Quadras Antigas (ex: as 2 que foram unidas, ou a 1 que foi dividida)
+  // Fazemos de trás para frente para não bagunçar os índices ao deletar
+  if (payload.toRemove && payload.toRemove.length > 0) {
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat();
+    
+    // Mapeia índices reais na planilha
+    const rowsToDelete = [];
+    payload.toRemove.forEach(id => {
+      const idx = ids.indexOf(id);
+      if (idx > -1) rowsToDelete.push(idx + 2); // +2 offset (header + indice 0)
+    });
+    
+    // Ordena Decrescente e Deleta (para o indice de baixo não mudar o de cima)
+    rowsToDelete.sort((a, b) => b - a);
+    rowsToDelete.forEach(row => sheet.deleteRow(row));
+  }
+
+  // 2. Adicionar as Novas Quadras Geradas
+  if (payload.toAdd && payload.toAdd.length > 0) {
+    payload.toAdd.forEach(q => {
+      sheet.appendRow([
+        q.id,
+        q.area || 0,
+        q.centro[0], // Lat
+        q.centro[1], // Lon
+        q.polyString,
+        q.color || "#3388ff",
+        q.territory || ""
+      ]);
+    });
+  }
+
+  return { sucesso: true };
 }
 
 function limparCoord(coord) {

@@ -39,7 +39,6 @@
     <div id="telaPoligonos" class="screen container-fluid py-3">
       
       <div class="d-flex flex-column gap-2 mb-2">
-        
         <div class="d-flex justify-content-between align-items-center">
           <h5 class="fw-bold m-0"><i class="fa-solid fa-pen-to-square text-info me-2"></i>Editor</h5>
           <button class="btn btn-sm btn-outline-secondary" onclick="iniciarMapaPoligonos()" title="Recarregar"><i class="fa-solid fa-rotate-right"></i></button>
@@ -51,25 +50,34 @@
             <option value="quadras">Só Quadras</option>
             <option value="territorios" selected>Só Territórios</option>
           </select>
-          
           <div class="form-check form-switch ms-2">
             <input class="form-check-input" type="checkbox" id="toggleNumbers" checked onchange="toggleNumerosTerritorios(this.checked)">
             <label class="form-check-label small" for="toggleNumbers">Números</label>
           </div>
         </div>
 
-        <div class="bg-white p-2 border rounded shadow-sm d-flex justify-content-between align-items-center">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="toggleSelectionMode" onchange="alternarModoSelecao(this.checked)">
-            <label class="form-check-label small fw-bold" for="toggleSelectionMode">Modo Criação</label>
+        <div class="bg-white p-2 border rounded shadow-sm">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+             <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="toggleSelectionMode" onchange="alternarModoSelecao(this.checked)">
+              <label class="form-check-label small fw-bold" for="toggleSelectionMode">Seleção Múltipla</label>
+            </div>
+            <span class="badge bg-secondary" id="countSelectedBadge">0 selecionados</span>
           </div>
-          <button id="btnSalvarTerritorio" class="btn btn-sm btn-success disabled" onclick="abrirModalSalvarTerritorio()">
-            <i class="fa-solid fa-floppy-disk"></i> Salvar (<span id="countSelected">0</span>)
-          </button>
+
+          <div class="d-flex gap-2">
+            <button id="btnSalvarTerritorio" class="btn btn-sm btn-success flex-fill disabled" onclick="abrirModalSalvarTerritorio()">
+              <i class="fa-solid fa-layer-group"></i> Território
+            </button>
+            <button id="btnJuntarQuadras" class="btn btn-sm btn-primary flex-fill disabled" onclick="iniciarFusaoQuadras()" title="Juntar">
+              <i class="fa-solid fa-object-group"></i> Juntar
+            </button>
+            </div>
         </div>
+
       </div>
       
-      <p class="text-muted small mb-1" id="msgHelp">Clique em uma quadra para editar.</p>
+      <p class="text-muted small mb-1" id="msgHelp">Ative a seleção ou clique para editar.</p>
       <div class="map-wrapper"><div id="mapPoligonos"></div></div>
     </div>
 
@@ -95,10 +103,17 @@
           <div class="modal-body">
             <form>
               <input type="hidden" id="editOriginalId">
+              
+              <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-sm btn-warning" onclick="iniciarDivisaoPorVertices()">
+                  <i class="fa-solid fa-scissors"></i> Dividir Quadra
+                </button>
+              </div>
+
               <div class="mb-3"><label class="form-label">Nome (ID)</label><input type="text" class="form-control" id="editId"></div>
               <div class="mb-3"><label class="form-label">Território</label><input type="text" class="form-control" id="editTerritory"></div>
               <div class="mb-3"><label class="form-label">Cor</label><input type="color" class="form-control w-100" id="editColor"></div>
-              <button type="button" class="btn btn-outline-primary w-100" id="btnToggleVertex" onclick="ativarEdicaoVertices()">Ativar Edição de Vértices</button>
+              <button type="button" class="btn btn-outline-primary w-100" id="btnToggleVertex" onclick="ativarEdicaoVertices()">Editar Vértices (Geometria)</button>
             </form>
           </div>
           <div class="modal-footer justify-content-between">
@@ -115,13 +130,29 @@
           <div class="modal-header bg-success text-white"><h5 class="modal-title">Novo Território</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <p>Você selecionou <b id="lblCountTerritorio">0</b> quadras.</p>
-            <div class="mb-3"><label class="form-label">Nome do Território (Número)</label><input type="text" class="form-control" id="newTerritoryName" placeholder="Ex: 10"></div>
-            <div class="mb-3"><label class="form-label">Cor do Território</label><input type="color" class="form-control w-100" id="newTerritoryColor" value="#ffeb3b"></div>
-            <div class="alert alert-info small">Isso criará um polígono unificado e pintará as quadras selecionadas com esta cor.</div>
+            <div class="mb-3"><label class="form-label">Nome (Número)</label><input type="text" class="form-control" id="newTerritoryName" placeholder="Ex: 10"></div>
+            <div class="mb-3"><label class="form-label">Cor</label><input type="color" class="form-control w-100" id="newTerritoryColor" value="#ffeb3b"></div>
+            <div class="alert alert-info small">Cria um polígono unificado.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-success" onclick="confirmarSalvarTerritorio()">Criar Território</button>
+            <button type="button" class="btn btn-success" onclick="confirmarSalvarTerritorio()">Criar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="modalNomear" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-primary text-white"><h5 class="modal-title" id="lblTituloNomear">Nomear Novas Quadras</h5></div>
+          <div class="modal-body">
+            <p id="msgNomear">Defina os novos IDs.</p>
+            <div id="containerInputsNomes"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="cancelarOperacaoGeometrica()">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="confirmarOperacaoGeometrica()">Salvar</button>
           </div>
         </div>
       </div>
