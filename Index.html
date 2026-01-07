@@ -65,16 +65,22 @@
             <span class="badge bg-secondary" id="countSelectedBadge">0 selecionados</span>
           </div>
 
-          <div class="d-flex gap-2">
+          <div id="divEditandoTerritorio" class="d-none mb-2 p-1 bg-warning bg-opacity-25 rounded border border-warning">
+             <p class="small fw-bold mb-1 text-center">Editando: <span id="lblEditandoNome"></span></p>
+             <button class="btn btn-sm btn-warning w-100 fw-bold" onclick="salvarRevisaoTerritorio()">
+               <i class="fa-solid fa-check"></i> Confirmar Mudanças
+             </button>
+          </div>
+
+          <div class="d-flex gap-2" id="barraBotoesPadrao">
             <button id="btnSalvarTerritorio" class="btn btn-sm btn-success flex-fill disabled" onclick="abrirModalSalvarTerritorio()">
               <i class="fa-solid fa-layer-group"></i> Território
             </button>
             <button id="btnJuntarQuadras" class="btn btn-sm btn-primary flex-fill disabled" onclick="iniciarFusaoQuadras()" title="Juntar">
               <i class="fa-solid fa-object-group"></i> Juntar
             </button>
-            </div>
+          </div>
         </div>
-
       </div>
       
       <p class="text-muted small mb-1" id="msgHelp">Ative a seleção ou clique para editar.</p>
@@ -103,17 +109,15 @@
           <div class="modal-body">
             <form>
               <input type="hidden" id="editOriginalId">
-              
               <div class="d-flex justify-content-end mb-3">
                 <button type="button" class="btn btn-sm btn-warning" onclick="iniciarDivisaoPorVertices()">
                   <i class="fa-solid fa-scissors"></i> Dividir Quadra
                 </button>
               </div>
-
               <div class="mb-3"><label class="form-label">Nome (ID)</label><input type="text" class="form-control" id="editId"></div>
               <div class="mb-3"><label class="form-label">Território</label><input type="text" class="form-control" id="editTerritory"></div>
               <div class="mb-3"><label class="form-label">Cor</label><input type="color" class="form-control w-100" id="editColor"></div>
-              <button type="button" class="btn btn-outline-primary w-100" id="btnToggleVertex" onclick="ativarEdicaoVertices()">Editar Vértices (Geometria)</button>
+              <button type="button" class="btn btn-outline-primary w-100" id="btnToggleVertex" onclick="ativarEdicaoVertices()">Editar Vértices</button>
             </form>
           </div>
           <div class="modal-footer justify-content-between">
@@ -137,6 +141,28 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
             <button type="button" class="btn btn-success" onclick="confirmarSalvarTerritorio()">Criar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="modalEditarTerritorio" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-warning"><h5 class="modal-title text-dark">Editar Território</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <input type="hidden" id="editTerrOriginalName">
+            <div class="mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="editTerrName"></div>
+            <div class="mb-3"><label class="form-label">Cor</label><input type="color" class="form-control w-100" id="editTerrColor"></div>
+            <hr>
+            <p class="small text-muted mb-2">Composição: <span id="editTerrQtdQuadras"></span> quadras.</p>
+            <button class="btn btn-outline-dark w-100 mb-2" onclick="iniciarSelecaoTerritorioExistente()">
+              <i class="fa-solid fa-pen-nib"></i> Adicionar/Remover Quadras
+            </button>
+          </div>
+          <div class="modal-footer justify-content-between">
+            <button type="button" class="btn btn-danger" onclick="deletarTerritorioAtual()">Excluir</button>
+            <button type="button" class="btn btn-primary" onclick="salvarTerritorioExistente()">Salvar</button>
           </div>
         </div>
       </div>

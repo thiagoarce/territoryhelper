@@ -52,50 +52,32 @@
     }).getPoligonosQuadras();
   }
 
-  // --- FUNÇÃO DE FORMATAÇÃO INTELIGENTE ---
-  function formatarTextoBadge(texto) {
-    if (!texto) return "";
-    let str = texto.toString();
-    const palavras = str.split(" ");
-    
-    // Se só tem uma palavra, retorna ela
-    if (palavras.length === 1) return str;
-
-    let novoTexto = palavras[0];
-    
-    for (let i = 1; i < palavras.length; i++) {
-      const palavra = palavras[i];
-      // Se a palavra for maior que 2 letras, quebra linha antes dela
-      // Ex: "Condomínio Parque Verde" -> "Condomínio<br>Parque<br>Verde"
-      // Ex: "Setor A" -> "Setor A" (A tem 1 letra, não quebra)
-      if (palavra.length > 2) {
-        novoTexto += "<br>" + palavra;
-      } else {
-        novoTexto += " " + palavra;
-      }
-    }
-    return novoTexto;
-  }
-
   function carregarTerritoriosSalvos() {
     google.script.run.withSuccessHandler(dados => {
       if (dados) dados.forEach(t => {
            if (t.polyString && t.polyString.length > 5) {
              const latlngs = t.polyString.split(" | ").map(par => { const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
              const poly = L.polygon(latlngs, { color: t.color, weight: 2, fillColor: t.color, fillOpacity: 0.5 });
+             
+             // ARMAZENA DADOS NO POLÍGONO
+             poly.metaData = { 
+               name: t.name, 
+               color: t.color, 
+               quadras: t.quadras, 
+               polyString: t.polyString 
+             };
+
+             // NOVO: CLIQUE PARA EDITAR O TERRITÓRIO
+             poly.on('click', function() {
+               // Se estiver em seleção múltipla (de quadras), ignoramos o clique no território
+               if (window.isSelectionMode) return;
+               abrirModalEditarTerritorio(this.metaData); // Função do JS-App
+             });
+
              layerGroupTerritorios.addLayer(poly);
              const centro = poly.getBounds().getCenter();
-             
-             // Usa a função formatadora aqui
              const nomeFormatado = formatarTextoBadge(t.name);
-
-             const myIcon = L.divIcon({ 
-               className: 'custom-badge-wrapper', 
-               html: `<div class="territory-badge">${nomeFormatado}</div>`, 
-               iconSize: [0, 0], 
-               iconAnchor: [0, 0] 
-             });
-             
+             const myIcon = L.divIcon({ className: 'custom-badge-wrapper', html: `<div class="territory-badge">${nomeFormatado}</div>`, iconSize: [0, 0], iconAnchor: [0, 0] });
              layerGroupTerritoryLabels.addLayer(L.marker(centro, { icon: myIcon, interactive: false }));
            }
       });
@@ -103,6 +85,27 @@
       mudarVisualizacao(document.querySelector('select[onchange="mudarVisualizacao(this.value)"]').value);
       showLoading(false);
     }).getDadosTerritorios();
+  }
+
+  // --- NOVO: SELECIONAR QUADRAS PROGRAMATICAMENTE ---
+  function selecionarQuadrasPorIds(listaIds) {
+    if (!listaIds || listaIds.length === 0) return;
+    layerGroupQuadras.eachLayer(layer => {
+      if (listaIds.includes(layer.metaData.id)) {
+        // Marca como selecionado
+        if (!window.selectedQuadras.find(q => q.id === layer.metaData.id)) {
+           window.selectedQuadras.push({ id: layer.metaData.id, layer: layer });
+           layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' });
+        }
+      }
+    });
+    // Atualiza contadores (chama função do JS-App se existir)
+    if(typeof atualizarBotoesSelecao === 'function') atualizarBotoesSelecao();
+  }
+
+  function formatarTextoBadge(texto) {
+    if (!texto) return ""; let str = texto.toString(); const palavras = str.split(" "); if (palavras.length === 1) return str;
+    let novoTexto = palavras[0]; for (let i = 1; i < palavras.length; i++) { if (palavras[i].length > 2) novoTexto += "<br>" + palavras[i]; else novoTexto += " " + palavras[i]; } return novoTexto;
   }
 
   // --- SELEÇÃO ---
@@ -120,7 +123,13 @@
   }
 
   // --- FUSÃO ---
-  function calcularUniaoQuadras() { const coords = calcularUniaoQuadrasGeoJSON().geometry.coordinates[0]; return coords.map(c => `${c[1]},${c[0]}`).join(" | "); }
+  function calcularUniaoQuadras() { 
+    if(window.selectedQuadras.length === 0) return "";
+    const geo = calcularUniaoQuadrasGeoJSON();
+    if(!geo || !geo.geometry) return "";
+    const coords = geo.geometry.coordinates[0]; 
+    return coords.map(c => `${c[1]},${c[0]}`).join(" | "); 
+  }
   function calcularUniaoQuadrasGeoJSON() {
     if (window.selectedQuadras.length === 0) return null;
     const features = window.selectedQuadras.map(item => item.layer.toGeoJSON());
@@ -131,37 +140,20 @@
 
   // --- DIVISÃO POR VÉRTICES ---
   function ativarSelecaoVerticesDivisao(quadraLayer) {
-    layerGroupVerticesTemp.clearLayers();
-    verticesSelecionados = [];
+    layerGroupVerticesTemp.clearLayers(); verticesSelecionados = [];
     const latlngs = quadraLayer.getLatLngs()[0];
     latlngs.forEach((latlng, index) => {
       const marker = L.circleMarker(latlng, { color: '#3388ff', fillColor: '#fff', fillOpacity: 1, radius: 6, weight: 2 });
-      marker.on('click', function(e) {
-        L.DomEvent.stopPropagation(e);
-        verticesSelecionados.push(latlng);
-        this.setStyle({ color: 'red', fillColor: 'red' });
-        if (verticesSelecionados.length === 2) { executarCortePorPontos(quadraLayer, verticesSelecionados); layerGroupVerticesTemp.clearLayers(); }
-      });
+      marker.on('click', function(e) { L.DomEvent.stopPropagation(e); verticesSelecionados.push(latlng); this.setStyle({ color: 'red', fillColor: 'red' }); if (verticesSelecionados.length === 2) { executarCortePorPontos(quadraLayer, verticesSelecionados); layerGroupVerticesTemp.clearLayers(); } });
       layerGroupVerticesTemp.addLayer(marker);
     });
   }
-
   function executarCortePorPontos(polyLayer, pontos) {
     try {
-      const polyGeoJSON = polyLayer.toGeoJSON();
-      const p1 = [pontos[0].lng, pontos[0].lat];
-      const p2 = [pontos[1].lng, pontos[1].lat];
-      const lineString = turf.lineString([p1, p2]);
-      const faca = turf.buffer(lineString, 0.0001, { units: 'kilometers' });
-      const resultado = turf.difference(polyGeoJSON, faca);
-      if (!resultado) { alert("Falha no corte."); return; }
-      let novasPartes = [];
-      if (resultado.geometry.type === 'MultiPolygon') {
-        resultado.geometry.coordinates.forEach(coords => { novasPartes.push(turf.polygon(coords)); });
-      } else if (resultado.geometry.type === 'Polygon') {
-         alert("O corte não dividiu a área. Tente escolher vértices opostos.");
-         iniciarMapaPoligonos(); return;
-      }
+      const polyGeoJSON = polyLayer.toGeoJSON(); const p1 = [pontos[0].lng, pontos[0].lat]; const p2 = [pontos[1].lng, pontos[1].lat];
+      const lineString = turf.lineString([p1, p2]); const faca = turf.buffer(lineString, 0.0001, { units: 'kilometers' });
+      const resultado = turf.difference(polyGeoJSON, faca); if (!resultado) { alert("Falha no corte."); return; }
+      let novasPartes = []; if (resultado.geometry.type === 'MultiPolygon') { resultado.geometry.coordinates.forEach(coords => { novasPartes.push(turf.polygon(coords)); }); } else if (resultado.geometry.type === 'Polygon') { alert("O corte não dividiu a área. Tente escolher vértices opostos."); iniciarMapaPoligonos(); return; }
       receberCorteRealizado(novasPartes);
     } catch(e) { console.error(e); alert("Erro: " + e.message); iniciarMapaPoligonos(); }
   }
