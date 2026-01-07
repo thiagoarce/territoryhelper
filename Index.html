@@ -44,15 +44,21 @@
           <button class="btn btn-sm btn-outline-secondary" onclick="iniciarMapaPoligonos()" title="Recarregar"><i class="fa-solid fa-rotate-right"></i></button>
         </div>
 
-        <div class="d-flex gap-2 align-items-center bg-white p-2 border rounded shadow-sm">
+        <div class="d-flex gap-2 align-items-center bg-white p-2 border rounded shadow-sm flex-wrap">
           <select class="form-select form-select-sm" style="width: auto;" onchange="mudarVisualizacao(this.value)">
             <option value="both">Ver Tudo</option>
             <option value="quadras">Só Quadras</option>
             <option value="territorios" selected>Só Territórios</option>
           </select>
+          
           <div class="form-check form-switch ms-2">
             <input class="form-check-input" type="checkbox" id="toggleNumbers" checked onchange="toggleNumerosTerritorios(this.checked)">
-            <label class="form-check-label small" for="toggleNumbers">Números</label>
+            <label class="form-check-label small" for="toggleNumbers">Nomes</label>
+          </div>
+          
+          <div class="form-check form-switch ms-2">
+            <input class="form-check-input" type="checkbox" id="toggleOptionalLabels" onchange="toggleOptionalLabels(this.checked)">
+            <label class="form-check-label small text-secondary" for="toggleOptionalLabels">Opcionais</label>
           </div>
         </div>
 
@@ -136,6 +142,15 @@
             <p>Você selecionou <b id="lblCountTerritorio">0</b> quadras.</p>
             <div class="mb-3"><label class="form-label">Nome (Número)</label><input type="text" class="form-control" id="newTerritoryName" placeholder="Ex: 10"></div>
             <div class="mb-3"><label class="form-label">Cor</label><input type="color" class="form-control w-100" id="newTerritoryColor" value="#ffeb3b"></div>
+            
+            <div class="mb-3">
+              <label class="form-label">Visibilidade do Rótulo</label>
+              <select class="form-select" id="newTerritoryLabelType">
+                <option value="visible" selected>Sempre Visível</option>
+                <option value="optional">Opcional (Oculto por padrão)</option>
+              </select>
+            </div>
+            
             <div class="alert alert-info small">Cria um polígono unificado.</div>
           </div>
           <div class="modal-footer">
@@ -154,6 +169,15 @@
             <input type="hidden" id="editTerrOriginalName">
             <div class="mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="editTerrName"></div>
             <div class="mb-3"><label class="form-label">Cor</label><input type="color" class="form-control w-100" id="editTerrColor"></div>
+            
+            <div class="mb-3">
+              <label class="form-label">Visibilidade do Rótulo</label>
+              <select class="form-select" id="editTerrLabelType">
+                <option value="visible">Sempre Visível</option>
+                <option value="optional">Opcional (Oculto por padrão)</option>
+              </select>
+            </div>
+
             <hr>
             <p class="small text-muted mb-2">Composição: <span id="editTerrQtdQuadras"></span> quadras.</p>
             <button class="btn btn-outline-dark w-100 mb-2" onclick="iniciarSelecaoTerritorioExistente()">
