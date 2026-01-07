@@ -1,11 +1,11 @@
 <script>
-  // Variáveis Globais (Compartilhadas com o mapa)
   let mapGeral, mapDetalhe, mapPoligonos;
   let currentEditLayer = null;
-  let modalEdicao;
+  let modalEdicao, modalNovoTerritorio;
 
   window.onload = function() {
     modalEdicao = new bootstrap.Modal(document.getElementById('modalEdicao'));
+    modalNovoTerritorio = new bootstrap.Modal(document.getElementById('modalNovoTerritorio'));
     iniciarApp();
   };
 
@@ -16,7 +16,6 @@
       lista.forEach(q => { let opt = document.createElement('option'); opt.value = q; opt.text = q; sel.appendChild(opt); });
     }).getListaQuadras();
     
-    // Inicia o Mapa Geral (Função está no arquivo JS-Mapas)
     carregarMapaGeral();
   }
 
@@ -37,7 +36,7 @@
     } else if(aba === 'poligonos') {
       document.getElementById('btnAbaPoligonos').classList.add('active');
       document.getElementById('telaPoligonos').classList.add('active');
-      if (!mapPoligonos) iniciarMapaPoligonos(); // Está no JS-Mapas
+      if (!mapPoligonos) iniciarMapaPoligonos();
       else setTimeout(() => mapPoligonos.invalidateSize(), 200);
     } else {
       document.getElementById('btnAbaDetalhe').classList.add('active');
@@ -46,13 +45,13 @@
     }
   }
 
-  // --- CONTROLE DE DETALHES ---
   function irParaDetalhes(id) {
     document.getElementById('selectQuadra').value = id;
     mudarAba('detalhe');
     carregarQuadra(id);
   }
 
+  // --- DETALHES ---
   function carregarQuadra(id) {
     showLoading(true); 
     document.getElementById('infoArea').style.display='none';
@@ -62,22 +61,16 @@
   function renderizarDetalhes(dados) {
     const titulo = document.getElementById('selectQuadra').value;
     document.getElementById('tituloQuadra').innerText = titulo;
-    
-    // Agrupa dados
     const grupos = {};
     dados.forEach(d => {
       const k = d.logradouro + '_' + d.numero;
       if(!grupos[k]) grupos[k] = { ...d, unidades: [] };
       grupos[k].unidades.push(d);
     });
-
     document.getElementById('totalEnderecos').innerText = Object.keys(grupos).length;
     document.getElementById('totalUnidades').innerText = dados.length;
+    atualizarMapaDetalhes(grupos);
 
-    // Desenha pins no mapinha de detalhes
-    atualizarMapaDetalhes(grupos); // Função no JS-Mapas
-
-    // Gera HTML da lista
     let html = '';
     Object.values(grupos).forEach((g, i) => {
        const qtd = g.unidades.length;
@@ -85,7 +78,6 @@
        const idCol = `c${i}`;
        const icon = isPredio ? '<i class="fa-solid fa-building"></i>' : '<i class="fa-solid fa-house"></i>';
        const nomeShow = g.nomeEdificio ? `<span class="nome-predio">${g.nomeEdificio}</span>` : '';
-       
        if(isPredio) {
          html += `<div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#${idCol}"><div class="w-100">${nomeShow}<span>${icon} <span class="numero-destaque">${g.numero}</span> ${g.logradouro} <span class="badge bg-secondary ms-2">${qtd}</span></span></div></button></h2><div id="${idCol}" class="accordion-collapse collapse"><div class="accordion-body p-0"><ul class="list-group list-group-flush">${g.unidades.map(u=>`<li class="list-group-item d-flex justify-content-between"><span>${u.complemento||'Apt'}</span> <div class="check-visit" onclick="this.classList.toggle('checked')"></div></li>`).join('')}</ul></div></div></div>`;
        } else {
@@ -97,20 +89,73 @@
     showLoading(false);
   }
 
-  // --- CONTROLE DE EDIÇÃO (Salvar/Excluir) ---
+  // --- NOVO: LÓGICA DE SELEÇÃO E TERRITÓRIOS ---
+  function alternarModoSelecao(ativo) {
+    window.isSelectionMode = ativo; 
+    const msg = document.getElementById('msgHelp');
+    const btn = document.getElementById('btnSalvarTerritorio');
+    
+    if (ativo) {
+      msg.innerText = "Clique nas quadras para selecionar.";
+      msg.classList.add("text-primary", "fw-bold");
+      btn.classList.remove("disabled");
+    } else {
+      msg.innerText = "Clique em uma quadra para editar.";
+      msg.classList.remove("text-primary", "fw-bold");
+      btn.classList.add("disabled");
+      limparSelecao(); // Função no JS-Mapas
+    }
+  }
+
+  function abrirModalSalvarTerritorio() {
+    const qtd = window.selectedQuadras.length;
+    if (qtd === 0) { alert("Selecione pelo menos uma quadra."); return; }
+    document.getElementById('lblCountTerritorio').innerText = qtd;
+    modalNovoTerritorio.show();
+  }
+
+  function confirmarSalvarTerritorio() {
+    const nome = document.getElementById('newTerritoryName').value;
+    const cor = document.getElementById('newTerritoryColor').value;
+    if(!nome) { alert("Digite um nome."); return; }
+
+    showLoading(true, "Processando união geométrica...");
+    modalNovoTerritorio.hide();
+
+    // Chama JS-Mapas para usar Turf.js
+    const uniaoPolyString = calcularUniaoQuadras();
+
+    const payload = {
+      name: nome,
+      color: cor,
+      idsQuadras: window.selectedQuadras.map(q => q.id),
+      polyString: uniaoPolyString
+    };
+
+    google.script.run.withSuccessHandler(resp => {
+      if(resp.erro) alert("Erro: " + resp.erro);
+      else {
+        alert("Território criado!");
+        document.getElementById('toggleSelectionMode').checked = false;
+        alternarModoSelecao(false);
+        iniciarMapaPoligonos(); // Recarrega o mapa
+      }
+      showLoading(false);
+    }).salvarCriacaoTerritorio(payload);
+  }
+
+  // --- EDIÇÃO INDIVIDUAL ---
   function abrirModalEdicao(layer) {
+    if(window.isSelectionMode) return;
     currentEditLayer = layer;
     const dados = layer.metaData;
     document.getElementById('editOriginalId').value = dados.id;
     document.getElementById('editId').value = dados.id;
     document.getElementById('editTerritory').value = dados.territory;
     document.getElementById('editColor').value = dados.color;
-    
-    // Reseta UI do modal
     document.getElementById('btnToggleVertex').classList.remove('active');
-    document.getElementById('msgVertex').style.display = 'none';
+    
     if(layer.pm.enabled()) layer.pm.disable();
-
     modalEdicao.show();
   }
 
@@ -118,13 +163,12 @@
     if(!currentEditLayer) return;
     modalEdicao.hide();
     currentEditLayer.pm.enable({ allowSelfIntersection: false, draggable: false });
-    alert("MODO EDIÇÃO:\nArraste os pontos brancos.\nClique na quadra novamente para SALVAR.");
+    alert("MODO EDIÇÃO: Arraste os pontos brancos. Clique na quadra novamente para SALVAR.");
   }
 
   function salvarQuadraAtual() {
     if(!currentEditLayer) return;
     showLoading(true, "Salvando...");
-
     const payload = {
       idOriginal: document.getElementById('editOriginalId').value,
       idNovo: document.getElementById('editId').value,
@@ -132,9 +176,8 @@
       territory: document.getElementById('editTerritory').value,
       polyString: currentEditLayer.getLatLngs()[0].map(p => `${p.lat},${p.lng}`).join(" | "),
       centro: [currentEditLayer.getCenter().lat, currentEditLayer.getCenter().lng],
-      area: 0 // Simplificado
+      area: 0
     };
-
     google.script.run.withSuccessHandler(resp => {
       if(resp.erro) alert("Erro: " + resp.erro);
       else {
@@ -142,21 +185,17 @@
         currentEditLayer.metaData = { id: payload.idNovo, color: payload.color, territory: payload.territory };
         if(currentEditLayer.pm.enabled()) currentEditLayer.pm.disable();
         modalEdicao.hide();
-        alert("Salvo!");
       }
       showLoading(false);
     }).salvarEdicaoQuadra(payload);
   }
 
   function deletarQuadraAtual() {
-    if(!confirm("Excluir permanentemente?")) return;
+    if(!confirm("Excluir?")) return;
     showLoading(true, "Excluindo...");
     google.script.run.withSuccessHandler(resp => {
       if(resp.erro) alert(resp.erro);
-      else {
-        mapPoligonos.removeLayer(currentEditLayer);
-        modalEdicao.hide();
-      }
+      else { mapPoligonos.removeLayer(currentEditLayer); modalEdicao.hide(); }
       showLoading(false);
     }).excluirQuadra(document.getElementById('editOriginalId').value);
   }

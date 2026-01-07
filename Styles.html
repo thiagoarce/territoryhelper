@@ -11,17 +11,34 @@
   .popup-quadra h6 { font-weight: bold; margin-bottom: 5px; color: #0d6efd; }
   .btn-ver-quadra { width: 100%; margin-top: 5px; }
 
-  /* RÓTULOS NO MAPA (TOOLTIPS) - NOVO */
+  /* RÓTULOS DE QUADRAS (TEXTO SIMPLES) */
   .label-quadra {
     background: transparent;
     border: none;
     box-shadow: none;
     font-weight: 800;
     color: #333;
-    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; /* Contorno branco */
-    font-size: 12px;
+    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+    font-size: 11px;
     text-align: center;
-    pointer-events: none; /* Permite clicar na quadra através do texto */
+    white-space: pre-wrap;
+    pointer-events: none;
+  }
+
+  /* NOVO: RÓTULOS DE TERRITÓRIOS (BOLINHA BRANCA COM NÚMERO) */
+  .territory-badge {
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid #555;
+    border-radius: 50%; /* Faz ficar redondo */
+    text-align: center;
+    color: #000;
+    font-weight: 900;
+    font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    white-space: nowrap;
   }
 
   /* Lista Detalhes (Accordion) */

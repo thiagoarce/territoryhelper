@@ -67,11 +67,13 @@ function getDadosDaQuadra(quadraId) {
   }));
 }
 
+// --- FUNÇÕES DA MALHA (QUADRAS) ---
 function getPoligonosQuadras() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Quadras");
   if (!sheet || sheet.getLastRow() < 2) return [];
   
+  // A=ID, B=Area, C=Lat, D=Lon, E=Poly, F=Cor, G=Territorio
   const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
   return range.map(row => ({
     id: row[0],
@@ -80,11 +82,34 @@ function getPoligonosQuadras() {
     lng: row[3],
     polyString: row[4],
     color: row[5] || "#3388ff",
-    territory: row[6] || "Geral"
+    territory: row[6] || ""
   }));
 }
 
-// --- ESCRITA DE DADOS ---
+// --- NOVO: FUNÇÕES DE TERRITÓRIOS (GRUPOS) ---
+function getDadosTerritorios() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("Territorios");
+  
+  if (!sheet) {
+    sheet = ss.insertSheet("Territorios");
+    sheet.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)"]);
+    return [];
+  }
+  
+  if (sheet.getLastRow() < 2) return [];
+  
+  // A=Nome, B=Cor, C=ListaIDs, D=PolígonoUnion
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  return range.map(row => ({
+    name: row[0],
+    color: row[1],
+    quadras: row[2],
+    polyString: row[3]
+  }));
+}
+
+// --- ESCRITA E ATUALIZAÇÃO ---
 
 function salvarEdicaoQuadra(dados) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -108,6 +133,40 @@ function salvarEdicaoQuadra(dados) {
   return { sucesso: true };
 }
 
+// NOVO: Salva o território e atualiza as quadras filhas
+function salvarCriacaoTerritorio(dados) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetQuadras = ss.getSheetByName("Quadras");
+  let sheetTerritorios = ss.getSheetByName("Territorios");
+  
+  if (!sheetQuadras) return { erro: "Aba 'Quadras' não encontrada." };
+  if (!sheetTerritorios) {
+    sheetTerritorios = ss.insertSheet("Territorios");
+    sheetTerritorios.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)"]);
+  }
+  
+  // 1. Atualizar cor e nome do território nas quadras individuais
+  const ids = sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow() - 1, 1).getValues().flat();
+  dados.idsQuadras.forEach(id => {
+    const idx = ids.indexOf(id);
+    if (idx > -1) {
+      // Coluna F=6 (Cor), G=7 (Território)
+      sheetQuadras.getRange(idx + 2, 6).setValue(dados.color);
+      sheetQuadras.getRange(idx + 2, 7).setValue(dados.name);
+    }
+  });
+  
+  // 2. Salvar o novo território (polígono unificado)
+  sheetTerritorios.appendRow([
+    dados.name,
+    dados.color,
+    dados.idsQuadras.join(","),
+    dados.polyString
+  ]);
+  
+  return { sucesso: true };
+}
+
 function excluirQuadra(idQuadra) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Quadras");
@@ -123,7 +182,6 @@ function excluirQuadra(idQuadra) {
   return { erro: "Quadra não encontrada." };
 }
 
-// --- UTILITÁRIOS ---
 function limparCoord(coord) {
   if (typeof coord === 'number') return coord;
   if (typeof coord === 'string') return parseFloat(coord.replace(',', '.'));

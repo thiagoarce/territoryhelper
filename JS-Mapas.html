@@ -1,8 +1,14 @@
 <script>
-  // Variável para guardar o modo de visualização atual (padrão: mostrar ID)
+  // Globais de Controle de Mapa
+  window.isSelectionMode = false;
+  window.selectedQuadras = []; // Array de {id, layer}
   let modoRotuloAtual = 'id';
+  let showTerritoryNumbers = true; // Controle dos números grandes
 
-  // --- MAPA GERAL (Visão Visitantes) ---
+  // Grupos de Camadas (Layers)
+  let layerGroupQuadras, layerGroupTerritorios, layerGroupTerritoryLabels;
+
+  // --- MAPA GERAL ---
   function carregarMapaGeral() {
     google.script.run.withSuccessHandler(dados => {
       document.getElementById('totalQuadrasGeral').innerText = dados.length;
@@ -12,7 +18,6 @@
         mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
       }
-
       dados.forEach(q => {
         if(q.lat && q.lng) {
           L.marker([q.lat, q.lng]).addTo(mapGeral)
@@ -23,56 +28,189 @@
     }).getVisaoGeral();
   }
 
-  // --- MAPA EDITOR (POLÍGONOS) ---
+  // --- MAPA EDITOR (O Cérebro do App) ---
   function iniciarMapaPoligonos() {
-    // Se o mapa ainda não existe, cria.
     if (!mapPoligonos) {
       mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
       mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
+      
+      // Inicializa os grupos
+      layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
+      layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
+      layerGroupTerritoryLabels = L.featureGroup().addTo(mapPoligonos);
     }
 
     showLoading(true, "Carregando Malha...");
     
-    // Limpa camadas antigas para recarregar
-    mapPoligonos.eachLayer((layer) => { 
-      if(layer instanceof L.Polygon) mapPoligonos.removeLayer(layer); 
-    });
+    // Limpa estado
+    layerGroupQuadras.clearLayers();
+    layerGroupTerritorios.clearLayers();
+    layerGroupTerritoryLabels.clearLayers();
+    
+    window.selectedQuadras = [];
+    if(document.getElementById('countSelected')) document.getElementById('countSelected').innerText = "0";
 
+    // 1. CARREGA AS QUADRAS
     google.script.run.withSuccessHandler(dados => {
-      if(!dados || dados.length === 0) { showLoading(false); return; }
+      if(dados && dados.length > 0) {
+        dados.forEach(d => {
+          if (d.polyString && d.polyString.length > 5) {
+            const latlngs = d.polyString.split(" | ").map(par => {
+              const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])];
+            });
+            const poly = L.polygon(latlngs, {
+              color: d.color, fillColor: d.color, fillOpacity: 0.3, weight: 1, color: '#666'
+            });
+            
+            poly.metaData = { ...d };
+            
+            poly.on('click', function(e) {
+              if (window.isSelectionMode) {
+                toggleSelecaoQuadra(this);
+              } else {
+                abrirModalEdicao(this); // JS-App
+              }
+            });
+            
+            // Rótulo inicial das quadras
+            atualizarTextoTooltip(poly, modoRotuloAtual);
+            
+            layerGroupQuadras.addLayer(poly);
+          }
+        });
+      }
       
-      const grupo = L.featureGroup();
-      dados.forEach(d => {
-        if (d.polyString && d.polyString.length > 5) {
-          const latlngs = d.polyString.split(" | ").map(par => {
-            const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])];
-          });
+      // 2. CARREGA OS TERRITÓRIOS
+      carregarTerritoriosSalvos();
 
-          const poly = L.polygon(latlngs, {
-            color: d.color, fillColor: d.color, fillOpacity: 0.3, weight: 2
-          });
-          
-          poly.metaData = { ...d }; // Guarda dados no objeto
-          poly.on('click', function() { abrirModalEdicao(this); });
-          
-          // --- AQUI ADICIONAMOS O RÓTULO (TOOLTIP) ---
-          atualizarTextoTooltip(poly, modoRotuloAtual);
-          
-          grupo.addLayer(poly);
-        }
-      });
-      grupo.addTo(mapPoligonos);
-      try { mapPoligonos.fitBounds(grupo.getBounds()); } catch(e){}
-      showLoading(false);
     }).getPoligonosQuadras();
   }
 
-  // --- FUNÇÃO NOVA: GERENCIA A TROCA DE RÓTULOS ---
+  function carregarTerritoriosSalvos() {
+    google.script.run.withSuccessHandler(dados => {
+      if (dados && dados.length > 0) {
+        dados.forEach(t => {
+           if (t.polyString && t.polyString.length > 5) {
+             const latlngs = t.polyString.split(" | ").map(par => {
+               const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])];
+             });
+             
+             // VISUAL 1: O POLÍGONO COLORIDO E TRANSLÚCIDO
+             const poly = L.polygon(latlngs, {
+               color: t.color,         // Borda da cor do território
+               weight: 2,              // Borda fina
+               fillColor: t.color,     // Preenchimento da cor do território
+               fillOpacity: 0.5,       // TRANSLÚCIDO (Como na imagem)
+             });
+             
+             layerGroupTerritorios.addLayer(poly);
+
+             // VISUAL 2: O NÚMERO GRANDE (BADGE)
+             // Calcula o centro do polígono para por a bolinha
+             const centro = poly.getBounds().getCenter();
+             
+             // Cria ícone customizado com CSS
+             const myIcon = L.divIcon({
+                className: 'custom-div-icon', // Classe dummy para resetar
+                html: `<div class="territory-badge" style="width:30px; height:30px;">${t.name}</div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+             });
+
+             const labelMarker = L.marker(centro, { icon: myIcon, interactive: false });
+             layerGroupTerritoryLabels.addLayer(labelMarker);
+           }
+        });
+      }
+      
+      // Aplica o estado inicial do switch de números
+      toggleNumerosTerritorios(document.getElementById('toggleNumbers').checked);
+      
+      // Aplica visualização padrão ("Só Territórios" conforme pedido)
+      mudarVisualizacao(document.querySelector('select[onchange="mudarVisualizacao(this.value)"]').value);
+
+      showLoading(false);
+    }).getDadosTerritorios();
+  }
+
+  // --- SELEÇÃO DE QUADRAS ---
+  function toggleSelecaoQuadra(layer) {
+    const id = layer.metaData.id;
+    const idx = window.selectedQuadras.findIndex(q => q.id === id);
+
+    if (idx === -1) {
+      window.selectedQuadras.push({ id: id, layer: layer });
+      layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' });
+    } else {
+      window.selectedQuadras.splice(idx, 1);
+      layer.setStyle({ color: '#666', weight: 1, dashArray: null });
+    }
+    document.getElementById('countSelected').innerText = window.selectedQuadras.length;
+  }
+
+  function limparSelecao() {
+    window.selectedQuadras.forEach(item => {
+      item.layer.setStyle({ color: '#666', weight: 1, dashArray: null });
+    });
+    window.selectedQuadras = [];
+    document.getElementById('countSelected').innerText = "0";
+  }
+
+  // --- UNIÃO GEOMÉTRICA ---
+  function calcularUniaoQuadras() {
+    if (window.selectedQuadras.length === 0) return "";
+    const features = window.selectedQuadras.map(item => item.layer.toGeoJSON());
+    let unionPoly = features[0];
+    for (let i = 1; i < features.length; i++) {
+      try { unionPoly = turf.union(unionPoly, features[i]); } catch(e) { console.warn(e); }
+    }
+    if (!unionPoly || !unionPoly.geometry) return "";
+    let coords;
+    if (unionPoly.geometry.type === "Polygon") coords = unionPoly.geometry.coordinates[0];
+    else if (unionPoly.geometry.type === "MultiPolygon") coords = unionPoly.geometry.coordinates[0][0]; 
+    return coords.map(c => `${c[1]},${c[0]}`).join(" | ");
+  }
+
+  // --- CONTROLES VISUAIS ---
+  
+  // Alterna as Camadas (Só Quadras, Só Territórios, Ambos)
+  function mudarVisualizacao(modo) {
+    if (!mapPoligonos) return;
+    
+    // Remove tudo primeiro
+    if (mapPoligonos.hasLayer(layerGroupQuadras)) layerGroupQuadras.remove();
+    if (mapPoligonos.hasLayer(layerGroupTerritorios)) layerGroupTerritorios.remove();
+    
+    if (modo === 'quadras') {
+      layerGroupQuadras.addTo(mapPoligonos);
+    } else if (modo === 'territorios') {
+      layerGroupTerritorios.addTo(mapPoligonos);
+    } else {
+      // Ambos (Quadras por cima)
+      layerGroupTerritorios.addTo(mapPoligonos);
+      layerGroupQuadras.addTo(mapPoligonos);
+    }
+  }
+
+  // Liga/Desliga as bolinhas com números
+  function toggleNumerosTerritorios(ativo) {
+    showTerritoryNumbers = ativo;
+    if (!mapPoligonos) return;
+
+    if (ativo) {
+      if (!mapPoligonos.hasLayer(layerGroupTerritoryLabels)) {
+        layerGroupTerritoryLabels.addTo(mapPoligonos);
+      }
+    } else {
+      if (mapPoligonos.hasLayer(layerGroupTerritoryLabels)) {
+        layerGroupTerritoryLabels.remove();
+      }
+    }
+  }
+
   function mudarRotulos(modo) {
     modoRotuloAtual = modo;
-    
-    // Varre todas as camadas do mapa e atualiza
     if(mapPoligonos) {
       mapPoligonos.eachLayer(layer => {
         if (layer instanceof L.Polygon && layer.metaData) {
@@ -82,26 +220,15 @@
     }
   }
 
-  // Helper para definir o texto do tooltip
   function atualizarTextoTooltip(poly, modo) {
     let texto = "";
     const dados = poly.metaData;
+    if (modo === 'id') texto = dados.id;
+    else if (modo === 'territory') texto = dados.territory;
+    else if (modo === 'both') texto = `${dados.id}\n${dados.territory}`; // Quebra de linha
 
-    if (modo === 'id') {
-      texto = dados.id;
-    } else if (modo === 'territory') {
-      texto = dados.territory;
-    } else if (modo === 'both') {
-      texto = `${dados.id}<br><span style="font-weight:normal; font-size:0.9em">${dados.territory}</span>`;
-    }
-
-    // Se tiver texto e não for 'none', mostra. Caso contrário, remove.
     if (modo !== 'none' && texto) {
-      poly.bindTooltip(texto, {
-        permanent: true,     // Sempre visível
-        direction: "center", // No centro do polígono
-        className: "label-quadra" // Nossa classe CSS
-      }).openTooltip();
+      poly.bindTooltip(texto, { permanent: true, direction: "center", className: "label-quadra" }).openTooltip();
     } else {
       poly.unbindTooltip();
     }
@@ -109,24 +236,13 @@
 
   // --- MAPA DETALHES ---
   function atualizarMapaDetalhes(grupos) {
-    if(!mapDetalhe) {
-      mapDetalhe = L.map('mapDetalhe');
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe);
-    }
-    // Limpa marcadores antigos
+    if(!mapDetalhe) { mapDetalhe=L.map('mapDetalhe'); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe); }
     mapDetalhe.eachLayer((layer) => { if(layer instanceof L.Marker) mapDetalhe.removeLayer(layer); });
-
     const bounds = [];
     Object.values(grupos).forEach(g => {
-      if(g.lat && g.lng) {
-        L.marker([g.lat, g.lng]).addTo(mapDetalhe).bindPopup(`<b>${g.numero}</b> ${g.logradouro}`);
-        bounds.push([g.lat, g.lng]);
-      }
+      if(g.lat && g.lng) { L.marker([g.lat, g.lng]).addTo(mapDetalhe).bindPopup(`<b>${g.numero}</b> ${g.logradouro}`); bounds.push([g.lat, g.lng]); }
     });
-
     if(bounds.length > 0) mapDetalhe.fitBounds(bounds, {padding:[30,30]});
-    else mapDetalhe.setView([-7.115, -34.863], 14);
-    
     setTimeout(() => mapDetalhe.invalidateSize(), 300);
   }
 </script>
