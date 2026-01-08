@@ -1,424 +1,274 @@
 <script>
-  /**
-   * ====================================================================
-   * ARQUIVO: JS-Mapas.html
-   * DESCRIÇÃO: Lógica do Leaflet, renderização de mapas, layers,
-   * manipulação de polígonos (Turf.js) e eventos de mapa.
-   * ====================================================================
-   */
-
   window.isSelectionMode = false;
   window.selectedQuadras = [];
-  
-  // Controles de Visualização
-  let modoRotuloAtual = 'id';
-  let showTerritoryNumbers = true;  // Checkbox "Nomes"
-  let showOptionalLabels = false;   // Checkbox "Opcionais" (Padrão: Oculto)
-  
-  // Grupos de Layers do Leaflet
+  let layerUserLocation = null;
+  let showTerritoryNumbers = true;
+  let showOptionalLabels = false;
+
+  // Mapa Geral, Editor e Registro
+  let mapGeral, mapPoligonos, mapDetalhe, mapRegistro;
   let layerGroupQuadras, layerGroupTerritorios, layerGroupTerritoryLabels, layerGroupVerticesTemp;
+  
+  // Layer específico do Registro
+  let layerGroupRegistro = null; 
+  let layerGroupRegistroIcons = null;
+  
   let verticesSelecionados = [];
 
-  // --- MAPA GERAL (HEATMAP/PONTOS) ---
+  // --- MAPA GERAL ---
   function carregarMapaGeral() {
     google.script.run.withSuccessHandler(dados => {
       document.getElementById('totalQuadrasGeral').innerText = dados.length;
       document.getElementById('totalDomiciliosGeral').innerText = dados.reduce((acc, c) => acc + c.total, 0);
-      
       if(!mapGeral) { 
         mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 13); 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral); 
       }
-      
       dados.forEach(q => { 
         if(q.lat && q.lng) { 
-          L.marker([q.lat, q.lng]).addTo(mapGeral)
-           .bindPopup(`<div class="popup-quadra"><h6>${q.id}</h6><p>${q.total} Domicílios</p><button class="btn btn-sm btn-primary btn-ver-quadra" onclick="irParaDetalhes('${q.id}')">Ver</button></div>`); 
+          L.marker([q.lat, q.lng]).addTo(mapGeral).bindPopup(
+            '<div class="text-center"><h6>' + q.id + '</h6><p>' + q.total + ' Domicílios</p>' +
+            '<button class="btn btn-sm btn-primary w-100 mb-1" onclick="irParaDetalhes(\'' + q.id + '\')">Ver Detalhes</button>' +
+            '<button class="btn btn-sm btn-outline-success w-100" onclick="abrirRota(' + q.lat + ', ' + q.lng + ')"><i class="fa-solid fa-diamond-turn-right"></i> Rota</button></div>'); 
         } 
       });
       showLoading(false);
     }).getVisaoGeral();
   }
 
-  // --- MAPA EDITOR (PRINCIPAL) ---
+  // --- MAPA EDITOR ---
   function iniciarMapaPoligonos() {
     if (!mapPoligonos) {
       mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
       mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
-      
-      // Inicializa Grupos
       layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritoryLabels = L.featureGroup().addTo(mapPoligonos);
       layerGroupVerticesTemp = L.featureGroup().addTo(mapPoligonos);
     }
-
-    showLoading(true, "Carregando Malha...");
-    
-    // Limpa Layers Antigos
-    layerGroupQuadras.clearLayers(); 
-    layerGroupTerritorios.clearLayers(); 
-    layerGroupTerritoryLabels.clearLayers(); 
-    layerGroupVerticesTemp.clearLayers();
-    
+    carregarDadosEditor();
+  }
+  function carregarDadosEditor() {
+    showLoading(true, "Carregando...");
+    layerGroupQuadras.clearLayers(); layerGroupTerritorios.clearLayers(); layerGroupTerritoryLabels.clearLayers();
     limparSelecao();
-    verticesSelecionados = [];
-
-    // Carrega Polígonos de Quadras
     google.script.run.withSuccessHandler(dados => {
-      if(dados && dados.length > 0) {
-        dados.forEach(d => {
-          if (d.polyString && d.polyString.length > 5) {
-            const latlngs = d.polyString.split(" | ").map(par => { const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
-            const poly = L.polygon(latlngs, { color: d.color, fillColor: d.color, fillOpacity: 0.3, weight: 1, color: '#666' });
-            poly.metaData = { ...d };
-            poly.on('click', function(e) { if (window.isSelectionMode) toggleSelecaoQuadra(this); else abrirModalEdicao(this); });
-            atualizarTextoTooltip(poly, modoRotuloAtual);
-            layerGroupQuadras.addLayer(poly);
-          }
-        });
-      }
-      // Após carregar quadras, carrega territórios
-      carregarTerritoriosSalvos();
+      dados.forEach(d => {
+        if (d.polyString.length > 5) {
+          const latlngs = d.polyString.split(" | ").map(p => { const c = p.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
+          const poly = L.polygon(latlngs, { color: d.color, fillColor: d.color, fillOpacity: 0.3, weight: 1, color: '#666' });
+          poly.metaData = d;
+          const c = poly.getBounds().getCenter();
+          poly.bindPopup('<div class="text-center"><b>' + d.id + '</b><br><button class="btn btn-sm btn-success mt-1" onclick="abrirRota(' + c.lat + ', ' + c.lng + ')">Rota</button></div>');
+          poly.on('click', function() { if (window.isSelectionMode) toggleSelecaoQuadra(this); else abrirModalEdicao(this); });
+          layerGroupQuadras.addLayer(poly);
+        }
+      });
+      carregarTerritorios();
     }).getPoligonosQuadras();
   }
-
-  function carregarTerritoriosSalvos() {
+  function carregarTerritorios() {
     google.script.run.withSuccessHandler(dados => {
-      if (dados) dados.forEach(t => {
-           if (t.polyString && t.polyString.length > 5) {
-             const latlngs = t.polyString.split(" | ").map(par => { const c = par.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
-             const poly = L.polygon(latlngs, { color: t.color, weight: 2, fillColor: t.color, fillOpacity: 0.5 });
-             
-             poly.metaData = { 
-               name: t.name, 
-               color: t.color, 
-               quadras: t.quadras, 
-               polyString: t.polyString,
-               labelPos: t.labelPos,
-               labelType: t.labelType || "visible" // Leitura do tipo
-             };
-
-             poly.on('click', function() {
-               if (window.isSelectionMode) return;
-               abrirModalEditarTerritorio(this.metaData);
-             });
-
-             layerGroupTerritorios.addLayer(poly);
-             
-             // Define Centro (ou posição customizada)
-             let centro;
-             if (t.labelPos && t.labelPos.includes(",")) {
-               const parts = t.labelPos.split(",");
-               centro = [parseFloat(parts[0]), parseFloat(parts[1])];
-             } else {
-               centro = poly.getBounds().getCenter();
-             }
-
-             // Cria Marcador de Rótulo
-             const nomeFormatado = formatarTextoBadge(t.name);
-             const myIcon = L.divIcon({ className: 'custom-badge-wrapper', html: `<div class="territory-badge">${nomeFormatado}</div>`, iconSize: [0, 0], iconAnchor: [0, 0] });
-             
-             const labelMarker = L.marker(centro, { icon: myIcon, interactive: true, draggable: false });
-             
-             // Guarda metadados no marcador para filtrar depois
-             labelMarker.metaData = { 
-               territoryName: t.name, 
-               labelType: t.labelType || "visible"
-             };
-             
-             layerGroupTerritoryLabels.addLayer(labelMarker);
-           }
+      dados.forEach(t => {
+        if (t.polyString.length > 5) {
+          const latlngs = t.polyString.split(" | ").map(p => { const c = p.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
+          const poly = L.polygon(latlngs, { color: t.color, weight: 2, fillColor: t.color, fillOpacity: 0.5 });
+          poly.metaData = t;
+          poly.on('click', function() { if (!window.isSelectionMode) abrirModalEditarTerritorio(this.metaData); });
+          layerGroupTerritorios.addLayer(poly);
+          let centro;
+          if (t.labelPos && t.labelPos.includes(",")) { const p = t.labelPos.split(","); centro = [parseFloat(p[0]), parseFloat(p[1])]; } 
+          else { centro = poly.getBounds().getCenter(); }
+          const icon = L.divIcon({ className: '', html: '<div class="territory-badge">' + formatarTextoBadge(t.name) + '</div>', iconSize: [0, 0] });
+          const marker = L.marker(centro, { icon: icon, draggable: false });
+          marker.metaData = { territoryName: t.name, labelType: t.labelType };
+          layerGroupTerritoryLabels.addLayer(marker);
+        }
       });
-      
-      // APLICA FILTROS VISUAIS INICIAIS
       atualizarVisibilidadeLabels();
-
-      // Ajusta visualização conforme dropdown (Quadras/Territórios)
-      mudarVisualizacao(document.querySelector('select[onchange="mudarVisualizacao(this.value)"]').value);
-      
+      mudarVisualizacao("territorios");
       showLoading(false);
     }).getDadosTerritorios();
   }
 
-  // --- FILTROS DE VISIBILIDADE DE RÓTULOS ---
+  // --- MAPA REGISTRO (NOVO) ---
+  function iniciarMapaRegistro(dadosQuadras) {
+    if (!mapRegistro) {
+      mapRegistro = L.map('mapRegistro').setView([-7.115, -34.863], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
+      layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
+      layerGroupRegistroIcons = L.featureGroup().addTo(mapRegistro);
+    }
+    
+    // Limpar
+    layerGroupRegistro.clearLayers();
+    layerGroupRegistroIcons.clearLayers();
+    
+    const hoje = new Date();
+    
+    dadosQuadras.forEach(q => {
+      if (q.polyString && q.polyString.length > 5) {
+        const latlngs = q.polyString.split(" | ").map(p => { const c = p.split(","); return [parseFloat(c[0]), parseFloat(c[1])]; });
+        
+        // Polígono Básico
+        const poly = L.polygon(latlngs, { color: q.color, fillColor: q.color, fillOpacity: 0.4, weight: 1 });
+        poly.metaData = q; // Guardar ID
+        
+        // Evento de Clique para Selecionar
+        poly.on('click', function() { toggleSelecaoRegistro(this); });
+        
+        layerGroupRegistro.addLayer(poly);
 
-  function toggleNumerosTerritorios(ativo) {
-    showTerritoryNumbers = ativo; // Checkbox "Nomes"
-    atualizarVisibilidadeLabels();
-  }
-
-  function toggleOptionalLabels(ativo) {
-    showOptionalLabels = ativo; // Checkbox "Opcionais"
-    atualizarVisibilidadeLabels();
-  }
-
-  /**
-   * Função central que decide quais rótulos aparecem.
-   * Regra:
-   * 1. Se "Nomes" (Master) estiver OFF -> Oculta Tudo.
-   * 2. Se "Nomes" estiver ON:
-   * - Visible: Aparece.
-   * - Optional: Aparece SÓ SE "Opcionais" estiver ON.
-   */
-  function atualizarVisibilidadeLabels() {
-    if (!mapPoligonos) return;
-
-    layerGroupTerritoryLabels.eachLayer(layer => {
-      const tipo = layer.metaData.labelType;
-      let deveAparecer = false;
-
-      if (showTerritoryNumbers) {
-        if (tipo === 'visible') {
-          deveAparecer = true;
-        } else if (tipo === 'optional' && showOptionalLabels) {
-          deveAparecer = true;
+        // Lógica de Ícones baseada na Data
+        if (q.status === 'Concluído' && q.dataConclusao) {
+           // Converter YYYY-MM-DD para Date
+           const parts = q.dataConclusao.split('-');
+           const dataConc = new Date(parts[0], parts[1]-1, parts[2]);
+           const diffTime = Math.abs(hoje - dataConc);
+           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+           
+           let iconClass = "";
+           let iconHtml = "";
+           
+           if (diffDays <= 14) {
+             // Verde (Recente)
+             iconClass = "status-ok-recent";
+             iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+           } else if (diffDays <= 60) {
+             // Cinza (Médio)
+             iconClass = "status-ok-old";
+             iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+           } else if (diffDays <= 120) {
+             // Nada (Esfriando) - Não poe icone
+           } else {
+             // Exclamação (Vencido > 4 meses)
+             iconClass = "status-alert";
+             iconHtml = '<i class="fa-solid fa-circle-exclamation"></i>';
+           }
+           
+           if (iconHtml) {
+             const center = poly.getBounds().getCenter();
+             const divIcon = L.divIcon({ 
+               className: 'status-marker-icon ' + iconClass, 
+               html: iconHtml, 
+               iconSize: [20, 20],
+               iconAnchor: [10, 10] // Centro do icone
+             });
+             const marker = L.marker(center, { icon: divIcon, interactive: false });
+             layerGroupRegistroIcons.addLayer(marker);
+           }
         }
       }
-
-      if (deveAparecer) {
-        if (!mapPoligonos.hasLayer(layer)) layer.addTo(mapPoligonos);
-        layer.setOpacity(1);
-        if(layer._icon) layer._icon.style.display = 'block';
-      } else {
-        if (mapPoligonos.hasLayer(layer)) layer.remove();
-      }
     });
+  }
+
+  function toggleSelecaoRegistro(layer) {
+    // Função chamada pelo JS-App via toggleRegGlobal, mas aqui tratamos visual
+    // Vamos chamar o JS-App para gerenciar o Set de IDs e atualizar o contador
+    toggleReg(layer.metaData.id); // Chama JS-App
     
-    // Fallback: Adiciona ao grupo se não estiver
-    if (showTerritoryNumbers) {
-       layerGroupTerritoryLabels.eachLayer(layer => {
-          const tipo = layer.metaData.labelType;
-          if (tipo === 'visible' || (tipo === 'optional' && showOptionalLabels)) {
-             if(!mapPoligonos.hasLayer(layer)) layer.addTo(mapPoligonos);
-          }
-       });
+    // Atualiza visual
+    if (registroSelecionados.has(layer.metaData.id)) {
+       layer.setStyle({ color: 'red', weight: 3, opacity: 1, fillOpacity: 0.6 });
+    } else {
+       layer.setStyle({ color: layer.metaData.color, weight: 1, opacity: 1, fillOpacity: 0.4 });
     }
   }
 
-  // --- LÓGICA DE DRAG & DROP DO RÓTULO ---
-  
-  function setLabelDraggable(territoryName, enable) {
-    layerGroupTerritoryLabels.eachLayer(layer => {
-      if (layer.metaData && layer.metaData.territoryName === territoryName) {
-        if (enable) {
-          if (!mapPoligonos.hasLayer(layer)) layer.addTo(mapPoligonos); 
-          layer.dragging.enable();
-          if(layer._icon) layer._icon.style.cursor = "move";
-        } else {
-          layer.dragging.disable();
-          if(layer._icon) layer._icon.style.cursor = "default";
-        }
-      }
+  // --- GPS E ROTA ---
+  function ativarGPS(tela) {
+    let mapa;
+    if (tela === 'geral') mapa = mapGeral;
+    else if (tela === 'editor') mapa = mapPoligonos;
+    else if (tela === 'registro') mapa = mapRegistro;
+    
+    if(!mapa) return;
+    mapa.locate({setView: true, maxZoom: 16, enableHighAccuracy: true});
+    mapa.once('locationfound', e => {
+       if(layerUserLocation) mapa.removeLayer(layerUserLocation);
+       layerUserLocation = L.layerGroup().addTo(mapa);
+       L.circle(e.latlng, { radius: e.accuracy/2, color: '#136AEC', fillOpacity: 0.1 }).addTo(layerUserLocation);
+       L.circleMarker(e.latlng, { radius: 8, fillColor: '#2A93EE', color: 'white', fillOpacity: 1 }).bindPopup("Você").addTo(layerUserLocation);
     });
+    mapa.once('locationerror', () => alert("GPS não acessível."));
   }
-
-  function getLabelPosition(territoryName) {
-    let pos = null;
-    layerGroupTerritoryLabels.eachLayer(layer => {
-      if (layer.metaData && layer.metaData.territoryName === territoryName) {
-        const ll = layer.getLatLng();
-        pos = `${ll.lat},${ll.lng}`;
-      }
-    });
-    return pos;
+  function abrirRota(lat, lng) {
+    const url = "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng + "&travelmode=walking";
+    window.open(url, '_blank');
   }
 
   // --- AUXILIARES ---
-  function selecionarQuadrasPorIds(listaIds) {
-    if (!listaIds || listaIds.length === 0) return;
-    layerGroupQuadras.eachLayer(layer => {
-      if (listaIds.includes(layer.metaData.id)) {
-        if (!window.selectedQuadras.find(q => q.id === layer.metaData.id)) {
-           window.selectedQuadras.push({ id: layer.metaData.id, layer: layer });
-           layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' });
-        }
-      }
+  function mudarVisualizacao(modo) {
+    if(!mapPoligonos) return;
+    layerGroupQuadras.remove(); layerGroupTerritorios.remove();
+    if(modo === 'quadras') layerGroupQuadras.addTo(mapPoligonos);
+    else if(modo === 'territorios') layerGroupTerritorios.addTo(mapPoligonos);
+    else { layerGroupQuadras.addTo(mapPoligonos); layerGroupTerritorios.addTo(mapPoligonos); }
+  }
+  function atualizarVisibilidadeLabels() {
+    layerGroupTerritoryLabels.eachLayer(l => {
+      const visivel = showTerritoryNumbers && (l.metaData.labelType === 'visible' || (l.metaData.labelType === 'optional' && showOptionalLabels));
+      if(visivel) { if(!mapPoligonos.hasLayer(l)) l.addTo(mapPoligonos); } else { l.remove(); }
     });
-    if(typeof atualizarBotoesSelecao === 'function') atualizarBotoesSelecao();
   }
-
-  function getDadosTerritorioPorNome(nome) {
-    let encontrado = null;
-    layerGroupTerritorios.eachLayer(layer => {
-      if (layer.metaData && layer.metaData.name === nome) {
-        encontrado = layer.metaData;
-      }
-    });
-    return encontrado;
-  }
-
-  // --- GEOMETRIA: UNIÃO DE LISTA (Para Vítimas) ---
-  function calcularUniaoDeListaIds(listaIds) {
-    if (!listaIds || listaIds.length === 0) return "";
-    const features = [];
-    layerGroupQuadras.eachLayer(layer => {
-      if (listaIds.includes(layer.metaData.id)) {
-        features.push(layer.toGeoJSON());
-      }
-    });
-    if (features.length === 0) return "";
-    let unionPoly = features[0];
-    for (let i = 1; i < features.length; i++) { 
-      try { unionPoly = turf.union(unionPoly, features[i]); } catch(e) { console.warn(e); } 
-    }
-    if(!unionPoly || !unionPoly.geometry) return "";
-    const coords = unionPoly.geometry.type === "Polygon" ? unionPoly.geometry.coordinates[0] : unionPoly.geometry.coordinates[0][0];
-    return coords.map(c => `${c[1]},${c[0]}`).join(" | ");
-  }
-
-  function formatarTextoBadge(texto) {
-    if (!texto) return ""; 
-    let str = texto.toString(); 
-    const palavras = str.split(" "); 
-    if (palavras.length === 1) return str;
-    
-    // Quebra linha se a palavra tiver mais de 2 caracteres
-    let novoTexto = palavras[0]; 
-    for (let i = 1; i < palavras.length; i++) { 
-      if (palavras[i].length > 2) novoTexto += "<br>" + palavras[i]; 
-      else novoTexto += " " + palavras[i]; 
-    } 
-    return novoTexto;
-  }
-
-  // --- SELEÇÃO ---
+  function toggleNumerosTerritorios(v) { showTerritoryNumbers = v; atualizarVisibilidadeLabels(); }
+  function toggleOptionalLabels(v) { showOptionalLabels = v; atualizarVisibilidadeLabels(); }
   function toggleSelecaoQuadra(layer) {
     const id = layer.metaData.id;
     const idx = window.selectedQuadras.findIndex(q => q.id === id);
-    if (idx === -1) { 
-      window.selectedQuadras.push({ id: id, layer: layer }); 
-      layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' }); 
-    } else { 
-      window.selectedQuadras.splice(idx, 1); 
-      layer.setStyle({ color: '#666', weight: 1, dashArray: null }); 
-    }
+    if (idx === -1) { window.selectedQuadras.push({ id: id, layer: layer }); layer.setStyle({ color: 'red', weight: 4, dashArray: '10,5' }); }
+    else { window.selectedQuadras.splice(idx, 1); layer.setStyle({ color: '#666', weight: 1, dashArray: null }); }
     atualizarBotoesSelecao();
   }
-  
-  function limparSelecao() {
-    window.selectedQuadras.forEach(item => { item.layer.setStyle({ color: '#666', weight: 1, dashArray: null }); });
-    window.selectedQuadras = [];
-    if(document.getElementById('countSelectedBadge')) atualizarBotoesSelecao();
-  }
-
-  // --- FUSÃO (Merge) ---
-  function calcularUniaoQuadras() { 
+  function limparSelecao() { window.selectedQuadras.forEach(i => i.layer.setStyle({ color: '#666', weight: 1, dashArray: null })); window.selectedQuadras = []; atualizarBotoesSelecao(); }
+  function calcularUniao() {
     if(window.selectedQuadras.length === 0) return "";
-    const geo = calcularUniaoQuadrasGeoJSON();
-    if(!geo || !geo.geometry) return "";
-    // Trata Polygon vs MultiPolygon
-    const coords = geo.geometry.type === "Polygon" ? geo.geometry.coordinates[0] : geo.geometry.coordinates[0][0];
-    return coords.map(c => `${c[1]},${c[0]}`).join(" | "); 
+    const feats = window.selectedQuadras.map(i => i.layer.toGeoJSON());
+    let u = feats[0];
+    for(let i=1; i<feats.length; i++) try { u = turf.union(u, feats[i]); } catch(e){}
+    const c = u.geometry.type === "Polygon" ? u.geometry.coordinates[0] : u.geometry.coordinates[0][0];
+    return c.map(p => p[1] + "," + p[0]).join(" | ");
   }
-  
-  function calcularUniaoQuadrasGeoJSON() {
-    if (window.selectedQuadras.length === 0) return null;
-    const features = window.selectedQuadras.map(item => item.layer.toGeoJSON());
-    let unionPoly = features[0];
-    for (let i = 1; i < features.length; i++) { try { unionPoly = turf.union(unionPoly, features[i]); } catch(e) { console.warn(e); } }
-    return unionPoly;
+  function calcularUniaoIds(ids) {
+    const feats = [];
+    layerGroupQuadras.eachLayer(l => { if(ids.includes(l.metaData.id)) feats.push(l.toGeoJSON()); });
+    if(feats.length===0) return "";
+    let u = feats[0]; for(let i=1; i<feats.length; i++) try { u = turf.union(u, feats[i]); } catch(e){}
+    const c = u.geometry.type === "Polygon" ? u.geometry.coordinates[0] : u.geometry.coordinates[0][0];
+    return c.map(p => p[1] + "," + p[0]).join(" | ");
   }
-
-  // --- DIVISÃO (Split) ---
-  function ativarSelecaoVerticesDivisao(quadraLayer) {
-    layerGroupVerticesTemp.clearLayers(); 
-    verticesSelecionados = [];
-    const latlngs = quadraLayer.getLatLngs()[0];
-    
-    latlngs.forEach((latlng, index) => {
-      // Cria bolinha branca no vértice
-      const marker = L.circleMarker(latlng, { color: '#3388ff', fillColor: '#fff', fillOpacity: 1, radius: 6, weight: 2 });
-      
-      marker.on('click', function(e) { 
-        L.DomEvent.stopPropagation(e); 
-        verticesSelecionados.push(latlng); 
-        this.setStyle({ color: 'red', fillColor: 'red' }); 
-        
-        if (verticesSelecionados.length === 2) { 
-          executarCortePorPontos(quadraLayer, verticesSelecionados); 
-          layerGroupVerticesTemp.clearLayers(); 
-        } 
-      });
-      layerGroupVerticesTemp.addLayer(marker);
+  function formatarTextoBadge(t) { return t.toString().replace(" ", "<br>"); }
+  function setLabelDraggable(name, enable) {
+    layerGroupTerritoryLabels.eachLayer(l => { if(l.metaData.territoryName === name) {
+      if(enable) { if(!mapPoligonos.hasLayer(l)) l.addTo(mapPoligonos); l.dragging.enable(); if(l._icon) l._icon.style.cursor="move"; }
+      else { l.dragging.disable(); if(l._icon) l._icon.style.cursor="default"; }
+    }});
+  }
+  function getLabelPosition(name) { let pos=null; layerGroupTerritoryLabels.eachLayer(l => { if(l.metaData.territoryName === name) { const p=l.getLatLng(); pos=p.lat + "," + p.lng; }}); return pos; }
+  function getTerritorioPorNome(name) { let d=null; layerGroupTerritorios.eachLayer(l=>{ if(l.metaData.name===name) d=l.metaData; }); return d; }
+  function ativarSelecaoVerticesDivisao(layer) {
+    layerGroupVerticesTemp.clearLayers(); verticesSelecionados = [];
+    layer.getLatLngs()[0].forEach(p => {
+       const m = L.circleMarker(p, { radius: 5, color: 'blue', fillColor: 'white', fillOpacity: 1 });
+       m.on('click', e => { L.DomEvent.stopPropagation(e); verticesSelecionados.push(p); m.setStyle({color:'red', fillColor:'red'}); if(verticesSelecionados.length===2) executarCorte(layer, verticesSelecionados); });
+       layerGroupVerticesTemp.addLayer(m);
     });
   }
-
-  function executarCortePorPontos(polyLayer, pontos) {
-    try {
-      const polyGeoJSON = polyLayer.toGeoJSON(); 
-      const p1 = [pontos[0].lng, pontos[0].lat]; 
-      const p2 = [pontos[1].lng, pontos[1].lat];
-      const lineString = turf.lineString([p1, p2]); 
-      const faca = turf.buffer(lineString, 0.0001, { units: 'kilometers' });
-      
-      const resultado = turf.difference(polyGeoJSON, faca); 
-      if (!resultado) { alert("Falha no corte."); return; }
-      
-      let novasPartes = []; 
-      if (resultado.geometry.type === 'MultiPolygon') { 
-        resultado.geometry.coordinates.forEach(coords => { novasPartes.push(turf.polygon(coords)); }); 
-      } else if (resultado.geometry.type === 'Polygon') { 
-        alert("O corte não dividiu a área. Tente escolher vértices opostos."); 
-        iniciarMapaPoligonos(); 
-        return; 
-      }
-      receberCorteRealizado(novasPartes);
-    } catch(e) { console.error(e); alert("Erro: " + e.message); iniciarMapaPoligonos(); }
+  function executarCorte(layer, pontos) {
+    const gj = layer.toGeoJSON();
+    const line = turf.lineString([[pontos[0].lng, pontos[0].lat], [pontos[1].lng, pontos[1].lat]]);
+    const cut = turf.buffer(line, 0.0001, {units:'kilometers'});
+    const diff = turf.difference(gj, cut);
+    if(!diff) return alert("Erro no corte.");
+    const partes = diff.geometry.type==='MultiPolygon' ? diff.geometry.coordinates.map(c=>turf.polygon(c)) : [diff];
+    receberCorte(partes);
   }
-
-  // --- VISUALIZAÇÃO ---
-  function mudarVisualizacao(modo) {
-    if (!mapPoligonos) return;
-    if (mapPoligonos.hasLayer(layerGroupQuadras)) layerGroupQuadras.remove();
-    if (mapPoligonos.hasLayer(layerGroupTerritorios)) layerGroupTerritorios.remove();
-    
-    if (modo === 'quadras') { layerGroupQuadras.addTo(mapPoligonos); }
-    else if (modo === 'territorios') { layerGroupTerritorios.addTo(mapPoligonos); }
-    else { layerGroupTerritorios.addTo(mapPoligonos); layerGroupQuadras.addTo(mapPoligonos); }
-  }
-  
-  function mudarRotulos(modo) {
-    modoRotuloAtual = modo; 
-    if(mapPoligonos) { 
-      mapPoligonos.eachLayer(layer => { 
-        if (layer instanceof L.Polygon && layer.metaData) atualizarTextoTooltip(layer, modo); 
-      }); 
-    }
-  }
-  
-  function atualizarTextoTooltip(poly, modo) {
-    let texto = ""; 
-    const dados = poly.metaData;
-    if (modo === 'id') texto = dados.id; 
-    else if (modo === 'territory') texto = dados.territory; 
-    else if (modo === 'both') texto = `${dados.id}\n${dados.territory}`;
-    
-    if (modo !== 'none' && texto) {
-      poly.bindTooltip(texto, { permanent: true, direction: "center", className: "label-quadra" }).openTooltip(); 
-    } else {
-      poly.unbindTooltip();
-    }
-  }
-  
-  // --- DETALHES ---
   function atualizarMapaDetalhes(grupos) {
-    if(!mapDetalhe) { 
-      mapDetalhe=L.map('mapDetalhe'); 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe); 
-    }
-    mapDetalhe.eachLayer((layer) => { if(layer instanceof L.Marker) mapDetalhe.removeLayer(layer); });
-    
-    const bounds = []; 
-    Object.values(grupos).forEach(g => { 
-      if(g.lat && g.lng) { 
-        L.marker([g.lat, g.lng]).addTo(mapDetalhe).bindPopup(`<b>${g.numero}</b> ${g.logradouro}`); 
-        bounds.push([g.lat, g.lng]); 
-      } 
-    });
-    
-    if(bounds.length > 0) mapDetalhe.fitBounds(bounds, {padding:[30,30]}); 
-    setTimeout(() => mapDetalhe.invalidateSize(), 300);
+     if(!mapDetalhe) { mapDetalhe=L.map('mapDetalhe'); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe); }
+     mapDetalhe.eachLayer(l => mapDetalhe.removeLayer(l));
+     const bounds = [];
+     Object.values(grupos).forEach(g => { if(g.lat && g.lng) { L.marker([g.lat, g.lng]).addTo(mapDetalhe); bounds.push([g.lat, g.lng]); }});
+     if(bounds.length>0) { mapDetalhe.fitBounds(bounds, {padding:[20,20]}); setTimeout(()=>mapDetalhe.invalidateSize(), 300); }
   }
 </script>
