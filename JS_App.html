@@ -1,35 +1,29 @@
 <script>
-  // =================================================================
-  // VARIAVEIS GLOBAIS
-  // =================================================================
-  var mapGeral, mapPoligonos, mapRegistro, mapDetalhe;
+  // Variáveis Globais 
+  var mapGeral, mapPoligonos, mapRegistro;
   var layerGroupQuadras, layerGroupTerritorios;
   var layerGroupFacesRes, layerGroupFacesCom;
   var layerGroupRegistro, layerGroupRegistroIcons, layerGroupRegistroLabels;
-  var lgGeralQuadras, lgGeralTerritorios, lgGeralLabels;
-  
-  var facesSelecionadas = new Set();
+  var cacheQuadrasRegistro = []; // Guarda os dados locais das quadras
+  var cacheOpsRegistro = new Set(); // Guarda quais territórios são opcionais
+
+  var facesSelecionadas = new Map(); // Mudado de Set para Map
   var registroSelecionados = new Set();
+  var shareSelecionados = new Set(); 
+  var selectedQuadras = []; 
+  
   var dadosFacesGlobal = null;
   var dadosTerritoriosCache = [];
-  var isSelectionMode = false;
-  var selectedQuadras = [];
-
-  // Modais
-  var modalEdicao, modalNovoTerritorio, modalNomear, modalEditarTerritorio, modalConflitoData;
-  var currentEditLayer = null;
-  var tempConflitoPayload = null;
   
-  // Geometria Vars
+  var isSelectionMode = false;
   var isEditingTerritory = false; 
-  var editingTerritoryData = null;
-  var tempPartes = []; 
-  var tempIdOriginal = "";
-  var tempIdsOriginais = [];
+  
+  var modalEdicao, modalNovoTerritorio, modalNomear, modalEditarTerritorio, modalConflitoData, modalLinkPublico;
+  
+  var currentEditLayer = null; 
+  var editingTerritoryData = null; 
+  var divisionMarkers = []; var divisionIndices = [];
 
-  // =================================================================
-  // INICIALIZAÇÃO
-  // =================================================================
   window.onload = function() {
     try {
        modalEdicao = new bootstrap.Modal(document.getElementById('modalEdicao'));
@@ -37,584 +31,956 @@
        modalNomear = new bootstrap.Modal(document.getElementById('modalNomear'));
        modalEditarTerritorio = new bootstrap.Modal(document.getElementById('modalEditarTerritorio'));
        modalConflitoData = new bootstrap.Modal(document.getElementById('modalConflitoData'));
+       modalLinkPublico = new bootstrap.Modal(document.getElementById('modalLinkPublico'));
        
-       var dateInput = document.getElementById('dataRegistro');
-       if(dateInput) dateInput.valueAsDate = new Date();
-       
-       iniciarApp();
-    } catch(e) { console.error("Erro onload", e); }
+       var di = document.getElementById('dataRegistro'); if(di) di.valueAsDate = new Date();
+       window.iniciarApp();
+    } catch(e) { console.error("Erro Init:", e); }
   };
 
-  window.iniciarApp = function() {
-    showLoading(true, "Iniciando...");
-    google.script.run.withSuccessHandler(function(lista) {
-      var sel = document.getElementById('selectQuadra');
-      if(sel) {
-        lista.forEach(function(q) { 
-           var opt = document.createElement('option'); opt.value = q; opt.text = q; sel.appendChild(opt); 
-        });
-      }
-    }).getListaQuadras();
-    carregarMapaGeral();
-  };
-  
-  window.showLoading = function(show, txt) { 
-    var txtEl = document.getElementById('loadingText');
-    var loadEl = document.getElementById('loading');
-    if(txtEl && txt) txtEl.innerText = txt; 
-    if(loadEl) loadEl.style.display = show ? 'flex' : 'none'; 
-  };
+  window.iniciarApp = function() { window.carregarMapaGeral(); };
+  window.showLoading = function(show, txt) { var l=document.getElementById('loading'); if(l) l.style.display=show?'flex':'none'; if(txt) document.getElementById('loadingText').innerText=txt; };
 
+  // ... (Funções de Abas e Mapa Geral mantidas iguais) ...
   window.mudarAba = function(aba) {
-    document.querySelectorAll('.nav-item').forEach(function(e){ e.classList.remove('active'); });
-    document.querySelectorAll('.screen').forEach(function(e){ e.classList.remove('active'); });
-    
-    var btn = document.getElementById('btnAba' + aba.charAt(0).toUpperCase() + aba.slice(1));
-    if(btn) btn.classList.add('active');
-    
-    var tela = document.getElementById(aba === 'poligonos' ? 'telaPoligonos' : 'tela' + aba.charAt(0).toUpperCase() + aba.slice(1));
-    if(tela) tela.classList.add('active');
-    
-    if(aba === 'geral' && mapGeral) setTimeout(function(){ mapGeral.invalidateSize(); }, 100);
-    if(aba === 'poligonos') {
-       if(!mapPoligonos) iniciarMapaPoligonos();
-       else setTimeout(function(){ mapPoligonos.invalidateSize(); }, 100);
-    }
-    if(aba === 'registro') {
-       carregarDadosRegistro();
-       setTimeout(function(){ if(mapRegistro) { mapRegistro.invalidateSize(); } }, 200);
-    }
-    if(aba === 'detalhe' && mapDetalhe) {
-       setTimeout(function(){ mapDetalhe.invalidateSize(); }, 200);
-    }
+    document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active')); 
+    document.querySelectorAll('.screen').forEach(e => e.classList.remove('active'));
+    var btn = document.getElementById('btnAba' + aba.charAt(0).toUpperCase() + aba.slice(1)); if(btn) btn.classList.add('active');
+    var tela = document.getElementById(aba === 'poligonos' ? 'telaPoligonos' : 'tela' + aba.charAt(0).toUpperCase() + aba.slice(1)); if(tela) tela.classList.add('active');
+    if(aba === 'geral') setTimeout(() => { if(mapGeral) mapGeral.invalidateSize(); }, 100);
+    if(aba === 'poligonos') { if(!mapPoligonos) window.iniciarMapaPoligonos(); else { mapPoligonos.invalidateSize(); window.mudarVisualizacao(document.getElementById('editorViewSelect').value); } }
+    if(aba === 'registro') { window.carregarDadosRegistro(); setTimeout(() => { if(mapRegistro) mapRegistro.invalidateSize(); }, 200); }
   };
 
-  // =================================================================
-  // MAPA GERAL
+  // ... (carregarMapaGeral, etc... mantidos) ...
+// =================================================================
+  // MAPA GERAL (CORRIGIDO VARIÁVEIS + BOTÃO ROTA)
   // =================================================================
   window.carregarMapaGeral = function() {
     if(!mapGeral) {
       mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
-      lgGeralQuadras = L.featureGroup().addTo(mapGeral);
-      lgGeralTerritorios = L.featureGroup().addTo(mapGeral);
-      lgGeralLabels = L.featureGroup().addTo(mapGeral);
+      
+      // CORREÇÃO: Usando as variáveis globais corretas do GERAL (lg...)
+      // e não as do Editor (layerGroup...)
+      lgGeralTerritorios = L.featureGroup().addTo(mapGeral); 
+      lgGeralQuadras = L.featureGroup().addTo(mapGeral);     
+      lgGeralLabels = L.featureGroup().addTo(mapGeral); 
     }
     
-    showLoading(true, "Carregando...");
-    google.script.run.withSuccessHandler(function(dados) {
-        if(!dados) { showLoading(false); return; }
-        lgGeralQuadras.clearLayers();
-        dados.forEach(function(d) {
-            var pts = stringParaLatLng(d.polyString);
-            if(pts.length >= 3) {
-                var poly = L.polygon(pts, { color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6 });
-                if(d.id) {
-                    poly.bindTooltip(d.id, { permanent: true, direction: "center", className: "label-quadra" });
-                    
-                    // CORREÇÃO: Botão Detalhes Adicionado
-                    var c = poly.getBounds().getCenter();
-                    var btnRota = '<button class="btn btn-sm btn-success w-100 mb-1" onclick="window.abrirRota('+c.lat+','+c.lng+')"><i class="fa-solid fa-route"></i> Rota</button>';
-                    var btnDetalhe = '<button class="btn btn-sm btn-primary w-100" onclick="window.irParaDetalhes(\''+d.id+'\')"><i class="fa-solid fa-list"></i> Detalhes</button>';
-                    
-                    poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br>'+btnRota+btnDetalhe+'</div>');
-                }
-                lgGeralQuadras.addLayer(poly);
-            }
-        });
-        carregarTerritoriosGeral();
-    }).getPoligonosQuadras();
-  };
-
-  // Função nova para link direto
-  window.irParaDetalhes = function(id) {
-      // Muda Select
-      var sel = document.getElementById('selectQuadra');
-      if(sel) {
-          sel.value = id;
-          // Se o valor existir na lista, dispara
-          if(sel.value === id) {
-              window.mudarAba('detalhe');
-              window.carregarQuadra(id);
+    showLoading(true); shareSelecionados.clear(); window.atualizarBarraShare();
+    
+    // Carrega Territórios
+    google.script.run.withSuccessHandler(function(terrs) {
+          lgGeralTerritorios.clearLayers(); lgGeralLabels.clearLayers();
+          if(terrs) {
+              terrs.forEach(function(t) {
+                  var pts = window.stringParaLatLng(t.polyString);
+                  if(pts.length >= 3) {
+                      var pt = L.polygon(pts, {color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '5,5'});
+                      pt.bindPopup("<b>Território: "+t.name+"</b>");
+                      lgGeralTerritorios.addLayer(pt);
+                      
+                      var c = pt.getBounds().getCenter();
+                      if(t.labelPos && t.labelPos.includes(',')) { var s = t.labelPos.split(','); c = [parseFloat(s[0]), parseFloat(s[1])]; }
+                      
+                      var badge = '<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>';
+                      lgGeralLabels.addLayer(L.marker(c, {icon: L.divIcon({html: badge}), interactive: false}));
+                  }
+              });
+              lgGeralTerritorios.bringToBack();
           }
-      }
+          
+          // Carrega Quadras
+          google.script.run.withSuccessHandler(function(dados) {
+              lgGeralQuadras.clearLayers();
+              if(dados) {
+                  dados.forEach(function(d) {
+                     var pts = window.stringParaLatLng(d.polyString);
+                     if(pts.length >= 3) {
+                        var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
+                        poly.metaData = d;
+                        
+                        // Evento de Clique (Seleção para Compartilhar)
+                        poly.on('click', function(e) {
+                           var id = d.id;
+                           if(shareSelecionados.has(id)) { 
+                               shareSelecionados.delete(id); 
+                               this.setStyle({color: '#666', weight: 1}); 
+                           } else { 
+                               shareSelecionados.add(id); 
+                               this.setStyle({color: 'blue', weight: 4}); 
+                           }
+                           window.atualizarBarraShare();
+                        });
+                        
+                        var c = poly.getBounds().getCenter();
+                        
+                        // Botão Rota (Mantido como Link <a>)
+                        var linkMaps = 'http://maps.google.com/?q=' + c.lat + ',' + c.lng;
+                        var btnRota = '<a href="' + linkMaps + '" target="_blank" class="btn btn-sm btn-success w-100 mb-1 text-white text-decoration-none">Rota</a>';
+
+                        poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br>'+btnRota+'</div>');
+                        lgGeralQuadras.addLayer(poly);
+                     }
+                  });
+              }
+              showLoading(false);
+          }).getPoligonosQuadras();
+    }).getDadosTerritorios();
   };
 
-  window.carregarTerritoriosGeral = function() {
-      google.script.run.withSuccessHandler(function(terrs) {
-            if(!terrs) return;
-            lgGeralTerritorios.clearLayers(); lgGeralLabels.clearLayers();
-            terrs.forEach(function(t) {
-                var pts = stringParaLatLng(t.polyString);
-                if(pts.length >= 3) {
-                    var pt = L.polygon(pts, { color: t.color, weight: 3, fillOpacity: 0.2, dashArray: '5,5' });
-                    lgGeralTerritorios.addLayer(pt);
-                    
-                    var centro = pt.getBounds().getCenter();
-                    if(t.labelPos && t.labelPos.indexOf(',') > -1) {
-                        var spl = t.labelPos.split(','); centro = [parseFloat(spl[0]), parseFloat(spl[1])];
-                    }
-                    var badge = '<div class="territory-badge" style="border-color:'+t.color+'">' + t.name + '</div>';
-                    lgGeralLabels.addLayer(L.marker(centro, { icon: L.divIcon({html: badge, className:''}), interactive:false }));
-                }
-            });
-            showLoading(false);
-            ativarGPS('geral');
-      }).getDadosTerritorios();
-  };
-  
-  window.toggleCamadasGeral = function() {
-      var q = document.getElementById('checkGeralQuadras').checked;
-      var t = document.getElementById('checkGeralTerritorios').checked;
-      if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras);
-      if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } 
-      else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); }
-  };
+  window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
+  window.gerarLinkPublico = function() { if(shareSelecionados.size === 0) return; var terrUnico = null; var erro = false; var ids = Array.from(shareSelecionados); lgGeralQuadras.eachLayer(function(l) { if(shareSelecionados.has(l.metaData.id)) { if(terrUnico === null) terrUnico = l.metaData.territory; else if(terrUnico !== l.metaData.territory) erro = true; } }); if(erro || !terrUnico) return alert("Erro: Selecione quadras de APENAS UM território."); showLoading(true); google.script.run.withSuccessHandler(function(url) { showLoading(false); var baseUrl = url || window.location.href.split('?')[0]; var finalUrl = baseUrl + "?v=publico&ids=" + ids.join(","); document.getElementById('inputLinkPublico').value = finalUrl; document.getElementById('lblTerritorioShare').innerText = terrUnico; modalLinkPublico.show(); }).withFailureHandler(e => { showLoading(false); alert(e); }).getScriptUrl(); };
+  window.toggleCamadasGeral = function() { var q = document.getElementById('checkGeralQuadras').checked; var t = document.getElementById('checkGeralTerritorios').checked; if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras); if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); } };
+
 
   // =================================================================
   // EDITOR
   // =================================================================
   window.iniciarMapaPoligonos = function() {
-    if (!mapPoligonos) {
+    if(!mapPoligonos) {
       mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
       mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
       
       layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
-      layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos); 
+      layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
       layerGroupFacesRes = L.featureGroup().addTo(mapPoligonos);
       layerGroupFacesCom = L.featureGroup().addTo(mapPoligonos);
     }
-    carregarEditorDados();
+    window.carregarEditorDados();
   };
-
-  window.carregarEditorDados = function() {
-      showLoading(true);
-      layerGroupQuadras.clearLayers(); 
+  
+window.carregarEditorDados = function() {
+      showLoading(true); 
+      layerGroupQuadras.clearLayers();
       
       google.script.run.withSuccessHandler(function(dados) {
-          if(!dados) return;
+          // ... (código das quadras permanece igual) ...
           dados.forEach(function(d) {
-              var pts = stringParaLatLng(d.polyString);
-              if(pts.length < 3) return;
-              var poly = L.polygon(pts, { color: '#666', weight: 1, fillColor: d.color, fillOpacity: 0.3 });
-              poly.metaData = d;
-              poly.bindTooltip(d.id, { permanent: true, direction: "center", className: "label-quadra" });
-              
-              poly.on('click', function(e) {
-                  if(facesSelecionadas.size > 0) { L.DomEvent.stopPropagation(e); confirmarAssociacao(this); }
-                  else if(isSelectionMode) { toggleSelecaoQuadra(this); }
-                  else { abrirModalEdicao(this); }
-              });
-              layerGroupQuadras.addLayer(poly);
+             var pts = window.stringParaLatLng(d.polyString); if(pts.length<3) return;
+             var poly = L.polygon(pts, {color: '#666', weight: 1, fillColor: d.color, fillOpacity: 0.3});
+             poly.metaData = d; 
+             poly.bindTooltip(d.id, {permanent: true, direction: "center", className: "label-quadra"});
+             poly.on('click', function(e) {
+                 if(divisionMarkers.length > 0) return; 
+                 if(facesSelecionadas.size > 0) { L.DomEvent.stopPropagation(e); window.confirmarAssociacao(this); return; }
+                 if(isEditingTerritory) { window.toggleSelecaoQuadra(this); return; }
+                 if(isSelectionMode) { window.toggleSelecaoQuadra(this); return; }
+                 L.DomEvent.stopPropagation(e); window.abrirModalEdicao(this);
+             });
+             layerGroupQuadras.addLayer(poly);
           });
-          
-          google.script.run.withSuccessHandler(function(terrs){
-             dadosTerritoriosCache = terrs || [];
-             atualizarLabelsTerritorioEditor();
-          }).getDadosTerritorios();
 
-          google.script.run.withSuccessHandler(function(f) {
-              dadosFacesGlobal = f; renderizarFaces(); showLoading(false);
+          // Carrega Territórios
+          google.script.run.withSuccessHandler(function(terrs){ 
+              dadosTerritoriosCache = terrs || []; 
+              window.atualizarLabelsTerritorioEditor(); 
+          }).getDadosTerritorios();
+          
+          // --- AQUI ESTÁ A MUDANÇA (LOGS DAS FACES) ---
+          google.script.run.withSuccessHandler(function(f){ 
+              console.log("=== DIAGNÓSTICO DE FACES ===");
+              console.log("Total Agrupamentos Residenciais:", f.residencial.length);
+              console.log("Total Agrupamentos Comerciais:", f.comercial.length);
+              
+              if(f.residencial.length > 0) {
+                  console.log("Lista Residencial:", f.residencial); // Clique na setinha no console para expandir
+              } else {
+                  console.warn("ALERTA: Nenhuma face residencial carregada!");
+              }
+
+              dadosFacesGlobal = f; 
+              window.renderizarFaces(); 
+              showLoading(false); 
           }).getDadosFaces();
+          // ---------------------------------------------
+          
       }).getPoligonosQuadras();
+  };
+  
+ // Função chamada pelo Checkbox do HTML
+  window.toggleNumerosTerritorios = function() {
+      window.atualizarLabelsTerritorioEditor();
+  };
+
+ window.atualizarLabelsTerritorioEditor = function() {
+      if(!layerGroupTerritorios) return;
+      
+      layerGroupTerritorios.clearLayers();
+      
+      var checkbox = document.getElementById('toggleNumbers');
+      var showOpt = checkbox ? checkbox.checked : false;
+      var currentView = document.getElementById('editorViewSelect').value;
+      
+      // Se a visão for "quadras", não desenhamos os territórios para não poluir/bloquear
+      if(currentView === 'quadras') {
+           window.mudarVisualizacao(currentView);
+           return;
+      }
+      
+      dadosTerritoriosCache.forEach(function(t) {
+         var pts = window.stringParaLatLng(t.polyString); 
+         if(pts.length < 3) return;
+         
+         // 1. Polígono do Território
+         var pt = L.polygon(pts, {
+             color: t.color, 
+             weight: 3, 
+             fillOpacity: 0.15, 
+             dashArray: '10,5', 
+             interactive: true // AGORA SEMPRE INTERATIVO
+         });
+         pt.metaData = t;
+         
+         // Evento de Clique no Polígono
+         pt.on('click', function(e) { 
+             // Bloqueios de segurança:
+             if(divisionMarkers.length > 0) return; // Se estiver cortando, ignora
+             if(isSelectionMode) return; // Se estiver selecionando quadras para criar novo, ignora
+             if(facesSelecionadas.size > 0) return; // Se estiver associando faces, ignora
+             
+             // Se estiver no modo "Alterar Quadras" (isEditingTerritory), o clique no polígono não deve fazer nada
+             // ou deve sair do modo? Geralmente não faz nada, pois o foco é clicar nas quadras.
+             if(isEditingTerritory) return;
+
+             L.DomEvent.stopPropagation(e); 
+             window.abrirModalEditarTerritorio(this.metaData, this); 
+         });
+         
+         layerGroupTerritorios.addLayer(pt);
+         
+         // 2. Rótulo (Marcador de Texto)
+         var rawType = String(t.labelType || 'visible');
+         var type = rawType.toLowerCase().trim(); 
+         var deveMostrar = (type === 'visible') || (type === 'optional' && showOpt);
+         
+         if(deveMostrar) {
+             var c = pt.getBounds().getCenter();
+             if(t.labelPos && t.labelPos.includes(',')) { 
+                 var s = t.labelPos.split(','); 
+                 c = [parseFloat(s[0]), parseFloat(s[1])]; 
+             }
+             
+             var badge = '<div class="territory-badge" style="border-color:'+t.color+'; cursor:pointer;">'+t.name+'</div>';
+             
+             // Draggable se estiver editando ESTE território
+             var isDraggable = (isEditingTerritory && editingTerritoryData && editingTerritoryData.data.name === t.name);
+             
+             var marker = L.marker(c, {
+                 icon: L.divIcon({html: badge}), 
+                 draggable: isDraggable,
+                 interactive: true // Rótulo sempre clicável também
+             });
+             
+             marker.metaData = t; // Vincula dados ao marcador
+             
+             // Evento de Drag (Arrastar)
+             if(isDraggable) {
+                 marker.setZIndexOffset(1000); 
+                 marker.on('dragend', function(e) { 
+                     var np = e.target.getLatLng(); 
+                     if(editingTerritoryData) editingTerritoryData.data.labelPos = np.lat + "," + np.lng;
+                 });
+             }
+             
+             // Evento de Clique no Rótulo (Abre o modal igual ao poligono)
+             marker.on('click', function(e) {
+                 if(divisionMarkers.length > 0 || isSelectionMode || facesSelecionadas.size > 0 || isEditingTerritory) return;
+                 
+                 L.DomEvent.stopPropagation(e);
+                 // Precisamos passar o polígono associado, não o marker, para a função de edição funcionar 100%
+                 // Como pt está no escopo, usamos ele.
+                 window.abrirModalEditarTerritorio(t, pt); 
+             });
+             
+             layerGroupTerritorios.addLayer(marker);
+         }
+      });
+      
+      window.mudarVisualizacao(currentView);
   };
   
   window.mudarVisualizacao = function(val) {
       if(!mapPoligonos) return;
       if(mapPoligonos.hasLayer(layerGroupQuadras)) mapPoligonos.removeLayer(layerGroupQuadras);
       if(mapPoligonos.hasLayer(layerGroupTerritorios)) mapPoligonos.removeLayer(layerGroupTerritorios);
-
-      if(val === 'quadras') { mapPoligonos.addLayer(layerGroupQuadras); }
+      if(val === 'quadras') { mapPoligonos.addLayer(layerGroupQuadras); } 
       else if (val === 'territorios') { mapPoligonos.addLayer(layerGroupTerritorios); } 
-      else { mapPoligonos.addLayer(layerGroupQuadras); mapPoligonos.addLayer(layerGroupTerritorios); }
+      else { mapPoligonos.addLayer(layerGroupTerritorios); mapPoligonos.addLayer(layerGroupQuadras); }
   };
 
-  window.atualizarLabelsTerritorioEditor = function() {
-      layerGroupTerritorios.clearLayers();
-      var showOptional = document.getElementById('toggleNumbers').checked; // Controle de opcionais
-      var viewMode = document.getElementById('editorViewSelect').value;
-
-      dadosTerritoriosCache.forEach(function(t) {
-          var pts = stringParaLatLng(t.polyString);
-          if(pts.length >= 3) {
-              var pt = L.polygon(pts, { color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '10,5', interactive: false });
-              layerGroupTerritorios.addLayer(pt);
-              
-              // LÓGICA DE VISIBILIDADE DOS RÓTULOS (BADGES)
-              // Se LabelType = visible -> Mostra Sempre
-              // Se LabelType = optional -> Mostra SÓ se o checkbox estiver ON
-              
-              var deveMostrar = false;
-              if (t.labelType === 'visible') {
-                  deveMostrar = true;
-              } else if (t.labelType === 'optional' && showOptional) {
-                  deveMostrar = true;
-              }
-
-              if(deveMostrar) {
-                  var centro = pt.getBounds().getCenter();
-                  if(t.labelPos && t.labelPos.indexOf(',')>-1) { var s=t.labelPos.split(','); centro=[parseFloat(s[0]), parseFloat(s[1])]; }
-                  var badge = '<div class="territory-badge" style="border-color:'+t.color+'">' + t.name + '</div>';
-                  layerGroupTerritorios.addLayer(L.marker(centro, {icon:L.divIcon({html:badge, className:''}), interactive:false}));
-              }
-          }
-      });
-      mudarVisualizacao(viewMode);
-  };
-  
-  window.toggleNumerosTerritorios = function() { atualizarLabelsTerritorioEditor(); };
-
-  window.renderizarFaces = function() {
-      layerGroupFacesRes.clearLayers(); layerGroupFacesCom.clearLayers();
-      var chkRes = document.getElementById('toggleFacesRes').checked;
-      var chkCom = document.getElementById('toggleFacesCom').checked;
-      if(dadosFacesGlobal) {
-          if(chkRes) dadosFacesGlobal.residencial.forEach(function(f){ layerGroupFacesRes.addLayer(criarMarkerFace(f, '#0d6efd')); });
-          if(chkCom) dadosFacesGlobal.comercial.forEach(function(f){ layerGroupFacesCom.addLayer(criarMarkerFace(f, '#fd7e14')); });
-      }
-  };
-
-  window.criarMarkerFace = function(f, cor) {
-      var m = L.circleMarker([f.lat, f.lng], { radius: 5, fillColor: cor, color: 'white', weight: 1, fillOpacity: 0.9 });
-      m.faceData = f; m.corBase = cor;
-      m.bindTooltip('<b>' + f.label + '</b><br>' + f.total + ' endereços');
-      m.on('click', function(e) {
-          L.DomEvent.stopPropagation(e);
-          var key = this.faceData.key;
-          if(facesSelecionadas.has(key)) { facesSelecionadas.delete(key); this.setStyle({ fillColor: this.corBase, color: 'white', weight: 1 }); } 
-          else { facesSelecionadas.add(key); this.setStyle({ fillColor: '#00ff00', color: 'black', weight: 2 }); }
-          atualizarBotaoAssociacao();
-      });
-      return m;
-  };
-  
-  window.atualizarBotaoAssociacao = function() {
-      var btn = document.getElementById('btnAssociarFaces');
-      var bar = document.getElementById('barraAssociacao');
-      if(facesSelecionadas.size > 0) {
-          bar.classList.remove('d-none'); btn.disabled = false; btn.innerText = "Associar " + facesSelecionadas.size + " face(s)...";
-          btn.classList.remove('btn-dark'); btn.classList.add('btn-success');
-      } else {
-          bar.classList.add('d-none'); btn.disabled = true;
-      }
-  };
-
-  window.confirmarAssociacao = function(poly) {
-      var qId = poly.metaData.id;
-      if(!confirm("Associar faces à " + qId + "?")) return;
-      var linhas = [];
-      layerGroupFacesRes.eachLayer(function(l){ if(facesSelecionadas.has(l.faceData.key)) linhas.push.apply(linhas, l.faceData.rows); });
-      layerGroupFacesCom.eachLayer(function(l){ if(facesSelecionadas.has(l.faceData.key)) linhas.push.apply(linhas, l.faceData.rows); });
-      showLoading(true, "Associando...");
-      google.script.run.withSuccessHandler(function(r) { alert(r); facesSelecionadas.clear(); carregarEditorDados(); }).salvarAssociacaoFaces({ quadraId: qId, linhas: linhas });
-  };
-  
   // =================================================================
-  // LÓGICA DE UI DO EDITOR
+  // FUNÇÕES DE TERRITÓRIO (MODAL E SALVAMENTO CORRIGIDOS)
   // =================================================================
-  window.alternarModoSelecao = function(ativo) { isSelectionMode = ativo; if(!ativo) limparSelecao(); };
   
-  window.toggleSelecaoQuadra = function(layer) {
-      var id = layer.metaData.id;
-      var idx = selectedQuadras.findIndex(function(q){ return q.id === id; });
-      if(idx === -1) { selectedQuadras.push({id: id, layer: layer}); layer.setStyle({color: 'red', weight: 3, dashArray: '10,5'}); } 
-      else { selectedQuadras.splice(idx, 1); layer.setStyle({color: '#666', weight: 1, dashArray: null}); }
-      atualizarBotoesSelecao();
-  };
-  
-  window.limparSelecao = function() {
-      selectedQuadras.forEach(function(q){ q.layer.setStyle({color: '#666', weight: 1, dashArray: null}); });
-      selectedQuadras = []; atualizarBotoesSelecao();
-  };
-  
-  window.atualizarBotoesSelecao = function() { 
-      var n = selectedQuadras.length; document.getElementById('countSelectedBadge').innerText = n; 
-      if(!isEditingTerritory) { 
-          var btnS = document.getElementById('btnSalvarTerritorio'); var btnJ = document.getElementById('btnJuntarQuadras'); 
-          if(n > 0) btnS.classList.remove("disabled"); else btnS.classList.add("disabled"); 
-          if(n > 1) btnJ.classList.remove("disabled"); else btnJ.classList.add("disabled"); 
-      } 
-  };
-  
-  window.abrirModalEdicao = function(layer) {
-      if(isSelectionMode) return;
-      currentEditLayer = layer;
-      var d = layer.metaData;
-      document.getElementById('editOriginalId').value = d.id;
-      document.getElementById('editId').value = d.id;
-      document.getElementById('editTerritory').value = d.territory;
-      document.getElementById('editColor').value = d.color;
-      if(layer.pm.enabled()) layer.pm.disable();
-      modalEdicao.show();
-  };
-  
-  window.salvarQuadraAtual = function() {
-      var novoId = document.getElementById('editId').value;
-      var poly = currentEditLayer.getLatLngs()[0].map(function(p){ return p.lat + "," + p.lng; }).join(" | ");
-      modalEdicao.hide(); showLoading(true);
-      google.script.run.withSuccessHandler(function(){ alert("Salvo"); carregarEditorDados(); }).salvarEdicaoQuadra({ 
-          idOriginal: document.getElementById('editOriginalId').value, idNovo: novoId, territory: document.getElementById('editTerritory').value, color: document.getElementById('editColor').value, polyString: poly 
-      });
-  };
-
-  window.abrirModalSalvarTerritorio = function() { document.getElementById('lblCountTerritorio').innerText = selectedQuadras.length; modalNovoTerritorio.show(); };
-  window.confirmarSalvarTerritorio = function() {
-      var nome = document.getElementById('newTerritoryName').value;
-      if(!nome) return alert("Nome obrigatório");
-      modalNovoTerritorio.hide(); showLoading(true);
+  // 1. Abrir Modal (Popula dados)
+  window.abrirModalEditarTerritorio = function(data, layer) {
+      editingTerritoryData = { data: data, layer: layer };
       
+      // IDs correspondem ao HTML do modal
+      document.getElementById('editTerrOriginalName').value = data.name; // IMPORTANTE
+      document.getElementById('editTerrName').value = data.name;
+      document.getElementById('editTerrColor').value = data.color;
+      document.getElementById('editTerrLabelType').value = data.labelType || 'visible';
+      
+      modalEditarTerritorio.show();
+  };
+  
+  // 2. Salvar Edição Simples (Nome, Cor, Tipo)
+  window.salvarTerritorioExistente = function() {
+       // 1. Pega os valores dos inputs do Modal
+       var nomeOriginal = document.getElementById('editTerrOriginalName').value;
+       var novoNome = document.getElementById('editTerrName').value;
+       var novaCor = document.getElementById('editTerrColor').value;
+       var novoTipo = document.getElementById('editTerrLabelType').value; // Opcional vs Visível
+       
+       if(!nomeOriginal) {
+           alert("Erro: Nome original perdido. Feche e abra o modal novamente.");
+           return;
+       }
+
+       // 2. Recupera IDs das quadras que JÁ pertencem a este território 
+       // Isso é CRÍTICO para não "limpar" as quadras do território ao salvar apenas o nome/cor
+       var idsAtuais = [];
+       if(layerGroupQuadras) {
+           layerGroupQuadras.eachLayer(function(l){
+               // Compara com o nome original (caso você tenha mudado o nome agora)
+               if(l.metaData.territory === nomeOriginal) {
+                   idsAtuais.push(l.metaData.id);
+               }
+           });
+       }
+       
+       // 3. Monta o objeto de atualização
+       // Mantemos a geometria (polyString) e a posição do rótulo (labelPos) como estavam
+       var up = [{
+          originalName: nomeOriginal,
+          name: novoNome,
+          color: novaCor,
+          polyString: editingTerritoryData.data.polyString, 
+          idsQuadras: idsAtuais, 
+          labelPos: editingTerritoryData.data.labelPos,
+          labelType: novoTipo
+       }];
+       
+       // 4. Envia para o Google Sheets
+       modalEditarTerritorio.hide();
+       showLoading(true, "Salvando alterações...");
+       
+       google.script.run
+           .withSuccessHandler(function() {
+              alert("Território atualizado com sucesso!");
+              window.carregarEditorDados(); // Recarrega o mapa para mostrar a nova cor/rótulo
+          })
+          .withFailureHandler(function(e){
+              showLoading(false);
+              alert("Erro ao salvar: " + e);
+          })
+          .salvarLoteTerritorios(up);
+  };
+
+  // 3. Alterar Quadras (Modo Visual)
+  window.iniciarSelecaoTerritorioExistente = function() {
+      modalEditarTerritorio.hide();
+      isEditingTerritory = true; isSelectionMode = false; window.limparSelecao();
+      var nomeTerr = editingTerritoryData.data.name;
+      
+      document.getElementById('lblEditandoNome').innerText = nomeTerr;
+      document.getElementById('divEditandoTerritorio').classList.remove('d-none');
+      document.getElementById('barraBotoesPadrao').classList.add('d-none');
+      
+      // Força modo quadras e seleciona as atuais
+      document.getElementById('editorViewSelect').value = 'quadras'; 
+      window.mudarVisualizacao('quadras');
+      
+      layerGroupQuadras.eachLayer(function(l) {
+          if(l.metaData.territory === nomeTerr) window.toggleSelecaoQuadra(l);
+      });
+      
+      // Atualiza para mostrar o label draggable
+      window.atualizarLabelsTerritorioEditor(); 
+      alert("Clique nas quadras para adicionar/remover. Arraste o nome para mover.");
+  };
+
+  // 4. Salvar Alteração de Quadras (Revisão)
+  window.salvarRevisaoTerritorio = function() {
+      var nomeOriginal = editingTerritoryData.data.name;
       var ids = selectedQuadras.map(function(q){ return q.id; });
-      var feats = selectedQuadras.map(function(q){ return q.layer.toGeoJSON(); });
-      var u = feats[0];
-      for(var i=1; i<feats.length; i++) try { u = turf.union(u, feats[i]); } catch(e){}
-      var poly = u.geometry.coordinates[0].map(function(p){ return p[1]+","+p[0]; }).join(" | ");
       
-      var updates = [{ name: nome, color: document.getElementById('newTerritoryColor').value, idsQuadras: ids, polyString: poly, labelType: document.getElementById('newTerritoryLabelType').value }];
-      google.script.run.withSuccessHandler(function(){ alert("Criado!"); alternarModoSelecao(false); carregarEditorDados(); }).salvarLoteTerritorios(updates);
-  };
-
-  // =================================================================
-  // REGISTRO
-  // =================================================================
-  window.carregarDadosRegistro = function() { 
-      showLoading(true, "Carregando..."); registroSelecionados.clear(); 
-      google.script.run.withSuccessHandler(function(terrs) {
-          dadosTerritoriosCache = terrs || []; 
-          var opcionais = new Set(); terrs.forEach(function(t){ if(t.labelType === 'optional') opcionais.add(t.name); });
-          google.script.run.withSuccessHandler(function(quadras) { iniciarMapaRegistro(quadras, opcionais); showLoading(false); }).getPoligonosQuadras();
-      }).getDadosTerritorios();
-  };
-  
-  window.iniciarMapaRegistro = function(quadras, opcionais) {
-      if(!mapRegistro) {
-          mapRegistro = L.map('mapRegistro').setView([-7.115, -34.863], 14);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
-          layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
-          layerGroupRegistroIcons = L.featureGroup().addTo(mapRegistro);
-          layerGroupRegistroLabels = L.featureGroup().addTo(mapRegistro); 
+      var poly = "";
+      
+      // Se houver quadras selecionadas, calcula a união geométrica
+      if(ids.length > 0) {
+          try {
+              var feats = selectedQuadras.map(function(q){ return q.layer.toGeoJSON(); });
+              
+              // Faz a união acumulativa
+              var u = feats[0]; 
+              for(var i=1; i<feats.length; i++) {
+                  u = turf.union(u, feats[i]);
+              }
+              
+              // USA A NOVA FUNÇÃO DE CONVERSÃO CORRIGIDA
+              poly = window.converterGeoJsonParaString(u.geometry);
+              
+          } catch(e) { console.log("Erro na união geométrica", e); }
       }
-      layerGroupRegistro.clearLayers(); layerGroupRegistroIcons.clearLayers(); layerGroupRegistroLabels.clearLayers();
-      var hoje = new Date();
       
-      quadras.forEach(function(q) {
-          var pts = stringParaLatLng(q.polyString);
-          if(pts.length < 3) return;
-          
-          var ehOpcional = opcionais.has(q.territory);
-          
-          // Estilo
-          var cor = ehOpcional ? '#dddddd' : q.color; 
-          var opacidade = ehOpcional ? 0.2 : 0.5;
-          
-          var poly = L.polygon(pts, {color: cor, weight: 1, fillOpacity: opacidade});
-          poly.metaData = q;
-          
-          var txtData = q.dataConclusao ? "<br>Feito: " + formatarDataBR(q.dataConclusao) : "<br>Nunca feito";
-          var label = "<b>" + q.id + "</b>" + (q.territory ? "<br>(" + q.territory + ")" : "") + txtData;
-          poly.bindTooltip(label, { sticky: true, direction: 'top' });
-
-          if(!ehOpcional) {
-              poly.on('click', function(e) { 
-                  var id = q.id;
-                  if(registroSelecionados.has(id)) { registroSelecionados.delete(id); this.setStyle({color:q.color, weight:1}); } 
-                  else { registroSelecionados.add(id); this.setStyle({color:'red', weight:4}); }
-              });
-
-              // CORREÇÃO ÍCONES: 
-              // 1. Padrão é Vermelho (Alerta)
-              var iconClass = "status-alert"; 
-              var iconInner = '<i class="fa-solid fa-triangle-exclamation"></i>'; // Nunca feito ou Atrasado
-              
-              if(q.status === 'Concluído' && q.dataConclusao) {
-                   var parts = q.dataConclusao.split('-');
-                   var dtConc = new Date(parts[0], parts[1]-1, parts[2]);
-                   var diffTime = Math.abs(hoje - dtConc);
-                   var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                   
-                   if (diffDays <= 15) { iconClass = "status-15d"; iconInner = '<i class="fa-solid fa-circle-check"></i>'; }
-                   else if (diffDays <= 30) { iconClass = "status-30d"; iconInner = '<i class="fa-solid fa-circle-check"></i>'; }
-                   else if (diffDays <= 60) { iconClass = "status-60d"; iconInner = '<i class="fa-solid fa-circle-check"></i>'; }
-                   else if (diffDays <= 90) { iconClass = "status-90d"; iconInner = '<i class="fa-solid fa-circle-exclamation"></i>'; }
-                   else { 
-                      // > 90 dias: Mantém vermelho
-                      iconClass = "status-alert"; iconInner = '<i class="fa-solid fa-triangle-exclamation"></i>';
-                   }
-              }
-              // Se nunca feito, já caiu no default vermelho lá em cima.
-              
-              var center = poly.getBounds().getCenter();
-              var myIcon = L.divIcon({className: 'status-marker-icon ' + iconClass, html: iconInner, iconSize: [20, 20]});
-              layerGroupRegistroIcons.addLayer(L.marker(center, {icon: myIcon, interactive: false}));
-          }
-          layerGroupRegistro.addLayer(poly);
-      });
+      // Prepara o pacote para o backend
+      var up = [{
+          originalName: nomeOriginal,
+          name: nomeOriginal, // Mantém o nome (não estamos renomeando aqui)
+          color: editingTerritoryData.data.color,
+          polyString: poly,
+          idsQuadras: ids,
+          labelPos: editingTerritoryData.data.labelPos
+      }];
       
-      renderizarLabelsRegistro();
-      ativarGPS('registro');
+      showLoading(true, "Salvando território...");
+      
+      google.script.run.withSuccessHandler(function() {
+          alert("Território atualizado com sucesso!");
+          isEditingTerritory = false;
+          
+          // Esconde painel de edição e volta botoes
+          document.getElementById('divEditandoTerritorio').classList.add('d-none');
+          document.getElementById('barraBotoesPadrao').classList.remove('d-none');
+          
+          window.carregarEditorDados();
+      }).salvarLoteTerritorios(up);
   };
   
-  window.renderizarLabelsRegistro = function() {
-      if(!layerGroupRegistroLabels) return;
-      layerGroupRegistroLabels.clearLayers();
-      var showNames = document.getElementById('toggleLabelsRegistro').checked;
-      
-      // Aqui usamos a mesma lógica do editor: Mostra visível sempre? ou só se checkbox ON?
-      // O usuário pediu "Opção de mostrar ou não". Vamos fazer o checkbox controlar TUDO para ficar limpo,
-      // ou apenas os opcionais.
-      // O pedido foi "O seletor ver nomes não faz nada". Agora fará.
-      
-      if(showNames) {
-          dadosTerritoriosCache.forEach(function(t) {
-              // No registro, opcional não tem icone nem cor. Vamos mostrar label só dos principais?
-              // Ou mostrar todos se o checkbox estiver on.
-              // Vou mostrar APENAS os NÃO OPCIONAIS (Visíveis) para não poluir, já que opcional é "fantasma"
-              if(t.labelType !== 'optional') { 
-                  var pts = stringParaLatLng(t.polyString);
-                  if(pts.length >= 3) {
-                     var pt = L.polygon(pts, {interactive:false, fill:false, stroke:false});
-                     var centro = pt.getBounds().getCenter();
-                     if(t.labelPos && t.labelPos.indexOf(',')>-1) { var s=t.labelPos.split(','); centro=[parseFloat(s[0]), parseFloat(s[1])]; }
-                     var badge = '<div class="territory-badge" style="border-color:'+t.color+'">' + t.name + '</div>';
-                     layerGroupRegistroLabels.addLayer(L.marker(centro, {icon:L.divIcon({html:badge, className:''}), interactive:false}));
-                  }
-              }
+  // 5. Editar Poligono Manual
+  window.editarPoligonoManual = function() {
+      modalEditarTerritorio.hide();
+      var l = editingTerritoryData.layer;
+      l.pm.enable({ allowSelfIntersection: false, snappable: true });
+      alert("Edite a forma e clique no território para salvar.");
+      l.off('click');
+      l.on('click', function(e) {
+         if(confirm("Salvar forma?")) {
+             var polyStr = window.latLngsToString(l.getLatLngs());
+             
+             // Recupera IDs atuais para não perder vinculo
+             var idsAtuais = [];
+             layerGroupQuadras.eachLayer(function(q){
+                 if(q.metaData.territory === editingTerritoryData.data.name) idsAtuais.push(q.metaData.id);
+             });
+
+             var up = [{
+                 originalName: editingTerritoryData.data.name,
+                 name: editingTerritoryData.data.name,
+                 color: editingTerritoryData.data.color,
+                 polyString: polyStr,
+                 idsQuadras: idsAtuais, 
+                 labelPos: editingTerritoryData.data.labelPos
+             }];
+             
+             l.pm.disable();
+             showLoading(true);
+             google.script.run.withSuccessHandler(function() {
+                 alert("Salvo!");
+                 window.carregarEditorDados();
+             }).salvarLoteTerritorios(up);
+         } 
+      });
+  };
+
+  // =================================================================
+  // OUTRAS FERRAMENTAS
+  // =================================================================
+  window.iniciarFusaoQuadras = function() {
+        // Verifica se tem pelo menos 2 selecionadas
+        if(selectedQuadras.length < 2) {
+            return alert("Selecione pelo menos 2 quadras para realizar a fusão.");
+        }
+
+        try {
+            // 1. Converte as quadras selecionadas para GeoJSON
+            var feats = selectedQuadras.map(function(q) { return q.layer.toGeoJSON(); });
+
+            // 2. Executa a União Matemática (Acumulativa)
+            var uniao = feats[0];
+            for(var i=1; i<feats.length; i++) {
+                uniao = turf.union(uniao, feats[i]);
+            }
+
+            if(!uniao || !uniao.geometry) throw "Erro geométrico ao processar união.";
+
+            // 3. Solicita o ID da nova quadra
+            var idsAntigos = selectedQuadras.map(function(q){ return q.id; });
+            var novoId = prompt("Fusão de Quadras (" + idsAntigos.join(", ") + ")\n\nDigite o ID da nova quadra resultante:", idsAntigos[0]);
+            
+            if(!novoId) return; // Cancelado
+
+            // 4. Converte usando a FUNÇÃO SEGURA (Isso garante que não inverta errado)
+            var polyString = window.converterGeoJsonParaString(uniao.geometry);
+
+            // 5. Herda dados da primeira quadra (Território/Cor)
+            var baseData = selectedQuadras[0].layer.metaData;
+            
+            var payload = {
+                idsRemover: idsAntigos,
+                novoId: novoId,
+                polyString: polyString,
+                cor: baseData.color,
+                territorio: baseData.territory
+            };
+
+            // 6. Envia ao Backend
+            showLoading(true, "Unindo quadras...");
+            
+            google.script.run
+              .withSuccessHandler(function() {
+                  alert("Fusão realizada com sucesso!");
+                  window.alternarModoSelecao(false);
+                  
+                  // FORÇA O RECARREGAMENTO TOTAL DOS DADOS
+                  window.carregarEditorDados(); 
+              })
+              .withFailureHandler(function(e){
+                  showLoading(false);
+                  alert("Erro na fusão: " + e);
+              })
+              .salvarJuncaoQuadras(payload);
+
+        } catch(e) {
+            console.error(e);
+            alert("Erro técnico ao tentar unir: " + e);
+            showLoading(false);
+        }
+    };
+  
+  window.iniciarDivisaoPorVertices = function() {
+      if(!currentEditLayer) return;
+      modalEdicao.hide();
+      alert("Clique em DOIS vértices (bolinhas azuis) para dividir a quadra.");
+      var latlngs = currentEditLayer.getLatLngs()[0];
+      divisionMarkers = []; divisionIndices = [];
+      latlngs.forEach(function(ll, idx) {
+          var m = L.circleMarker(ll, {radius: 7, color: 'blue', fillColor: 'white', fillOpacity: 1}).addTo(mapPoligonos);
+          m.vertexIndex = idx; 
+          m.on('click', function(e) {
+              L.DomEvent.stopPropagation(e);
+              this.setStyle({color: 'red', fillColor: 'red'});
+              divisionIndices.push(this.vertexIndex);
+              if(divisionIndices.length === 2) { window.executarCorteArray(latlngs); }
+          });
+          divisionMarkers.push(m);
+      });
+  };
+  
+  window.executarCorteArray = function(allPoints) {
+      divisionMarkers.forEach(m => mapPoligonos.removeLayer(m)); divisionMarkers = [];
+      try {
+          var idx1 = divisionIndices[0]; var idx2 = divisionIndices[1];
+          if(idx1 === idx2) throw "Mesmo vértice.";
+          var start = Math.min(idx1, idx2); var end = Math.max(idx1, idx2);
+          var pointsA = allPoints.slice(start, end + 1);
+          var pointsB = allPoints.slice(end).concat(allPoints.slice(0, start + 1));
+          if(pointsA.length < 3 || pointsB.length < 3) throw "Corte inválido.";
+          
+          var idA = prompt("ID Parte 1:", currentEditLayer.metaData.id); if(!idA) { window.carregarEditorDados(); return; } 
+          var idB = prompt("ID Parte 2:", currentEditLayer.metaData.id + "-B");
+          var polyStrA = window.latLngsToString(pointsA); var polyStrB = window.latLngsToString(pointsB);
+          
+          showLoading(true);
+          google.script.run.withSuccessHandler(() => { alert("Dividido!"); window.carregarEditorDados(); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
+      } catch(e) { alert(e); window.carregarEditorDados(); }
+  };
+
+  window.ativarEdicaoVertices = function() {
+      modalEdicao.hide();
+      if(currentEditLayer) {
+          currentEditLayer.pm.enable({ allowSelfIntersection: false, snappable: true });
+          alert("Edite e clique na quadra para salvar.");
+          currentEditLayer.off('click');
+          currentEditLayer.on('click', function(e) {
+              if(confirm("Salvar forma?")) { currentEditLayer.pm.disable(); window.salvarQuadraAtual(); }
           });
       }
   };
-  
-  window.toggleLabelsRegistro = function() { renderizarLabelsRegistro(); };
-  
-  window.iniciarSalvamentoConclusao = function() { 
-     if(registroSelecionados.size===0) return alert("Selecione quadras."); 
-     var dt = document.getElementById('dataRegistro').value; if(!dt) return alert("Data obrigatória."); 
-     tempConflitoPayload = { ids: Array.from(registroSelecionados), data: dt, modo: 'auto' };
-     showLoading(true); google.script.run.withSuccessHandler(processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload); 
-  };
-  
-  window.processarRespostaRegistro = function(res) {
-     showLoading(false);
-     if (res.status === "SUCESSO") { alert("Salvo!"); carregarDadosRegistro(); } 
-     else if (res.status === "CONFLITO") { modalConflitoData.show(); }
-  };
-  window.resolverConflito = function(modo) {
-     modalConflitoData.hide(); tempConflitoPayload.modo = modo; showLoading(true);
-     google.script.run.withSuccessHandler(processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload);
-  };
-  
-  // =================================================================
-  // DETALHES
-  // =================================================================
-  window.carregarQuadra = function(id) { showLoading(true); google.script.run.withSuccessHandler(renderDetalhes).getDadosDaQuadra(id); };
-  
-  window.renderDetalhes = function(dados) {
-    document.getElementById('tituloQuadra').innerText = document.getElementById('selectQuadra').value;
-    var grupos = {}; 
-    var lat=0, lng=0, c=0;
+
+  window.deletarQuadraAtual = function() { if(confirm("Excluir quadra?")) { google.script.run.withSuccessHandler(() => { modalEdicao.hide(); window.carregarEditorDados(); }).excluirQuadra(currentEditLayer.metaData.id); } };
+  window.deletarTerritorioAtual = function() { if(confirm("Excluir território?")) { google.script.run.withSuccessHandler(() => { modalEditarTerritorio.hide(); window.carregarEditorDados(); }).excluirTerritorio(editingTerritoryData.data.name); } };
+
+window.converterGeoJsonParaString = function(geometry) {
+    if (!geometry || !geometry.coordinates) return "";
     
-    // Inicia Mini Mapa se não existir
-    if(!mapDetalhe) {
-        mapDetalhe = L.map('mapDetalhe').setView([-7.115, -34.863], 17);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe);
-    }
-    // Limpa markers antigos
-    mapDetalhe.eachLayer(function(l){ if(l instanceof L.Marker || l instanceof L.CircleMarker) mapDetalhe.removeLayer(l); });
-
-    dados.forEach(function(d) {
-       var key = d.logradouro + '_' + d.numero + '_' + (d.desc || ''); 
-       if(!grupos[key]) grupos[key] = { ...d, unidades: [] }; 
-       grupos[key].unidades.push(d);
-       
-       if(d.lat && d.lng && d.lat !== 0) { lat+=d.lat; lng+=d.lng; c++; }
-    });
-
-    var btn = document.getElementById('btnRotaDetalhe');
-    if(btn) { 
-        if(c>0) { 
-            btn.style.display='block'; 
-            btn.onclick = function() { window.abrirRota(lat/c, lng/c); }; 
-        } else { btn.style.display='none'; } 
+    var coords = [];
+    
+    // Resolve o problema de MultiPolygon (ilhas) pegando o polígono principal
+    if (geometry.type === 'MultiPolygon') {
+        if(geometry.coordinates[0] && geometry.coordinates[0][0]) {
+            coords = geometry.coordinates[0][0];
+        }
+    } 
+    // Polígono simples
+    else if (geometry.type === 'Polygon') {
+        if(geometry.coordinates[0]) {
+            coords = geometry.coordinates[0];
+        }
     }
     
-    var html = '';
-    Object.values(grupos).forEach(function(g,i) {
-       // Renderiza no Mapa (CORREÇÃO: Mostra pinos para todos os grupos)
-       if(g.lat && g.lng && g.lat!==0) {
-           var markerColor = g.unidades.length > 1 ? '#0d6efd' : '#198754'; // Azul predio, verde casa
-           var marker = L.circleMarker([g.lat, g.lng], {
-               radius: 6, fillColor: markerColor, color: 'white', weight: 1, fillOpacity: 0.9
-           }).addTo(mapDetalhe);
-           
-           var popupTxt = "<b>" + g.logradouro + ", " + g.numero + "</b>" + (g.desc ? "<br>"+g.desc : "");
-           if(g.unidades.length > 1) popupTxt += "<br>"+g.unidades.length+" unidades";
-           marker.bindPopup(popupTxt);
-       }
+    if (!coords || coords.length === 0) return "";
 
-       // Renderiza Lista
-       var isPredio = g.unidades.length > 1; 
-       var nomeLocal = g.desc ? '<b>'+g.desc+'</b><br>' : '';
-       
-       if(isPredio) {
-         var listaHTML = ''; 
-         g.unidades.forEach(function(u) { 
-             var style = u.naoVisitar ? 'text-decoration: line-through; color: red;' : '';
-             var icon = u.naoVisitar ? '<i class="fa-solid fa-ban text-danger"></i>' : '<i class="fa-regular fa-square"></i>';
-             listaHTML += '<li class="list-group-item d-flex justify-content-between"><span style="'+style+'">'+(u.complemento || 'Unidade')+'</span>'+icon+'</li>'; 
-         });
-         html += '<div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#c'+i+'"><div>'+nomeLocal + g.logradouro+', '+g.numero+' <span class="badge bg-secondary">'+g.unidades.length+'</span></div></button></h2><div id="c'+i+'" class="accordion-collapse collapse"><div class="accordion-body p-0"><ul class="list-group list-group-flush">'+listaHTML+'</ul></div></div></div>';
-       } else {
-         var u = g.unidades[0];
-         var style = u.naoVisitar ? 'text-decoration: line-through; color: red;' : '';
-         var icon = u.naoVisitar ? '<i class="fa-solid fa-ban text-danger"></i>' : '<i class="fa-regular fa-square"></i>';
-         var nota = u.nota ? '<br><small class="text-warning"><i class="fa-solid fa-circle-exclamation"></i> '+u.nota+'</small>' : '';
-         html += '<div class="list-group-item d-flex justify-content-between p-3 bg-white border mb-1"><div>'+nomeLocal+' <span style="'+style+'">'+g.logradouro+', '+g.numero+'</span> '+nota+'</div>'+icon+'</div>'; 
-       }
-    });
-    
-    document.getElementById('listaEnderecos').innerHTML = html;
-    document.getElementById('totalEnderecos').innerText = dados.length;
-    document.getElementById('infoArea').style.display = 'block';
-    
-    if(c>0) {
-        mapDetalhe.setView([lat/c, lng/c], 18);
-    }
-    setTimeout(function(){ mapDetalhe.invalidateSize(); }, 300);
+    // INVERTE E FORMATA: [Lng, Lat] viram "Lat,Lng" separados por " | "
+    return coords.map(function(p) {
+        return p[1] + "," + p[0]; 
+    }).join(" | ");
+};
 
-    showLoading(false);
+  // UI Helpers
+  window.abrirModalEdicao=function(l){ currentEditLayer=l; document.getElementById('editId').value=l.metaData.id; document.getElementById('editOriginalId').value=l.metaData.id; document.getElementById('editTerritory').value=l.metaData.territory; document.getElementById('editColor').value=l.metaData.color; modalEdicao.show(); };
+  window.salvarQuadraAtual=function(){ var poly = window.latLngsToString(currentEditLayer.getLatLngs()); modalEdicao.hide(); showLoading(true); google.script.run.withSuccessHandler(() => { alert("Salvo"); window.carregarEditorDados(); }).salvarEdicaoQuadra({ idOriginal:document.getElementById('editOriginalId').value, idNovo:document.getElementById('editId').value, territory:document.getElementById('editTerritory').value, color:document.getElementById('editColor').value, polyString:poly }); };
+  window.abrirModalSalvarTerritorio=function(){ document.getElementById('lblCountTerritorio').innerText=selectedQuadras.length; modalNovoTerritorio.show(); };
+
+  window.confirmarSalvarTerritorio = function() {
+      var nome = document.getElementById('newTerritoryName').value; 
+      if(!nome) return alert("Por favor, digite um nome para o território.");
+      
+      modalNovoTerritorio.hide(); 
+      showLoading(true, "Criando território...");
+      
+      var ids = selectedQuadras.map(function(q){ return q.id; }); 
+      var poly = "";
+      
+      try {
+          var feats = selectedQuadras.map(function(q){ return q.layer.toGeoJSON(); });
+          var u = feats[0]; 
+          for(var i=1; i<feats.length; i++) {
+              u = turf.union(u, feats[i]);
+          }
+          
+          // USA A NOVA FUNÇÃO DE CONVERSÃO CORRIGIDA
+          poly = window.converterGeoJsonParaString(u.geometry);
+          
+      } catch(e){ console.error(e); }
+      
+      var up = [{
+          name: nome, 
+          color: document.getElementById('newTerritoryColor').value, 
+          idsQuadras: ids, 
+          polyString: poly, 
+          labelType: document.getElementById('newTerritoryLabelType').value
+      }];
+      
+      google.script.run.withSuccessHandler(function() {
+          alert("Território criado com sucesso!");
+          window.alternarModoSelecao(false); 
+          window.carregarEditorDados();
+      }).salvarLoteTerritorios(up);
   };
 
-  // =================================================================
-  // UTILS
-  // =================================================================
-  window.stringParaLatLng = function(str) {
-      if(!str || typeof str !== 'string') return [];
-      var clean = str.replace(/\r\n/g, "|").replace(/\n/g, "|");
-      var parts = clean.split("|");
-      var res = [];
-      for(var i=0; i<parts.length; i++) {
-          var p = parts[i].trim();
-          if(p) { var c = p.split(","); if(c.length >= 2) { var lat = parseFloat(c[0]); var lng = parseFloat(c[1]); if(!isNaN(lat) && !isNaN(lng)) res.push([lat, lng]); } }
+
+  window.alternarModoSelecao=function(v){ isSelectionMode=v; if(!v) window.limparSelecao(); };
+  window.toggleSelecaoQuadra=function(l){ var id=l.metaData.id; var idx=selectedQuadras.findIndex(q => q.id===id); if(idx===-1){ selectedQuadras.push({id:id, layer:l}); l.setStyle({color:'red', weight:3, dashArray:'10,5'}); } else { selectedQuadras.splice(idx,1); l.setStyle({color:'#666', weight:1, dashArray:null}); } window.atualizarBotoesSelecao(); };
+  window.atualizarBotoesSelecao=function(){ var n=selectedQuadras.length; document.getElementById('countSelectedBadge').innerText=n; var b1=document.getElementById('btnSalvarTerritorio'); var b2=document.getElementById('btnJuntarQuadras'); if(n>0)b1.classList.remove('disabled'); else b1.classList.add('disabled'); if(n>1)b2.classList.remove('disabled'); else b2.classList.add('disabled'); };
+  window.limparSelecao=function(){ selectedQuadras.forEach(q => q.layer.setStyle({color:'#666', weight:1, dashArray:null})); selectedQuadras=[]; window.atualizarBotoesSelecao(); };
+
+  // Utils e Registro (Mantidos)
+  window.carregarDadosRegistro = function() {
+      showLoading(true);
+      registroSelecionados.clear();
+      
+      // 1. Busca Configuração dos Territórios (Opcionais)
+      google.script.run.withSuccessHandler(function(terrs) {
+          cacheOpsRegistro = new Set();
+          terrs.forEach(function(t) {
+              if (t.labelType === 'optional') cacheOpsRegistro.add(t.name);
+          });
+          
+          // 2. Busca Quadras
+          google.script.run.withSuccessHandler(function(q) {
+              cacheQuadrasRegistro = q; // Salva no CACHE GLOBAL
+              window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro); // Desenha
+              showLoading(false);
+          }).getPoligonosQuadras();
+          
+      }).getDadosTerritorios();
+  };
+
+window.iniciarMapaRegistro = function(qs, ops) {
+      if (!mapRegistro) {
+          // --- MUDANÇA AQUI: Adicionei { preferCanvas: true } ---
+          mapRegistro = L.map('mapRegistro', {
+              preferCanvas: true 
+          }).setView([-7.115, -34.863], 15);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
+          
+          layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
+          layerGroupRegistroIcons = L.featureGroup().addTo(mapRegistro);
+          layerGroupRegistroLabels = L.featureGroup().addTo(mapRegistro);
       }
-      return res;
+      
+      layerGroupRegistro.clearLayers();
+      layerGroupRegistroIcons.clearLayers();
+      layerGroupRegistroLabels.clearLayers();
+      
+      var hoje = new Date();
+      
+      qs.forEach(function(q) {
+          var pts = window.stringParaLatLng(q.polyString);
+          if (pts.length < 3) return;
+          
+          var isOpt = ops.has(q.territory);
+          var cor = isOpt ? '#eeeeee' : q.color;
+          var op = isOpt ? 0.1 : 0.5;
+          
+          var poly = L.polygon(pts, {
+              color: cor,
+              weight: 1,
+              fillOpacity: op
+          });
+          
+          if (!isOpt) {
+              // --- AQUI ESTÁ A MUDANÇA DO HOVER ---
+              var dataFormatada = q.dataConclusao ? window.formatarDataBR(q.dataConclusao) : "Nunca feita";
+              var territorioNome = q.territory || "Sem Território";
+              
+              var conteudoTooltip = '<div style="text-align: center;">' +
+                                    '<b>Quadra ' + q.id + '</b><br>' +
+                                    '<span style="font-size: 0.9em;">' + territorioNome + '</span><br>' +
+                                    '<span style="font-size: 0.85em; color: #444;">Última: ' + dataFormatada + '</span>' +
+                                    '</div>';
+
+              poly.bindTooltip(conteudoTooltip, { 
+                  sticky: true,       // Segue o mouse
+                  direction: 'top',   // Tenta ficar acima
+                  opacity: 0.95 
+              });
+              // -------------------------------------
+
+              poly.on('click', function() {
+                  var id = q.id;
+                  if (registroSelecionados.has(id)) {
+                      registroSelecionados.delete(id);
+                      this.setStyle({ color: q.color, weight: 1 });
+                  } else {
+                      registroSelecionados.add(id);
+                      this.setStyle({ color: 'red', weight: 4 });
+                  }
+              });
+              
+              // Lógica dos ícones de alerta (Data)
+              var iconCls = "status-alert";
+              var iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>';
+              
+              if (q.status === 'Concluído' && q.dataConclusao) {
+                  var p = q.dataConclusao.split('-');
+                  var dt = new Date(p[0], p[1] - 1, p[2]);
+                  var diff = Math.ceil(Math.abs(hoje - dt) / (864e5));
+                  
+                  if (diff <= 15) {
+                      iconCls = "status-15d";
+                      iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+                  } else if (diff <= 90) {
+                      iconCls = "status-90d";
+                      iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+                  }
+              }
+              
+              layerGroupRegistroIcons.addLayer(L.marker(poly.getBounds().getCenter(), {
+                  icon: L.divIcon({
+                      className: 'status-marker-icon ' + iconCls,
+                      html: iconHtml,
+                      iconSize: [20, 20]
+                  }),
+                  interactive: false
+              }));
+          } else {
+              poly.setStyle({ interactive: false });
+          }
+          
+          layerGroupRegistro.addLayer(poly);
+      });
+      
+      window.renderizarLabelsRegistro();
+      window.ativarGPS('registro');
   };
+
+  window.renderizarLabelsRegistro=function(){ if(!layerGroupRegistroLabels)return; layerGroupRegistroLabels.clearLayers(); var show=document.getElementById('toggleLabelsRegistro').checked; if(show){ dadosTerritoriosCache.forEach(function(t){ if(t.labelType!=='optional'){ var pts=window.stringParaLatLng(t.polyString); if(pts.length<3)return; var pt=L.polygon(pts,{interactive:false,fill:false,stroke:false}); var c=pt.getBounds().getCenter(); if(t.labelPos && t.labelPos.includes(',')){var s=t.labelPos.split(',');c=[parseFloat(s[0]),parseFloat(s[1])]} var badge='<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>'; layerGroupRegistroLabels.addLayer(L.marker(c,{icon:L.divIcon({html:badge}),interactive:false})); } }); } };
+  window.toggleLabelsRegistro=function(){window.renderizarLabelsRegistro()};
+  window.iniciarSalvamentoConclusao=function(){ if(registroSelecionados.size===0)return alert("Selecione quadras"); var d=document.getElementById('dataRegistro').value; if(!d)return alert("Data?"); tempConflitoPayload={ids:Array.from(registroSelecionados), data:d, modo:'auto'}; showLoading(true); google.script.run.withSuccessHandler(window.processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload); };
   
-  window.formatarDataBR = function(ymd) {
-     if(!ymd) return "";
-     var p = ymd.split('-');
-     if(p.length === 3) return p[2]+'/'+p[1]+'/'+p[0];
-     return ymd;
+  window.processarRespostaRegistro = function(r) {
+      showLoading(false);
+      
+      if (r.status === "SUCESSO") {
+          // Atualiza o CACHE localmente (Optimistic UI)
+          var idsSalvos = tempConflitoPayload.ids; // IDs que acabamos de salvar
+          var dataSalva = tempConflitoPayload.data;
+          
+          // Percorre nosso cache e atualiza as quadras salvam
+          cacheQuadrasRegistro.forEach(function(q) {
+              if (idsSalvos.includes(q.id)) {
+                  q.status = "Concluído";
+                  q.dataConclusao = dataSalva;
+              }
+          });
+          
+          // Limpa seleção
+          registroSelecionados.clear();
+          
+          // Redesenha o mapa usando os dados da memória (INSTANTÂNEO)
+          window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
+          
+          // Opcional: Mostra aviso rápido que sumiu
+          // alert("Salvo com sucesso!"); 
+          
+      } else {
+          // Se deu conflito, abre o modal
+          modalConflitoData.show();
+      }
   };
+
+  window.resolverConflito=function(m){modalConflitoData.hide(); tempConflitoPayload.modo=m; showLoading(true); google.script.run.withSuccessHandler(window.processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload)};
   
-  window.ativarGPS = function(tela) {
-     if(!navigator.geolocation) return;
-     navigator.geolocation.getCurrentPosition(function(p) {
-         var lat = p.coords.latitude; var lng = p.coords.longitude;
-         var map = (tela==='geral')?mapGeral:(tela==='editor'?mapPoligonos:mapRegistro);
-         if(map) { L.circleMarker([lat, lng], {radius:6, color:'blue'}).addTo(map); map.setView([lat, lng], 16); }
-     });
+  // Helpers
+// =================================================================
+  // RENDERIZAR FACES (AGRUPAMENTOS)
+  // =================================================================
+  window.renderizarFaces = function() {
+      // Limpa camadas anteriores para não duplicar
+      layerGroupFacesRes.clearLayers();
+      layerGroupFacesCom.clearLayers();
+      
+      var showRes = document.getElementById('toggleFacesRes').checked;
+      var showCom = document.getElementById('toggleFacesCom').checked;
+      
+      if (!dadosFacesGlobal) return;
+
+      // Renderiza Residenciais (Azul)
+      if (showRes && dadosFacesGlobal.residencial) {
+          dadosFacesGlobal.residencial.forEach(function(f) {
+              var m = window.criarMarkerFace(f, '#0d6efd'); // Azul
+              layerGroupFacesRes.addLayer(m);
+          });
+      }
+
+      // Renderiza Comerciais (Laranja)
+      if (showCom && dadosFacesGlobal.comercial) {
+          dadosFacesGlobal.comercial.forEach(function(f) {
+              var m = window.criarMarkerFace(f, '#fd7e14'); // Laranja
+              layerGroupFacesCom.addLayer(m);
+          });
+      }
   };
-  
-  window.abrirRota = function(lat, lng) {
-      window.open('http://googleusercontent.com/maps.google.com/?q='+lat+','+lng+'&travelmode=walking', '_blank');
+
+window.criarMarkerFace = function(f, corBase) {
+      // Define estilo visual inicial
+      // Se já atribuída: Opacidade total. Se não: Transparente (0.4)
+      var opacidade = f.isAssigned ? 1.0 : 0.4;
+      var borda = f.isAssigned ? 'white' : 'transparent'; 
+      var pesoBorda = f.isAssigned ? 1 : 0;
+      
+      var m = L.circleMarker([f.lat, f.lng], {
+          radius: 5,
+          fillColor: corBase,
+          color: borda,
+          weight: pesoBorda,
+          fillOpacity: opacidade,
+          interactive: true
+      });
+      
+      // Guarda dados no próprio objeto do marcador para facilitar
+      m.corOriginal = corBase;
+      m.opacidadeOriginal = opacidade;
+      m.bordaOriginal = borda;
+      m.pesoBordaOriginal = pesoBorda;
+
+      // Tooltip (Mouseover)
+      m.bindTooltip('<b>' + f.label + '</b><br>' + f.total + ' endereços' + (f.isAssigned ? '<br>(Vinculada)' : ''), {
+          direction: 'top',
+          offset: [0, -5]
+      });
+      
+      // LOGICA DE CLIQUE (ACUMULATIVA E SILENCIOSA)
+      m.on('click', function(e) {
+          L.DomEvent.stopPropagation(e); // Não deixa o clique passar para o mapa
+          
+          if(facesSelecionadas.has(f.key)) {
+              // SE JÁ ESTAVA SELECIONADO -> DESMARCA (Volta ao normal)
+              facesSelecionadas.delete(f.key);
+              
+              this.setStyle({ 
+                  fillColor: m.corOriginal, 
+                  color: m.bordaOriginal, 
+                  weight: m.pesoBordaOriginal,
+                  radius: 5, 
+                  fillOpacity: m.opacidadeOriginal 
+              });
+              
+          } else {
+              // SE NÃO ESTAVA -> MARCA (Fica Vermelho/Amarelo)
+              facesSelecionadas.set(f.key, f);
+              
+              this.setStyle({ 
+                  fillColor: 'red',     // Cor de destaque
+                  color: 'yellow',      // Borda de destaque
+                  weight: 2,
+                  radius: 8,            // Aumenta tamanho
+                  fillOpacity: 1 
+              });
+          }
+          
+          // NENHUM ALERT AQUI! O fluxo segue liso.
+      });
+      
+      return m;
   };
+
+// =================================================================
+  // ASSOCIAÇÃO FACE -> QUADRA
+  // =================================================================
+window.confirmarAssociacao = function(layerQuadra) {
+      var quadraId = layerQuadra.metaData.id;
+      var qtdFaces = facesSelecionadas.size;
+      
+      if(qtdFaces === 0) return;
+      
+      // Calcula o total de endereços somando os totais de cada face
+      var totalEnderecos = 0;
+      var todasLinhas = [];
+      
+      facesSelecionadas.forEach(function(faceObj) {
+          totalEnderecos += faceObj.total;
+          if(faceObj.rows && Array.isArray(faceObj.rows)) {
+              todasLinhas = todasLinhas.concat(faceObj.rows);
+          }
+      });
+      
+      console.log("Linhas para salvar:", todasLinhas); // Diagnóstico
+      
+      var confirmacao = confirm("Vincular " + qtdFaces + " face(s) (" + totalEnderecos + " endereços) à quadra " + quadraId + "?");
+      
+      if(confirmacao) {
+          var payload = {
+              quadraId: quadraId,
+              linhas: todasLinhas
+          };
+          
+          showLoading(true, "Vinculando " + totalEnderecos + " endereços...");
+          
+          google.script.run
+              .withSuccessHandler(function() {
+                  alert("Vínculo realizado!");
+                  facesSelecionadas.clear();
+                  window.carregarEditorDados();
+              })
+              .withFailureHandler(function(e){
+                  showLoading(false);
+                  alert("Erro ao vincular: " + e);
+              })
+              .salvarAssociacaoFaces(payload);
+      }
+  };
+
+  window.stringParaLatLng = function(str) { if(!str) return []; var p=str.replace(/\r\n|\n|\r/g,"|").split("|"); var r=[]; p.forEach(function(x){var c=x.trim().split(","); if(c.length>=2) r.push([parseFloat(c[0]), parseFloat(c[1])])}); return r; };
+  window.formatarDataBR = function(ymd) { if(!ymd) return ""; var p = ymd.split('-'); if(p.length === 3) return p[2]+'/'+p[1]+'/'+p[0]; return ymd; };
+  window.ativarGPS=function(t){if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){var m=(t==='geral'?mapGeral:t==='registro'?mapRegistro:mapPoligonos); if(m){L.circleMarker([p.coords.latitude,p.coords.longitude],{radius:6,color:'blue'}).addTo(m);m.setView([p.coords.latitude,p.coords.longitude],17)}})};
+  window.latLngsToString = function(ll) { var arr = Array.isArray(ll[0]) ? ll[0] : ll; return arr.map(function(p){return p.lat+","+p.lng}).join(" | "); };
 </script>
