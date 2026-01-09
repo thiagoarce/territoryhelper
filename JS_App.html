@@ -1,0 +1,620 @@
+<script>
+  // =================================================================
+  // VARIAVEIS GLOBAIS
+  // =================================================================
+  var mapGeral, mapPoligonos, mapRegistro, mapDetalhe;
+  var layerGroupQuadras, layerGroupTerritorios;
+  var layerGroupFacesRes, layerGroupFacesCom;
+  var layerGroupRegistro, layerGroupRegistroIcons, layerGroupRegistroLabels;
+  var lgGeralQuadras, lgGeralTerritorios, lgGeralLabels;
+  
+  var facesSelecionadas = new Set();
+  var registroSelecionados = new Set();
+  var dadosFacesGlobal = null;
+  var dadosTerritoriosCache = [];
+  var isSelectionMode = false;
+  var selectedQuadras = [];
+
+  // Modais
+  var modalEdicao, modalNovoTerritorio, modalNomear, modalEditarTerritorio, modalConflitoData;
+  var currentEditLayer = null;
+  var tempConflitoPayload = null;
+  
+  // Geometria Vars
+  var isEditingTerritory = false; 
+  var editingTerritoryData = null;
+  var tempPartes = []; 
+  var tempIdOriginal = "";
+  var tempIdsOriginais = [];
+
+  // =================================================================
+  // INICIALIZAÇÃO
+  // =================================================================
+  window.onload = function() {
+    try {
+       modalEdicao = new bootstrap.Modal(document.getElementById('modalEdicao'));
+       modalNovoTerritorio = new bootstrap.Modal(document.getElementById('modalNovoTerritorio'));
+       modalNomear = new bootstrap.Modal(document.getElementById('modalNomear'));
+       modalEditarTerritorio = new bootstrap.Modal(document.getElementById('modalEditarTerritorio'));
+       modalConflitoData = new bootstrap.Modal(document.getElementById('modalConflitoData'));
+       
+       var dateInput = document.getElementById('dataRegistro');
+       if(dateInput) dateInput.valueAsDate = new Date();
+       
+       iniciarApp();
+    } catch(e) { console.error("Erro onload", e); }
+  };
+
+  window.iniciarApp = function() {
+    showLoading(true, "Iniciando...");
+    google.script.run.withSuccessHandler(function(lista) {
+      var sel = document.getElementById('selectQuadra');
+      if(sel) {
+        lista.forEach(function(q) { 
+           var opt = document.createElement('option'); opt.value = q; opt.text = q; sel.appendChild(opt); 
+        });
+      }
+    }).getListaQuadras();
+    carregarMapaGeral();
+  };
+  
+  window.showLoading = function(show, txt) { 
+    var txtEl = document.getElementById('loadingText');
+    var loadEl = document.getElementById('loading');
+    if(txtEl && txt) txtEl.innerText = txt; 
+    if(loadEl) loadEl.style.display = show ? 'flex' : 'none'; 
+  };
+
+  window.mudarAba = function(aba) {
+    document.querySelectorAll('.nav-item').forEach(function(e){ e.classList.remove('active'); });
+    document.querySelectorAll('.screen').forEach(function(e){ e.classList.remove('active'); });
+    
+    var btn = document.getElementById('btnAba' + aba.charAt(0).toUpperCase() + aba.slice(1));
+    if(btn) btn.classList.add('active');
+    
+    var tela = document.getElementById(aba === 'poligonos' ? 'telaPoligonos' : 'tela' + aba.charAt(0).toUpperCase() + aba.slice(1));
+    if(tela) tela.classList.add('active');
+    
+    if(aba === 'geral' && mapGeral) setTimeout(function(){ mapGeral.invalidateSize(); }, 100);
+    if(aba === 'poligonos') {
+       if(!mapPoligonos) iniciarMapaPoligonos();
+       else setTimeout(function(){ mapPoligonos.invalidateSize(); }, 100);
+    }
+    if(aba === 'registro') {
+       carregarDadosRegistro();
+       setTimeout(function(){ if(mapRegistro) { mapRegistro.invalidateSize(); } }, 200);
+    }
+    if(aba === 'detalhe' && mapDetalhe) {
+       setTimeout(function(){ mapDetalhe.invalidateSize(); }, 200);
+    }
+  };
+
+  // =================================================================
+  // MAPA GERAL
+  // =================================================================
+  window.carregarMapaGeral = function() {
+    if(!mapGeral) {
+      mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
+      lgGeralQuadras = L.featureGroup().addTo(mapGeral);
+      lgGeralTerritorios = L.featureGroup().addTo(mapGeral);
+      lgGeralLabels = L.featureGroup().addTo(mapGeral);
+    }
+    
+    showLoading(true, "Carregando...");
+    google.script.run.withSuccessHandler(function(dados) {
+        if(!dados) { showLoading(false); return; }
+        lgGeralQuadras.clearLayers();
+        dados.forEach(function(d) {
+            var pts = stringParaLatLng(d.polyString);
+            if(pts.length >= 3) {
+                var poly = L.polygon(pts, { color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6 });
+                if(d.id) {
+                    poly.bindTooltip(d.id, { permanent: true, direction: "center", className: "label-quadra" });
+                    
+                    // CORREÇÃO: Botão Detalhes Adicionado
+                    var c = poly.getBounds().getCenter();
+                    var btnRota = '<button class="btn btn-sm btn-success w-100 mb-1" onclick="window.abrirRota('+c.lat+','+c.lng+')"><i class="fa-solid fa-route"></i> Rota</button>';
+                    var btnDetalhe = '<button class="btn btn-sm btn-primary w-100" onclick="window.irParaDetalhes(\''+d.id+'\')"><i class="fa-solid fa-list"></i> Detalhes</button>';
+                    
+                    poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br>'+btnRota+btnDetalhe+'</div>');
+                }
+                lgGeralQuadras.addLayer(poly);
+            }
+        });
+        carregarTerritoriosGeral();
+    }).getPoligonosQuadras();
+  };
+
+  // Função nova para link direto
+  window.irParaDetalhes = function(id) {
+      // Muda Select
+      var sel = document.getElementById('selectQuadra');
+      if(sel) {
+          sel.value = id;
+          // Se o valor existir na lista, dispara
+          if(sel.value === id) {
+              window.mudarAba('detalhe');
+              window.carregarQuadra(id);
+          }
+      }
+  };
+
+  window.carregarTerritoriosGeral = function() {
+      google.script.run.withSuccessHandler(function(terrs) {
+            if(!terrs) return;
+            lgGeralTerritorios.clearLayers(); lgGeralLabels.clearLayers();
+            terrs.forEach(function(t) {
+                var pts = stringParaLatLng(t.polyString);
+                if(pts.length >= 3) {
+                    var pt = L.polygon(pts, { color: t.color, weight: 3, fillOpacity: 0.2, dashArray: '5,5' });
+                    lgGeralTerritorios.addLayer(pt);
+                    
+                    var centro = pt.getBounds().getCenter();
+                    if(t.labelPos && t.labelPos.indexOf(',') > -1) {
+                        var spl = t.labelPos.split(','); centro = [parseFloat(spl[0]), parseFloat(spl[1])];
+                    }
+                    var badge = '<div class="territory-badge" style="border-color:'+t.color+'">' + t.name + '</div>';
+                    lgGeralLabels.addLayer(L.marker(centro, { icon: L.divIcon({html: badge, className:''}), interactive:false }));
+                }
+            });
+            showLoading(false);
+            ativarGPS('geral');
+      }).getDadosTerritorios();
+  };
+  
+  window.toggleCamadasGeral = function() {
+      var q = document.getElementById('checkGeralQuadras').checked;
+      var t = document.getElementById('checkGeralTerritorios').checked;
+      if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras);
+      if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } 
+      else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); }
+  };
+
+  // =================================================================
+  // EDITOR
+  // =================================================================
+  window.iniciarMapaPoligonos = function() {
+    if (!mapPoligonos) {
+      mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
+      mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
+      
+      layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
+      layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos); 
+      layerGroupFacesRes = L.featureGroup().addTo(mapPoligonos);
+      layerGroupFacesCom = L.featureGroup().addTo(mapPoligonos);
+    }
+    carregarEditorDados();
+  };
+
+  window.carregarEditorDados = function() {
+      showLoading(true);
+      layerGroupQuadras.clearLayers(); 
+      
+      google.script.run.withSuccessHandler(function(dados) {
+          if(!dados) return;
+          dados.forEach(function(d) {
+              var pts = stringParaLatLng(d.polyString);
+              if(pts.length < 3) return;
+              var poly = L.polygon(pts, { color: '#666', weight: 1, fillColor: d.color, fillOpacity: 0.3 });
+              poly.metaData = d;
+              poly.bindTooltip(d.id, { permanent: true, direction: "center", className: "label-quadra" });
+              
+              poly.on('click', function(e) {
+                  if(facesSelecionadas.size > 0) { L.DomEvent.stopPropagation(e); confirmarAssociacao(this); }
+                  else if(isSelectionMode) { toggleSelecaoQuadra(this); }
+                  else { abrirModalEdicao(this); }
+              });
+              layerGroupQuadras.addLayer(poly);
+          });
+          
+          google.script.run.withSuccessHandler(function(terrs){
+             dadosTerritoriosCache = terrs || [];
+             atualizarLabelsTerritorioEditor();
+          }).getDadosTerritorios();
+
+          google.script.run.withSuccessHandler(function(f) {
+              dadosFacesGlobal = f; renderizarFaces(); showLoading(false);
+          }).getDadosFaces();
+      }).getPoligonosQuadras();
+  };
+  
+  window.mudarVisualizacao = function(val) {
+      if(!mapPoligonos) return;
+      if(mapPoligonos.hasLayer(layerGroupQuadras)) mapPoligonos.removeLayer(layerGroupQuadras);
+      if(mapPoligonos.hasLayer(layerGroupTerritorios)) mapPoligonos.removeLayer(layerGroupTerritorios);
+
+      if(val === 'quadras') { mapPoligonos.addLayer(layerGroupQuadras); }
+      else if (val === 'territorios') { mapPoligonos.addLayer(layerGroupTerritorios); } 
+      else { mapPoligonos.addLayer(layerGroupQuadras); mapPoligonos.addLayer(layerGroupTerritorios); }
+  };
+
+  window.atualizarLabelsTerritorioEditor = function() {
+      layerGroupTerritorios.clearLayers();
+      var showOptional = document.getElementById('toggleNumbers').checked; // Controle de opcionais
+      var viewMode = document.getElementById('editorViewSelect').value;
+
+      dadosTerritoriosCache.forEach(function(t) {
+          var pts = stringParaLatLng(t.polyString);
+          if(pts.length >= 3) {
+              var pt = L.polygon(pts, { color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '10,5', interactive: false });
+              layerGroupTerritorios.addLayer(pt);
+              
+              // LÓGICA DE VISIBILIDADE DOS RÓTULOS (BADGES)
+              // Se LabelType = visible -> Mostra Sempre
+              // Se LabelType = optional -> Mostra SÓ se o checkbox estiver ON
+              
+              var deveMostrar = false;
+              if (t.labelType === 'visible') {
+                  deveMostrar = true;
+              } else if (t.labelType === 'optional' && showOptional) {
+                  deveMostrar = true;
+              }
+
+              if(deveMostrar) {
+                  var centro = pt.getBounds().getCenter();
+                  if(t.labelPos && t.labelPos.indexOf(',')>-1) { var s=t.labelPos.split(','); centro=[parseFloat(s[0]), parseFloat(s[1])]; }
+                  var badge = '<div class="territory-badge" style="border-color:'+t.color+'">' + t.name + '</div>';
+                  layerGroupTerritorios.addLayer(L.marker(centro, {icon:L.divIcon({html:badge, className:''}), interactive:false}));
+              }
+          }
+      });
+      mudarVisualizacao(viewMode);
+  };
+  
+  window.toggleNumerosTerritorios = function() { atualizarLabelsTerritorioEditor(); };
+
+  window.renderizarFaces = function() {
+      layerGroupFacesRes.clearLayers(); layerGroupFacesCom.clearLayers();
+      var chkRes = document.getElementById('toggleFacesRes').checked;
+      var chkCom = document.getElementById('toggleFacesCom').checked;
+      if(dadosFacesGlobal) {
+          if(chkRes) dadosFacesGlobal.residencial.forEach(function(f){ layerGroupFacesRes.addLayer(criarMarkerFace(f, '#0d6efd')); });
+          if(chkCom) dadosFacesGlobal.comercial.forEach(function(f){ layerGroupFacesCom.addLayer(criarMarkerFace(f, '#fd7e14')); });
+      }
+  };
+
+  window.criarMarkerFace = function(f, cor) {
+      var m = L.circleMarker([f.lat, f.lng], { radius: 5, fillColor: cor, color: 'white', weight: 1, fillOpacity: 0.9 });
+      m.faceData = f; m.corBase = cor;
+      m.bindTooltip('<b>' + f.label + '</b><br>' + f.total + ' endereços');
+      m.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          var key = this.faceData.key;
+          if(facesSelecionadas.has(key)) { facesSelecionadas.delete(key); this.setStyle({ fillColor: this.corBase, color: 'white', weight: 1 }); } 
+          else { facesSelecionadas.add(key); this.setStyle({ fillColor: '#00ff00', color: 'black', weight: 2 }); }
+          atualizarBotaoAssociacao();
+      });
+      return m;
+  };
+  
+  window.atualizarBotaoAssociacao = function() {
+      var btn = document.getElementById('btnAssociarFaces');
+      var bar = document.getElementById('barraAssociacao');
+      if(facesSelecionadas.size > 0) {
+          bar.classList.remove('d-none'); btn.disabled = false; btn.innerText = "Associar " + facesSelecionadas.size + " face(s)...";
+          btn.classList.remove('btn-dark'); btn.classList.add('btn-success');
+      } else {
+          bar.classList.add('d-none'); btn.disabled = true;
+      }
+  };
+
+  window.confirmarAssociacao = function(poly) {
+      var qId = poly.metaData.id;
+      if(!confirm("Associar faces à " + qId + "?")) return;
+      var linhas = [];
+      layerGroupFacesRes.eachLayer(function(l){ if(facesSelecionadas.has(l.faceData.key)) linhas.push.apply(linhas, l.faceData.rows); });
+      layerGroupFacesCom.eachLayer(function(l){ if(facesSelecionadas.has(l.faceData.key)) linhas.push.apply(linhas, l.faceData.rows); });
+      showLoading(true, "Associando...");
+      google.script.run.withSuccessHandler(function(r) { alert(r); facesSelecionadas.clear(); carregarEditorDados(); }).salvarAssociacaoFaces({ quadraId: qId, linhas: linhas });
+  };
+  
+  // =================================================================
+  // LÓGICA DE UI DO EDITOR
+  // =================================================================
+  window.alternarModoSelecao = function(ativo) { isSelectionMode = ativo; if(!ativo) limparSelecao(); };
+  
+  window.toggleSelecaoQuadra = function(layer) {
+      var id = layer.metaData.id;
+      var idx = selectedQuadras.findIndex(function(q){ return q.id === id; });
+      if(idx === -1) { selectedQuadras.push({id: id, layer: layer}); layer.setStyle({color: 'red', weight: 3, dashArray: '10,5'}); } 
+      else { selectedQuadras.splice(idx, 1); layer.setStyle({color: '#666', weight: 1, dashArray: null}); }
+      atualizarBotoesSelecao();
+  };
+  
+  window.limparSelecao = function() {
+      selectedQuadras.forEach(function(q){ q.layer.setStyle({color: '#666', weight: 1, dashArray: null}); });
+      selectedQuadras = []; atualizarBotoesSelecao();
+  };
+  
+  window.atualizarBotoesSelecao = function() { 
+      var n = selectedQuadras.length; document.getElementById('countSelectedBadge').innerText = n; 
+      if(!isEditingTerritory) { 
+          var btnS = document.getElementById('btnSalvarTerritorio'); var btnJ = document.getElementById('btnJuntarQuadras'); 
+          if(n > 0) btnS.classList.remove("disabled"); else btnS.classList.add("disabled"); 
+          if(n > 1) btnJ.classList.remove("disabled"); else btnJ.classList.add("disabled"); 
+      } 
+  };
+  
+  window.abrirModalEdicao = function(layer) {
+      if(isSelectionMode) return;
+      currentEditLayer = layer;
+      var d = layer.metaData;
+      document.getElementById('editOriginalId').value = d.id;
+      document.getElementById('editId').value = d.id;
+      document.getElementById('editTerritory').value = d.territory;
+      document.getElementById('editColor').value = d.color;
+      if(layer.pm.enabled()) layer.pm.disable();
+      modalEdicao.show();
+  };
+  
+  window.salvarQuadraAtual = function() {
+      var novoId = document.getElementById('editId').value;
+      var poly = currentEditLayer.getLatLngs()[0].map(function(p){ return p.lat + "," + p.lng; }).join(" | ");
+      modalEdicao.hide(); showLoading(true);
+      google.script.run.withSuccessHandler(function(){ alert("Salvo"); carregarEditorDados(); }).salvarEdicaoQuadra({ 
+          idOriginal: document.getElementById('editOriginalId').value, idNovo: novoId, territory: document.getElementById('editTerritory').value, color: document.getElementById('editColor').value, polyString: poly 
+      });
+  };
+
+  window.abrirModalSalvarTerritorio = function() { document.getElementById('lblCountTerritorio').innerText = selectedQuadras.length; modalNovoTerritorio.show(); };
+  window.confirmarSalvarTerritorio = function() {
+      var nome = document.getElementById('newTerritoryName').value;
+      if(!nome) return alert("Nome obrigatório");
+      modalNovoTerritorio.hide(); showLoading(true);
+      
+      var ids = selectedQuadras.map(function(q){ return q.id; });
+      var feats = selectedQuadras.map(function(q){ return q.layer.toGeoJSON(); });
+      var u = feats[0];
+      for(var i=1; i<feats.length; i++) try { u = turf.union(u, feats[i]); } catch(e){}
+      var poly = u.geometry.coordinates[0].map(function(p){ return p[1]+","+p[0]; }).join(" | ");
+      
+      var updates = [{ name: nome, color: document.getElementById('newTerritoryColor').value, idsQuadras: ids, polyString: poly, labelType: document.getElementById('newTerritoryLabelType').value }];
+      google.script.run.withSuccessHandler(function(){ alert("Criado!"); alternarModoSelecao(false); carregarEditorDados(); }).salvarLoteTerritorios(updates);
+  };
+
+  // =================================================================
+  // REGISTRO
+  // =================================================================
+  window.carregarDadosRegistro = function() { 
+      showLoading(true, "Carregando..."); registroSelecionados.clear(); 
+      google.script.run.withSuccessHandler(function(terrs) {
+          dadosTerritoriosCache = terrs || []; 
+          var opcionais = new Set(); terrs.forEach(function(t){ if(t.labelType === 'optional') opcionais.add(t.name); });
+          google.script.run.withSuccessHandler(function(quadras) { iniciarMapaRegistro(quadras, opcionais); showLoading(false); }).getPoligonosQuadras();
+      }).getDadosTerritorios();
+  };
+  
+  window.iniciarMapaRegistro = function(quadras, opcionais) {
+      if(!mapRegistro) {
+          mapRegistro = L.map('mapRegistro').setView([-7.115, -34.863], 14);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
+          layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
+          layerGroupRegistroIcons = L.featureGroup().addTo(mapRegistro);
+          layerGroupRegistroLabels = L.featureGroup().addTo(mapRegistro); 
+      }
+      layerGroupRegistro.clearLayers(); layerGroupRegistroIcons.clearLayers(); layerGroupRegistroLabels.clearLayers();
+      var hoje = new Date();
+      
+      quadras.forEach(function(q) {
+          var pts = stringParaLatLng(q.polyString);
+          if(pts.length < 3) return;
+          
+          var ehOpcional = opcionais.has(q.territory);
+          
+          // Estilo
+          var cor = ehOpcional ? '#dddddd' : q.color; 
+          var opacidade = ehOpcional ? 0.2 : 0.5;
+          
+          var poly = L.polygon(pts, {color: cor, weight: 1, fillOpacity: opacidade});
+          poly.metaData = q;
+          
+          var txtData = q.dataConclusao ? "<br>Feito: " + formatarDataBR(q.dataConclusao) : "<br>Nunca feito";
+          var label = "<b>" + q.id + "</b>" + (q.territory ? "<br>(" + q.territory + ")" : "") + txtData;
+          poly.bindTooltip(label, { sticky: true, direction: 'top' });
+
+          if(!ehOpcional) {
+              poly.on('click', function(e) { 
+                  var id = q.id;
+                  if(registroSelecionados.has(id)) { registroSelecionados.delete(id); this.setStyle({color:q.color, weight:1}); } 
+                  else { registroSelecionados.add(id); this.setStyle({color:'red', weight:4}); }
+              });
+
+              // CORREÇÃO ÍCONES: 
+              // 1. Padrão é Vermelho (Alerta)
+              var iconClass = "status-alert"; 
+              var iconInner = '<i class="fa-solid fa-triangle-exclamation"></i>'; // Nunca feito ou Atrasado
+              
+              if(q.status === 'Concluído' && q.dataConclusao) {
+                   var parts = q.dataConclusao.split('-');
+                   var dtConc = new Date(parts[0], parts[1]-1, parts[2]);
+                   var diffTime = Math.abs(hoje - dtConc);
+                   var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                   
+                   if (diffDays <= 15) { iconClass = "status-15d"; iconInner = '<i class="fa-solid fa-circle-check"></i>'; }
+                   else if (diffDays <= 30) { iconClass = "status-30d"; iconInner = '<i class="fa-solid fa-circle-check"></i>'; }
+                   else if (diffDays <= 60) { iconClass = "status-60d"; iconInner = '<i class="fa-solid fa-circle-check"></i>'; }
+                   else if (diffDays <= 90) { iconClass = "status-90d"; iconInner = '<i class="fa-solid fa-circle-exclamation"></i>'; }
+                   else { 
+                      // > 90 dias: Mantém vermelho
+                      iconClass = "status-alert"; iconInner = '<i class="fa-solid fa-triangle-exclamation"></i>';
+                   }
+              }
+              // Se nunca feito, já caiu no default vermelho lá em cima.
+              
+              var center = poly.getBounds().getCenter();
+              var myIcon = L.divIcon({className: 'status-marker-icon ' + iconClass, html: iconInner, iconSize: [20, 20]});
+              layerGroupRegistroIcons.addLayer(L.marker(center, {icon: myIcon, interactive: false}));
+          }
+          layerGroupRegistro.addLayer(poly);
+      });
+      
+      renderizarLabelsRegistro();
+      ativarGPS('registro');
+  };
+  
+  window.renderizarLabelsRegistro = function() {
+      if(!layerGroupRegistroLabels) return;
+      layerGroupRegistroLabels.clearLayers();
+      var showNames = document.getElementById('toggleLabelsRegistro').checked;
+      
+      // Aqui usamos a mesma lógica do editor: Mostra visível sempre? ou só se checkbox ON?
+      // O usuário pediu "Opção de mostrar ou não". Vamos fazer o checkbox controlar TUDO para ficar limpo,
+      // ou apenas os opcionais.
+      // O pedido foi "O seletor ver nomes não faz nada". Agora fará.
+      
+      if(showNames) {
+          dadosTerritoriosCache.forEach(function(t) {
+              // No registro, opcional não tem icone nem cor. Vamos mostrar label só dos principais?
+              // Ou mostrar todos se o checkbox estiver on.
+              // Vou mostrar APENAS os NÃO OPCIONAIS (Visíveis) para não poluir, já que opcional é "fantasma"
+              if(t.labelType !== 'optional') { 
+                  var pts = stringParaLatLng(t.polyString);
+                  if(pts.length >= 3) {
+                     var pt = L.polygon(pts, {interactive:false, fill:false, stroke:false});
+                     var centro = pt.getBounds().getCenter();
+                     if(t.labelPos && t.labelPos.indexOf(',')>-1) { var s=t.labelPos.split(','); centro=[parseFloat(s[0]), parseFloat(s[1])]; }
+                     var badge = '<div class="territory-badge" style="border-color:'+t.color+'">' + t.name + '</div>';
+                     layerGroupRegistroLabels.addLayer(L.marker(centro, {icon:L.divIcon({html:badge, className:''}), interactive:false}));
+                  }
+              }
+          });
+      }
+  };
+  
+  window.toggleLabelsRegistro = function() { renderizarLabelsRegistro(); };
+  
+  window.iniciarSalvamentoConclusao = function() { 
+     if(registroSelecionados.size===0) return alert("Selecione quadras."); 
+     var dt = document.getElementById('dataRegistro').value; if(!dt) return alert("Data obrigatória."); 
+     tempConflitoPayload = { ids: Array.from(registroSelecionados), data: dt, modo: 'auto' };
+     showLoading(true); google.script.run.withSuccessHandler(processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload); 
+  };
+  
+  window.processarRespostaRegistro = function(res) {
+     showLoading(false);
+     if (res.status === "SUCESSO") { alert("Salvo!"); carregarDadosRegistro(); } 
+     else if (res.status === "CONFLITO") { modalConflitoData.show(); }
+  };
+  window.resolverConflito = function(modo) {
+     modalConflitoData.hide(); tempConflitoPayload.modo = modo; showLoading(true);
+     google.script.run.withSuccessHandler(processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload);
+  };
+  
+  // =================================================================
+  // DETALHES
+  // =================================================================
+  window.carregarQuadra = function(id) { showLoading(true); google.script.run.withSuccessHandler(renderDetalhes).getDadosDaQuadra(id); };
+  
+  window.renderDetalhes = function(dados) {
+    document.getElementById('tituloQuadra').innerText = document.getElementById('selectQuadra').value;
+    var grupos = {}; 
+    var lat=0, lng=0, c=0;
+    
+    // Inicia Mini Mapa se não existir
+    if(!mapDetalhe) {
+        mapDetalhe = L.map('mapDetalhe').setView([-7.115, -34.863], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapDetalhe);
+    }
+    // Limpa markers antigos
+    mapDetalhe.eachLayer(function(l){ if(l instanceof L.Marker || l instanceof L.CircleMarker) mapDetalhe.removeLayer(l); });
+
+    dados.forEach(function(d) {
+       var key = d.logradouro + '_' + d.numero + '_' + (d.desc || ''); 
+       if(!grupos[key]) grupos[key] = { ...d, unidades: [] }; 
+       grupos[key].unidades.push(d);
+       
+       if(d.lat && d.lng && d.lat !== 0) { lat+=d.lat; lng+=d.lng; c++; }
+    });
+
+    var btn = document.getElementById('btnRotaDetalhe');
+    if(btn) { 
+        if(c>0) { 
+            btn.style.display='block'; 
+            btn.onclick = function() { window.abrirRota(lat/c, lng/c); }; 
+        } else { btn.style.display='none'; } 
+    }
+    
+    var html = '';
+    Object.values(grupos).forEach(function(g,i) {
+       // Renderiza no Mapa (CORREÇÃO: Mostra pinos para todos os grupos)
+       if(g.lat && g.lng && g.lat!==0) {
+           var markerColor = g.unidades.length > 1 ? '#0d6efd' : '#198754'; // Azul predio, verde casa
+           var marker = L.circleMarker([g.lat, g.lng], {
+               radius: 6, fillColor: markerColor, color: 'white', weight: 1, fillOpacity: 0.9
+           }).addTo(mapDetalhe);
+           
+           var popupTxt = "<b>" + g.logradouro + ", " + g.numero + "</b>" + (g.desc ? "<br>"+g.desc : "");
+           if(g.unidades.length > 1) popupTxt += "<br>"+g.unidades.length+" unidades";
+           marker.bindPopup(popupTxt);
+       }
+
+       // Renderiza Lista
+       var isPredio = g.unidades.length > 1; 
+       var nomeLocal = g.desc ? '<b>'+g.desc+'</b><br>' : '';
+       
+       if(isPredio) {
+         var listaHTML = ''; 
+         g.unidades.forEach(function(u) { 
+             var style = u.naoVisitar ? 'text-decoration: line-through; color: red;' : '';
+             var icon = u.naoVisitar ? '<i class="fa-solid fa-ban text-danger"></i>' : '<i class="fa-regular fa-square"></i>';
+             listaHTML += '<li class="list-group-item d-flex justify-content-between"><span style="'+style+'">'+(u.complemento || 'Unidade')+'</span>'+icon+'</li>'; 
+         });
+         html += '<div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#c'+i+'"><div>'+nomeLocal + g.logradouro+', '+g.numero+' <span class="badge bg-secondary">'+g.unidades.length+'</span></div></button></h2><div id="c'+i+'" class="accordion-collapse collapse"><div class="accordion-body p-0"><ul class="list-group list-group-flush">'+listaHTML+'</ul></div></div></div>';
+       } else {
+         var u = g.unidades[0];
+         var style = u.naoVisitar ? 'text-decoration: line-through; color: red;' : '';
+         var icon = u.naoVisitar ? '<i class="fa-solid fa-ban text-danger"></i>' : '<i class="fa-regular fa-square"></i>';
+         var nota = u.nota ? '<br><small class="text-warning"><i class="fa-solid fa-circle-exclamation"></i> '+u.nota+'</small>' : '';
+         html += '<div class="list-group-item d-flex justify-content-between p-3 bg-white border mb-1"><div>'+nomeLocal+' <span style="'+style+'">'+g.logradouro+', '+g.numero+'</span> '+nota+'</div>'+icon+'</div>'; 
+       }
+    });
+    
+    document.getElementById('listaEnderecos').innerHTML = html;
+    document.getElementById('totalEnderecos').innerText = dados.length;
+    document.getElementById('infoArea').style.display = 'block';
+    
+    if(c>0) {
+        mapDetalhe.setView([lat/c, lng/c], 18);
+    }
+    setTimeout(function(){ mapDetalhe.invalidateSize(); }, 300);
+
+    showLoading(false);
+  };
+
+  // =================================================================
+  // UTILS
+  // =================================================================
+  window.stringParaLatLng = function(str) {
+      if(!str || typeof str !== 'string') return [];
+      var clean = str.replace(/\r\n/g, "|").replace(/\n/g, "|");
+      var parts = clean.split("|");
+      var res = [];
+      for(var i=0; i<parts.length; i++) {
+          var p = parts[i].trim();
+          if(p) { var c = p.split(","); if(c.length >= 2) { var lat = parseFloat(c[0]); var lng = parseFloat(c[1]); if(!isNaN(lat) && !isNaN(lng)) res.push([lat, lng]); } }
+      }
+      return res;
+  };
+  
+  window.formatarDataBR = function(ymd) {
+     if(!ymd) return "";
+     var p = ymd.split('-');
+     if(p.length === 3) return p[2]+'/'+p[1]+'/'+p[0];
+     return ymd;
+  };
+  
+  window.ativarGPS = function(tela) {
+     if(!navigator.geolocation) return;
+     navigator.geolocation.getCurrentPosition(function(p) {
+         var lat = p.coords.latitude; var lng = p.coords.longitude;
+         var map = (tela==='geral')?mapGeral:(tela==='editor'?mapPoligonos:mapRegistro);
+         if(map) { L.circleMarker([lat, lng], {radius:6, color:'blue'}).addTo(map); map.setView([lat, lng], 16); }
+     });
+  };
+  
+  window.abrirRota = function(lat, lng) {
+      window.open('http://googleusercontent.com/maps.google.com/?q='+lat+','+lng+'&travelmode=walking', '_blank');
+  };
+</script>

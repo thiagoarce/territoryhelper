@@ -1,162 +1,298 @@
-function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate().setTitle('Gestor de Territórios').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+// =================================================================
+// 1. INICIALIZAÇÃO
+// =================================================================
+function doGet(e) {
+  return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('Mapa de Territórios').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
 }
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
 
-function getVisaoGeral() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-  if (!sheet) return [];
-  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 11).getValues(); 
-  const quadras = {};
-  data.forEach(row => {
-    const faceId = row[0]; if (!faceId) return;
-    const partes = faceId.split('-'); if (partes.length < 2) return;
-    const quadraId = partes[0] + '-' + partes[1]; 
-    if (!quadras[quadraId]) quadras[quadraId] = { id: quadraId, lat: 0, lng: 0, totalEnderecos: 0, countCoords: 0 };
-    const lat = limparCoord(row[9]); const lng = limparCoord(row[10]);
-    if (lat && lng) { quadras[quadraId].lat += lat; quadras[quadraId].lng += lng; quadras[quadraId].countCoords++; }
-    quadras[quadraId].totalEnderecos++;
-  });
-  return Object.values(quadras).map(q => ({ id: q.id, lat: q.countCoords > 0 ? q.lat / q.countCoords : null, lng: q.countCoords > 0 ? q.lng / q.countCoords : null, total: q.totalEnderecos }));
-}
-function getListaQuadras() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-  if (!sheet) return [];
-  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  const quadrasUnicas = new Set();
-  data.forEach(r => { if(r[0]) { let partes = r[0].split('-'); if (partes.length >= 2) quadrasUnicas.add(partes[0] + '-' + partes[1]); } });
-  return Array.from(quadrasUnicas).sort();
-}
-function getDadosDaQuadra(quadraId) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 18).getValues();
-  return range.filter(row => row[0] && row[0].startsWith(quadraId)).map(row => ({
-    logradouro: row[5], numero: row[6], complemento: row[8], lat: limparCoord(row[9]), lng: limparCoord(row[10]), tipo: row[11], nomeEdificio: row[17] || ""
-  }));
-}
+// =================================================================
+// 2. LEITURA: QUADRAS
+// =================================================================
 function getPoligonosQuadras() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Quadras");
-  if (!sheet) { sheet = ss.insertSheet("Quadras"); sheet.appendRow(["ID", "Area", "Lat", "Lng", "PolyString", "Cor", "Territorio", "Status", "Data Conclusão"]); return []; }
-  if (sheet.getLastRow() < 2) return [];
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
-  return range.map(row => ({
-    id: row[0], area: row[1], lat: row[2], lng: row[3], polyString: row[4], color: row[5] || "#3388ff", territory: row[6] || "",
-    status: row[7] || "Pendente", dataConclusao: row[8] ? Utilities.formatDate(new Date(row[8]), Session.getScriptTimeZone(), "yyyy-MM-dd") : ""
-  }));
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("Quadras");
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return []; 
+    const rows = data.slice(1);
+    
+    return rows.map(function(r) {
+      // A[0]:ID, B[1]:Area, C[2]:Lat, D[3]:Lng, E[4]:Poly, F[5]:Cor, G[6]:Terr, H[7]:Status, I[8]:Data
+      var id = String(r[0] || "");
+      if (!id) return null;
+
+      var polyString = String(r[4] || ""); 
+      var cor = String(r[5] || "#3388ff");
+      var terr = String(r[6] || "");
+
+      var dataFormatada = "";
+      try {
+        if (r[8]) {
+           var d = new Date(r[8]);
+           if(!isNaN(d.getTime())) dataFormatada = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        }
+      } catch(e) {}
+
+      var centroFormatado = "";
+      if (r[2] && r[3]) {
+         centroFormatado = String(r[2]).replace(',', '.') + "," + String(r[3]).replace(',', '.');
+      }
+
+      return {
+        id: id,
+        polyString: polyString, 
+        territory: terr,
+        color: cor,
+        area: r[1],
+        centro: centroFormatado,
+        dataConclusao: dataFormatada, 
+        status: String(r[7] || "Pendente") 
+      };
+    }).filter(function(i){ return i !== null && i.polyString.length > 5; });
+  } catch (err) { return []; }
 }
+
+// =================================================================
+// 3. LEITURA: TERRITÓRIOS
+// =================================================================
 function getDadosTerritorios() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Territorios");
-  if (!sheet) { sheet = ss.insertSheet("Territorios"); sheet.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)", "Posição Rótulo", "Tipo Rótulo", "Status", "Data Conclusão"]); return []; }
-  if (sheet.getLastRow() < 2) return [];
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 8).getValues();
-  return range.map(row => ({ 
-    name: row[0], color: row[1], quadras: row[2], polyString: row[3], labelPos: row[4], labelType: row[5] || "visible",
-    status: row[6] || "Pendente", dataConclusao: row[7] ? Utilities.formatDate(new Date(row[7]), Session.getScriptTimeZone(), "yyyy-MM-dd") : ""
-  }));
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Territorios");
+    if (!sheet) sheet = ss.getSheetByName("Territórios");
+    if (!sheet) return [];
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+    const rows = data.slice(1);
+    return rows.map(function(r) {
+      return {
+        name: String(r[0] || ""),
+        color: String(r[1] || "#3388ff"),
+        quadras: String(r[2] || ""),
+        polyString: String(r[3] || ""),
+        labelPos: String(r[4] || ""),
+        labelType: String(r[5] || 'visible') // visible ou optional
+      };
+    });
+  } catch (e) { return []; }
 }
+function getListaQuadras() { return getPoligonosQuadras().map(function(d) { return d.id; }).sort(); }
+
+// =================================================================
+// 4. LEITURA: DADOS BRUTOS (Faces e Detalhes)
+// =================================================================
+function getDadosFaces() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Dados Brutos"); 
+  if(!sheet) return { residencial: [], comercial: [] };
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return { residencial: [], comercial: [] };
+
+  const rows = data.slice(1);
+  const facesRes = {};
+  const facesCom = {};
+
+  const tiposResidenciais = [ "Domicílio particular Apartamento", "Domicílio particular Casa", "Domicílio particular Casa de vila ou em condomínio", "Domicílio particular", "Domicílio coletivo" ];
+
+  rows.forEach(function(row, index) {
+    if (!row[9] || !row[10]) return; 
+    
+    var setor = row[1] || "";
+    var numQuadra = row[2] || ""; // IBGE Quadra
+    var numFace = row[3] || "";
+    
+    var lat = parseFloat(String(row[9]).replace(',', '.'));
+    var lng = parseFloat(String(row[10]).replace(',', '.'));
+    var tipo = String(row[11] || "").trim();
+    
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    var faceKey = setor + "_" + numQuadra + "_" + numFace;
+    var isResidencial = tiposResidenciais.includes(tipo);
+    var targetObj = isResidencial ? facesRes : facesCom;
+
+    if (!targetObj[faceKey]) {
+      // AJUSTE SOLICITADO: Rótulo com Quadra e Face
+      var labelFull = (numQuadra ? "Q"+numQuadra+"-" : "") + "F" + numFace;
+      targetObj[faceKey] = {
+        key: faceKey,
+        label: labelFull, 
+        latSum: 0, lngSum: 0, count: 0, ids: []
+      };
+    }
+    targetObj[faceKey].latSum += lat;
+    targetObj[faceKey].lngSum += lng;
+    targetObj[faceKey].count++;
+    targetObj[faceKey].ids.push(index + 2);
+  });
+
+  var formatar = function(obj) {
+    return Object.values(obj).map(function(f) {
+      return { key: f.key, label: f.label, lat: f.latSum / f.count, lng: f.lngSum / f.count, total: f.count, rows: f.ids };
+    });
+  };
+
+  return { residencial: formatar(facesRes), comercial: formatar(facesCom) };
+}
+
+function getDadosDaQuadra(idQuadra) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Dados Brutos");
+  if(!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  // Filtra pelo ID da Quadra na Coluna A (Index 0)
+  return data.filter(function(r) { return String(r[0]) === String(idQuadra); }).map(function(r) {
+    // Trata Lat/Lng para evitar erros de soma no frontend
+    var l = parseFloat(String(r[9]).replace(',','.'));
+    var g = parseFloat(String(r[10]).replace(',','.'));
+    return {
+      logradouro: r[5], numero: r[6], desc: r[7], complemento: r[8], tipo: r[11], nota: r[13], naoVisitar: r[16],
+      lat: isNaN(l) ? 0 : l, 
+      lng: isNaN(g) ? 0 : g
+    };
+  });
+}
+
+// =================================================================
+// 5. ESCRITA
+// =================================================================
+function salvarAssociacaoFaces(dados) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Dados Brutos");
+  if(!sheet) return "Erro DB";
+  dados.linhas.forEach(function(r) { sheet.getRange(r, 1).setValue(dados.quadraId); });
+  return "Associado!";
+}
+
+function salvarConclusaoQuadras(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetQ = ss.getSheetByName("Quadras");
+  var sheetReg = ss.getSheetByName("Registros");
+  if(!sheetReg) { sheetReg = ss.insertSheet("Registros"); sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]); }
+  
+  const dataQ = sheetQ.getDataRange().getValues();
+  const mapIndex = {};
+  for(let i=1; i<dataQ.length; i++) { mapIndex[String(dataQ[i][0])] = i + 1; }
+
+  if(payload.modo === "auto") {
+      var conflitos = [];
+      var novaData = new Date(payload.data + "T00:00:00");
+      payload.ids.forEach(function(id) {
+         var idx = mapIndex[id];
+         if(idx && dataQ[idx-1][8]) {
+            if(novaData < new Date(dataQ[idx-1][8])) conflitos.push(id);
+         }
+      });
+      if(conflitos.length > 0) return {status: "CONFLITO", ids: conflitos};
+  }
+
+  payload.ids.forEach(function(id){
+      var row = mapIndex[id];
+      if(row) {
+          if(payload.modo !== "apenas_historico") {
+              sheetQ.getRange(row, 8).setValue("Concluído");
+              sheetQ.getRange(row, 9).setValue(payload.data);
+              var nmTerr = dataQ[row-1][6];
+              if(nmTerr) verificarStatusTerritorio(nmTerr, payload.data);
+          }
+          sheetReg.appendRow([id, payload.data, payload.modo, new Date()]);
+      }
+  });
+  return {status: "SUCESSO"};
+}
+
+function verificarStatusTerritorio(nomeTerr, dataRef) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetQ = ss.getSheetByName("Quadras");
+  var sheetT = ss.getSheetByName("Territorios"); if(!sheetT) sheetT = ss.getSheetByName("Territórios");
+  if(!sheetT) return;
+
+  const dadosQ = sheetQ.getDataRange().getValues();
+  let total = 0; let concluidas = 0;
+
+  for(let i=1; i<dadosQ.length; i++) {
+    if(String(dadosQ[i][6]) === nomeTerr) {
+      total++;
+      if(String(dadosQ[i][7]).toLowerCase() === "concluído" || String(dadosQ[i][7]).toLowerCase() === "concluido") concluidas++;
+    }
+  }
+
+  if (total > 0 && total === concluidas) {
+    const dadosT = sheetT.getDataRange().getValues();
+    for(let j=1; j<dadosT.length; j++) {
+      if(String(dadosT[j][0]) === nomeTerr) {
+        sheetT.getRange(j+1, 7).setValue("Concluído");
+        sheetT.getRange(j+1, 8).setValue(dataRef);
+        break;
+      }
+    }
+  }
+}
+
 function salvarEdicaoQuadra(dados) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Quadras");
-  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  let rowIndex = ids.indexOf(dados.idOriginal);
-  if (rowIndex === -1) return { erro: "Quadra não encontrada." };
-  const linha = rowIndex + 2;
-  sheet.getRange(linha, 1, 1, 7).setValues([[dados.idNovo, dados.area, dados.centro[0], dados.centro[1], dados.polyString, dados.color, dados.territory]]);
-  return { sucesso: true };
-}
-function salvarLoteTerritorios(listaUpdates) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetQuadras = ss.getSheetByName("Quadras");
-  let sheetTerritorios = ss.getSheetByName("Territorios");
-  if (!sheetTerritorios) { sheetTerritorios = ss.insertSheet("Territorios"); sheetTerritorios.appendRow(["Nome", "Cor", "Lista de Quadras", "Polígono (Union)", "Posição Rótulo", "Tipo Rótulo", "Status", "Data Conclusão"]); }
-  const nomesTerritorios = sheetTerritorios.getLastRow() > 1 ? sheetTerritorios.getRange(2, 1, sheetTerritorios.getLastRow()-1, 1).getValues().flat() : [];
-  const idsQuadras = sheetQuadras.getLastRow() > 1 ? sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow()-1, 1).getValues().flat() : [];
-  listaUpdates.forEach(update => {
-    const nomeBusca = update.originalName || update.name;
-    const tIndex = nomesTerritorios.indexOf(nomeBusca);
-    if (tIndex > -1) {
-      const rowT = tIndex + 2;
-      sheetTerritorios.getRange(rowT, 1, 1, 6).setValues([[update.name, update.color, update.idsQuadras.join(","), update.polyString, update.labelPos || "", update.labelType || "visible"]]);
-    } else {
-      sheetTerritorios.appendRow([update.name, update.color, update.idsQuadras.join(","), update.polyString, update.labelPos || "", update.labelType || "visible", "Pendente", ""]);
-      nomesTerritorios.push(update.name);
-    }
-    update.idsQuadras.forEach(qId => {
-      const qIndex = idsQuadras.indexOf(qId);
-      if (qIndex > -1) { sheetQuadras.getRange(qIndex + 2, 6, 1, 2).setValues([[update.color, update.name]]); }
-    });
-  });
-  return { sucesso: true };
-}
-function salvarConclusaoQuadras(payload) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetQuadras = ss.getSheetByName("Quadras");
-  const sheetTerritorios = ss.getSheetByName("Territorios");
-  const qValues = sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow() - 1, 9).getValues();
-  const territoriosAfetados = new Set();
-  for (let i = 0; i < qValues.length; i++) {
-    if (payload.ids.includes(qValues[i][0])) {
-      sheetQuadras.getRange(i + 2, 8).setValue("Concluído");
-      sheetQuadras.getRange(i + 2, 9).setValue(payload.data);
-      if (qValues[i][6]) territoriosAfetados.add(qValues[i][6]);
-    }
+  const data = sheet.getDataRange().getValues();
+  let row = -1;
+  for(let i=1; i<data.length; i++) { if(String(data[i][0]) === String(dados.idOriginal)) { row = i+1; break; }}
+  
+  if(row !== -1) {
+     sheet.getRange(row, 1).setValue(dados.idNovo);
+     sheet.getRange(row, 5).setValue(dados.polyString);
+     sheet.getRange(row, 6).setValue(dados.color);
+     sheet.getRange(row, 7).setValue(dados.territory);
+  } else {
+     sheet.appendRow([dados.idNovo, 0, "", "", dados.polyString, dados.color, dados.territory]);
   }
-  if (territoriosAfetados.size > 0) {
-    const qDataAtualizado = sheetQuadras.getRange(2, 1, sheetQuadras.getLastRow() - 1, 9).getValues();
-    const tData = sheetTerritorios.getRange(2, 1, sheetTerritorios.getLastRow() - 1, 8).getValues();
-    territoriosAfetados.forEach(nomeTerritorio => {
-      const quadrasDoTerritorio = qDataAtualizado.filter(r => r[6] === nomeTerritorio);
-      if (quadrasDoTerritorio.length > 0 && quadrasDoTerritorio.every(r => r[7] === "Concluído")) {
-          const datas = quadrasDoTerritorio.map(r => new Date(r[8])).filter(d => !isNaN(d.getTime()));
-          const maxDate = datas.length > 0 ? new Date(Math.max.apply(null, datas)) : new Date();
-          const dataFinal = Utilities.formatDate(maxDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-          for(let k=0; k<tData.length; k++) {
-            if(tData[k][0] === nomeTerritorio) {
-              sheetTerritorios.getRange(k+2, 7, 1, 2).setValues([["Concluído", dataFinal]]);
-              break;
-            }
-          }
-      }
-    });
-  }
-  return { sucesso: true };
+  return "Salvo";
 }
-function excluirTerritorio(nome) {
+
+function salvarLoteTerritorios(updates) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetT = ss.getSheetByName("Territorios");
+  let sheetT = ss.getSheetByName("Territorios"); if(!sheetT) sheetT = ss.getSheetByName("Territórios");
   const sheetQ = ss.getSheetByName("Quadras");
-  const nomes = sheetT.getRange(2, 1, sheetT.getLastRow()-1, 1).getValues().flat();
-  const idx = nomes.indexOf(nome);
-  if (idx > -1) sheetT.deleteRow(idx + 2); else return { erro: "Não encontrado" };
-  const qData = sheetQ.getRange(2, 7, sheetQ.getLastRow()-1, 1).getValues().flat();
-  qData.forEach((val, i) => { if (val === nome) sheetQ.getRange(i + 2, 6, 1, 2).setValues([["#3388ff", ""]]); });
-  return { sucesso: true };
+  
+  updates.forEach(function(up) {
+    let row = -1;
+    const dataT = sheetT.getDataRange().getValues();
+    const busca = up.originalName || up.name;
+    for(let i=1; i<dataT.length; i++) { if(dataT[i][0] === busca) { row = i+1; break; }}
+    
+    const vals = [up.name, up.color, up.idsQuadras.join(','), up.polyString, up.labelPos||"", up.labelType||"visible"];
+    if(row === -1) sheetT.appendRow(vals); 
+    else sheetT.getRange(row, 1, 1, 6).setValues([vals]);
+
+    const dataQ = sheetQ.getDataRange().getValues();
+    for(let i=1; i<dataQ.length; i++) {
+       const qId = String(dataQ[i][0]);
+       if(up.idsQuadras.includes(qId)) {
+          sheetQ.getRange(i+1, 7).setValue(up.name);
+          sheetQ.getRange(i+1, 6).setValue(up.color);
+       }
+    }
+  });
+  return "Atualizado";
 }
-function processarGeometriaEmLote(payload) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Quadras");
-  if (payload.toRemove && payload.toRemove.length > 0) {
-    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat();
-    const rows = [];
-    payload.toRemove.forEach(id => { const i = ids.indexOf(id); if (i > -1) rows.push(i + 2); });
-    rows.sort((a,b)=>b-a).forEach(r => sheet.deleteRow(r));
+
+function processarGeometriaEmLote(dados) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Quadras");
+  const data = sheet.getDataRange().getValues();
+  for(let i=data.length-1; i>=1; i--) { 
+    if(dados.toRemove.includes(String(data[i][0]))) sheet.deleteRow(i+1); 
   }
-  if (payload.toAdd && payload.toAdd.length > 0) {
-    payload.toAdd.forEach(q => sheet.appendRow([q.id, q.area||0, q.centro[0], q.centro[1], q.polyString, "#3388ff", "", "Pendente", ""]));
-  }
-  return { sucesso: true };
+  dados.toAdd.forEach(function(n) { sheet.appendRow([n.id, 0, "", "", n.polyString, "#3388ff", ""]); });
+  return "Processado";
 }
+
 function excluirQuadra(id) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Quadras");
-  const ids = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues().flat();
-  const idx = ids.indexOf(id);
-  if (idx > -1) { sheet.deleteRow(idx + 2); return { sucesso: true }; }
-  return { erro: "Erro ao excluir." };
-}
-function limparCoord(c) {
-  if (typeof c === 'number') return c;
-  if (typeof c === 'string') return parseFloat(c.replace(',', '.'));
-  return null;
+   const ss = SpreadsheetApp.getActiveSpreadsheet();
+   const sheet = ss.getSheetByName("Quadras");
+   const data = sheet.getDataRange().getValues();
+   for(let i=1; i<data.length; i++) { if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return "Excluída"; }}
+   return "Não encontrada";
 }
