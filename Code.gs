@@ -372,39 +372,161 @@ function excluirTerritorio(nome) {
 // 4. FUNÇÕES PÚBLICAS E REGISTRO
 // =================================================================
 function getDadosPublicos(idsString) {
-  // Mesma lógica robusta do anterior
-  if(!idsString) return { quadras: [], enderecos: [] };
-  var ids = idsString.split(",");
-  var qAll = getPoligonosQuadras();
-  var qFilt = qAll.filter(q => ids.includes(q.id));
-  
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Dados Brutos");
-  var end = [];
+  const sheetQ = ss.getSheetByName("Quadras"); // Necessário para o mapa e data
   
-  if(sheet && sheet.getLastRow() >= 2) {
-    const data = sheet.getRange(2, 1, sheet.getLastRow()-1, sheet.getLastColumn()).getValues();
-    data.forEach((r, i) => {
-      if(ids.includes(String(r[0]))) {
-         end.push({
-           row: i+2, quadra: r[0], logradouro: r[5], numero: r[6], descNum: r[7], complemento: r[8],
-           lat: r[9], lng: r[10], tipo: r[11], nome: r[12], nota: r[13], naoVisitar: r[14], ordem: r[17]
-         });
-      }
-    });
-  }
-  
-  // Ordenação Simples
-  end.sort((a,b) => {
-     if(a.ordem && !b.ordem) return -1;
-     if(!a.ordem && b.ordem) return 1;
-     if(a.ordem && b.ordem) return a.ordem - b.ordem;
-     return String(a.logradouro).localeCompare(String(b.logradouro));
-  });
+  if (!sheet || !idsString) return [];
 
-  return { quadras: qFilt, enderecos: end };
+  // 1. Prepara Mapa de Dados das Quadras (Polígono e Data)
+  const mapQuadras = {};
+  if(sheetQ) {
+      const dataQ = sheetQ.getDataRange().getValues();
+      // Pula cabeçalho
+      for(let i=1; i<dataQ.length; i++) {
+          let id = String(dataQ[i][0]).trim();
+          mapQuadras[id] = {
+              polyString: dataQ[i][4],       // Col E: Polígono
+              ultimaData: dataQ[i][8]        // Col I: Data Conclusão
+          };
+      }
+  }
+
+  // 2. Busca Endereços
+  const idsDesejados = idsString.split(',').map(s => s.trim());
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  
+  let resultado = [];
+  
+  idsDesejados.forEach(id => {
+    let qInfo = mapQuadras[id] || { polyString: "", ultimaData: "" };
+    
+    // Filtra endereços desta quadra
+    let itensQuadra = data
+      .map((r, i) => ({ 
+          row: i + 2,               
+          quadra: String(r[0]),     
+          face: String(r[2]),       // Col C
+          logradouro: String(r[5]), // Col F
+          numero: String(r[6]),     // Col G
+          complemento: String(r[8]),// Col I
+          lat: r[9],                // Col J (Necessário para os pontinhos no mapa)
+          lng: r[10],               // Col K
+          tipo: String(r[11]),      // Col L
+          nome: String(r[12]),      // Col M
+          nota: String(r[13]),      // Col N
+          naoVisitar: String(r[14]) === "true" || r[14] === true, // Col O
+          ordem: r[17],             // Col R
+          // NOVO: Coluna 19 (S) - Índice 18
+          ultimaVisita: r[18] ? Utilities.formatDate(new Date(r[18]), "GMT-3", "dd/MM/yy") : ""
+      }))
+      .filter(item => item.quadra.toUpperCase().trim() === id.toUpperCase().trim());
+
+    // Ordenação
+    itensQuadra.sort((a, b) => {
+       if(a.ordem && b.ordem) return a.ordem - b.ordem;
+       if(a.ordem) return -1;
+       if(b.ordem) return 1;
+       if (a.logradouro !== b.logradouro) return a.logradouro.localeCompare(b.logradouro);
+       let numA = parseInt(String(a.numero).replace(/\D/g,'')) || 0;
+       let numB = parseInt(String(b.numero).replace(/\D/g,'')) || 0;
+       return numA - numB;
+    });
+
+    if(itensQuadra.length > 0 || qInfo.polyString) {
+        resultado.push({
+            id: id,
+            polyString: qInfo.polyString,
+            ultimaData: qInfo.ultimaData ? Utilities.formatDate(new Date(qInfo.ultimaData), "GMT-3", "dd/MM/yyyy") : "Nunca",
+            itens: itensQuadra
+        });
+    }
+  });
+  
+  return resultado;
 }
 
+// Salva a data de hoje na Coluna S (19) quando o publicador marca o check
+function registrarVisitaEndereco(row) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  // row é a linha da planilha. Coluna 19 é a S.
+  sheet.getRange(row, 19).setValue(new Date());
+}
+
+// Atualiza o status da quadra (Coluna H)
+function definirStatusQuadra(id, status) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetQ = ss.getSheetByName("Quadras");
+  let sheetReg = ss.getSheetByName("Registros");
+
+  // Se a aba Registros não existir, cria ela
+  if (!sheetReg) {
+    sheetReg = ss.insertSheet("Registros");
+    sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]); // Cabeçalho padrão
+  }
+
+  // 1. Atualiza a aba "Quadras" (Status Atual)
+  // Isso faz o marcador mudar de cor no Gestor
+  const data = sheetQ.getDataRange().getValues();
+  for(let i=1; i<data.length; i++) {
+    if(String(data[i][0]) === String(id)) { // Procura pelo ID (Col A)
+       sheetQ.getRange(i+1, 8).setValue(status); // Coluna H (Status)
+       
+       // Se for conclusão, atualiza a data de referência na Coluna I
+       if(status === "Concluído") {
+          sheetQ.getRange(i+1, 9).setValue(new Date());
+       }
+       break; 
+    }
+  }
+
+  // 2. Grava na aba "Registros" (Histórico)
+  // Isso garante que fique registrado quem iniciou/concluiu e quando
+  const hoje = new Date();
+  sheetReg.appendRow([
+      id,       // ID da Quadra
+      hoje,     // Data do evento
+      status,   // "Iniciado" ou "Concluído"
+      hoje      // Timestamp completo
+  ]);
+  
+  return "Status registrado: " + status;
+}
+
+// Salva a nova ordem quando você arrasta os itens no celular
+function salvarOrdemEmMassa(listaOrdenada) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  listaOrdenada.forEach(function(item) {
+    // Escreve na Coluna R (Coluna 18) que corresponde ao índice 17 do seu código
+    sheet.getRange(item.row, 18).setValue(item.ordem);
+  });
+  return "Ordem atualizada!";
+}
+
+// Cria novo endereço respeitando sua estrutura de colunas
+function salvarNovoEnderecoPublico(dados) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  
+  // Monta a linha com 18 colunas para bater com sua planilha
+  var novaLinha = new Array(18).fill(""); // Cria array vazio
+  
+  novaLinha[0] = dados.quadraId;  // Col A
+  novaLinha[1] = dados.setor || ""; // Col B
+  novaLinha[3] = dados.face;      // Col D (Face)
+  novaLinha[5] = dados.logradouro;// Col F
+  novaLinha[6] = dados.numero;    // Col G
+  novaLinha[8] = dados.complemento;// Col I
+  novaLinha[11] = dados.tipo;     // Col L
+  novaLinha[13] = dados.nota;     // Col N
+  novaLinha[14] = dados.naoVisitar;// Col O
+  novaLinha[17] = dados.ordem;    // Col R
+  
+  sheet.appendRow(novaLinha);
+  return "Criado";
+}
 function salvarEndereco(d){
   const s=SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
   s.getRange(d.row,13).setValue(d.nome);
@@ -415,18 +537,35 @@ function salvarEndereco(d){
 }
 
 function salvarNotaEmMassa(d){
-  const s=SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-  // Otimização: ler apenas colunas chave
+  const s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
   const data = s.getDataRange().getValues();
-  const alvo = data[d.row-1];
-  const q=alvo[0], l=alvo[5], n=alvo[6];
   
+  // d.row é o índice visual (linha do excel), array é linha-1
+  // Para segurança, usamos a chave de agrupamento (Rua + Numero) do item original
+  const linhaRef = d.row - 1; // índice do array
+  if(linhaRef < 0 || linhaRef >= data.length) return "Erro de referência";
+
+  const alvoQuadra = data[linhaRef][0]; // Col A
+  const alvoLog = String(data[linhaRef][5]).trim().toLowerCase(); // Col F (Logradouro)
+  const alvoNum = String(data[linhaRef][6]).trim().toLowerCase(); // Col G (Numero)
+  
+  // Varre a planilha procurando irmãos do mesmo prédio
   for(let i=1; i<data.length; i++) {
-    if(data[i][0]==q && data[i][5]==l && data[i][6]==n) {
-      s.getRange(i+1, 14).setValue(d.nota);
+    let logAtual = String(data[i][5]).trim().toLowerCase();
+    let numAtual = String(data[i][6]).trim().toLowerCase();
+
+    if(data[i][0] == alvoQuadra && logAtual == alvoLog && numAtual == alvoNum) {
+       // Atualiza Nota (Col N - índice 13)
+       if(d.nota !== undefined) s.getRange(i+1, 14).setValue(d.nota);
+       
+       // Atualiza Nome do Edifício (Col M - índice 12)
+       if(d.nome !== undefined) s.getRange(i+1, 13).setValue(d.nome);
+       
+       // Se quiser atualizar "Não Visitar" em massa também:
+       if(d.naoVisitar !== undefined) s.getRange(i+1, 15).setValue(d.naoVisitar);
     }
   }
-  return "Notas Atualizadas";
+  return "Prédio atualizado!";
 }
 
 function salvarConclusaoQuadras(payload) {
@@ -509,4 +648,42 @@ function salvarAssociacaoFaces(d) {
   });
   
   return "Vinculado com sucesso!";
+}
+
+// Salva a nova ordem quando você arrasta os itens no celular
+function salvarOrdemEmMassa(listaOrdenada) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  listaOrdenada.forEach(function(item) {
+    // Escreve na Coluna R (Coluna 18) que corresponde ao índice 17 do seu código
+    sheet.getRange(item.row, 18).setValue(item.ordem);
+  });
+  return "Ordem atualizada!";
+}
+
+// Cria novo endereço respeitando sua estrutura de colunas
+function salvarNovoEnderecoPublico(dados) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  
+  var novaLinha = new Array(18).fill(""); 
+  
+  novaLinha[0] = dados.quadraId;  // A
+  novaLinha[1] = dados.setor || ""; 
+  novaLinha[2] = dados.face;      // C (Face herdada do vizinho)
+  
+  novaLinha[5] = dados.logradouro;// F
+  novaLinha[6] = dados.numero;    // G
+  novaLinha[8] = dados.complemento;// I
+  
+  // Coordenadas (IMPORTANTE PARA O MAPA)
+  novaLinha[9] = dados.lat;       // J (Latitude)
+  novaLinha[10] = dados.lng;      // K (Longitude)
+  
+  novaLinha[11] = dados.tipo;     // L
+  novaLinha[12] = dados.nome;     // M (Nome Estabelecimento/Edificio)
+  novaLinha[13] = dados.nota;     // N
+  novaLinha[14] = dados.naoVisitar;// O
+  novaLinha[17] = dados.ordem;    // R (Ordem calculada)
+  
+  sheet.appendRow(novaLinha);
+  return "Criado";
 }

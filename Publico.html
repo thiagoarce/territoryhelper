@@ -1,260 +1,675 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <base target="_top">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Território Digital</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        body { background: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #mapHeader { height: 250px; width: 100%; position: sticky; top: 0; z-index: 1000; border-bottom: 2px solid #ddd; }
-        .container-lista { padding: 15px; padding-bottom: 80px; }
-        
-        .quadra-section { margin-bottom: 30px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; background: white; }
-        .quadra-header { background: #343a40; color: white; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .quadra-meta { background: #f8f9fa; padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; }
-        .quadra-content { padding: 10px; }
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
 
-        .address-card { background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 8px; padding: 10px; border-left: 5px solid #0d6efd; }
-        .address-card.commercial { border-left-color: #ffc107; }
-        .address-card.nao-visitar { opacity: 0.6; background: #ffebeb; border-left-color: #dc3545; }
-        
-        .apt-group-header { background: #e9ecef; padding: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
-        
-        .btn-float { position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; border-radius: 25px; background: #0d6efd; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3); z-index: 1050; border: none; }
-        .badge-quadra { font-size: 0.7rem; background: #6c757d; color: white; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
-    </style>
+  <style>
+    body { background-color: #f0f2f5; padding-bottom: 100px; }
+    
+    /* CORES POR TIPO */
+    .c-casa { color: #198754; background: #e6f4ea; } /* Verde */
+    .c-apto { color: #0d6efd; background: #e7f1ff; } /* Azul */
+    .c-comercio { color: #fd7e14; background: #fff3cd; } /* Laranja */
+    .c-outros { color: #6c757d; background: #f8f9fa; } /* Cinza */
+
+    /* MAPA */
+    #mapa-container { position: relative; height: 35vh; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    #mapa-topo { height: 100%; width: 100%; z-index: 1; }
+    
+    /* RÓTULO DA QUADRA NO MAPA (NOVO) */
+    .label-quadra {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        font-weight: bold;
+        color: #0d6efd;
+        font-size: 14px;
+        text-shadow: 2px 0 #fff, -2px 0 #fff, 0 2px #fff, 0 -2px #fff,
+                     1px 1px #fff, -1px -1px #fff, 1px -1px #fff, -1px 1px #fff;
+    }
+
+    /* Estado de Adicionar Pelo Mapa */
+    .picking-location { cursor: crosshair !important; border: 4px solid #0d6efd; }
+    #msg-mapa { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 15px; border-radius: 20px; font-size: 0.9em; z-index: 2000; display: none; pointer-events: none; text-align: center; width: 90%; }
+    
+    /* Botões Mapa */
+    .map-btn { position: absolute; z-index: 1000; background: white; border: none; padding: 10px; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2); width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #444; }
+    .btn-gps { bottom: 20px; right: 20px; color: #0d6efd; }
+    .btn-rota { bottom: 75px; right: 20px; color: #198754; }
+
+    /* LISTA */
+    .quadra-card { background: white; margin-bottom: 20px; border-radius: 0 0 12px 12px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .quadra-header { background: #343a40; color: white; padding: 12px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+    .quadra-meta { background: #f8f9fa; padding: 10px 15px; font-size: 0.85em; color: #555; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; }
+
+    /* ITENS */
+    .address-item { padding: 12px 15px; border-bottom: 1px solid #f0f0f0; background: white; display: flex; align-items: center; position: relative; }
+    .icon-box { width: 35px; height: 35px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 16px; flex-shrink: 0; }
+    
+    .nao-visitar-row { background-color: #fff5f5 !important; }
+    .nao-visitar-row .fw-bold { text-decoration: line-through; color: #dc3545; }
+    .nao-visitar-badge { font-size: 0.65em; background: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 5px; text-decoration: none !important; display: inline-block; vertical-align: middle; }
+
+    /* Agrupamento */
+    .group-header { background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; }
+    .group-title { font-weight: bold; color: #495057; font-size: 0.95em; }
+    .group-body { border-left: 3px solid #dee2e6; margin-left: 10px; }
+
+    /* Checkbox Visita */
+    .check-visita { width: 38px; height: 38px; border-radius: 50%; border: 2px solid #ddd; display: flex; align-items: center; justify-content: center; color: transparent; transition: all 0.2s; cursor: pointer; flex-shrink: 0; }
+    .check-visita.checked { background-color: #198754; border-color: #198754; color: white; }
+    
+    /* Botões Flutuantes */
+    .btn-float-add { position: fixed; bottom: 25px; right: 25px; width: 60px; height: 60px; border-radius: 50%; background: #0d6efd; color: white; font-size: 24px; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 2000; }
+    .btn-float-reorder { position: fixed; bottom: 25px; left: 25px; width: 50px; height: 50px; border-radius: 50%; background: #6c757d; color: white; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 2000; }
+    
+    /* REORDER MODE - MODIFICADO PARA INCLUIR GRUPOS */
+    .handle { display: none; color: #aaa; padding-right: 10px; cursor: grab; }
+    .reorder-mode .handle { display: block !important; }
+    .group-header .handle { margin-right: 5px; }
+  </style>
 </head>
 <body>
-    <div id="mapHeader"></div>
-    <div class="container-lista" id="listaEnderecos">
-        <div class="text-center py-5"><div class="spinner-border text-primary"></div><p>Carregando...</p></div>
-    </div>
-    <button class="btn-float" onclick="novoEndereco()"><i class="fa-solid fa-plus"></i></button>
 
-    <div class="modal fade" id="modalEdit" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-        <div class="modal-header bg-primary text-white"><h5 class="modal-title">Editar</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <input type="hidden" id="editRow"><input type="hidden" id="editOldType">
-            <div class="mb-3"><label>Nome / Local</label><input type="text" class="form-control" id="editNome"></div>
-            <div class="mb-3"><label>Tipo</label>
-                <select class="form-select" id="editTipo">
-                    <option value="Domicílio particular">Domicílio particular</option>
-                    <option value="Domicílio particular Casa">Domicílio particular Casa</option>
-                    <option value="Domicílio particular Apartamento">Domicílio particular Apartamento</option>
-                    <option value="Domicílio particular Casa de vila ou em condomínio">Domicílio particular Casa de vila ou em condomínio</option>
-                    <option value="Domicílio coletivo">Domicílio coletivo</option>
-                    <option value="Estabelecimento de outras finalidades">Estabelecimento de outras finalidades</option>
-                    <option value="Estabelecimento de ensino">Estabelecimento de ensino</option>
-                    <option value="Estabelecimento de saúde">Estabelecimento de saúde</option>
-                    <option value="Estabelecimento religioso">Estabelecimento religioso</option>
-                    <option value="Estabelecimento em construção">Estabelecimento em construção</option>
-                    <option value="Estabelecimento agropecuário">Estabelecimento agropecuário</option>
-                </select>
-            </div>
-            <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="editNaoVisitar"><label class="form-check-label text-danger fw-bold">Não Visitar</label></div>
-            <div class="mb-3"><label>Nota</label><textarea class="form-control" id="editNota" rows="2"></textarea></div>
-            <div id="divBulkNote" class="d-none alert alert-secondary p-2 small"><input type="checkbox" id="checkBulkNote"> <label for="checkBulkNote">Aplicar a todo o prédio?</label></div>
+  <div id="loader" class="d-flex flex-column align-items-center justify-content-center vh-100 bg-white" style="position:fixed; top:0; left:0; width:100%; z-index:9999;">
+    <div class="spinner-border text-primary" role="status"></div>
+    <div class="mt-3 text-secondary">Carregando território...</div>
+  </div>
+
+  <div id="mapa-container" class="d-none">
+    <div id="mapa-topo"></div>
+    <div id="msg-mapa">Toque no local do novo endereço</div>
+    <button class="map-btn btn-gps" onclick="centralizarGPS()"><i class="fa-solid fa-crosshairs"></i></button>
+    <button class="map-btn btn-rota" onclick="abrirRotaGoogle()"><i class="fa-solid fa-diamond-turn-right"></i></button>
+  </div>
+
+  <div id="app-content" class="container mt-0 px-0 d-none">
+     <div id="lista-territorio"></div>
+  </div>
+
+  <button class="btn-float-reorder" onclick="toggleReorder()" id="btnReorder"><i class="fa-solid fa-sort"></i></button>
+  <button class="btn-float-add" onclick="iniciarAdicaoPeloMapa()"><i class="fa-solid fa-plus"></i></button>
+
+  <div class="modal fade" id="modalEdicao" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Detalhes</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-footer"><button class="btn btn-primary w-100" onclick="salvarEdicao()">Salvar</button></div>
-    </div></div></div>
+        <div class="modal-body">
+           <input type="hidden" id="editRow">
+           <input type="hidden" id="editQuadraId">
+           <input type="hidden" id="editFace">
+           <input type="hidden" id="editLat">
+           <input type="hidden" id="editLng">
+           <input type="hidden" id="editOrdem">
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        var map, layerQuadras, layerMarkers;
-        var dadosLocais = [];
-        var modalEdit;
-        var idsQuadras = "<?= ids ?>"; 
+           <div class="mb-3">
+             <label class="form-label small text-muted">Tipo</label>
+             <select class="form-select" id="inputTipo" onchange="toggleFormFields()">
+               <option value="Domicílio particular Casa">Casa</option>
+               <option value="Domicílio particular Apartamento">Apartamento</option>
+               <option value="Domicílio particular Casa de vila ou em condomínio">Casa de Vila/Cond.</option>
+               <option value="Alojamento coletivo">Alojamento Coletivo</option>
+               <hr>
+               <option value="Estabelecimento comercial">Comércio</option>
+               <option value="Estabelecimento de ensino">Ensino</option>
+               <option value="Estabelecimento de saúde">Saúde</option>
+               <option value="Unidade religiosa">Religiosa</option>
+               <option value="Estabelecimento agropecuário">Agropecuário</option>
+               <option value="Outro">Outro</option>
+             </select>
+           </div>
 
-        window.onload = function() {
-            modalEdit = new bootstrap.Modal(document.getElementById('modalEdit'));
-            initMap();
-            loadData();
+           <div class="form-check form-switch mb-3 p-3 bg-light rounded border">
+             <input class="form-check-input" type="checkbox" id="checkNaoVisitar">
+             <label class="form-check-label fw-bold text-danger" for="checkNaoVisitar">NÃO VISITAR ESTE LOCAL</label>
+           </div>
+
+           <div class="mb-3">
+             <label class="form-label fw-bold">Nome do Edifício / Estabelecimento</label>
+             <input type="text" class="form-control" id="inputNome" placeholder="Ex: Ed. Solar, Padaria...">
+             <div class="form-text small">Use para nomear o prédio ou o comércio.</div>
+           </div>
+
+           <div class="mb-3">
+             <label class="form-label small text-muted">Nota</label>
+             <input type="text" class="form-control" id="inputNota" placeholder="Ex: Cão bravo / Porteiro digital">
+           </div>
+
+           <div class="form-check mb-3 d-none" id="divCheckMassa">
+             <input class="form-check-input" type="checkbox" id="checkAplicarMassa">
+             <label class="form-check-label text-primary fw-bold small" for="checkAplicarMassa">
+               Aplicar Nome e Nota a todo o prédio?
+             </label>
+           </div>
+
+           <hr>
+           <p class="small text-muted mb-2">Endereço Físico</p>
+           <div class="row g-2">
+               <div class="col-8">
+                   <input type="text" class="form-control form-control-sm" id="inputLogradouro" placeholder="Logradouro">
+               </div>
+               <div class="col-4">
+                   <input type="text" class="form-control form-control-sm" id="inputNumero" placeholder="Número">
+               </div>
+               <div class="col-12">
+                   <input type="text" class="form-control form-control-sm" id="inputComplemento" placeholder="Complemento (ex: Apto 101)">
+               </div>
+           </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary w-100" onclick="salvarFormulario()">Salvar Alterações</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var dadosGerais = [];
+    var map, userMarker, layerQuadra, layerPontos;
+    var modalEdicao;
+    var isReorder = false;
+    var isPickingLocation = false; // Estado de adicionar pelo mapa
+    var sortables = [];
+
+    // Lógica de Cores e Ícones
+    function getVisualPorTipo(tipo) {
+        if(!tipo) return { cls: 'c-outros', color: '#6c757d', icon: 'fa-map-pin' };
+        var t = tipo.toLowerCase();
+        
+        // Comerciais/Inst
+        if(t.includes('comercial') || t.includes('estabelecimento') || t.includes('religiosa') || t.includes('ensino') || t.includes('saúde') || t.includes('agro')) 
+            return { cls: 'c-comercio', color: '#fd7e14', icon: 'fa-store' };
+        
+        // Residenciais
+        if(t.includes('apartamento')) 
+            return { cls: 'c-apto', color: '#0d6efd', icon: 'fa-building' };
+        
+        if(t.includes('casa') || t.includes('domicílio') || t.includes('alojamento')) 
+            return { cls: 'c-casa', color: '#198754', icon: 'fa-house' };
+            
+        return { cls: 'c-outros', color: '#6c757d', icon: 'fa-location-dot' };
+    }
+
+    window.onload = function() {
+       modalEdicao = new bootstrap.Modal(document.getElementById('modalEdicao'));
+       carregarDados();
+    };
+
+    function carregarDados() {
+        google.script.url.getLocation(function(location) {
+             var ids = location.parameter.ids;
+             if(!ids) { 
+                 // ids = "Q-3"; // Debug local
+                 alert("Link inválido (sem IDs)."); return; 
+             }
+
+             google.script.run
+                .withSuccessHandler(function(data) {
+                    if(!data || data.length === 0) return alert("Nenhum dado encontrado.");
+                    dadosGerais = data;
+                    
+                    document.getElementById('loader').classList.add('d-none');
+                    document.getElementById('mapa-container').classList.remove('d-none');
+                    document.getElementById('app-content').classList.remove('d-none');
+                    
+                    iniciarMapa();
+                    renderizarLista();
+                })
+                .getDadosPublicos(ids);
+        });
+    }
+
+    // ================= MAPA =================
+    function iniciarMapa() {
+        if(map) return;
+        map = L.map('mapa-topo').setView([-7.115, -34.863], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        layerQuadra = L.featureGroup().addTo(map);
+        layerPontos = L.featureGroup().addTo(map);
+
+        dadosGerais.forEach(function(q) {
+            // Polígono com Rótulo
+            if(q.polyString) {
+                var pts = q.polyString.split('|').map(p => {
+                    var c = p.trim().split(',');
+                    return [parseFloat(c[0]), parseFloat(c[1])];
+                });
+                
+                var poly = L.polygon(pts, {color: '#666', weight: 1, fillOpacity: 0.05}).addTo(layerQuadra);
+                
+                // NOVO: Adiciona o tooltip com o ID da quadra
+                poly.bindTooltip(q.id, {
+                    permanent: true, 
+                    direction: "center", 
+                    className: "label-quadra"
+                });
+            }
+            
+            // Pontos dos endereços
+            q.itens.forEach(function(item) {
+                if(item.lat && item.lng) {
+                    var vis = getVisualPorTipo(item.tipo);
+                    var corFill = item.naoVisitar ? '#dc3545' : vis.color;
+                    
+                    var m = L.circleMarker([item.lat, item.lng], {
+                        radius: 6, color: 'white', weight: 1, fillColor: corFill, fillOpacity: 0.9
+                    });
+                    
+                    var popupHtml = `<b>${item.logradouro}, ${item.numero}</b><br>${item.nome || item.tipo}`;
+                    m.bindPopup(popupHtml);
+                    m.addTo(layerPontos);
+                }
+            });
+        });
+
+        if(layerPontos.getLayers().length > 0) map.fitBounds(layerPontos.getBounds());
+        
+        map.on('click', function(e) {
+            if(isPickingLocation) concluirAdicaoPeloMapa(e.latlng.lat, e.latlng.lng);
+        });
+    } 
+
+    // ================= ADICIONAR PELO MAPA =================
+    function iniciarAdicaoPeloMapa() {
+        isPickingLocation = true;
+        document.getElementById('msg-mapa').style.display = 'block';
+        document.getElementById('mapa-topo').classList.add('picking-location');
+        // Rola até o mapa
+        document.getElementById('mapa-container').scrollIntoView({behavior: 'smooth'});
+    }
+
+    function concluirAdicaoPeloMapa(lat, lng) {
+        // Encontrar vizinho para herdar Quadra e Face
+        var vizinho = encontrarVizinhoMaisProximo(lat, lng);
+        if(!vizinho) {
+            isPickingLocation = false;
+            document.getElementById('msg-mapa').style.display = 'none';
+            document.getElementById('mapa-topo').classList.remove('picking-location');
+            return alert("Não há endereços próximos para usar de referência.");
+        }
+
+        isPickingLocation = false;
+        document.getElementById('msg-mapa').style.display = 'none';
+        document.getElementById('mapa-topo').classList.remove('picking-location');
+
+        // Prepara Modal Novo
+        document.getElementById('editRow').value = ""; // Vazio = Novo
+        document.getElementById('editQuadraId').value = vizinho.quadra;
+        document.getElementById('editFace').value = vizinho.face;
+        document.getElementById('editLat').value = lat;
+        document.getElementById('editLng').value = lng;
+        document.getElementById('editOrdem').value = (vizinho.ordem || 0) + 1; // Coloca logo depois
+
+        // Preenche com sugestões do vizinho
+        document.getElementById('inputLogradouro').value = vizinho.logradouro;
+        document.getElementById('inputNumero').value = "";
+        document.getElementById('inputComplemento').value = "";
+        document.getElementById('inputNome').value = "";
+        document.getElementById('inputNota').value = "";
+        document.getElementById('inputTipo').value = "Domicílio particular Casa";
+        document.getElementById('checkNaoVisitar').checked = false;
+
+        toggleFormFields();
+        modalEdicao.show();
+    }
+
+    function encontrarVizinhoMaisProximo(lat, lng) {
+        var minDst = Infinity;
+        var nearest = null;
+        
+        dadosGerais.forEach(q => {
+            q.itens.forEach(item => {
+                if(item.lat && item.lng) {
+                    var dst = Math.pow(item.lat - lat, 2) + Math.pow(item.lng - lng, 2);
+                    if(dst < minDst) {
+                        minDst = dst;
+                        nearest = item;
+                    }
+                }
+            });
+        });
+        return nearest;
+    }
+
+    // ================= LISTA & AGRUPAMENTO =================
+function renderizarLista() {
+        var container = document.getElementById('lista-territorio');
+        container.innerHTML = "";
+
+        dadosGerais.forEach(function(quadra) {
+            var html = `
+            <div class="quadra-card">
+                <div class="quadra-header" onclick="toggleDisplay('body-${quadra.id}')">
+                   <span>Quadra ${quadra.id}</span>
+                   <i class="fa-solid fa-chevron-down"></i>
+                </div>
+                <div class="quadra-meta">
+                   <div>
+                       <i class="fa-regular fa-calendar"></i> Última: <b>${quadra.ultimaData}</b><br>
+                       <i class="fa-solid fa-hashtag"></i> Total: <b>${quadra.itens.length}</b> end.
+                   </div>
+                   <div>
+                       <button class="btn btn-sm btn-outline-secondary me-1" onclick="limparSessao('${quadra.id}')" title="Limpar marcados"><i class="fa-solid fa-eraser"></i></button>
+                       
+                       <button class="btn btn-sm btn-primary me-1" onclick="mudarStatusQuadra('${quadra.id}', 'Iniciado')" title="Marcar como Iniciado"><i class="fa-solid fa-play"></i></button>
+                       
+                       <button class="btn btn-sm btn-success" onclick="mudarStatusQuadra('${quadra.id}', 'Concluído')"><i class="fa-solid fa-check-double"></i></button>
+                   </div>
+                </div>
+                
+                <div id="body-${quadra.id}" class="sortable-list" data-quadra="${quadra.id}">`;
+            
+            var grupos = agruparItens(quadra.itens);
+            
+            grupos.forEach(function(g) {
+                if(g.tipo === 'unico') {
+                    html += criarItemHtml(g.item);
+                } else {
+                    // Grupo (Prédio ou Residências Agrupadas)
+                    var vis = getVisualPorTipo(g.itens[0].tipo);
+                    
+                    html += `
+                    <div>
+                        <div class="group-header" onclick="toggleDisplay('grp-${g.id}')">
+                           <div class="handle me-2"><i class="fa-solid fa-bars"></i></div>
+                           
+                           <div class="icon-box ${vis.cls}"><i class="fa-solid ${vis.icon}"></i></div>
+                           <div class="flex-grow-1">
+                               <div class="group-title">${g.titulo}</div>
+                               <div class="small text-muted">${g.itens.length} unidades</div>
+                           </div>
+                           <i class="fa-solid fa-chevron-down text-muted"></i>
+                        </div>
+                        <div id="grp-${g.id}" class="group-body d-none sortable-sublist">
+                            ${g.itens.map(i => criarItemHtml(i, true)).join('')}
+                        </div>
+                    </div>`;
+                }
+            });
+
+            html += `</div></div>`;
+            container.innerHTML += html;
+        });
+
+        if(isReorder) ativarSortable();
+    }
+
+    function agruparItens(itens) {
+        var map = new Map();
+        var resultado = [];
+
+        itens.forEach(item => {
+            var t = item.tipo ? item.tipo.toLowerCase() : "";
+            // Residencial inclui Casa, Apto, Alojamento, Condominio
+            var isResidencial = t.includes('domicílio') || t.includes('casa') || t.includes('apartamento') || t.includes('alojamento');
+            
+            // Lógica de Chave:
+            // 1. Se tem Nome (Col M), agrupa pelo Nome (Prioridade Máxima)
+            // 2. Se não tem Nome e é Residencial, agrupa pelo Endereço Limpo
+            // 3. Senão, fica sozinho (Comércios isolados)
+            
+            var key;
+            if(item.nome && item.nome.trim() !== "") {
+                key = "NAME_" + item.nome.toUpperCase().trim();
+            } else if(isResidencial) {
+                var addr = (item.logradouro + item.numero).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                key = "ADDR_" + addr;
+            } else {
+                key = "SINGLE_" + item.row;
+            }
+            
+            if(!map.has(key)) map.set(key, []);
+            map.get(key).push(item);
+        });
+
+        map.forEach((lista, key) => {
+            if(key.startsWith("SINGLE_")) {
+                resultado.push({ tipo: 'unico', item: lista[0] });
+            } else {
+                // Título do Grupo
+                var primeiro = lista[0];
+                // Se tiver nome, usa. Se não, usa endereço.
+                var titulo = primeiro.nome ? primeiro.nome : (primeiro.logradouro + ", " + primeiro.numero);
+                
+                // Cria grupo se tiver mais de 1 item OU se tiver nome definido (para ficar bonito)
+                if(lista.length > 1 || primeiro.nome) {
+                    resultado.push({ tipo: 'grupo', id: key, titulo: titulo, itens: lista });
+                } else {
+                    resultado.push({ tipo: 'unico', item: primeiro });
+                }
+            }
+        });
+        return resultado;
+    }
+
+    function criarItemHtml(item, isInsideGroup) {
+        var vis = getVisualPorTipo(item.tipo);
+        var rowCls = item.naoVisitar ? "nao-visitar-row" : "";
+        var badgeNV = item.naoVisitar ? '<span class="nao-visitar-badge">NÃO VISITAR</span>' : '';
+        var checked = localStorage.getItem("v_" + item.row) === "true";
+        var opacidade = checked ? "opacity:0.5" : "";
+
+        // Títulos
+        var title, sub;
+        if(isInsideGroup) {
+            // Dentro de grupo (prédio), o complemento manda (Apt 101)
+            title = item.complemento || "Unidade";
+            sub = item.tipo;
+        } else {
+            // Solto
+            if(item.nome) {
+                // Tem nome (Estabelecimento)
+                title = item.nome;
+                sub = item.logradouro + ", " + item.numero + (item.complemento ? " (" + item.complemento + ")" : "");
+            } else {
+                // Residência comum
+                title = item.complemento ? item.complemento : (item.logradouro + ", " + item.numero);
+                sub = item.complemento ? (item.logradouro + ", " + item.numero) : "Residência";
+            }
+        }
+// NOVO: HTML da Data
+        // Se tiver data, mostra um reloginho pequeno e a data
+        var htmlData = item.ultimaVisita ? 
+            `<span class="ms-2 badge bg-light text-secondary border fw-normal" style="font-size:0.7em"><i class="fa-solid fa-clock-rotate-left"></i> ${item.ultimaVisita}</span>` : '';
+
+        return `
+        <div class="address-item ${rowCls}" style="${opacidade}" data-row="${item.row}" data-obj='${JSON.stringify(item)}'>
+            <div class="handle"><i class="fa-solid fa-bars"></i></div>
+            
+            <div class="icon-box ${vis.cls}"><i class="fa-solid ${vis.icon}"></i></div>
+            
+            <div class="flex-grow-1" onclick="abrirEdicao(${item.row})" style="cursor:pointer">
+                <div class="fw-bold text-dark">
+                    ${title} ${badgeNV} 
+                    ${htmlData}
+                </div>
+                <div class="small text-muted">${sub}</div>
+                ${item.nota ? `<div class="small text-primary mt-1"><i class="fa-solid fa-note-sticky"></i> ${item.nota}</div>` : ''}
+            </div>
+
+            <div class="check-visita ${checked ? 'checked' : ''}" onclick="toggleVisita(${item.row}, this)">
+                <i class="fa-solid fa-check"></i>
+            </div>
+        </div>`;
+    }
+
+    // ================= AÇÕES =================
+    window.abrirEdicao = function(row) {
+        if(isReorder) return; 
+
+        var item = null;
+        dadosGerais.forEach(q => { var f = q.itens.find(i => i.row == row); if(f) item = f; });
+        if(!item) return;
+
+        // Preenche campos ocultos
+        document.getElementById('editRow').value = item.row;
+        document.getElementById('editQuadraId').value = item.quadra;
+        
+        // Campos Visíveis
+        document.getElementById('inputNome').value = item.nome || ""; // Col M
+        document.getElementById('inputNota').value = item.nota || "";
+        document.getElementById('inputTipo').value = item.tipo;
+        document.getElementById('checkNaoVisitar').checked = item.naoVisitar;
+        
+        document.getElementById('inputLogradouro').value = item.logradouro;
+        document.getElementById('inputNumero').value = item.numero;
+        document.getElementById('inputComplemento').value = item.complemento;
+
+        toggleFormFields();
+        modalEdicao.show();
+    };
+
+    function toggleFormFields() {
+        var tipo = document.getElementById('inputTipo').value.toLowerCase();
+        // Apto ou Alojamento permite edição em massa
+        var isApt = tipo.includes('apartamento') || tipo.includes('coletivo') || tipo.includes('vila');
+        var divMassa = document.getElementById('divCheckMassa');
+        
+        if(divMassa) {
+            divMassa.classList.toggle('d-none', !isApt);
+            document.getElementById('checkAplicarMassa').checked = false;
+        }
+    }
+
+    function salvarFormulario() {
+        var row = document.getElementById('editRow').value; 
+        var aplicarMassa = document.getElementById('checkAplicarMassa').checked;
+        
+        var payload = {
+            row: row,
+            quadraId: document.getElementById('editQuadraId').value,
+            // Campos Extras p/ Novo
+            face: document.getElementById('editFace').value,
+            lat: document.getElementById('editLat').value,
+            lng: document.getElementById('editLng').value,
+            ordem: document.getElementById('editOrdem').value,
+            
+            nome: document.getElementById('inputNome').value, // Col M
+            nota: document.getElementById('inputNota').value, // Col N
+            tipo: document.getElementById('inputTipo').value, // Col L
+            naoVisitar: document.getElementById('checkNaoVisitar').checked,
+            
+            logradouro: document.getElementById('inputLogradouro').value,
+            numero: document.getElementById('inputNumero').value,
+            complemento: document.getElementById('inputComplemento').value,
+            
+            modoMassa: aplicarMassa
         };
 
-        function initMap() {
-            map = L.map('mapHeader').setView([-7.115, -34.863], 16);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            layerQuadras = L.featureGroup().addTo(map);
-            layerMarkers = L.featureGroup().addTo(map);
-        }
+        var btn = document.querySelector('#modalEdicao .btn-primary');
+        var txtOriginal = btn.innerText;
+        btn.innerText = "Salvando...";
+        btn.disabled = true;
 
-        function loadData() {
-            if(!idsQuadras) return document.getElementById('listaEnderecos').innerHTML = '<div class="alert alert-warning">Nenhuma quadra especificada.</div>';
-            google.script.run.withSuccessHandler(renderData).getDadosPublicos(idsQuadras);
-        }
+        var runner = google.script.run
+            .withSuccessHandler(() => {
+                modalEdicao.hide();
+                btn.innerText = txtOriginal; btn.disabled = false;
+                carregarDados();
+            })
+            .withFailureHandler(e => { alert("Erro: " + e); btn.innerText = txtOriginal; btn.disabled = false; });
 
-        function renderData(res) {
-            // 1. Renderizar Mapa
-            layerQuadras.clearLayers();
-            var bounds = L.latLngBounds([]);
+        // Decide qual função chamar
+        if(!row) {
+            runner.salvarNovoEnderecoPublico(payload);
+        } else if(aplicarMassa) {
+            runner.salvarNotaEmMassa(payload);
+        } else {
+            runner.salvarEndereco(payload);
+        }
+    }
+    
+    // Demais funções (Reorder, Visita, etc) mantidas do original
+    function toggleReorder() {
+        isReorder = !isReorder;
+        var btn = document.getElementById('btnReorder');
+        document.body.classList.toggle('reorder-mode', isReorder);
+        if(isReorder) {
+            btn.innerHTML = '<i class="fa-solid fa-save"></i>'; btn.style.background = "#ffc107"; ativarSortable();
+        } else {
+            btn.innerHTML = '<i class="fa-solid fa-sort"></i>'; btn.style.background = "#6c757d"; salvarOrdem();
+            sortables.forEach(s => s.destroy());
+        }
+    }
+    function ativarSortable() {
+        document.querySelectorAll('.sortable-list, .sortable-sublist').forEach(el => {
+            sortables.push(new Sortable(el, { handle: '.handle', animation: 150 }));
+        });
+    }
+    function salvarOrdem() {
+        var payload = []; var count = 1;
+        document.querySelectorAll('.address-item').forEach(el => {
+            var r = el.getAttribute('data-row'); if(r) payload.push({ row: r, ordem: count++ });
+        });
+        google.script.run.salvarOrdemEmMassa(payload);
+    }
+    function centralizarGPS() {
+        navigator.geolocation.getCurrentPosition(pos => { map.setView([pos.coords.latitude, pos.coords.longitude], 18); });
+    }
+    function abrirRotaGoogle() {
+        var dest = null;
+        for(var i=0; i<dadosGerais.length; i++) {
+             if(dadosGerais[i].itens.length > 0 && dadosGerais[i].itens[0].lat) { dest = dadosGerais[i].itens[0].lat + "," + dadosGerais[i].itens[0].lng; break; }
+        }
+        if(dest) window.open("https://www.google.com/maps/dir/?api=1&destination=" + dest, "_blank");
+    }
+
+    function toggleVisita(row, el) {
+        var key = "v_" + row;
+        if(el.classList.contains('checked')) {
+            // Desmarcar (apenas local)
+            localStorage.removeItem(key);
+            el.classList.remove('checked');
+            el.closest('.address-item').style.opacity = "1";
+        } else {
+            // Marcar (Local + Servidor)
+            localStorage.setItem(key, "true");
+            el.classList.add('checked');
+            el.closest('.address-item').style.opacity = "0.5";
             
-            // Mapa Quadras
-            res.quadras.forEach(function(q) {
-                var pts = parseCoords(q.polyString);
-                if(pts.length>0) {
-                    var poly = L.polygon(pts, {color: q.color, weight: 2, fillOpacity: 0.2}).bindTooltip(q.id, {permanent:true, direction:'center'});
-                    layerQuadras.addLayer(poly);
-                    bounds.extend(poly.getBounds());
-                }
-            });
-            if(bounds.isValid()) map.fitBounds(bounds);
-
-            // 2. Organizar Dados por Quadra
-            dadosLocais = res.enderecos;
-            var porQuadra = {};
-            
-            // Inicializa grupos de quadras (para garantir que quadras sem endereços apareçam)
-            res.quadras.forEach(function(q){
-                porQuadra[q.id] = { info: q, enderecos: [] };
-            });
-
-            dadosLocais.forEach(function(end) {
-                if(porQuadra[end.quadra]) {
-                    porQuadra[end.quadra].enderecos.push(end);
-                }
-            });
-
-            // 3. Renderizar HTML
-            var html = '';
-            
-            Object.keys(porQuadra).sort().forEach(function(qId) {
-                var qData = porQuadra[qId];
-                var listaEnderecos = qData.enderecos;
-                
-                // Agrupamento Inteligente (Prédios/Condominios)
-                var agrupados = {};
-                listaEnderecos.forEach(function(end) {
-                    // Chave: Logradouro + Numero. Se for Apt/Condominio, agrupa.
-                    var tipoLower = String(end.tipo).toLowerCase();
-                    var ehApto = tipoLower.includes('apartamento') || tipoLower.includes('condomínio') || tipoLower.includes('vila');
-                    
-                    var key = end.logradouro + "|" + end.numero;
-                    // Se não for apto, chave única para não agrupar (casas diferentes mesmo numero ex: casa A e casa B)
-                    // Mas se tiver o mesmo logradouro e numero, geralmente é o mesmo lote. 
-                    // Vamos agrupar TUDO que tem mesmo logr e num, se tiver mais de 1 item vira grupo.
-                    
-                    if(!agrupados[key]) agrupados[key] = { lista: [], principal: end };
-                    agrupados[key].lista.push(end);
-                });
-
-                // Renderiza Card da Quadra
-                var dtUltima = qData.info.dataConclusao ? formatarDataBR(qData.info.dataConclusao) : "Nunca";
-                
-                html += `
-                <div class="quadra-section">
-                    <div class="quadra-header">
-                        <span class="fw-bold">Quadra ${qId}</span>
-                        <span class="badge bg-light text-dark">${listaEnderecos.length} end.</span>
-                    </div>
-                    <div class="quadra-meta">
-                        <div><small>Última vez:</small> <strong>${dtUltima}</strong></div>
-                        <button class="btn btn-sm btn-outline-success" onclick="concluirQuadra('${qId}')">
-                            <i class="fa-solid fa-check"></i> Registrar Hoje
-                        </button>
-                    </div>
-                    <div class="quadra-content">
-                `;
-
-                if(listaEnderecos.length === 0) {
-                    html += '<div class="text-center text-muted py-3">Sem endereços cadastrados.</div>';
-                } else {
-                    Object.values(agrupados).forEach(function(g) {
-                        if(g.lista.length > 1) {
-                            // Renderiza Grupo
-                            var titulo = g.principal.nome || (g.principal.logradouro + ", " + g.principal.numero);
-                            var cardId = 'grp_' + g.lista[0].row;
-                            html += `<div class="mb-2"><div class="apt-group-header" data-bs-toggle="collapse" data-bs-target="#${cardId}"><span><i class="fa-regular fa-building me-2"></i> ${titulo} <span class="badge bg-secondary">${g.lista.length}</span></span><i class="fa-solid fa-chevron-down"></i></div><div id="${cardId}" class="collapse show">${renderItensLista(g.lista, true)}</div></div>`;
-                            addMarker(g.principal.lat, g.principal.lng, titulo);
-                        } else {
-                            // Item Único
-                            html += renderItensLista(g.lista, false);
-                            var end = g.lista[0];
-                            var t = (end.nome || "") + " " + end.logradouro + " " + end.numero;
-                            addMarker(end.lat, end.lng, t);
-                        }
-                    });
-                }
-                html += `</div></div>`; // Fecha quadra-content e section
-            });
-
-            document.getElementById('listaEnderecos').innerHTML = html;
+            // NOVO: Salva data na planilha silenciosamente
+            google.script.run.registrarVisitaEndereco(row);
         }
+    }
 
-        function renderItensLista(lista, isApt) {
-            var h = '';
-            lista.forEach(function(e) {
-                var cls = "address-card";
-                var tipoLower = String(e.tipo).toLowerCase();
-                if(tipoLower.includes('comercial') || tipoLower.includes('estabelecimento') || tipoLower.includes('ensino') || tipoLower.includes('saúde') || tipoLower.includes('religioso')) cls += " commercial";
-                if(e.naoVisitar) cls += " nao-visitar";
-
-                var mainText = isApt ? (e.complemento || "Unidade") : (e.nome || (e.logradouro + ", " + e.numero));
-                var subText = isApt ? (e.nome || "") : (e.complemento || "");
-                
-                var notaHtml = e.nota ? `<div class="small text-muted mt-1"><i class="fa-regular fa-note-sticky text-warning"></i> ${e.nota}</div>` : '';
-                var warn = e.naoVisitar ? '<i class="fa-solid fa-ban text-danger float-end"></i>' : '';
-                
-                h += `<div class="${cls}" onclick="abrirEdicao(${e.row})">${warn}<div class="fw-bold">${mainText}</div><div class="small text-secondary">${subText}</div>${notaHtml}</div>`;
-            });
-            return h;
-        }
-
-        function addMarker(lat, lng, title) {
-            if(lat && lng) L.circleMarker([lat, lng], {radius: 5, color: '#3388ff'}).addTo(layerMarkers).bindPopup(title);
-        }
-
-        function parseCoords(str) {
-            if(!str) return [];
-            return str.replace(/\r\n|\n/g,"|").split("|").map(s => { var p = s.split(","); return [parseFloat(p[0]), parseFloat(p[1])]; }).filter(p => !isNaN(p[0]));
-        }
+    function mudarStatusQuadra(qId, status) {
+        var icon = status === 'Iniciado' ? '▶️' : '✅';
+        if(!confirm(icon + " Marcar quadra " + qId + " como " + status.toUpperCase() + "?")) return;
         
-        function formatarDataBR(ymd) { if(!ymd) return ""; var p = ymd.split('-'); if(p.length === 3) return p[2]+'/'+p[1]+'/'+p[0]; return ymd; }
-
-        function abrirEdicao(row) {
-            var dado = dadosLocais.find(d => d.row === row); if(!dado) return;
-            document.getElementById('editRow').value = row; 
-            document.getElementById('editNome').value = dado.nome; 
-            document.getElementById('editTipo').value = dado.tipo; // CORREÇÃO: Pega o tipo exato
-            document.getElementById('editOldType').value = dado.tipo; 
-            document.getElementById('editNaoVisitar').checked = dado.naoVisitar; 
-            document.getElementById('editNota').value = dado.nota;
-            
-            var isApt = String(dado.tipo).toLowerCase().includes('apartamento') || String(dado.tipo).toLowerCase().includes('condomínio'); 
-            var divBulk = document.getElementById('divBulkNote'); 
-            if(isApt) { divBulk.classList.remove('d-none'); } else { divBulk.classList.add('d-none'); }
-            
-            modalEdit.show();
-        }
-
-        function salvarEdicao() {
-            var row = parseInt(document.getElementById('editRow').value); 
-            var nome = document.getElementById('editNome').value; 
-            var tipo = document.getElementById('editTipo').value; 
-            var oldTipo = document.getElementById('editOldType').value; 
-            var nv = document.getElementById('editNaoVisitar').checked; 
-            var nota = document.getElementById('editNota').value; 
-            var bulk = document.getElementById('checkBulkNote').checked;
-
-            if(tipo !== oldTipo) { if(!confirm("Mudou o tipo. Continuar?")) return; }
-            var payload = { row: row, nome: nome, tipo: tipo, naoVisitar: nv, nota: nota };
-            modalEdit.hide(); 
-            if(bulk) { google.script.run.withSuccessHandler(() => loadData()).salvarNotaEmMassa(payload); } else { google.script.run.withSuccessHandler(() => loadData()).salvarEndereco(payload); }
-        }
+        // Feedback visual imediato
+        alert("Status atualizado para: " + status);
         
-        function concluirQuadra(id) {
-            if(!confirm("Registrar conclusão da Quadra " + id + " hoje?")) return;
-            var hoje = new Date().toISOString().slice(0, 10);
-            google.script.run.withSuccessHandler(function() {
-                alert("Registrado!");
-                loadData();
-            }).salvarConclusaoQuadras({ ids: [id], data: hoje, modo: 'auto' });
+        google.script.run.withSuccessHandler(() => {
+            // Recarrega para atualizar dados se necessário (ex: data de conclusão)
+            if(status === 'Concluído') carregarDados(); 
+        }).definirStatusQuadra(qId, status);
+    }
+
+    function toggleDisplay(id) { document.getElementById(id).classList.toggle('d-none'); }
+    function limparSessao(qId) {
+        if(confirm("Limpar marcações?")) {
+            document.querySelectorAll(`[data-quadra="${qId}"] .address-item`).forEach(el => localStorage.removeItem("v_"+el.dataset.row));
+            renderizarLista();
         }
-        
-        function novoEndereco() { alert("Em breve."); }
-    </script>
+    }
+    function concluirQuadra(qId) {
+        if(!confirm("Concluir Quadra?")) return;
+        var hoje = new Date().toISOString().split('T')[0];
+        google.script.run.withSuccessHandler(() => { alert("Registrado!"); carregarDados(); }).salvarConclusaoQuadras({ ids: [qId], data: hoje, modo: 'auto' });
+    }
+  </script>
 </body>
 </html>
