@@ -786,15 +786,13 @@ function _invalidar() {
 function getDadosCampanhaPublico() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetQ = ss.getSheetByName("Quadras");
-  var props = PropertiesService.getScriptProperties();
+  var cfg = obterConfiguracoesCampanha();
 
-  var nome = props.getProperty('CAMPANHA_NOME') || "Campanha";
-  var dataIni = props.getProperty('CAMPANHA_DATA') || "";
-
-  var dataInicio = dataIni ? new Date(dataIni + "T00:00:00") : null;
+  var dataInicio = cfg.data ? new Date(cfg.data + "T00:00:00") : null;
+  var dataFim = cfg.dataFim ? new Date(cfg.dataFim + "T00:00:00") : null;
 
   var quadras = [];
-  var completas = 0, andamento = 0, restantes = 0, completasSemana = 0;
+  var completas = 0, restantes = 0, completasSemana = 0;
   var hoje = new Date();
   var seteDiasAtras = new Date(hoje.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -804,16 +802,13 @@ function getDadosCampanhaPublico() {
       var id = String(r[0] || "").trim();
       if (!id) return;
       var poly = String(r[4] || "");
-      var status = String(r[7] || "");
       var color = String(r[5] || "#3388ff");
       var territory = String(r[6] || "");
       var dataConc = (r[8] instanceof Date) ? r[8] : null;
       var dataConcStr = dataConc ? Utilities.formatDate(dataConc, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
 
       var estado = 'restante';
-      if (status && status.toLowerCase().indexOf('iniciado') > -1) {
-        estado = 'andamento'; andamento++;
-      } else if (dataConc && dataInicio && dataConc >= dataInicio) {
+      if (dataConc && dataInicio && dataConc >= dataInicio) {
         estado = 'completa'; completas++;
         if (dataConc >= seteDiasAtras) completasSemana++;
       } else {
@@ -825,25 +820,36 @@ function getDadosCampanhaPublico() {
         polyString: poly,
         color: color,
         territory: territory,
-        status: status,
         dataConclusao: dataConcStr,
         estado: estado
       });
     });
   }
 
-  var total = completas + andamento + restantes;
+  var total = completas + restantes;
   var pct = total > 0 ? Math.round((completas / total) * 100) : 0;
 
+  // Calcula ritmo necessário para bater a data alvo
+  var ritmoNecessario = null;
+  if (dataFim && total > 0 && (dataFim - hoje) > 0) {
+    var diasRestantes = Math.ceil((dataFim - hoje) / (1000*60*60*24));
+    var semanasRestantes = Math.max(1, diasRestantes / 7);
+    ritmoNecessario = Math.ceil(restantes / semanasRestantes);
+  }
+
   return {
-    nome: nome,
-    dataInicio: dataIni,
+    nome: cfg.nome || "Campanha",
+    dataInicio: cfg.data || "",
+    dataFim: cfg.dataFim || "",
+    objetivo: cfg.objetivo || "",
+    estrategia: cfg.estrategia || "",
+    metaSemanal: cfg.metaSemanal || 0,
     totalQuadras: total,
     completas: completas,
-    andamento: andamento,
     restantes: restantes,
     completasSemana: completasSemana,
     porcentagem: pct,
+    ritmoNecessario: ritmoNecessario,
     quadras: quadras,
     geradoEm: new Date().getTime()
   };
@@ -900,10 +906,25 @@ function salvarConfiguracoesCampanha(nome, data) {
   return true;
 }
 
+function salvarConfiguracoesCampanhaCompleta(cfg) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('CAMPANHA_NOME', cfg.nome || "");
+  props.setProperty('CAMPANHA_DATA', cfg.data || "");
+  props.setProperty('CAMPANHA_DATA_FIM', cfg.dataFim || "");
+  props.setProperty('CAMPANHA_OBJETIVO', cfg.objetivo || "");
+  props.setProperty('CAMPANHA_ESTRATEGIA', cfg.estrategia || "");
+  props.setProperty('CAMPANHA_META_SEMANAL', String(cfg.metaSemanal || 0));
+  return true;
+}
+
 function obterConfiguracoesCampanha() {
   var props = PropertiesService.getScriptProperties();
   return {
     nome: props.getProperty('CAMPANHA_NOME') || "",
-    data: props.getProperty('CAMPANHA_DATA') || ""
+    data: props.getProperty('CAMPANHA_DATA') || "",
+    dataFim: props.getProperty('CAMPANHA_DATA_FIM') || "",
+    objetivo: props.getProperty('CAMPANHA_OBJETIVO') || "",
+    estrategia: props.getProperty('CAMPANHA_ESTRATEGIA') || "",
+    metaSemanal: parseInt(props.getProperty('CAMPANHA_META_SEMANAL') || "0", 10) || 0
   };
 }

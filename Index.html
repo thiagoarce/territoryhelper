@@ -93,37 +93,29 @@
   <div id="telaRegistro" class="screen container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <h5 class="fw-bold m-0 text-success"><i class="fa-solid fa-clipboard-check me-2"></i>Registro</h5>
-      <div class="card shadow-sm mb-3 border-primary">
-        <div class="card-body p-2 d-flex gap-2">
-          <div class="flex-grow-1">
-            <label class="small fw-bold mb-0 text-primary">Nome da Campanha:</label>
-            <input type="text" id="inputNomeCampanha" class="form-control form-control-sm" placeholder="Ex: Campanha Especial" onblur="window.salvarConfigCampanha()">
-          </div>
-          <div>
-            <label class="small fw-bold mb-0 text-primary">Data de Início:</label>
-            <input type="date" id="inputDataCampanha" class="form-control form-control-sm" onblur="window.salvarConfigCampanha()">
-          </div>
-        </div>
-      </div>
       <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="toggleLabelsRegistro" onchange="window.toggleLabelsRegistro(this.checked)"><label class="small fw-bold"></label>
+        <input class="form-check-input" type="checkbox" id="toggleLabelsRegistro" onchange="window.toggleLabelsRegistro(this.checked)"><label class="small fw-bold">Rótulos</label>
       </div>
+    </div>
+
+    <div id="barraSelecaoRegistro" class="alert alert-success py-2 d-none mb-2">
+      <span class="small fw-bold"><span id="countRegistroSel">0</span> quadra(s) selecionada(s)</span>
     </div>
     <div class="sticky-action-bar mb-2">
       <div class="d-flex gap-2 align-items-end">
         <div class="flex-grow-1"><input type="date" class="form-control form-control-sm" id="dataRegistro"></div>
 
-        <button class="btn btn-primary btn-sm fw-bold" onclick="window.iniciarSalvamentoInicio()">
-            <i class="fa-solid fa-play"></i> Iniciar
-          </button>
+        <button class="btn btn-success btn-sm fw-bold" onclick="window.iniciarSalvamentoConclusao()">
+          <i class="fa-solid fa-check"></i> Concluir
+        </button>
 
-        <button class="btn btn-success btn-sm fw-bold position-relative" onclick="window.iniciarSalvamentoConclusao()">Concluir</button>
+        <button class="btn btn-primary btn-sm fw-bold" onclick="window.designarSelecaoRegistro()">
+          <i class="fa-solid fa-user-tie"></i> Designar
+        </button>
       </div>
 
       <div class="mt-1 d-flex justify-content-between align-items-center flex-wrap gap-2 text-muted small"
         style="font-size: 0.7rem;">
-        <span><i class="fa-solid fa-circle-play text-primary"></i> Ini</span>
-
         <span><i class="fa-solid fa-circle-check text-success"></i> <15d</span>
         <span><i class="fa-solid fa-circle-check" style="color:#81c784"></i> <30d</span>
         <span><i class="fa-solid fa-circle-check text-warning"></i> 2m</span>
@@ -255,37 +247,37 @@
   </div>
 <div id="telaCampanha" class="screen container-fluid py-3" style="background-color: #f8f9fa;">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="fw-bold m-0 text-success"><i class="fa-solid fa-chart-pie me-2"></i>Progresso</h4>
-        <span id="labelNomeCampanhaTela" class="badge bg-success fs-6 shadow-sm px-3 py-2"></span>
+        <h4 class="fw-bold m-0 text-success"><i class="fa-solid fa-chart-pie me-2"></i>Campanha</h4>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="window.abrirEditorCampanha()"><i class="fa-solid fa-sliders"></i> Editar</button>
+          <button class="btn btn-sm btn-outline-primary" onclick="window.gerarLinkCampanhaPublica()"><i class="fa-solid fa-share-nodes"></i> Link público</button>
+        </div>
     </div>
-    
+
+    <span id="labelNomeCampanhaTela" class="badge bg-success fs-6 shadow-sm px-3 py-2 mb-2 d-inline-block"></span>
+    <p class="text-muted small mb-3" id="objetivoCampanhaTela" style="white-space: pre-wrap;"></p>
+
     <div class="card shadow-sm border-0 mb-3" style="border-radius: 15px;">
         <div class="card-body">
-            <h6 class="text-muted fw-bold mb-2">Conclusão da Campanha</h6>
             <div class="d-flex justify-content-between align-items-end mb-1">
                 <h2 class="m-0 fw-bold text-dark" id="campanhaPorcentagem">0%</h2>
                 <span class="text-muted small fw-bold" id="campanhaTextoProgresso">0 de 0 quadras</span>
             </div>
             <div class="progress" style="height: 14px; border-radius: 10px; background-color: #e9ecef;">
-                <div id="barraProgressoCampanha" class="progress-bar bg-success progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                <div id="barraProgressoCampanha" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
             </div>
+            <div class="d-flex justify-content-between mt-2 small text-muted" id="metaInfoCampanha"></div>
         </div>
     </div>
 
     <div class="row text-center mb-3 g-2">
-        <div class="col-4">
+        <div class="col-6">
             <div class="p-3 bg-white shadow-sm border border-success" style="border-radius: 15px; border-width: 2px !important;">
                 <h3 class="m-0 fw-bold text-success" id="campanhaCompletas">0</h3>
                 <small class="text-muted fw-bold" style="font-size: 0.7em; text-transform: uppercase;">Concluídas</small>
             </div>
         </div>
-        <div class="col-4">
-            <div class="p-3 bg-white shadow-sm border border-warning" style="border-radius: 15px; border-width: 2px !important;">
-                <h3 class="m-0 fw-bold text-warning" id="campanhaAndamento">0</h3>
-                <small class="text-muted fw-bold" style="font-size: 0.7em; text-transform: uppercase;">Em Andamento</small>
-            </div>
-        </div>
-        <div class="col-4">
+        <div class="col-6">
             <div class="p-3 bg-white shadow-sm border border-secondary" style="border-radius: 15px; border-width: 2px !important;">
                 <h3 class="m-0 fw-bold text-secondary" id="campanhaCinza">0</h3>
                 <small class="text-muted fw-bold" style="font-size: 0.7em; text-transform: uppercase;">Restantes</small>
@@ -293,8 +285,65 @@
         </div>
     </div>
 
-    <div class="map-wrapper shadow-sm" style="border: 4px solid white; border-radius: 15px; height: 45vh; overflow: hidden;">
+    <div class="card shadow-sm border-0 mb-3" id="cardMetasSemanais" style="border-radius: 15px;">
+      <div class="card-body py-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="m-0 fw-bold text-success"><i class="fa-solid fa-bolt me-1"></i>Esta semana</h6>
+          <span class="text-muted small"><b id="campanhaSemanaFeitas">0</b> de <b id="campanhaSemanaMeta">—</b></span>
+        </div>
+        <div class="progress" style="height: 8px; border-radius: 10px;">
+          <div id="barraSemanaCampanha" class="progress-bar bg-success" style="width: 0%"></div>
+        </div>
+        <div class="small text-muted mt-2" id="campanhaSemanaRitmo"></div>
+      </div>
+    </div>
+
+    <div class="map-wrapper shadow-sm" style="border: 4px solid white; border-radius: 15px; height: 40vh; overflow: hidden;">
         <div id="mapCampanha" style="height: 100%; width: 100%;"></div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalEditorCampanha" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-sliders me-2"></i>Editar Campanha</h5>
+          <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Nome da campanha</label>
+            <input type="text" class="form-control" id="campanhaInputNome" placeholder="Ex: Campanha de Outono">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold">Data de início</label>
+              <input type="date" class="form-control" id="campanhaInputDataInicio">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold">Data alvo (fim)</label>
+              <input type="date" class="form-control" id="campanhaInputDataFim">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Objetivo / mensagem</label>
+            <textarea class="form-control" id="campanhaInputObjetivo" rows="3" placeholder="Ex: Cobrir todo o território no período da campanha, com foco em cartas e visitas..."></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Meta semanal (quadras por semana)</label>
+            <input type="number" class="form-control" id="campanhaInputMetaSemanal" min="0" placeholder="Ex: 8">
+            <div class="form-text">Quantas quadras queremos fechar por semana?</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Estratégia / como vamos trabalhar</label>
+            <textarea class="form-control" id="campanhaInputEstrategia" rows="3" placeholder="Ex: Sextas e sábados de manhã com cartas, terças à noite em grupos de 4..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-success" onclick="window.salvarEditorCampanha()"><i class="fa-solid fa-check"></i> Salvar</button>
+        </div>
+      </div>
     </div>
   </div>
   <div class="bottom-nav no-print">
