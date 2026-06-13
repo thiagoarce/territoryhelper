@@ -56,78 +56,113 @@
 // =================================================================
   // MAPA GERAL (CORRIGIDO VARIÁVEIS + BOTÃO ROTA)
   // =================================================================
-  window.carregarMapaGeral = function() {
+ window.carregarMapaGeral = function() {
     if(!mapGeral) {
       mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
       
-      // CORREÇÃO: Usando as variáveis globais corretas do GERAL (lg...)
-      // e não as do Editor (layerGroup...)
       lgGeralTerritorios = L.featureGroup().addTo(mapGeral); 
       lgGeralQuadras = L.featureGroup().addTo(mapGeral);     
       lgGeralLabels = L.featureGroup().addTo(mapGeral); 
     }
     
-    showLoading(true); shareSelecionados.clear(); window.atualizarBarraShare();
+    showLoading(true, "Carregando mapa..."); 
+    shareSelecionados.clear(); 
+    window.atualizarBarraShare();
     
-    // Carrega Territórios
-    google.script.run.withSuccessHandler(function(terrs) {
-          lgGeralTerritorios.clearLayers(); lgGeralLabels.clearLayers();
-          if(terrs) {
-              terrs.forEach(function(t) {
-                  var pts = window.stringParaLatLng(t.polyString);
-                  if(pts.length >= 3) {
-                      var pt = L.polygon(pts, {color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '5,5'});
-                      pt.bindPopup("<b>Território: "+t.name+"</b>");
-                      lgGeralTerritorios.addLayer(pt);
-                      
-                      var c = pt.getBounds().getCenter();
-                      if(t.labelPos && t.labelPos.includes(',')) { var s = t.labelPos.split(','); c = [parseFloat(s[0]), parseFloat(s[1])]; }
-                      
-                      var badge = '<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>';
-                      lgGeralLabels.addLayer(L.marker(c, {icon: L.divIcon({html: badge}), interactive: false}));
-                  }
-              });
-              lgGeralTerritorios.bringToBack();
-          }
-          
-          // Carrega Quadras
-          google.script.run.withSuccessHandler(function(dados) {
-              lgGeralQuadras.clearLayers();
-              if(dados) {
-                  dados.forEach(function(d) {
-                     var pts = window.stringParaLatLng(d.polyString);
-                     if(pts.length >= 3) {
-                        var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
-                        poly.metaData = d;
-                        
-                        // Evento de Clique (Seleção para Compartilhar)
-                        poly.on('click', function(e) {
-                           var id = d.id;
-                           if(shareSelecionados.has(id)) { 
-                               shareSelecionados.delete(id); 
-                               this.setStyle({color: '#666', weight: 1}); 
-                           } else { 
-                               shareSelecionados.add(id); 
-                               this.setStyle({color: 'blue', weight: 4}); 
-                           }
-                           window.atualizarBarraShare();
-                        });
-                        
-                        var c = poly.getBounds().getCenter();
-                        
-                        // Botão Rota (Mantido como Link <a>)
-                        var linkMaps = 'http://maps.google.com/?q=' + c.lat + ',' + c.lng;
-                        var btnRota = '<a href="' + linkMaps + '" target="_blank" class="btn btn-sm btn-success w-100 mb-1 text-white text-decoration-none">Rota</a>';
+    let hoje = new Date().toDateString();
+    let dadosOffline = localStorage.getItem('app_mapa_offline');
+    let dataSincronizacao = localStorage.getItem('data_sincronizacao');
 
-                        poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br>'+btnRota+'</div>');
-                        lgGeralQuadras.addLayer(poly);
-                     }
-                  });
+    // 1. TENTA CARREGAR OFFLINE (Instantâneo)
+    if (dadosOffline && dataSincronizacao === hoje) {
+      console.log("Carregando do LocalStorage...");
+      renderizarMapaGeralExtraido(JSON.parse(dadosOffline));
+      showLoading(false);
+      return;
+    }
+
+    // 2. SE NÃO TEM OFFLINE, CHAMA O SERVIDOR
+    console.log("Buscando dados no servidor...");
+    google.script.run
+      .withSuccessHandler(function(pacoteMaster) {
+        // Salva no celular para os próximos acessos
+        localStorage.setItem('app_mapa_offline', JSON.stringify(pacoteMaster));
+        localStorage.setItem('data_sincronizacao', hoje);
+        
+        renderizarMapaGeralExtraido(pacoteMaster);
+        showLoading(false);
+      })
+      .withFailureHandler(function(erro) {
+        console.error("Erro no servidor:", erro);
+        if (dadosOffline) {
+          alert("Sem internet. Usando dados offline.");
+          renderizarMapaGeralExtraido(JSON.parse(dadosOffline));
+        } else {
+          alert("Erro ao carregar o mapa. Verifique a conexão.");
+        }
+        showLoading(false);
+      })
+      .getDadosIniciaisMaster();
+  };
+
+  // Esta é a sua lógica original de pintura do mapa, separada para ser reaproveitável
+  window.renderizarMapaGeralExtraido = function(pacote) {
+      lgGeralTerritorios.clearLayers(); 
+      lgGeralLabels.clearLayers();
+      lgGeralQuadras.clearLayers();
+
+      // Renderiza Territórios
+      if(pacote.territorios) {
+          pacote.territorios.forEach(function(t) {
+              var pts = window.stringParaLatLng(t.polyString);
+              if(pts.length >= 3) {
+                  var pt = L.polygon(pts, {color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '5,5'});
+                  pt.bindPopup("<b>Território: "+t.name+"</b>");
+                  lgGeralTerritorios.addLayer(pt);
+                  
+                  var c = pt.getBounds().getCenter();
+                  if(t.labelPos && t.labelPos.includes(',')) { 
+                      var s = t.labelPos.split(','); 
+                      c = [parseFloat(s[0]), parseFloat(s[1])]; 
+                  }
+                  
+                  var badge = '<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>';
+                  lgGeralLabels.addLayer(L.marker(c, {icon: L.divIcon({html: badge}), interactive: false}));
               }
-              showLoading(false);
-          }).getPoligonosQuadras();
-    }).getDadosTerritorios();
+          });
+          lgGeralTerritorios.bringToBack();
+      }
+
+      // Renderiza Quadras
+      if(pacote.quadras) {
+          pacote.quadras.forEach(function(d) {
+             var pts = window.stringParaLatLng(d.polyString);
+             if(pts.length >= 3) {
+                var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
+                poly.metaData = d;
+                
+                poly.on('click', function(e) {
+                   var id = d.id;
+                   if(shareSelecionados.has(id)) { 
+                       shareSelecionados.delete(id); 
+                       this.setStyle({color: '#666', weight: 1}); 
+                   } else { 
+                       shareSelecionados.add(id); 
+                       this.setStyle({color: 'blue', weight: 4}); 
+                   }
+                   window.atualizarBarraShare();
+                });
+                
+                var c = poly.getBounds().getCenter();
+                var linkMaps = 'http://maps.google.com/?q=' + c.lat + ',' + c.lng;
+                var btnRota = '<a href="' + linkMaps + '" target="_blank" class="btn btn-sm btn-success w-100 mb-1 text-white text-decoration-none">Rota</a>';
+
+                poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br>'+btnRota+'</div>');
+                lgGeralQuadras.addLayer(poly);
+             }
+          });
+      }
   };
 
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };

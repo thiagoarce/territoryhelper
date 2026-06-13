@@ -754,3 +754,33 @@ function salvarNovoEnderecoPublico(dados) {
   sheet.appendRow(novaLinha);
   return "Criado";
 }
+
+// =================================================================
+// OTIMIZAÇÃO: BUSCA MESTRA COM CACHE
+// =================================================================
+function getDadosIniciaisMaster() {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'DADOS_MAPA_CACHE';
+  var dadosEmCache = cache.get(cacheKey);
+
+  if (dadosEmCache) {
+    return JSON.parse(dadosEmCache); 
+  }
+
+  // Se o cache estiver vazio, chama as funções originais que você já criou
+  var pacoteMaster = {
+    territorios: getDadosTerritorios(),
+    quadras: getPoligonosQuadras()
+  };
+
+  try {
+    cache.put(cacheKey, JSON.stringify(pacoteMaster), 900); // Salva por 15 minutos
+  } catch(e) {}
+
+  return pacoteMaster;
+}
+
+function limparCacheServidor() {
+  var cache = CacheService.getScriptCache();
+  cache.remove('DADOS_MAPA_CACHE');
+}
