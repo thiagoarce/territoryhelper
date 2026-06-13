@@ -113,188 +113,8 @@ window.mudarAba = function(aba) {
     }
   };
 
-  window.carregarDadosCampanha = function() {
-    if(!mapCampanha) {
-      mapCampanha = L.map('mapCampanha');
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapCampanha);
-      lgCampanhaQuadras = L.featureGroup().addTo(mapCampanha);
-    }
-    
-    document.getElementById('labelNomeCampanhaTela').innerText = configCampanhaGlobal.nome || "Geral";
-    let dataInicio = new Date(configCampanhaGlobal.data + "T00:00:00");
 
-    let dadosOffline = localStorage.getItem('app_mapa_offline');
-    if (dadosOffline) {
-      let pacote = JSON.parse(dadosOffline);
-      lgCampanhaQuadras.clearLayers();
-      let countCompletas = 0; let countAndamento = 0; let countCinza = 0;
-
-      if(pacote.quadras) {
-        pacote.quadras.forEach(function(d) {
-          let pts = window.stringParaLatLng(d.polyString);
-          if(pts.length >= 3) {
-            let corMapa = '#6c757d'; // Cinza
-
-            // A lógica perfeita usando as colunas de "Data" e "Status" que você já tem
-            if (d.status.toLowerCase() === 'iniciado') {
-              corMapa = '#ffc107'; // Amarelo
-              countAndamento++;
-            } else if (d.dataConclusao) {
-              let dataConc = new Date(d.dataConclusao + "T00:00:00");
-              if (dataConc >= dataInicio) {
-                corMapa = '#28a745'; // Verde
-                countCompletas++;
-              } else {
-                countCinza++;
-              }
-            } else {
-              countCinza++;
-            }
-
-            let poly = L.polygon(pts, {color: '#333', fillColor: corMapa, weight: 1, fillOpacity: 0.7});
-            lgCampanhaQuadras.addLayer(poly);
-          }
-        });
-      }
-
-      document.getElementById('campanhaCompletas').innerText = countCompletas;
-      document.getElementById('campanhaAndamento').innerText = countAndamento;
-      document.getElementById('campanhaCinza').innerText = countCinza;
-
-      window.focarMapaInteligente(mapCampanha, lgCampanhaQuadras);
-    }
-  };
-
-  // ... (carregarMapaGeral, etc... mantidos) ...
-// =================================================================
-  // MAPA GERAL (CORRIGIDO VARIÁVEIS + BOTÃO ROTA)
-  // =================================================================
-window.carregarMapaGeral = function() {
-    if(!mapGeral) {
-      mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
-      
-      lgGeralTerritorios = L.featureGroup().addTo(mapGeral); 
-      lgGeralQuadras = L.featureGroup().addTo(mapGeral);     
-      lgGeralLabels = L.featureGroup().addTo(mapGeral); 
-    }
-    
-    showLoading(true, "Carregando mapa..."); 
-    shareSelecionados.clear(); 
-    window.atualizarBarraShare();
-    
-    let hoje = new Date().toDateString();
-    let dadosOffline = localStorage.getItem('app_mapa_offline');
-    let dataSincronizacao = localStorage.getItem('data_sincronizacao');
-
-    // 1. TENTA CARREGAR OFFLINE (Instantâneo) + ATUALIZAÇÃO SILENCIOSA
-    if (dadosOffline && dataSincronizacao === hoje) {
-      console.log("Carregando do LocalStorage...");
-      renderizarMapaGeralExtraido(JSON.parse(dadosOffline));
-      showLoading(false); // Libera a tela para o publicador já ir usando
-      
-      // Busca atualizações no servidor sem travar a tela
-      console.log("Buscando atualizações silenciosamente...");
-      google.script.run
-        .withSuccessHandler(function(pacoteMasterAtualizado) {
-           localStorage.setItem('app_mapa_offline', JSON.stringify(pacoteMasterAtualizado));
-           renderizarMapaGeralExtraido(pacoteMasterAtualizado);
-           console.log("Mapa atualizado com sucesso em background!");
-        })
-        .getDadosIniciaisMaster();
-        
-      return; 
-    }
-
-    // 2. SE NÃO TEM OFFLINE, CHAMA O SERVIDOR E TRAVA A TELA
-    console.log("Buscando dados no servidor...");
-    google.script.run
-      .withSuccessHandler(function(pacoteMaster) {
-        localStorage.setItem('app_mapa_offline', JSON.stringify(pacoteMaster));
-        localStorage.setItem('data_sincronizacao', hoje);
-        
-        renderizarMapaGeralExtraido(pacoteMaster);
-        showLoading(false);
-      })
-      .withFailureHandler(function(erro) {
-        console.error("Erro no servidor:", erro);
-        if (dadosOffline) {
-          alert("Sem internet. Usando dados offline.");
-          renderizarMapaGeralExtraido(JSON.parse(dadosOffline));
-        } else {
-          alert("Erro ao carregar o mapa. Verifique a conexão.");
-        }
-        showLoading(false);
-      })
-      .getDadosIniciaisMaster();
-  };
-
-  // Função atrelada ao botão de forçar atualização (Pode colar logo aqui embaixo)
-  window.forcarSincronizacao = function() {
-    showLoading(true, "Buscando atualizações...");
-    localStorage.removeItem('app_mapa_offline');
-    localStorage.removeItem('data_sincronizacao');
-    window.carregarMapaGeral();
-  };
-
-  // Esta é a sua lógica original de pintura do mapa, separada para ser reaproveitável
-  window.renderizarMapaGeralExtraido = function(pacote) {
-      lgGeralTerritorios.clearLayers(); 
-      lgGeralLabels.clearLayers();
-      lgGeralQuadras.clearLayers();
-
-      // Renderiza Territórios
-      if(pacote.territorios) {
-          pacote.territorios.forEach(function(t) {
-              var pts = window.stringParaLatLng(t.polyString);
-              if(pts.length >= 3) {
-                  var pt = L.polygon(pts, {color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '5,5'});
-                  pt.bindPopup("<b>Território: "+t.name+"</b>");
-                  lgGeralTerritorios.addLayer(pt);
-                  
-                  var c = pt.getBounds().getCenter();
-                  if(t.labelPos && t.labelPos.includes(',')) { 
-                      var s = t.labelPos.split(','); 
-                      c = [parseFloat(s[0]), parseFloat(s[1])]; 
-                  }
-                  
-                  var badge = '<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>';
-                  lgGeralLabels.addLayer(L.marker(c, {icon: L.divIcon({html: badge}), interactive: false}));
-              }
-          });
-          lgGeralTerritorios.bringToBack();
-      }
-
-      // Renderiza Quadras
-      if(pacote.quadras) {
-          pacote.quadras.forEach(function(d) {
-             var pts = window.stringParaLatLng(d.polyString);
-             if(pts.length >= 3) {
-                var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
-                poly.metaData = d;
-                
-                poly.on('click', function(e) {
-                   var id = d.id;
-                   if(shareSelecionados.has(id)) { 
-                       shareSelecionados.delete(id); 
-                       this.setStyle({color: '#666', weight: 1}); 
-                   } else { 
-                       shareSelecionados.add(id); 
-                       this.setStyle({color: 'blue', weight: 4}); 
-                   }
-                   window.atualizarBarraShare();
-                });
-                
-                var c = poly.getBounds().getCenter();
-                var linkMaps = 'http://maps.google.com/?q=' + c.lat + ',' + c.lng;
-                var btnRota = '<a href="' + linkMaps + '" target="_blank" class="btn btn-sm btn-success w-100 mb-1 text-white text-decoration-none">Rota</a>';
-
-                poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br>'+btnRota+'</div>');
-                lgGeralQuadras.addLayer(poly);
-             }
-          });
-      }
-  };
+ 
 
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
   window.gerarLinkPublico = function() { if(shareSelecionados.size === 0) return; var terrUnico = null; var erro = false; var ids = Array.from(shareSelecionados); lgGeralQuadras.eachLayer(function(l) { if(shareSelecionados.has(l.metaData.id)) { if(terrUnico === null) terrUnico = l.metaData.territory; else if(terrUnico !== l.metaData.territory) erro = true; } }); if(erro || !terrUnico) return alert("Erro: Selecione quadras de APENAS UM território."); showLoading(true); google.script.run.withSuccessHandler(function(url) { showLoading(false); var baseUrl = url || window.location.href.split('?')[0]; var finalUrl = baseUrl + "?v=publico&ids=" + ids.join(","); document.getElementById('inputLinkPublico').value = finalUrl; document.getElementById('lblTerritorioShare').innerText = terrUnico; modalLinkPublico.show(); }).withFailureHandler(e => { showLoading(false); alert(e); }).getScriptUrl(); };
@@ -849,32 +669,7 @@ window.converterGeoJsonParaString = function(geometry) {
   window.limparSelecao=function(){ selectedQuadras.forEach(q => q.layer.setStyle({color:'#666', weight:1, dashArray:null})); selectedQuadras=[]; window.atualizarBotoesSelecao(); };
 
   // Utils e Registro (Mantidos)
-window.carregarDadosRegistro = function() {
-    showLoading(true, "Carregando registros...");
-    google.script.run.withSuccessHandler(function(res) {
-       layerGroupRegistro.clearLayers();
-       res.forEach(function(t) {
-           var pts = window.stringParaLatLng(t.polyString);
-           if(pts.length >= 3) {
-               var pt = L.polygon(pts, {color: t.color, weight: 2, fillOpacity: 0.1});
-               pt.bindPopup("<b>" + t.name + "</b><br><button class='btn btn-sm btn-primary mt-1' onclick='window.abrirModalRegistro(\"" + t.name + "\")'>Registrar</button>");
-               pt.addTo(layerGroupRegistro);
-               
-               // Adicionando o crachá do número do território
-               var centro = pt.getBounds().getCenter();
-               var badge = '<div class="territory-badge" style="border-color:'+t.color+'; font-size:1.4rem;">'+t.name+'</div>';
-               L.marker(centro, {icon: L.divIcon({html: badge, className: 'custom-label-icon'}), interactive: false}).addTo(layerGroupRegistro);
-           }
-       });
-       showLoading(false);
-       
-       // Focando o mapa pelo GPS
-       if (typeof window.focarMapaInteligente === "function") {
-         window.focarMapaInteligente(mapRegistro, layerGroupRegistro);
-       }
-       
-    }).getDadosRegistro();
-  };
+
 
 window.iniciarMapaRegistro = function(qs, ops) {
       if (!mapRegistro) {
@@ -1330,6 +1125,184 @@ window.confirmarAssociacao = function(layerQuadra) {
        window.carregarMapaGeral();
        setTimeout(window.carregarDadosCampanha, 2500);
     }
+  };
+
+  // =================================================================
+  // MOTOR OFFLINE UNIVERSAL (Instalado em todo o app)
+  // =================================================================
+  window.obterDadosOfflineFirst = function(callbackRenderizacao) {
+    let hoje = new Date().toDateString();
+    let dadosOffline = localStorage.getItem('app_dados_completos');
+    let dataSync = localStorage.getItem('data_sync_app');
+
+    if (dadosOffline && dataSync === hoje) {
+      // 1. Instantâneo: Carrega do celular e libera a tela
+      let pacote = JSON.parse(dadosOffline);
+      callbackRenderizacao(pacote);
+      
+      // 2. Silencioso: Puxa do Google por baixo dos panos para atualizar
+      google.script.run.withSuccessHandler(function(novoPacote) {
+         if(novoPacote) localStorage.setItem('app_dados_completos', JSON.stringify(novoPacote));
+      }).getDadosIniciaisMaster();
+    } else {
+      // 3. Primeira vez no dia: Traz do Google e salva
+      window.showLoading(true, "Sincronizando banco de dados...");
+      google.script.run.withSuccessHandler(function(pacote) {
+         if(pacote) {
+           localStorage.setItem('app_dados_completos', JSON.stringify(pacote));
+           localStorage.setItem('data_sync_app', hoje);
+           callbackRenderizacao(pacote);
+         }
+         window.showLoading(false);
+      }).withFailureHandler(function(erro) {
+         window.showLoading(false);
+         if (dadosOffline) {
+            alert("Sem internet. Usando dados offline salvos.");
+            callbackRenderizacao(JSON.parse(dadosOffline));
+         } else {
+            alert("Falha de conexão e nenhum dado offline encontrado.");
+         }
+      }).getDadosIniciaisMaster();
+    }
+  };
+
+  // =================================================================
+  // RECONSTRUINDO OS MAPAS PARA USAR O MOTOR OFFLINE
+  // =================================================================
+
+  window.carregarMapaGeral = function() {
+    if(!mapGeral) {
+      mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
+      lgGeralTerritorios = L.featureGroup().addTo(mapGeral); 
+      lgGeralQuadras = L.featureGroup().addTo(mapGeral);     
+      lgGeralLabels = L.featureGroup().addTo(mapGeral); 
+    }
+    shareSelecionados.clear(); 
+    if(typeof window.atualizarBarraShare === 'function') window.atualizarBarraShare();
+    
+    window.obterDadosOfflineFirst(function(pacoteMaster) {
+       window.renderizarMapaGeralExtraido(pacoteMaster);
+       window.focarMapaInteligente(mapGeral, lgGeralTerritorios);
+    });
+  };
+
+  window.renderizarMapaGeralExtraido = function(pacote) {
+      lgGeralTerritorios.clearLayers(); lgGeralLabels.clearLayers(); lgGeralQuadras.clearLayers();
+      if(pacote.territorios) {
+          pacote.territorios.forEach(function(t) {
+              var pts = window.stringParaLatLng(t.polyString);
+              if(pts.length >= 3) {
+                  var pt = L.polygon(pts, {color: t.color, weight: 3, fillOpacity: 0.1, dashArray: '5,5'});
+                  pt.bindPopup("<b>Território: "+t.name+"</b>");
+                  lgGeralTerritorios.addLayer(pt);
+                  var c = pt.getBounds().getCenter();
+                  var badge = '<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>';
+                  lgGeralLabels.addLayer(L.marker(c, {icon: L.divIcon({html: badge}), interactive: false}));
+              }
+          });
+          lgGeralTerritorios.bringToBack();
+      }
+      if(pacote.quadras) {
+          pacote.quadras.forEach(function(d) {
+             var pts = window.stringParaLatLng(d.polyString);
+             if(pts.length >= 3) {
+                var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
+                poly.on('click', function(e) {
+                   var id = d.id;
+                   if(shareSelecionados.has(id)) { shareSelecionados.delete(id); this.setStyle({color: '#666', weight: 1}); } 
+                   else { shareSelecionados.add(id); this.setStyle({color: 'blue', weight: 4}); }
+                   window.atualizarBarraShare();
+                });
+                var c = poly.getBounds().getCenter();
+                var linkMaps = 'http://maps.google.com/?q=' + c.lat + ',' + c.lng;
+                poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br><a href="'+linkMaps+'" target="_blank" class="btn btn-sm btn-success w-100 mb-1 text-white text-decoration-none">Rota</a></div>');
+                lgGeralQuadras.addLayer(poly);
+             }
+          });
+      }
+  };
+
+  window.carregarDadosRegistro = function() {
+    if(!mapRegistro) {
+       mapRegistro = L.map('mapRegistro');
+       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
+       layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
+    }
+    window.obterDadosOfflineFirst(function(pacote) {
+       layerGroupRegistro.clearLayers();
+       if (pacote.territorios) {
+           pacote.territorios.forEach(function(t) {
+               var pts = window.stringParaLatLng(t.polyString);
+               if(pts.length >= 3) {
+                   var pt = L.polygon(pts, {color: t.color, weight: 2, fillOpacity: 0.1});
+                   pt.bindPopup("<b>" + t.name + "</b><br><button class='btn btn-sm btn-primary mt-1' onclick='window.abrirModalRegistro(\"" + t.name + "\")'>Registrar</button>");
+                   pt.addTo(layerGroupRegistro);
+                   
+                   var centro = pt.getBounds().getCenter();
+                   var badge = '<div class="territory-badge" style="border-color:'+t.color+'; font-size:1.4rem;">'+t.name+'</div>';
+                   L.marker(centro, {icon: L.divIcon({html: badge, className: 'custom-label-icon'}), interactive: false}).addTo(layerGroupRegistro);
+               }
+           });
+       }
+       window.focarMapaInteligente(mapRegistro, layerGroupRegistro);
+    });
+  };
+
+  window.carregarDadosCampanha = function() {
+    if(!mapCampanha) {
+      mapCampanha = L.map('mapCampanha');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapCampanha);
+      lgCampanhaQuadras = L.featureGroup().addTo(mapCampanha);
+    }
+    
+    document.getElementById('labelNomeCampanhaTela').innerText = configCampanhaGlobal.nome || "Geral";
+    let dataInicio = new Date(configCampanhaGlobal.data + "T00:00:00");
+
+    window.obterDadosOfflineFirst(function(pacote) {
+      lgCampanhaQuadras.clearLayers();
+      let countCompletas = 0; let countAndamento = 0; let countCinza = 0;
+
+      if(pacote.quadras) {
+        pacote.quadras.forEach(function(d) {
+          let pts = window.stringParaLatLng(d.polyString);
+          if(pts.length >= 3) {
+            let corMapa = '#6c757d'; 
+            if (d.status && d.status.toLowerCase() === 'iniciado') {
+              corMapa = '#ffc107'; countAndamento++;
+            } else if (d.dataConclusao) {
+              let dataConc = new Date(d.dataConclusao + "T00:00:00");
+              if (dataConc >= dataInicio) {
+                corMapa = '#28a745'; countCompletas++;
+              } else { countCinza++; }
+            } else { countCinza++; }
+
+            let poly = L.polygon(pts, {color: 'white', fillColor: corMapa, weight: 2, fillOpacity: 0.8});
+            lgCampanhaQuadras.addLayer(poly);
+          }
+        });
+      }
+
+      // Cálculos da Porcentagem
+      let total = countCompletas + countAndamento + countCinza;
+      let porcentagem = total > 0 ? Math.round((countCompletas / total) * 100) : 0;
+
+      document.getElementById('campanhaCompletas').innerText = countCompletas;
+      document.getElementById('campanhaAndamento').innerText = countAndamento;
+      document.getElementById('campanhaCinza').innerText = countCinza;
+      
+      document.getElementById('campanhaPorcentagem').innerText = porcentagem + "%";
+      document.getElementById('campanhaTextoProgresso').innerText = countCompletas + " de " + total + " quadras";
+      document.getElementById('barraProgressoCampanha').style.width = porcentagem + "%";
+
+      window.focarMapaInteligente(mapCampanha, lgCampanhaQuadras);
+    });
+  };
+
+  window.forcarSincronizacao = function() {
+    localStorage.removeItem('app_dados_completos');
+    localStorage.removeItem('data_sync_app');
+    window.carregarMapaGeral();
   };
 
   window.stringParaLatLng = function(str) { if(!str) return []; var p=str.replace(/\r\n|\n|\r/g,"|").split("|"); var r=[]; p.forEach(function(x){var c=x.trim().split(","); if(c.length>=2) r.push([parseFloat(c[0]), parseFloat(c[1])])}); return r; };
