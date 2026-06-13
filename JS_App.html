@@ -43,12 +43,12 @@
        modalLinkPublico = new bootstrap.Modal(document.getElementById('modalLinkPublico'));
        
        var di = document.getElementById('dataRegistro'); if(di) di.valueAsDate = new Date();
-       
-       // Carrega a configuração da campanha ANTES de iniciar os mapas
+
+       // Carrega configuração da campanha (objetivo, meta, etc.) — sem UI por enquanto, só popula configCampanhaGlobal
        if (typeof window.carregarConfigCampanhaInicial === "function") {
            window.carregarConfigCampanhaInicial();
        }
-       
+
        window.iniciarApp();
     } catch(e) { console.error("Erro Init:", e); }
   };
@@ -130,13 +130,15 @@ window.iniciarMapaPoligonos = function() {
       mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
       mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
-      
+
       layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
       layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
-      
-      // Otimização de Performance: Agrupamento em Bolinhas
+
       layerGroupFacesRes = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 40 }).addTo(mapPoligonos);
       layerGroupFacesCom = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 40 }).addTo(mapPoligonos);
+
+      // div pode ter sido criado oculto — precisa recalcular tamanho
+      setTimeout(function(){ if(mapPoligonos) mapPoligonos.invalidateSize(); }, 80);
     }
     window.carregarEditorDados();
   };
@@ -174,6 +176,17 @@ window.carregarEditorDados = function() {
              });
              layerGroupQuadras.addLayer(poly);
           });
+          // Após carregar quadras, garante que o mapa renderiza no tamanho certo
+          // e centraliza nos polígonos (só na primeira carga)
+          if (mapPoligonos) {
+            mapPoligonos.invalidateSize();
+            if (!window._editorFocado && layerGroupQuadras.getLayers().length > 0) {
+              try {
+                var b = layerGroupQuadras.getBounds();
+                if (b.isValid()) { mapPoligonos.fitBounds(b, { padding: [30, 30] }); window._editorFocado = true; }
+              } catch(e){}
+            }
+          }
           fim();
         })
         .withFailureHandler(erro)
@@ -717,9 +730,6 @@ window.iniciarMapaRegistro = function(qs, ops) {
           if (!isOpt) {
               // --- TOOLTIP ---
               var dataFormatada = q.dataConclusao ? window.formatarDataBR(q.dataConclusao) : "Nunca feita";
-              // Se estiver iniciado, mostra aviso no tooltip
-              if(q.status === 'Iniciado') dataFormatada = "<b style='color:#0d6efd'>EM ANDAMENTO</b>";
-
               var territorioNome = q.territory || "Sem Território";
               
               var conteudoTooltip = '<div style="text-align: center;">' +
@@ -742,40 +752,30 @@ window.iniciarMapaRegistro = function(qs, ops) {
                       registroSelecionados.add(id);
                       this.setStyle({ color: 'red', weight: 4 });
                   }
-                  // Atualiza botões se houver função para isso
-                  if(typeof atualizarBotoesAcao === 'function') atualizarBotoesAcao();
+                  window.atualizarBarraSelecaoRegistro();
               });
               
-              // --- LÓGICA DOS ÍCONES (Sua Regra de Negócio) ---
-              var iconCls = "status-alert"; // Padrão: Vermelho (Vencido/Nunca feito)
-              var iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>'; // Padrão: Alerta
+              // --- LÓGICA DOS ÍCONES (concluída por idade ou pendente) ---
+              var iconCls = "status-alert";
+              var iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>';
 
-              // 1. CASO INICIADO (Prioridade Alta)
-              if (q.status === 'Iniciado') {
-                   iconCls = "status-iniciado";
-                   iconHtml = '<i class="fa-solid fa-circle-play"></i>';
-              }
-              // 2. CASO CONCLUÍDO (Regra de Datas)
-              else if (q.status === 'Concluído' && q.dataConclusao) {
+              if (q.dataConclusao) {
                   var p = q.dataConclusao.split('-');
                   var dt = new Date(p[0], p[1] - 1, p[2]);
                   var diff = Math.ceil(Math.abs(hoje - dt) / (864e5));
-                  
-                  // Ícone padrão de check
                   iconHtml = '<i class="fa-solid fa-circle-check"></i>';
-                  
-                  // Regra de Cores
+
                   if (diff <= 15) {
-                      iconCls = "status-15d";       // Verde Forte
+                      iconCls = "status-15d";
                   } else if (diff <= 30) {
-                      iconCls = "status-30d";       // Verde Claro
+                      iconCls = "status-30d";
                   } else if (diff <= 60) {
-                      iconCls = "status-60d";       // Amarelo
+                      iconCls = "status-60d";
                   } else if (diff <= 90) {
-                      iconCls = "status-90d";       // Laranja
+                      iconCls = "status-90d";
                   } else {
-                      iconCls = "status-alert";     // Vermelho (> 90 dias)
-                      iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>'; // Volta ícone de alerta
+                      iconCls = "status-alert";
+                      iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>';
                   }
               }
               
@@ -800,54 +800,47 @@ window.iniciarMapaRegistro = function(qs, ops) {
       if(window.ativarGPS) window.ativarGPS('registro');
   };
 
-// Variável temporária para guardar o que estamos tentando salvar (igual ao tempConflitoPayload)
-var tempInicioPayload = {};
-
-// 1. Função que o Botão "Iniciar" chama
-// 1. Função que o Botão "Iniciar" chama
-window.iniciarSalvamentoInicio = function() {
-    if (registroSelecionados.size === 0) return alert("Selecione quadras para iniciar");
-    
-    // Converte a data para string ISO (formato seguro para envio)
-    var dataSegura = new Date().toISOString(); 
-    
-    // Prepara o pacote de dados
-    tempInicioPayload = {
-        ids: Array.from(registroSelecionados),
-        status: 'Iniciado',
-        data: dataSegura // Envia como String
-    };
-
-    // Feedback Visual (Loading)
-    showLoading(true);
-
-    // Chama o Backend
-    google.script.run
-        .withSuccessHandler(window.processarRespostaInicio)
-        .withFailureHandler(function(e) { showLoading(false); alert("Erro: " + e); })
-        .salvarInicioQuadras(tempInicioPayload);
+window.atualizarBarraSelecaoRegistro = function() {
+    var bar = document.getElementById('barraSelecaoRegistro');
+    var cnt = document.getElementById('countRegistroSel');
+    if (cnt) cnt.innerText = registroSelecionados.size;
+    if (bar) {
+      if (registroSelecionados.size > 0) bar.classList.remove('d-none');
+      else bar.classList.add('d-none');
+    }
 };
 
-// 2. Função que processa a volta do servidor
-window.processarRespostaInicio = function(r) {
-    showLoading(false);
+// Designar = gera link de dirigente para as quadras selecionadas no Registro
+window.designarSelecaoRegistro = function() {
+    if (registroSelecionados.size === 0) return alert("Selecione quadras para designar");
 
-    if (r && r.status === "SUCESSO") {
-        var idsSalvos = tempInicioPayload.ids;
+    var ids = Array.from(registroSelecionados);
+    var terrUnico = null;
+    var erro = false;
 
-        cacheQuadrasRegistro.forEach(function(q) {
-            if (idsSalvos.includes(q.id)) {
-                q.status = "Iniciado";
-                q.dataConclusao = null;
-            }
-        });
+    // Procura territory entre as quadras selecionadas a partir do cache
+    cacheQuadrasRegistro.forEach(function(q) {
+        if (registroSelecionados.has(q.id)) {
+            if (terrUnico === null) terrUnico = q.territory;
+            else if (terrUnico !== q.territory) erro = true;
+        }
+    });
+    if (erro) return alert("Selecione quadras de APENAS UM território para designar.");
 
-        registroSelecionados.clear();
-        window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
-        window.invalidarCacheMapa();
-    } else {
-        alert("Erro ao salvar status de início.");
-    }
+    showLoading(true, "Gerando link...");
+    google.script.run
+      .withSuccessHandler(function(url) {
+          showLoading(false);
+          var baseUrl = url || window.location.href.split('?')[0];
+          var finalUrl = baseUrl + "?v=dirigente&ids=" + ids.join(",");
+          document.getElementById('inputLinkPublico').value = finalUrl;
+          document.getElementById('lblTerritorioShare').innerText = terrUnico || "—";
+          var titulo = document.querySelector('#modalLinkPublico .modal-title');
+          if (titulo) titulo.innerText = "Designar — Link para Dirigente";
+          modalLinkPublico.show();
+      })
+      .withFailureHandler(function(e){ showLoading(false); alert(e); })
+      .getScriptUrl();
 };
 
   window.renderizarLabelsRegistro=function(){ if(!layerGroupRegistroLabels)return; layerGroupRegistroLabels.clearLayers(); var show=document.getElementById('toggleLabelsRegistro').checked; if(show){ dadosTerritoriosCache.forEach(function(t){ if(t.labelType!=='optional'){ var pts=window.stringParaLatLng(t.polyString); if(pts.length<3)return; var pt=L.polygon(pts,{interactive:false,fill:false,stroke:false}); var c=pt.getBounds().getCenter(); if(t.labelPos && t.labelPos.includes(',')){var s=t.labelPos.split(',');c=[parseFloat(s[0]),parseFloat(s[1])]} var badge='<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>'; layerGroupRegistroLabels.addLayer(L.marker(c,{icon:L.divIcon({html:badge}),interactive:false})); } }); } };
@@ -869,6 +862,7 @@ window.processarRespostaInicio = function(r) {
           });
 
           registroSelecionados.clear();
+          window.atualizarBarraSelecaoRegistro();
           window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
           window.invalidarCacheMapa();
       } else {
@@ -1031,31 +1025,70 @@ window.confirmarAssociacao = function(layerQuadra) {
     });
   };
 
-  window.salvarConfigCampanha = function() {
-    let nome = document.getElementById('inputNomeCampanha').value;
-    let data = document.getElementById('inputDataCampanha').value;
-    google.script.run.salvarConfiguracoesCampanha(nome, data);
-    configCampanhaGlobal = { nome: nome, data: data };
-  };
-
   window.carregarConfigCampanhaInicial = function() {
     google.script.run.withSuccessHandler(function(config) {
-       configCampanhaGlobal = config || { nome: "", data: "" };
-       let inputNome = document.getElementById('inputNomeCampanha');
-       let inputData = document.getElementById('inputDataCampanha');
+       configCampanhaGlobal = Object.assign({
+         nome: "", data: "", dataFim: "", objetivo: "", estrategia: "", metaSemanal: 0
+       }, config || {});
 
-       if(inputNome) inputNome.value = configCampanhaGlobal.nome || "";
-
-       if (inputData) {
-         if (configCampanhaGlobal.data) {
-           inputData.value = configCampanhaGlobal.data;
-         } else {
-           let d = new Date(); d.setMonth(d.getMonth() - 2);
-           inputData.valueAsDate = d;
-           configCampanhaGlobal.data = inputData.value;
-         }
+       if (!configCampanhaGlobal.data) {
+         let d = new Date(); d.setMonth(d.getMonth() - 2);
+         configCampanhaGlobal.data = d.toISOString().split('T')[0];
        }
     }).obterConfiguracoesCampanha();
+  };
+
+  window.abrirEditorCampanha = function() {
+    document.getElementById('campanhaInputNome').value = configCampanhaGlobal.nome || "";
+    document.getElementById('campanhaInputDataInicio').value = configCampanhaGlobal.data || "";
+    document.getElementById('campanhaInputDataFim').value = configCampanhaGlobal.dataFim || "";
+    document.getElementById('campanhaInputObjetivo').value = configCampanhaGlobal.objetivo || "";
+    document.getElementById('campanhaInputEstrategia').value = configCampanhaGlobal.estrategia || "";
+    document.getElementById('campanhaInputMetaSemanal').value = configCampanhaGlobal.metaSemanal || "";
+
+    if (!window._modalEditorCampanha) {
+      window._modalEditorCampanha = new bootstrap.Modal(document.getElementById('modalEditorCampanha'));
+    }
+    window._modalEditorCampanha.show();
+  };
+
+  window.salvarEditorCampanha = function() {
+    var cfg = {
+      nome: document.getElementById('campanhaInputNome').value || "",
+      data: document.getElementById('campanhaInputDataInicio').value || "",
+      dataFim: document.getElementById('campanhaInputDataFim').value || "",
+      objetivo: document.getElementById('campanhaInputObjetivo').value || "",
+      estrategia: document.getElementById('campanhaInputEstrategia').value || "",
+      metaSemanal: parseInt(document.getElementById('campanhaInputMetaSemanal').value || "0", 10) || 0
+    };
+
+    showLoading(true, "Salvando...");
+    google.script.run
+      .withSuccessHandler(function(){
+         showLoading(false);
+         configCampanhaGlobal = cfg;
+         if (window._modalEditorCampanha) window._modalEditorCampanha.hide();
+         window.carregarDadosCampanha();
+      })
+      .withFailureHandler(function(e){ showLoading(false); alert("Erro: " + e); })
+      .salvarConfiguracoesCampanhaCompleta(cfg);
+  };
+
+  window.gerarLinkCampanhaPublica = function() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(url){
+         showLoading(false);
+         var baseUrl = url || window.location.href.split('?')[0];
+         var finalUrl = baseUrl + "?v=campanha";
+         document.getElementById('inputLinkPublico').value = finalUrl;
+         document.getElementById('lblTerritorioShare').innerText = configCampanhaGlobal.nome || "—";
+         var titulo = document.querySelector('#modalLinkPublico .modal-title');
+         if (titulo) titulo.innerText = "Tela pública da Campanha";
+         modalLinkPublico.show();
+      })
+      .withFailureHandler(function(e){ showLoading(false); alert(e); })
+      .getScriptUrl();
   };
 
   // =================================================================
@@ -1193,49 +1226,93 @@ window.confirmarAssociacao = function(layerQuadra) {
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapCampanha);
       lgCampanhaQuadras = L.featureGroup().addTo(mapCampanha);
     }
-    
-    document.getElementById('labelNomeCampanhaTela').innerText = configCampanhaGlobal.nome || "Geral";
-    let dataInicio = new Date(configCampanhaGlobal.data + "T00:00:00");
+
+    document.getElementById('labelNomeCampanhaTela').innerText = configCampanhaGlobal.nome || "Campanha";
+    document.getElementById('objetivoCampanhaTela').innerText = configCampanhaGlobal.objetivo || "";
+
+    let dataInicio = configCampanhaGlobal.data ? new Date(configCampanhaGlobal.data + "T00:00:00") : null;
+    let dataFim = configCampanhaGlobal.dataFim ? new Date(configCampanhaGlobal.dataFim + "T00:00:00") : null;
+    let hoje = new Date();
+    let seteDiasAtras = new Date(hoje.getTime() - 7*24*60*60*1000);
 
     window.obterDadosOfflineFirst(function(pacote) {
       lgCampanhaQuadras.clearLayers();
-      let countCompletas = 0; let countAndamento = 0; let countCinza = 0;
+      let countCompletas = 0; let countCinza = 0; let completasSemana = 0;
 
       if(pacote.quadras) {
         pacote.quadras.forEach(function(d) {
           let pts = window.stringParaLatLng(d.polyString);
-          if(pts.length >= 3) {
-            let corMapa = '#6c757d'; 
-            if (d.status && d.status.toLowerCase() === 'iniciado') {
-              corMapa = '#ffc107'; countAndamento++;
-            } else if (d.dataConclusao) {
-              let dataConc = new Date(d.dataConclusao + "T00:00:00");
-              if (dataConc >= dataInicio) {
-                corMapa = '#28a745'; countCompletas++;
-              } else { countCinza++; }
-            } else { countCinza++; }
+          if(pts.length < 3) return;
 
-            let poly = L.polygon(pts, {color: 'white', fillColor: corMapa, weight: 2, fillOpacity: 0.8});
-            lgCampanhaQuadras.addLayer(poly);
+          let estado = 'restante';
+          if (d.dataConclusao && dataInicio) {
+            let dataConc = new Date(d.dataConclusao + "T00:00:00");
+            if (dataConc >= dataInicio) {
+              estado = 'completa'; countCompletas++;
+              if (dataConc >= seteDiasAtras) completasSemana++;
+            } else {
+              countCinza++;
+            }
+          } else {
+            countCinza++;
           }
+
+          let corMapa = (estado === 'completa') ? '#28a745' : '#6c757d';
+          let poly = L.polygon(pts, {color: 'white', fillColor: corMapa, weight: 2, fillOpacity: 0.8});
+          lgCampanhaQuadras.addLayer(poly);
         });
       }
 
-      // Cálculos da Porcentagem
-      let total = countCompletas + countAndamento + countCinza;
+      let total = countCompletas + countCinza;
       let porcentagem = total > 0 ? Math.round((countCompletas / total) * 100) : 0;
 
       document.getElementById('campanhaCompletas').innerText = countCompletas;
-      document.getElementById('campanhaAndamento').innerText = countAndamento;
       document.getElementById('campanhaCinza').innerText = countCinza;
-      
       document.getElementById('campanhaPorcentagem').innerText = porcentagem + "%";
       document.getElementById('campanhaTextoProgresso').innerText = countCompletas + " de " + total + " quadras";
       document.getElementById('barraProgressoCampanha').style.width = porcentagem + "%";
 
+      // Meta info (datas e ritmo necessário)
+      var metaInfoEl = document.getElementById('metaInfoCampanha');
+      var partes = [];
+      if (dataInicio) partes.push('<span>Início: <b>' + formatarDataBR(configCampanhaGlobal.data) + '</b></span>');
+      if (dataFim) {
+        partes.push('<span>Alvo: <b>' + formatarDataBR(configCampanhaGlobal.dataFim) + '</b></span>');
+        var diasRestantes = Math.ceil((dataFim - hoje) / (1000*60*60*24));
+        if (diasRestantes > 0 && total > 0) {
+          var semanasRestantes = Math.max(1, diasRestantes / 7);
+          var ritmoNecessario = Math.ceil(countCinza / semanasRestantes);
+          partes.push('<span class="text-success fw-bold">Ritmo: ' + ritmoNecessario + '/sem</span>');
+        }
+      }
+      metaInfoEl.innerHTML = partes.join('');
+
+      // Meta semanal
+      var meta = configCampanhaGlobal.metaSemanal || 0;
+      var pctSem = meta > 0 ? Math.min(100, Math.round((completasSemana / meta) * 100)) : 0;
+      document.getElementById('campanhaSemanaFeitas').innerText = completasSemana;
+      document.getElementById('campanhaSemanaMeta').innerText = meta > 0 ? meta : '—';
+      document.getElementById('barraSemanaCampanha').style.width = pctSem + "%";
+
+      var ritmoTxt = '';
+      if (meta > 0) {
+        if (completasSemana >= meta) ritmoTxt = '🎯 Meta da semana batida!';
+        else ritmoTxt = 'Faltam ' + (meta - completasSemana) + ' para bater a meta da semana.';
+      } else {
+        ritmoTxt = 'Defina uma meta semanal em "Editar".';
+      }
+      document.getElementById('campanhaSemanaRitmo').innerText = ritmoTxt;
+
       window.focarMapaInteligente(mapCampanha, lgCampanhaQuadras);
     });
   };
+
+  function formatarDataBR(ymd) {
+    if (!ymd) return '';
+    var p = ymd.split('-');
+    if (p.length === 3) return p[2] + '/' + p[1] + '/' + p[0];
+    return ymd;
+  }
 
   window.forcarSincronizacao = function() {
     window.invalidarCacheMapa();
