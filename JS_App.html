@@ -28,6 +28,13 @@
 
  window.onload = function() {
     try {
+       // Limpa chaves obsoletas de versões anteriores do motor offline
+       try {
+         localStorage.removeItem('app_dados_completos');
+         localStorage.removeItem('data_sync_app');
+         localStorage.removeItem('app_mapa_offline');
+       } catch(e){}
+
        modalEdicao = new bootstrap.Modal(document.getElementById('modalEdicao'));
        modalNovoTerritorio = new bootstrap.Modal(document.getElementById('modalNovoTerritorio'));
        modalNomear = new bootstrap.Modal(document.getElementById('modalNomear'));
@@ -47,40 +54,7 @@
   };
 
   window.iniciarApp = function() { window.carregarMapaGeral(); };
-  window.focarMapaInteligente = function(mapa, layerPoligonos) {
-    // Tenta ir para o GPS da pessoa
-    mapa.locate({setView: true, maxZoom: 16});
-    
-    // Se o celular negar ou não tiver GPS, foca nos polígonos
-    mapa.on('locationerror', function() {
-      if (layerPoligonos && layerPoligonos.getBounds().isValid()) {
-        mapa.fitBounds(layerPoligonos.getBounds());
-      }
-    });
-  };
 
-  window.salvarConfigCampanha = function() {
-    let nome = document.getElementById('inputNomeCampanha').value;
-    let data = document.getElementById('inputDataCampanha').value;
-    google.script.run.salvarConfiguracoesCampanha(nome, data);
-    configCampanhaGlobal = { nome: nome, data: data };
-  };
-
-  window.carregarConfigCampanhaInicial = function() {
-    google.script.run.withSuccessHandler(function(config) {
-       configCampanhaGlobal = config;
-       document.getElementById('inputNomeCampanha').value = config.nome;
-       
-       if (config.data) {
-         document.getElementById('inputDataCampanha').value = config.data;
-       } else {
-         // Se não houver data, joga 2 meses para trás como padrão
-         let d = new Date(); d.setMonth(d.getMonth() - 2);
-         document.getElementById('inputDataCampanha').valueAsDate = d;
-         configCampanhaGlobal.data = document.getElementById('inputDataCampanha').value;
-       }
-    }).obterConfiguracoesCampanha();
-  };
   window.showLoading = function(show, txt) { var l=document.getElementById('loading'); if(l) l.style.display=show?'flex':'none'; if(txt) document.getElementById('loadingText').innerText=txt; };
 
   // ... (Funções de Abas e Mapa Geral mantidas iguais) ...
@@ -117,7 +91,34 @@ window.mudarAba = function(aba) {
  
 
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
-  window.gerarLinkPublico = function() { if(shareSelecionados.size === 0) return; var terrUnico = null; var erro = false; var ids = Array.from(shareSelecionados); lgGeralQuadras.eachLayer(function(l) { if(shareSelecionados.has(l.metaData.id)) { if(terrUnico === null) terrUnico = l.metaData.territory; else if(terrUnico !== l.metaData.territory) erro = true; } }); if(erro || !terrUnico) return alert("Erro: Selecione quadras de APENAS UM território."); showLoading(true); google.script.run.withSuccessHandler(function(url) { showLoading(false); var baseUrl = url || window.location.href.split('?')[0]; var finalUrl = baseUrl + "?v=publico&ids=" + ids.join(","); document.getElementById('inputLinkPublico').value = finalUrl; document.getElementById('lblTerritorioShare').innerText = terrUnico; modalLinkPublico.show(); }).withFailureHandler(e => { showLoading(false); alert(e); }).getScriptUrl(); };
+  window._abrirModalLinkPublico = function(view, labelHeader) {
+    if(shareSelecionados.size === 0) return;
+    var terrUnico = null; var erro = false;
+    var ids = Array.from(shareSelecionados);
+    lgGeralQuadras.eachLayer(function(l) {
+      if(shareSelecionados.has(l.metaData.id)) {
+        if(terrUnico === null) terrUnico = l.metaData.territory;
+        else if(terrUnico !== l.metaData.territory) erro = true;
+      }
+    });
+    if(erro || !terrUnico) return alert("Erro: Selecione quadras de APENAS UM território.");
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(url) {
+        showLoading(false);
+        var baseUrl = url || window.location.href.split('?')[0];
+        var finalUrl = baseUrl + "?v=" + view + "&ids=" + ids.join(",");
+        document.getElementById('inputLinkPublico').value = finalUrl;
+        document.getElementById('lblTerritorioShare').innerText = terrUnico;
+        var titulo = document.querySelector('#modalLinkPublico .modal-title');
+        if (titulo) titulo.innerText = labelHeader;
+        modalLinkPublico.show();
+      })
+      .withFailureHandler(function(e){ showLoading(false); alert(e); })
+      .getScriptUrl();
+  };
+  window.gerarLinkPublico = function() { window._abrirModalLinkPublico('publico', 'Link para Publicador'); };
+  window.gerarLinkDirigente = function() { window._abrirModalLinkPublico('dirigente', 'Link para Dirigente'); };
   window.toggleCamadasGeral = function() { var q = document.getElementById('checkGeralQuadras').checked; var t = document.getElementById('checkGeralTerritorios').checked; if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras); if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); } };
 
 
@@ -139,20 +140,33 @@ window.iniciarMapaPoligonos = function() {
     }
     window.carregarEditorDados();
   };
-  
+
 window.carregarEditorDados = function() {
-      showLoading(true); 
+      showLoading(true, "Carregando editor...");
       layerGroupQuadras.clearLayers();
-      
-      google.script.run.withSuccessHandler(function(dados) {
-          // ... (código das quadras permanece igual) ...
-          dados.forEach(function(d) {
+
+      var pendentes = 3;
+      var falhou = false;
+      function fim() {
+          pendentes--;
+          if (pendentes <= 0) showLoading(false);
+      }
+      function erro(e) {
+          if (falhou) return;
+          falhou = true;
+          showLoading(false);
+          alert("Erro ao carregar editor: " + (e && e.message ? e.message : e));
+      }
+
+      google.script.run
+        .withSuccessHandler(function(dados) {
+          (dados || []).forEach(function(d) {
              var pts = window.stringParaLatLng(d.polyString); if(pts.length<3) return;
              var poly = L.polygon(pts, {color: '#666', weight: 1, fillColor: d.color, fillOpacity: 0.3});
-             poly.metaData = d; 
+             poly.metaData = d;
              poly.bindTooltip(d.id, {permanent: true, direction: "center", className: "label-quadra"});
              poly.on('click', function(e) {
-                 if(divisionMarkers.length > 0) return; 
+                 if(divisionMarkers.length > 0) return;
                  if(facesSelecionadas.size > 0) { L.DomEvent.stopPropagation(e); window.confirmarAssociacao(this); return; }
                  if(isEditingTerritory) { window.toggleSelecaoQuadra(this); return; }
                  if(isSelectionMode) { window.toggleSelecaoQuadra(this); return; }
@@ -160,32 +174,28 @@ window.carregarEditorDados = function() {
              });
              layerGroupQuadras.addLayer(poly);
           });
+          fim();
+        })
+        .withFailureHandler(erro)
+        .getPoligonosQuadras();
 
-          // Carrega Territórios
-          google.script.run.withSuccessHandler(function(terrs){ 
-              dadosTerritoriosCache = terrs || []; 
-              window.atualizarLabelsTerritorioEditor(); 
-          }).getDadosTerritorios();
-          
-          // --- AQUI ESTÁ A MUDANÇA (LOGS DAS FACES) ---
-          google.script.run.withSuccessHandler(function(f){ 
-              console.log("=== DIAGNÓSTICO DE FACES ===");
-              console.log("Total Agrupamentos Residenciais:", f.residencial.length);
-              console.log("Total Agrupamentos Comerciais:", f.comercial.length);
-              
-              if(f.residencial.length > 0) {
-                  console.log("Lista Residencial:", f.residencial); // Clique na setinha no console para expandir
-              } else {
-                  console.warn("ALERTA: Nenhuma face residencial carregada!");
-              }
+      google.script.run
+        .withSuccessHandler(function(terrs){
+            dadosTerritoriosCache = terrs || [];
+            window.atualizarLabelsTerritorioEditor();
+            fim();
+        })
+        .withFailureHandler(erro)
+        .getDadosTerritorios();
 
-              dadosFacesGlobal = f; 
-              window.renderizarFaces(); 
-              showLoading(false); 
-          }).getDadosFaces();
-          // ---------------------------------------------
-          
-      }).getPoligonosQuadras();
+      google.script.run
+        .withSuccessHandler(function(f){
+            dadosFacesGlobal = f || { residencial: [], comercial: [] };
+            window.renderizarFaces();
+            fim();
+        })
+        .withFailureHandler(erro)
+        .getDadosFaces();
   };
   
  // Função chamada pelo Checkbox do HTML
@@ -360,7 +370,7 @@ window.carregarEditorDados = function() {
        google.script.run
            .withSuccessHandler(function() {
               alert("Território atualizado com sucesso!");
-              window.carregarEditorDados(); // Recarrega o mapa para mostrar a nova cor/rótulo
+              (window.invalidarCacheMapa(), window.carregarEditorDados()); // Recarrega o mapa para mostrar a nova cor/rótulo
           })
           .withFailureHandler(function(e){
               showLoading(false);
@@ -436,7 +446,7 @@ window.carregarEditorDados = function() {
           document.getElementById('divEditandoTerritorio').classList.add('d-none');
           document.getElementById('barraBotoesPadrao').classList.remove('d-none');
           
-          window.carregarEditorDados();
+          (window.invalidarCacheMapa(), window.carregarEditorDados());
       }).salvarLoteTerritorios(up);
   };
   
@@ -470,7 +480,7 @@ window.carregarEditorDados = function() {
              showLoading(true);
              google.script.run.withSuccessHandler(function() {
                  alert("Salvo!");
-                 window.carregarEditorDados();
+                 (window.invalidarCacheMapa(), window.carregarEditorDados());
              }).salvarLoteTerritorios(up);
          } 
       });
@@ -526,7 +536,7 @@ window.carregarEditorDados = function() {
                   window.alternarModoSelecao(false);
                   
                   // FORÇA O RECARREGAMENTO TOTAL DOS DADOS
-                  window.carregarEditorDados(); 
+                  (window.invalidarCacheMapa(), window.carregarEditorDados()); 
               })
               .withFailureHandler(function(e){
                   showLoading(false);
@@ -570,12 +580,12 @@ window.carregarEditorDados = function() {
           var pointsB = allPoints.slice(end).concat(allPoints.slice(0, start + 1));
           if(pointsA.length < 3 || pointsB.length < 3) throw "Corte inválido.";
           
-          var idA = prompt("ID Parte 1:", currentEditLayer.metaData.id); if(!idA) { window.carregarEditorDados(); return; } 
+          var idA = prompt("ID Parte 1:", currentEditLayer.metaData.id); if(!idA) { window.carregarEditorDados(); return; }
           var idB = prompt("ID Parte 2:", currentEditLayer.metaData.id + "-B");
           var polyStrA = window.latLngsToString(pointsA); var polyStrB = window.latLngsToString(pointsB);
           
           showLoading(true);
-          google.script.run.withSuccessHandler(() => { alert("Dividido!"); window.carregarEditorDados(); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
+          google.script.run.withSuccessHandler(() => { alert("Dividido!"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
       } catch(e) { alert(e); window.carregarEditorDados(); }
   };
 
@@ -591,8 +601,8 @@ window.carregarEditorDados = function() {
       }
   };
 
-  window.deletarQuadraAtual = function() { if(confirm("Excluir quadra?")) { google.script.run.withSuccessHandler(() => { modalEdicao.hide(); window.carregarEditorDados(); }).excluirQuadra(currentEditLayer.metaData.id); } };
-  window.deletarTerritorioAtual = function() { if(confirm("Excluir território?")) { google.script.run.withSuccessHandler(() => { modalEditarTerritorio.hide(); window.carregarEditorDados(); }).excluirTerritorio(editingTerritoryData.data.name); } };
+  window.deletarQuadraAtual = function() { if(confirm("Excluir quadra?")) { google.script.run.withSuccessHandler(() => { modalEdicao.hide(); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).excluirQuadra(currentEditLayer.metaData.id); } };
+  window.deletarTerritorioAtual = function() { if(confirm("Excluir território?")) { google.script.run.withSuccessHandler(() => { modalEditarTerritorio.hide(); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).excluirTerritorio(editingTerritoryData.data.name); } };
 
 window.converterGeoJsonParaString = function(geometry) {
     if (!geometry || !geometry.coordinates) return "";
@@ -622,7 +632,7 @@ window.converterGeoJsonParaString = function(geometry) {
 
   // UI Helpers
   window.abrirModalEdicao=function(l){ currentEditLayer=l; document.getElementById('editId').value=l.metaData.id; document.getElementById('editOriginalId').value=l.metaData.id; document.getElementById('editTerritory').value=l.metaData.territory; document.getElementById('editColor').value=l.metaData.color; modalEdicao.show(); };
-  window.salvarQuadraAtual=function(){ var poly = window.latLngsToString(currentEditLayer.getLatLngs()); modalEdicao.hide(); showLoading(true); google.script.run.withSuccessHandler(() => { alert("Salvo"); window.carregarEditorDados(); }).salvarEdicaoQuadra({ idOriginal:document.getElementById('editOriginalId').value, idNovo:document.getElementById('editId').value, territory:document.getElementById('editTerritory').value, color:document.getElementById('editColor').value, polyString:poly }); };
+  window.salvarQuadraAtual=function(){ var poly = window.latLngsToString(currentEditLayer.getLatLngs()); modalEdicao.hide(); showLoading(true); google.script.run.withSuccessHandler(() => { alert("Salvo"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarEdicaoQuadra({ idOriginal:document.getElementById('editOriginalId').value, idNovo:document.getElementById('editId').value, territory:document.getElementById('editTerritory').value, color:document.getElementById('editColor').value, polyString:poly }); };
   window.abrirModalSalvarTerritorio=function(){ document.getElementById('lblCountTerritorio').innerText=selectedQuadras.length; modalNovoTerritorio.show(); };
 
   window.confirmarSalvarTerritorio = function() {
@@ -658,7 +668,7 @@ window.converterGeoJsonParaString = function(geometry) {
       google.script.run.withSuccessHandler(function() {
           alert("Território criado com sucesso!");
           window.alternarModoSelecao(false); 
-          window.carregarEditorDados();
+          (window.invalidarCacheMapa(), window.carregarEditorDados());
       }).salvarLoteTerritorios(up);
   };
 
@@ -823,25 +833,18 @@ window.processarRespostaInicio = function(r) {
     showLoading(false);
 
     if (r && r.status === "SUCESSO") {
-        // --- OPTIMISTIC UI ---
-        // Atualiza o CACHE localmente sem recarregar tudo
-        
         var idsSalvos = tempInicioPayload.ids;
-        
+
         cacheQuadrasRegistro.forEach(function(q) {
             if (idsSalvos.includes(q.id)) {
                 q.status = "Iniciado";
-                // Limpa a data de conclusão anterior para não confundir o ícone
-                q.dataConclusao = null; 
+                q.dataConclusao = null;
             }
         });
 
-        // Limpa a seleção do mapa
         registroSelecionados.clear();
-
-        // Redesenha o mapa INSTANTANEAMENTE com os dados da memória
         window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
-        
+        window.invalidarCacheMapa();
     } else {
         alert("Erro ao salvar status de início.");
     }
@@ -855,29 +858,20 @@ window.processarRespostaInicio = function(r) {
       showLoading(false);
       
       if (r.status === "SUCESSO") {
-          // Atualiza o CACHE localmente (Optimistic UI)
-          var idsSalvos = tempConflitoPayload.ids; // IDs que acabamos de salvar
+          var idsSalvos = tempConflitoPayload.ids;
           var dataSalva = tempConflitoPayload.data;
-          
-          // Percorre nosso cache e atualiza as quadras salvam
+
           cacheQuadrasRegistro.forEach(function(q) {
               if (idsSalvos.includes(q.id)) {
                   q.status = "Concluído";
                   q.dataConclusao = dataSalva;
               }
           });
-          
-          // Limpa seleção
+
           registroSelecionados.clear();
-          
-          // Redesenha o mapa usando os dados da memória (INSTANTÂNEO)
           window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
-          
-          // Opcional: Mostra aviso rápido que sumiu
-          // alert("Salvo com sucesso!"); 
-          
+          window.invalidarCacheMapa();
       } else {
-          // Se deu conflito, abre o modal
           modalConflitoData.show();
       }
   };
@@ -1014,7 +1008,7 @@ window.confirmarAssociacao = function(layerQuadra) {
               .withSuccessHandler(function() {
                   alert("Vínculo realizado!");
                   facesSelecionadas.clear();
-                  window.carregarEditorDados();
+                  (window.invalidarCacheMapa(), window.carregarEditorDados());
               })
               .withFailureHandler(function(e){
                   showLoading(false);
@@ -1027,8 +1021,6 @@ window.confirmarAssociacao = function(layerQuadra) {
   // =================================================================
   // LÓGICA DA CAMPANHA E GPS INTELIGENTE
   // =================================================================
-  var mapCampanha, lgCampanhaQuadras;
-  var configCampanhaGlobal = { nome: "", data: "" };
 
   window.focarMapaInteligente = function(mapa, layerPoligonos) {
     mapa.locate({setView: true, maxZoom: 16});
@@ -1048,15 +1040,15 @@ window.confirmarAssociacao = function(layerQuadra) {
 
   window.carregarConfigCampanhaInicial = function() {
     google.script.run.withSuccessHandler(function(config) {
-       configCampanhaGlobal = config;
+       configCampanhaGlobal = config || { nome: "", data: "" };
        let inputNome = document.getElementById('inputNomeCampanha');
        let inputData = document.getElementById('inputDataCampanha');
-       
-       if(inputNome) inputNome.value = config.nome;
-       
+
+       if(inputNome) inputNome.value = configCampanhaGlobal.nome || "";
+
        if (inputData) {
-         if (config.data) {
-           inputData.value = config.data;
+         if (configCampanhaGlobal.data) {
+           inputData.value = configCampanhaGlobal.data;
          } else {
            let d = new Date(); d.setMonth(d.getMonth() - 2);
            inputData.valueAsDate = d;
@@ -1066,104 +1058,57 @@ window.confirmarAssociacao = function(layerQuadra) {
     }).obterConfiguracoesCampanha();
   };
 
-  window.carregarDadosCampanha = function() {
-    if(!mapCampanha) {
-      mapCampanha = L.map('mapCampanha');
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapCampanha);
-      lgCampanhaQuadras = L.featureGroup().addTo(mapCampanha);
-    }
-    
-    var labelNome = document.getElementById('labelNomeCampanhaTela');
-    if(labelNome) labelNome.innerText = configCampanhaGlobal.nome || "Geral";
-    
-    let dataInicio = new Date(configCampanhaGlobal.data + "T00:00:00");
-    let dadosOffline = localStorage.getItem('app_mapa_offline');
-    
-    if (dadosOffline) {
-      let pacote = JSON.parse(dadosOffline);
-      lgCampanhaQuadras.clearLayers();
-      let countCompletas = 0; let countAndamento = 0; let countCinza = 0;
+  // =================================================================
+  // MOTOR OFFLINE — Stale-While-Revalidate com invalidação manual
+  // =================================================================
+  // Mostra cache local IMEDIATAMENTE (se existir) e busca dados frescos em
+  // background. Quando o fresco chega, se for diferente, re-renderiza.
+  // Saves chamam window.invalidarCacheMapa() para forçar busca fresca.
+  window.CHAVE_CACHE_MAPA = 'th_cache_mapa_v3';
+  window._cacheMapaInvalido = false;
 
-      if(pacote.quadras) {
-        pacote.quadras.forEach(function(d) {
-          let pts = window.stringParaLatLng(d.polyString);
-          if(pts.length >= 3) {
-            let corMapa = '#6c757d'; // Cinza
-
-            if (d.status && d.status.toLowerCase() === 'iniciado') {
-              corMapa = '#ffc107'; // Amarelo
-              countAndamento++;
-            } else if (d.dataConclusao) {
-              let dataConc = new Date(d.dataConclusao + "T00:00:00");
-              if (dataConc >= dataInicio) {
-                corMapa = '#28a745'; // Verde
-                countCompletas++;
-              } else {
-                countCinza++;
-              }
-            } else {
-              countCinza++;
-            }
-
-            let poly = L.polygon(pts, {color: '#333', fillColor: corMapa, weight: 1, fillOpacity: 0.7});
-            lgCampanhaQuadras.addLayer(poly);
-          }
-        });
-      }
-
-      var elCompletas = document.getElementById('campanhaCompletas');
-      var elAndamento = document.getElementById('campanhaAndamento');
-      var elCinza = document.getElementById('campanhaCinza');
-      
-      if(elCompletas) elCompletas.innerText = countCompletas;
-      if(elAndamento) elAndamento.innerText = countAndamento;
-      if(elCinza) elCinza.innerText = countCinza;
-
-      window.focarMapaInteligente(mapCampanha, lgCampanhaQuadras);
-    } else {
-       // Se o celular não tiver memória offline, chama o mapa geral para puxar do zero
-       window.carregarMapaGeral();
-       setTimeout(window.carregarDadosCampanha, 2500);
-    }
+  window.invalidarCacheMapa = function() {
+    window._cacheMapaInvalido = true;
+    try { localStorage.removeItem(window.CHAVE_CACHE_MAPA); } catch(e) {}
   };
 
-  // =================================================================
-  // MOTOR OFFLINE UNIVERSAL (Instalado em todo o app)
-  // =================================================================
   window.obterDadosOfflineFirst = function(callbackRenderizacao) {
-    let hoje = new Date().toDateString();
-    let dadosOffline = localStorage.getItem('app_dados_completos');
-    let dataSync = localStorage.getItem('data_sync_app');
+    var cached = null;
+    var cachedStr = null;
+    try { cachedStr = localStorage.getItem(window.CHAVE_CACHE_MAPA); } catch(e) {}
 
-    if (dadosOffline && dataSync === hoje) {
-      // 1. Instantâneo: Carrega do celular e libera a tela
-      let pacote = JSON.parse(dadosOffline);
-      callbackRenderizacao(pacote);
-      
-      // 2. Silencioso: Puxa do Google por baixo dos panos para atualizar
-      google.script.run.withSuccessHandler(function(novoPacote) {
-         if(novoPacote) localStorage.setItem('app_dados_completos', JSON.stringify(novoPacote));
-      }).getDadosIniciaisMaster();
-    } else {
-      // 3. Primeira vez no dia: Traz do Google e salva
-      window.showLoading(true, "Sincronizando banco de dados...");
-      google.script.run.withSuccessHandler(function(pacote) {
-         if(pacote) {
-           localStorage.setItem('app_dados_completos', JSON.stringify(pacote));
-           localStorage.setItem('data_sync_app', hoje);
-           callbackRenderizacao(pacote);
-         }
-         window.showLoading(false);
-      }).withFailureHandler(function(erro) {
-         window.showLoading(false);
-         if (dadosOffline) {
-            alert("Sem internet. Usando dados offline salvos.");
-            callbackRenderizacao(JSON.parse(dadosOffline));
-         } else {
-            alert("Falha de conexão e nenhum dado offline encontrado.");
-         }
-      }).getDadosIniciaisMaster();
+    var temCache = false;
+    if (cachedStr && !window._cacheMapaInvalido) {
+      try {
+        cached = JSON.parse(cachedStr);
+        if (cached && cached.quadras) {
+          callbackRenderizacao(cached);
+          temCache = true;
+        }
+      } catch(e) {}
     }
+
+    if (!temCache) window.showLoading(true, "Carregando dados...");
+
+    google.script.run
+      .withSuccessHandler(function(novo) {
+        window._cacheMapaInvalido = false;
+        if (!novo) { window.showLoading(false); return; }
+        var novoStr = JSON.stringify(novo);
+        try { localStorage.setItem(window.CHAVE_CACHE_MAPA, novoStr); } catch(e) {}
+        // Re-renderiza só se o pacote mudou (evita flicker quando cache estava ok)
+        if (!temCache || novoStr !== cachedStr) {
+          callbackRenderizacao(novo);
+        }
+        window.showLoading(false);
+      })
+      .withFailureHandler(function(erro) {
+        window.showLoading(false);
+        if (!temCache) {
+          alert("Falha ao carregar dados: " + (erro && erro.message ? erro.message : erro));
+        }
+      })
+      .getDadosIniciaisMaster();
   };
 
   // =================================================================
@@ -1208,9 +1153,10 @@ window.confirmarAssociacao = function(layerQuadra) {
              var pts = window.stringParaLatLng(d.polyString);
              if(pts.length >= 3) {
                 var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
+                poly.metaData = d; // necessário para gerar link público/dirigente
                 poly.on('click', function(e) {
                    var id = d.id;
-                   if(shareSelecionados.has(id)) { shareSelecionados.delete(id); this.setStyle({color: '#666', weight: 1}); } 
+                   if(shareSelecionados.has(id)) { shareSelecionados.delete(id); this.setStyle({color: '#666', weight: 1}); }
                    else { shareSelecionados.add(id); this.setStyle({color: 'blue', weight: 4}); }
                    window.atualizarBarraShare();
                 });
@@ -1224,28 +1170,20 @@ window.confirmarAssociacao = function(layerQuadra) {
   };
 
   window.carregarDadosRegistro = function() {
-    if(!mapRegistro) {
-       mapRegistro = L.map('mapRegistro');
-       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
-       layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
-    }
     window.obterDadosOfflineFirst(function(pacote) {
-       layerGroupRegistro.clearLayers();
-       if (pacote.territorios) {
-           pacote.territorios.forEach(function(t) {
-               var pts = window.stringParaLatLng(t.polyString);
-               if(pts.length >= 3) {
-                   var pt = L.polygon(pts, {color: t.color, weight: 2, fillOpacity: 0.1});
-                   pt.bindPopup("<b>" + t.name + "</b><br><button class='btn btn-sm btn-primary mt-1' onclick='window.abrirModalRegistro(\"" + t.name + "\")'>Registrar</button>");
-                   pt.addTo(layerGroupRegistro);
-                   
-                   var centro = pt.getBounds().getCenter();
-                   var badge = '<div class="territory-badge" style="border-color:'+t.color+'; font-size:1.4rem;">'+t.name+'</div>';
-                   L.marker(centro, {icon: L.divIcon({html: badge, className: 'custom-label-icon'}), interactive: false}).addTo(layerGroupRegistro);
-               }
-           });
-       }
-       window.focarMapaInteligente(mapRegistro, layerGroupRegistro);
+       // Popula caches usados pelos saves otimistas e pelos labels
+       cacheQuadrasRegistro = (pacote && pacote.quadras) ? pacote.quadras.slice() : [];
+       dadosTerritoriosCache = (pacote && pacote.territorios) ? pacote.territorios.slice() : [];
+
+       // Calcula territórios "opcionais" (que não devem aparecer destacados no registro)
+       cacheOpsRegistro = new Set();
+       dadosTerritoriosCache.forEach(function(t) {
+           if (String(t.labelType || '').toLowerCase() === 'optional') {
+               cacheOpsRegistro.add(t.name);
+           }
+       });
+
+       window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
     });
   };
 
@@ -1300,9 +1238,10 @@ window.confirmarAssociacao = function(layerQuadra) {
   };
 
   window.forcarSincronizacao = function() {
-    localStorage.removeItem('app_dados_completos');
-    localStorage.removeItem('data_sync_app');
-    window.carregarMapaGeral();
+    window.invalidarCacheMapa();
+    google.script.run.withSuccessHandler(function(){
+      window.carregarMapaGeral();
+    }).limparCacheServidor();
   };
 
   window.stringParaLatLng = function(str) { if(!str) return []; var p=str.replace(/\r\n|\n|\r/g,"|").split("|"); var r=[]; p.forEach(function(x){var c=x.trim().split(","); if(c.length>=2) r.push([parseFloat(c[0]), parseFloat(c[1])])}); return r; };

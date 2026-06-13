@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --verde: #28a745;
+      --verde-escuro: #1e7e34;
+      --amarelo: #ffc107;
+      --cinza: #6c757d;
+      --bg: #0b1d2c;
+    }
+    * { -webkit-tap-highlight-color: transparent; }
+    body {
+      background: linear-gradient(135deg, #0b1d2c 0%, #11324a 100%);
+      color: white;
+      padding-bottom: 30px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+    .hero {
+      padding: 28px 20px 14px;
+      text-align: center;
+    }
+    .hero h6 {
+      letter-spacing: 3px;
+      opacity: 0.65;
+      font-size: 0.75rem;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      font-weight: 800;
+      font-size: 1.8rem;
+      margin: 6px 0 4px;
+      letter-spacing: -0.5px;
+    }
+    .hero .data {
+      opacity: 0.7;
+      font-size: 0.85rem;
+    }
+    .big-progress {
+      margin: 16px 20px 24px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 22px;
+      padding: 24px 22px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      backdrop-filter: blur(8px);
+    }
+    .big-progress .pct {
+      font-size: 4.2rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -2px;
+      background: linear-gradient(90deg, #4ade80, #22d3ee);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .big-progress .info {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 12px;
+    }
+    .big-progress .legenda {
+      text-align: right;
+      opacity: 0.75;
+      font-size: 0.85rem;
+      line-height: 1.3;
+    }
+    .big-progress .legenda b { color: #fff; font-size: 1.1rem; }
+    .barra {
+      height: 14px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .barra > div {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+      border-radius: 999px;
+      transition: width 1.2s cubic-bezier(.2,.8,.2,1);
+      box-shadow: 0 0 18px rgba(34,197,94,0.55);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin: 0 20px 22px;
+    }
+    .stat {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 14px 8px;
+      text-align: center;
+    }
+    .stat .num {
+      font-size: 1.7rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .stat .lbl {
+      font-size: 0.7rem;
+      opacity: 0.75;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 6px;
+    }
+    .stat.completas .num { color: #4ade80; }
+    .stat.andamento .num { color: #fbbf24; }
+    .stat.restantes .num { color: #cbd5e1; }
+    .destaque-semana {
+      margin: 0 20px 22px;
+      background: linear-gradient(135deg, rgba(34,197,94,0.18), rgba(34,211,238,0.15));
+      border: 1px solid rgba(74,222,128,0.4);
+      border-radius: 18px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .destaque-semana .icone {
+      font-size: 1.6rem;
+      color: #4ade80;
+    }
+    .destaque-semana .texto {
+      flex: 1;
+      font-size: 0.95rem;
+      line-height: 1.3;
+    }
+    .destaque-semana .num {
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+    .mapa-wrapper {
+      margin: 0 20px 22px;
+      border-radius: 22px;
+      overflow: hidden;
+      height: 45vh;
+      min-height: 280px;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+    #mapa { width: 100%; height: 100%; }
+    .legenda-mapa {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      margin: -8px 20px 18px;
+      font-size: 0.78rem;
+    }
+    .legenda-mapa span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 0.85;
+    }
+    .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.verde { background: var(--verde); }
+    .dot.amarelo { background: var(--amarelo); }
+    .dot.cinza { background: var(--cinza); }
+    .frase {
+      text-align: center;
+      padding: 16px 24px;
+      font-size: 1rem;
+      font-style: italic;
+      opacity: 0.85;
+      line-height: 1.4;
+    }
+    .frase b { color: #4ade80; font-style: normal; }
+    .loader-wrap {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: #0b1d2c; z-index: 9999;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.04); opacity: 0.92; }
+    }
+    .pulse { animation: pulse 2.5s ease-in-out infinite; }
+  </style>
+</head>
+
+<body>
+
+  <div id="loader" class="loader-wrap">
+    <div class="text-center">
+      <div class="spinner-border text-success" role="status"></div>
+      <div class="mt-3 small text-secondary">Carregando campanha...</div>
+    </div>
+  </div>
+
+  <div id="app" class="d-none">
+    <div class="hero">
+      <h6>CAMPANHA</h6>
+      <h1 id="nomeCampanha">—</h1>
+      <div class="data">Início: <span id="dataInicio">—</span></div>
+    </div>
+
+    <div class="big-progress pulse">
+      <div class="info">
+        <div class="pct" id="pct">0%</div>
+        <div class="legenda">
+          <div><b id="numCompletas">0</b> de <b id="numTotal">0</b></div>
+          <div>quadras concluídas</div>
+        </div>
+      </div>
+      <div class="barra"><div id="barraFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat completas">
+        <div class="num" id="statCompletas">0</div>
+        <div class="lbl">Concluídas</div>
+      </div>
+      <div class="stat andamento">
+        <div class="num" id="statAndamento">0</div>
+        <div class="lbl">Em andamento</div>
+      </div>
+      <div class="stat restantes">
+        <div class="num" id="statRestantes">0</div>
+        <div class="lbl">Restantes</div>
+      </div>
+    </div>
+
+    <div class="destaque-semana" id="boxSemana">
+      <div class="icone"><i class="fa-solid fa-bolt"></i></div>
+      <div class="texto">
+        <div><span class="num" id="numSemana">0</span> <span style="opacity:.85">quadras nos últimos 7 dias</span></div>
+        <div class="small" id="ritmoTexto" style="opacity:.7"></div>
+      </div>
+    </div>
+
+    <div class="mapa-wrapper">
+      <div id="mapa"></div>
+    </div>
+
+    <div class="legenda-mapa">
+      <span><span class="dot verde"></span> Concluída</span>
+      <span><span class="dot amarelo"></span> Em andamento</span>
+      <span><span class="dot cinza"></span> Restante</span>
+    </div>
+
+    <div class="frase" id="fraseMotivacional">
+      Cada quadra conta. <b>Vamos juntos!</b>
+    </div>
+  </div>
+
+  <script>
+    var dados = null;
+    var map, layerQuadras;
+
+    window.onload = function() { carregar(); };
+
+    function carregar() {
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (!r) { document.getElementById('loader').innerHTML = '<div class="text-secondary">Sem dados disponíveis.</div>'; return; }
+          dados = r;
+          document.getElementById('loader').classList.add('d-none');
+          document.getElementById('app').classList.remove('d-none');
+          renderizar();
+          desenharMapa();
+        })
+        .withFailureHandler(function(e){
+          document.getElementById('loader').innerHTML = '<div class="text-danger">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+        })
+        .getDadosCampanhaPublico();
+    }
+
+    function renderizar() {
+      document.getElementById('nomeCampanha').innerText = dados.nome || 'Campanha';
+      document.getElementById('dataInicio').innerText = formatarBR(dados.dataInicio) || '—';
+
+      document.getElementById('numCompletas').innerText = dados.completas;
+      document.getElementById('numTotal').innerText = dados.totalQuadras;
+
+      document.getElementById('statCompletas').innerText = dados.completas;
+      document.getElementById('statAndamento').innerText = dados.andamento;
+      document.getElementById('statRestantes').innerText = dados.restantes;
+
+      document.getElementById('numSemana').innerText = dados.completasSemana;
+
+      // Anima a barra e o número grande
+      animarPorcentagem(dados.porcentagem);
+
+      // Frase + ritmo
+      var ritmo = calcularRitmo();
+      document.getElementById('ritmoTexto').innerText = ritmo.texto;
+      document.getElementById('fraseMotivacional').innerHTML = fraseMotivacional(dados.porcentagem);
+    }
+
+    function animarPorcentagem(alvo) {
+      var pctEl = document.getElementById('pct');
+      var barra = document.getElementById('barraFill');
+      barra.style.width = alvo + '%';
+
+      var atual = 0;
+      var passo = Math.max(1, Math.ceil(alvo / 40));
+      var t = setInterval(function() {
+        atual += passo;
+        if (atual >= alvo) { atual = alvo; clearInterval(t); }
+        pctEl.innerText = atual + '%';
+      }, 25);
+    }
+
+    function calcularRitmo() {
+      if (!dados.dataInicio || !dados.totalQuadras) return { texto: '' };
+      var ini = new Date(dados.dataInicio + 'T00:00:00');
+      var hoje = new Date();
+      var diasPassados = Math.max(1, Math.ceil((hoje - ini) / (1000*60*60*24)));
+      var ritmoPorDia = dados.completas / diasPassados;
+      var restamDias = (dados.totalQuadras - dados.completas) / Math.max(0.01, ritmoPorDia);
+
+      if (ritmoPorDia < 0.05) return { texto: 'Bora começar essa semana com tudo!' };
+      if (restamDias > 90) return { texto: 'Estamos no ritmo — vamos acelerar.' };
+      if (restamDias > 30) return { texto: 'Mantendo esse ritmo, em ~' + Math.ceil(restamDias) + ' dias terminamos!' };
+      return { texto: 'Reta final — falta pouco, vamos lá!' };
+    }
+
+    function fraseMotivacional(pct) {
+      if (pct >= 100) return '🎉 <b>Campanha concluída!</b> Obrigado a todos!';
+      if (pct >= 75) return 'Reta final! <b>Falta pouco para fechar a campanha.</b>';
+      if (pct >= 50) return 'Já passamos da metade! <b>Bora continuar.</b>';
+      if (pct >= 25) return 'O trabalho está crescendo. <b>Cada quadra conta!</b>';
+      return 'Começando com tudo. <b>Vamos juntos!</b>';
+    }
+
+    function desenharMapa() {
+      if (map) map.remove();
+      map = L.map('mapa', { zoomControl: false, attributionControl: false })
+              .setView([-7.115, -34.863], 14);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd', maxZoom: 19
+      }).addTo(map);
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      layerQuadras = L.featureGroup().addTo(map);
+
+      (dados.quadras || []).forEach(function(q) {
+        var pts = parsePoly(q.polyString);
+        if (pts.length < 3) return;
+        var cor = '#6c757d';
+        if (q.estado === 'completa') cor = '#22c55e';
+        else if (q.estado === 'andamento') cor = '#fbbf24';
+
+        L.polygon(pts, {
+          color: '#0b1d2c',
+          weight: 1,
+          fillColor: cor,
+          fillOpacity: 0.85
+        }).addTo(layerQuadras);
+      });
+
+      if (layerQuadras.getBounds().isValid()) {
+        map.fitBounds(layerQuadras.getBounds(), { padding: [10, 10] });
+      }
+    }
+
+    function parsePoly(str) {
+      if (!str) return [];
+      return str.replace(/\r\n|\n|\r/g, '|').split('|').map(function(p) {
+        var c = p.trim().split(',');
+        if (c.length < 2) return null;
+        var lat = parseFloat(c[0]); var lng = parseFloat(c[1]);
+        if (isNaN(lat) || isNaN(lng)) return null;
+        return [lat, lng];
+      }).filter(function(x){ return x !== null; });
+    }
+
+    function formatarBR(ymd) {
+      if (!ymd) return '';
+      var p = ymd.split('-');
+      if (p.length === 3) return p[2] + '/' + p[1] + '/' + p[0];
+      return ymd;
+    }
+  </script>
+</body>
+
+</html>

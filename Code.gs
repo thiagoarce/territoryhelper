@@ -2,12 +2,27 @@
 // 1. INICIALIZAÇÃO E ROTAS
 // =================================================================
 function doGet(e) {
-  if (e.parameter.v === 'publico') {
-    var tmpl = HtmlService.createTemplateFromFile('Publico');
-    tmpl.ids = e.parameter.ids || "";
-    return tmpl.evaluate().setTitle('Território Digital').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+  var view = (e && e.parameter && e.parameter.v) ? e.parameter.v : '';
+  var viewport = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+
+  if (view === 'publico') {
+    var tmplP = HtmlService.createTemplateFromFile('Publico');
+    tmplP.ids = e.parameter.ids || "";
+    return tmplP.evaluate().setTitle('Território Digital').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
   }
-  return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('Gestão de Territórios').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+
+  if (view === 'dirigente') {
+    var tmplD = HtmlService.createTemplateFromFile('Dirigente');
+    tmplD.ids = e.parameter.ids || "";
+    return tmplD.evaluate().setTitle('Dirigente — Território').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
+  }
+
+  if (view === 'campanha') {
+    var tmplC = HtmlService.createTemplateFromFile('CampanhaPublica');
+    return tmplC.evaluate().setTitle('Campanha — Progresso').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
+  }
+
+  return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('Gestão de Territórios').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
 }
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
 function getScriptUrl() { return ScriptApp.getService().getUrl(); }
@@ -234,6 +249,7 @@ function salvarLoteTerritorios(updates) {
     } else {
       sheetT.appendRow(newRow);
     }
+    _invalidar();
 
     // 2. Sincronizar Quadras (CRÍTICO: Renomear e Atualizar Vínculos)
     // Se mudou de nome (busca != up.name), atualiza as quadras antigas primeiro
@@ -292,7 +308,7 @@ function salvarInicioQuadras(e) {
       sheetReg.appendRow([idAtual, dataEvento, "Iniciado", timestamp]);
     }
   }
-
+  _invalidar();
   return { status: "SUCESSO" };
 }
 
@@ -318,7 +334,7 @@ function salvarNovaQuadraDividida(dados) {
 
   // Cria B
   sheet.appendRow([dados.idB, 0, "", "", dados.polyB, cor, terr, "Pendente", ""]);
-
+  _invalidar();
   return "Divisão Concluída";
 }
 
@@ -341,6 +357,7 @@ function salvarEdicaoQuadra(dados) {
     // Se não achou (ex: id mudou e não achou original), cria nova
     sheet.appendRow([dados.idNovo, 0, "", "", dados.polyString, dados.color, dados.territory]);
   }
+  _invalidar();
   return "Salvo";
 }
 
@@ -351,6 +368,7 @@ function excluirQuadra(id) {
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(id)) {
       sheet.deleteRow(i + 1);
+      _invalidar();
       return "Excluída";
     }
   }
@@ -384,7 +402,7 @@ function salvarJuncaoQuadras(dados) {
     "Pendente",
     ""
   ]);
-
+  _invalidar();
   return "Sucesso";
 }
 
@@ -409,6 +427,7 @@ function excluirTerritorio(nome) {
       sheetQ.getRange(i + 1, 7).setValue("");
     }
   }
+  _invalidar();
   return "Excluído";
 }
 
@@ -534,7 +553,7 @@ function definirStatusQuadra(id, status) {
     status,       // "Iniciado" ou "Concluído"
     new Date()    // Timestamp
   ]);
-
+  _invalidar();
   return "Quadra " + id + " marcada como " + status;
 }
 
@@ -560,40 +579,10 @@ function definirStatusEmMassa(ids, status) {
       sheetReg.appendRow([idAtual, hoje, status, new Date()]);
     }
   }
+  _invalidar();
   return "Atualizado";
 }
 
-// Salva a nova ordem quando você arrasta os itens no celular
-function salvarOrdemEmMassa(listaOrdenada) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-  listaOrdenada.forEach(function (item) {
-    // Escreve na Coluna R (Coluna 18) que corresponde ao índice 17 do seu código
-    sheet.getRange(item.row, 18).setValue(item.ordem);
-  });
-  return "Ordem atualizada!";
-}
-
-// Cria novo endereço respeitando sua estrutura de colunas
-function salvarNovoEnderecoPublico(dados) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-
-  // Monta a linha com 18 colunas para bater com sua planilha
-  var novaLinha = new Array(18).fill(""); // Cria array vazio
-
-  novaLinha[0] = dados.quadraId;  // Col A
-  novaLinha[1] = dados.setor || ""; // Col B
-  novaLinha[3] = dados.face;      // Col D (Face)
-  novaLinha[5] = dados.logradouro;// Col F
-  novaLinha[6] = dados.numero;    // Col G
-  novaLinha[8] = dados.complemento;// Col I
-  novaLinha[11] = dados.tipo;     // Col L
-  novaLinha[13] = dados.nota;     // Col N
-  novaLinha[14] = dados.naoVisitar;// Col O
-  novaLinha[17] = dados.ordem;    // Col R
-
-  sheet.appendRow(novaLinha);
-  return "Criado";
-}
 function salvarEndereco(d) {
   const s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
   s.getRange(d.row, 13).setValue(d.nome);
@@ -672,6 +661,7 @@ function salvarConclusaoQuadras(payload) {
       sheetReg.appendRow([id, payload.data, payload.modo, new Date()]);
     }
   });
+  _invalidar();
   return { status: "SUCESSO" };
 }
 
@@ -713,7 +703,7 @@ function salvarAssociacaoFaces(d) {
     // Coluna 1 (A) é o ID da Quadra
     sheet.getRange(linha, 1).setValue(d.quadraId);
   });
-
+  _invalidar();
   return "Vinculado com sucesso!";
 }
 
@@ -767,14 +757,14 @@ function getDadosIniciaisMaster() {
     return JSON.parse(dadosEmCache);
   }
 
-  // Se o cache estiver vazio, chama as funções originais que você já criou
   var pacoteMaster = {
     territorios: getDadosTerritorios(),
-    quadras: getPoligonosQuadras()
+    quadras: getPoligonosQuadras(),
+    version: new Date().getTime()
   };
 
   try {
-    cache.put(cacheKey, JSON.stringify(pacoteMaster), 900); // Salva por 15 minutos
+    cache.put(cacheKey, JSON.stringify(pacoteMaster), 900);
   } catch (e) { }
 
   return pacoteMaster;
@@ -783,6 +773,124 @@ function getDadosIniciaisMaster() {
 function limparCacheServidor() {
   var cache = CacheService.getScriptCache();
   cache.remove('DADOS_MAPA_CACHE');
+}
+
+// Marca toda escrita: invalida o cache para que a próxima leitura puxe fresco
+function _invalidar() {
+  try { limparCacheServidor(); } catch (e) { }
+}
+
+// =================================================================
+// DADOS PÚBLICOS DA CAMPANHA (tela motivacional)
+// =================================================================
+function getDadosCampanhaPublico() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName("Quadras");
+  var props = PropertiesService.getScriptProperties();
+
+  var nome = props.getProperty('CAMPANHA_NOME') || "Campanha";
+  var dataIni = props.getProperty('CAMPANHA_DATA') || "";
+
+  var dataInicio = dataIni ? new Date(dataIni + "T00:00:00") : null;
+
+  var quadras = [];
+  var completas = 0, andamento = 0, restantes = 0, completasSemana = 0;
+  var hoje = new Date();
+  var seteDiasAtras = new Date(hoje.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  if (sheetQ && sheetQ.getLastRow() > 1) {
+    var data = sheetQ.getRange(2, 1, sheetQ.getLastRow() - 1, sheetQ.getLastColumn()).getValues();
+    data.forEach(function (r) {
+      var id = String(r[0] || "").trim();
+      if (!id) return;
+      var poly = String(r[4] || "");
+      var status = String(r[7] || "");
+      var color = String(r[5] || "#3388ff");
+      var territory = String(r[6] || "");
+      var dataConc = (r[8] instanceof Date) ? r[8] : null;
+      var dataConcStr = dataConc ? Utilities.formatDate(dataConc, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
+
+      var estado = 'restante';
+      if (status && status.toLowerCase().indexOf('iniciado') > -1) {
+        estado = 'andamento'; andamento++;
+      } else if (dataConc && dataInicio && dataConc >= dataInicio) {
+        estado = 'completa'; completas++;
+        if (dataConc >= seteDiasAtras) completasSemana++;
+      } else {
+        restantes++;
+      }
+
+      quadras.push({
+        id: id,
+        polyString: poly,
+        color: color,
+        territory: territory,
+        status: status,
+        dataConclusao: dataConcStr,
+        estado: estado
+      });
+    });
+  }
+
+  var total = completas + andamento + restantes;
+  var pct = total > 0 ? Math.round((completas / total) * 100) : 0;
+
+  return {
+    nome: nome,
+    dataInicio: dataIni,
+    totalQuadras: total,
+    completas: completas,
+    andamento: andamento,
+    restantes: restantes,
+    completasSemana: completasSemana,
+    porcentagem: pct,
+    quadras: quadras,
+    geradoEm: new Date().getTime()
+  };
+}
+
+// =================================================================
+// DADOS DO DIRIGENTE (mesma estrutura do público + estado da quadra)
+// =================================================================
+function getDadosDirigente(idsString) {
+  var publico = getDadosPublicos(idsString);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName("Quadras");
+
+  var mapStatus = {};
+  if (sheetQ) {
+    var dataQ = sheetQ.getDataRange().getValues();
+    for (var i = 1; i < dataQ.length; i++) {
+      var id = String(dataQ[i][0]).trim();
+      mapStatus[id] = {
+        status: String(dataQ[i][7] || "Pendente"),
+        territory: String(dataQ[i][6] || ""),
+        color: String(dataQ[i][5] || "#3388ff")
+      };
+    }
+  }
+
+  publico.forEach(function (q) {
+    var info = mapStatus[String(q.id).trim()] || { status: "Pendente", territory: "", color: "#3388ff" };
+    q.status = info.status;
+    q.territory = info.territory;
+    q.color = info.color;
+  });
+
+  return publico;
+}
+
+// Função restrita usada pelo dirigente — só aceita IDs que foram passados via link
+function dirigenteMarcarStatus(ids, status, data) {
+  if (!Array.isArray(ids) || ids.length === 0) return { status: "ERRO", msg: "Sem IDs" };
+  if (status !== "Iniciado" && status !== "Concluído") return { status: "ERRO", msg: "Status inválido" };
+
+  if (status === "Concluído") {
+    var dataFinal = data || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    return salvarConclusaoQuadras({ ids: ids, data: dataFinal, modo: 'auto' });
+  } else {
+    return salvarInicioQuadras({ ids: ids, data: new Date().toISOString() });
+  }
 }
 
 function salvarConfiguracoesCampanha(nome, data) {
