@@ -35,9 +35,12 @@
         <input class="form-check-input" type="checkbox" id="checkGeralTerritorios" onchange="window.toggleCamadasGeral()"><label class="form-check-label small fw-bold">Territórios</label>
       </div>
     </div>
-    <div id="barraCompartilhar" class="alert alert-info py-2 d-none d-flex justify-content-between align-items-center">
+    <div id="barraCompartilhar" class="alert alert-info py-2 d-none d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="small fw-bold"><span id="countShare">0</span> quadra(s) selecionada(s)</span>
-      <button class="btn btn-sm btn-primary" onclick="window.gerarLinkPublico()"><i class="fa-solid fa-share-nodes"></i> Compartilhar</button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-primary" onclick="window.gerarLinkPublico()"><i class="fa-solid fa-share-nodes"></i> Publicador</button>
+        <button class="btn btn-sm btn-success" onclick="window.gerarLinkDirigente()"><i class="fa-solid fa-user-tie"></i> Dirigente</button>
+      </div>
     </div>
     <div class="map-wrapper position-relative">
       <div id="mapGeral"></div>
