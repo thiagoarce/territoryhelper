@@ -56,7 +56,7 @@
 // =================================================================
   // MAPA GERAL (CORRIGIDO VARIÁVEIS + BOTÃO ROTA)
   // =================================================================
- window.carregarMapaGeral = function() {
+window.carregarMapaGeral = function() {
     if(!mapGeral) {
       mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
@@ -74,19 +74,29 @@
     let dadosOffline = localStorage.getItem('app_mapa_offline');
     let dataSincronizacao = localStorage.getItem('data_sincronizacao');
 
-    // 1. TENTA CARREGAR OFFLINE (Instantâneo)
+    // 1. TENTA CARREGAR OFFLINE (Instantâneo) + ATUALIZAÇÃO SILENCIOSA
     if (dadosOffline && dataSincronizacao === hoje) {
       console.log("Carregando do LocalStorage...");
       renderizarMapaGeralExtraido(JSON.parse(dadosOffline));
-      showLoading(false);
-      return;
+      showLoading(false); // Libera a tela para o publicador já ir usando
+      
+      // Busca atualizações no servidor sem travar a tela
+      console.log("Buscando atualizações silenciosamente...");
+      google.script.run
+        .withSuccessHandler(function(pacoteMasterAtualizado) {
+           localStorage.setItem('app_mapa_offline', JSON.stringify(pacoteMasterAtualizado));
+           renderizarMapaGeralExtraido(pacoteMasterAtualizado);
+           console.log("Mapa atualizado com sucesso em background!");
+        })
+        .getDadosIniciaisMaster();
+        
+      return; 
     }
 
-    // 2. SE NÃO TEM OFFLINE, CHAMA O SERVIDOR
+    // 2. SE NÃO TEM OFFLINE, CHAMA O SERVIDOR E TRAVA A TELA
     console.log("Buscando dados no servidor...");
     google.script.run
       .withSuccessHandler(function(pacoteMaster) {
-        // Salva no celular para os próximos acessos
         localStorage.setItem('app_mapa_offline', JSON.stringify(pacoteMaster));
         localStorage.setItem('data_sincronizacao', hoje);
         
@@ -104,6 +114,14 @@
         showLoading(false);
       })
       .getDadosIniciaisMaster();
+  };
+
+  // Função atrelada ao botão de forçar atualização (Pode colar logo aqui embaixo)
+  window.forcarSincronizacao = function() {
+    showLoading(true, "Buscando atualizações...");
+    localStorage.removeItem('app_mapa_offline');
+    localStorage.removeItem('data_sincronizacao');
+    window.carregarMapaGeral();
   };
 
   // Esta é a sua lógica original de pintura do mapa, separada para ser reaproveitável
