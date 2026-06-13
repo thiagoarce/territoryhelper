@@ -704,7 +704,6 @@ window.converterGeoJsonParaString = function(geometry) {
 
 window.iniciarMapaRegistro = function(qs, ops) {
       if (!mapRegistro) {
-          // --- MUDANÇA AQUI: Adicionei { preferCanvas: true } ---
           mapRegistro = L.map('mapRegistro', {
               preferCanvas: true 
           }).setView([-7.115, -34.863], 15);
@@ -737,8 +736,11 @@ window.iniciarMapaRegistro = function(qs, ops) {
           });
           
           if (!isOpt) {
-              // --- AQUI ESTÁ A MUDANÇA DO HOVER ---
+              // --- TOOLTIP ---
               var dataFormatada = q.dataConclusao ? window.formatarDataBR(q.dataConclusao) : "Nunca feita";
+              // Se estiver iniciado, mostra aviso no tooltip
+              if(q.status === 'Iniciado') dataFormatada = "<b style='color:#0d6efd'>EM ANDAMENTO</b>";
+
               var territorioNome = q.territory || "Sem Território";
               
               var conteudoTooltip = '<div style="text-align: center;">' +
@@ -748,12 +750,10 @@ window.iniciarMapaRegistro = function(qs, ops) {
                                     '</div>';
 
               poly.bindTooltip(conteudoTooltip, { 
-                  sticky: true,       // Segue o mouse
-                  direction: 'top',   // Tenta ficar acima
-                  opacity: 0.95 
+                  sticky: true, direction: 'top', opacity: 0.95 
               });
-              // -------------------------------------
 
+              // --- CLIQUE (SELEÇÃO) ---
               poly.on('click', function() {
                   var id = q.id;
                   if (registroSelecionados.has(id)) {
@@ -763,26 +763,44 @@ window.iniciarMapaRegistro = function(qs, ops) {
                       registroSelecionados.add(id);
                       this.setStyle({ color: 'red', weight: 4 });
                   }
+                  // Atualiza botões se houver função para isso
+                  if(typeof atualizarBotoesAcao === 'function') atualizarBotoesAcao();
               });
               
-              // Lógica dos ícones de alerta (Data)
-              var iconCls = "status-alert";
-              var iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>';
-              
-              if (q.status === 'Concluído' && q.dataConclusao) {
+              // --- LÓGICA DOS ÍCONES (Sua Regra de Negócio) ---
+              var iconCls = "status-alert"; // Padrão: Vermelho (Vencido/Nunca feito)
+              var iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>'; // Padrão: Alerta
+
+              // 1. CASO INICIADO (Prioridade Alta)
+              if (q.status === 'Iniciado') {
+                   iconCls = "status-iniciado";
+                   iconHtml = '<i class="fa-solid fa-circle-play"></i>';
+              }
+              // 2. CASO CONCLUÍDO (Regra de Datas)
+              else if (q.status === 'Concluído' && q.dataConclusao) {
                   var p = q.dataConclusao.split('-');
                   var dt = new Date(p[0], p[1] - 1, p[2]);
                   var diff = Math.ceil(Math.abs(hoje - dt) / (864e5));
                   
+                  // Ícone padrão de check
+                  iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+                  
+                  // Regra de Cores
                   if (diff <= 15) {
-                      iconCls = "status-15d";
-                      iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+                      iconCls = "status-15d";       // Verde Forte
+                  } else if (diff <= 30) {
+                      iconCls = "status-30d";       // Verde Claro
+                  } else if (diff <= 60) {
+                      iconCls = "status-60d";       // Amarelo
                   } else if (diff <= 90) {
-                      iconCls = "status-90d";
-                      iconHtml = '<i class="fa-solid fa-circle-check"></i>';
+                      iconCls = "status-90d";       // Laranja
+                  } else {
+                      iconCls = "status-alert";     // Vermelho (> 90 dias)
+                      iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>'; // Volta ícone de alerta
                   }
               }
               
+              // Adiciona o Marcador no Mapa
               layerGroupRegistroIcons.addLayer(L.marker(poly.getBounds().getCenter(), {
                   icon: L.divIcon({
                       className: 'status-marker-icon ' + iconCls,
@@ -791,6 +809,7 @@ window.iniciarMapaRegistro = function(qs, ops) {
                   }),
                   interactive: false
               }));
+
           } else {
               poly.setStyle({ interactive: false });
           }
@@ -798,9 +817,66 @@ window.iniciarMapaRegistro = function(qs, ops) {
           layerGroupRegistro.addLayer(poly);
       });
       
-      window.renderizarLabelsRegistro();
-      window.ativarGPS('registro');
+      if(window.renderizarLabelsRegistro) window.renderizarLabelsRegistro();
+      if(window.ativarGPS) window.ativarGPS('registro');
   };
+
+// Variável temporária para guardar o que estamos tentando salvar (igual ao tempConflitoPayload)
+var tempInicioPayload = {};
+
+// 1. Função que o Botão "Iniciar" chama
+// 1. Função que o Botão "Iniciar" chama
+window.iniciarSalvamentoInicio = function() {
+    if (registroSelecionados.size === 0) return alert("Selecione quadras para iniciar");
+    
+    // Converte a data para string ISO (formato seguro para envio)
+    var dataSegura = new Date().toISOString(); 
+    
+    // Prepara o pacote de dados
+    tempInicioPayload = {
+        ids: Array.from(registroSelecionados),
+        status: 'Iniciado',
+        data: dataSegura // Envia como String
+    };
+
+    // Feedback Visual (Loading)
+    showLoading(true);
+
+    // Chama o Backend
+    google.script.run
+        .withSuccessHandler(window.processarRespostaInicio)
+        .withFailureHandler(function(e) { showLoading(false); alert("Erro: " + e); })
+        .salvarInicioQuadras(tempInicioPayload);
+};
+
+// 2. Função que processa a volta do servidor
+window.processarRespostaInicio = function(r) {
+    showLoading(false);
+
+    if (r && r.status === "SUCESSO") {
+        // --- OPTIMISTIC UI ---
+        // Atualiza o CACHE localmente sem recarregar tudo
+        
+        var idsSalvos = tempInicioPayload.ids;
+        
+        cacheQuadrasRegistro.forEach(function(q) {
+            if (idsSalvos.includes(q.id)) {
+                q.status = "Iniciado";
+                // Limpa a data de conclusão anterior para não confundir o ícone
+                q.dataConclusao = null; 
+            }
+        });
+
+        // Limpa a seleção do mapa
+        registroSelecionados.clear();
+
+        // Redesenha o mapa INSTANTANEAMENTE com os dados da memória
+        window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
+        
+    } else {
+        alert("Erro ao salvar status de início.");
+    }
+};
 
   window.renderizarLabelsRegistro=function(){ if(!layerGroupRegistroLabels)return; layerGroupRegistroLabels.clearLayers(); var show=document.getElementById('toggleLabelsRegistro').checked; if(show){ dadosTerritoriosCache.forEach(function(t){ if(t.labelType!=='optional'){ var pts=window.stringParaLatLng(t.polyString); if(pts.length<3)return; var pt=L.polygon(pts,{interactive:false,fill:false,stroke:false}); var c=pt.getBounds().getCenter(); if(t.labelPos && t.labelPos.includes(',')){var s=t.labelPos.split(',');c=[parseFloat(s[0]),parseFloat(s[1])]} var badge='<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>'; layerGroupRegistroLabels.addLayer(L.marker(c,{icon:L.divIcon({html:badge}),interactive:false})); } }); } };
   window.toggleLabelsRegistro=function(){window.renderizarLabelsRegistro()};

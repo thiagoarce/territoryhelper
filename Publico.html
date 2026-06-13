@@ -345,6 +345,29 @@
     }
 
     // ================= LISTA & AGRUPAMENTO =================
+function verificarSeRecente(dataStr) {
+        if (!dataStr) return false;
+        
+        // Formato esperado: dd/MM/yy
+        var partes = dataStr.split('/');
+        if (partes.length !== 3) return false;
+        
+        var dia = parseInt(partes[0]);
+        var mes = parseInt(partes[1]) - 1; // Meses em JS começam em 0
+        var ano = parseInt(partes[2]);
+        
+        // Ajuste para ano com 2 dígitos (ex: 24 -> 2024)
+        if (ano < 100) ano += 2000;
+        
+        var dataVisita = new Date(ano, mes, dia);
+        var hoje = new Date();
+        
+        // Diferença em milissegundos
+        var diffTempo = Math.abs(hoje - dataVisita);
+        var diffDias = Math.ceil(diffTempo / (1000 * 60 * 60 * 24)); 
+        
+        return diffDias <= 15;
+    }
 function renderizarLista() {
         var container = document.getElementById('lista-territorio');
         container.innerHTML = "";
@@ -364,9 +387,9 @@ function renderizarLista() {
                    <div>
                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="limparSessao('${quadra.id}')" title="Limpar marcados"><i class="fa-solid fa-eraser"></i></button>
                        
-                       <button class="btn btn-sm btn-primary me-1" onclick="mudarStatusQuadra('${quadra.id}', 'Iniciado')" title="Marcar como Iniciado"><i class="fa-solid fa-play"></i></button>
+                       <button class="btn btn-sm btn-primary me-1" onclick="mudarStatusQuadra('${quadra.id}', 'Iniciado')" title="Marcar como Iniciado"><i class="fa-solid fa-play"></i>  Iniciar</button>
                        
-                       <button class="btn btn-sm btn-success" onclick="mudarStatusQuadra('${quadra.id}', 'Concluído')"><i class="fa-solid fa-check-double"></i></button>
+                       <button class="btn btn-sm btn-success" onclick="mudarStatusQuadra('${quadra.id}', 'Concluído')"><i class="fa-solid fa-check-double"></i>  Concluir</button>
                    </div>
                 </div>
                 
@@ -455,33 +478,36 @@ function renderizarLista() {
         return resultado;
     }
 
-    function criarItemHtml(item, isInsideGroup) {
+function criarItemHtml(item, isInsideGroup) {
         var vis = getVisualPorTipo(item.tipo);
         var rowCls = item.naoVisitar ? "nao-visitar-row" : "";
         var badgeNV = item.naoVisitar ? '<span class="nao-visitar-badge">NÃO VISITAR</span>' : '';
-        var checked = localStorage.getItem("v_" + item.row) === "true";
+        
+        // --- NOVA LÓGICA DE SELEÇÃO ---
+        var salvoNoDevice = localStorage.getItem("v_" + item.row) === "true";
+        var isRecente = verificarSeRecente(item.ultimaVisita);
+        
+        // Marca se o usuário marcou AGORA ou se já foi feito a menos de 15 dias
+        var checked = salvoNoDevice || isRecente;
+        // ------------------------------
+
         var opacidade = checked ? "opacity:0.5" : "";
 
-        // Títulos
         var title, sub;
         if(isInsideGroup) {
-            // Dentro de grupo (prédio), o complemento manda (Apt 101)
             title = item.complemento || "Unidade";
             sub = item.tipo;
         } else {
-            // Solto
             if(item.nome) {
-                // Tem nome (Estabelecimento)
                 title = item.nome;
                 sub = item.logradouro + ", " + item.numero + (item.complemento ? " (" + item.complemento + ")" : "");
             } else {
-                // Residência comum
                 title = item.complemento ? item.complemento : (item.logradouro + ", " + item.numero);
                 sub = item.complemento ? (item.logradouro + ", " + item.numero) : "Residência";
             }
         }
-// NOVO: HTML da Data
-        // Se tiver data, mostra um reloginho pequeno e a data
+
+        // HTML da Data (Mostra sempre que existir)
         var htmlData = item.ultimaVisita ? 
             `<span class="ms-2 badge bg-light text-secondary border fw-normal" style="font-size:0.7em"><i class="fa-solid fa-clock-rotate-left"></i> ${item.ultimaVisita}</span>` : '';
 
@@ -627,21 +653,37 @@ function renderizarLista() {
         if(dest) window.open("https://www.google.com/maps/dir/?api=1&destination=" + dest, "_blank");
     }
 
-    function toggleVisita(row, el) {
+function toggleVisita(row, el) {
         var key = "v_" + row;
+        
         if(el.classList.contains('checked')) {
-            // Desmarcar (apenas local)
+            // ================= DESMARCAR =================
+            // Remove do cache local
             localStorage.removeItem(key);
+            
+            // Atualiza visual
             el.classList.remove('checked');
             el.closest('.address-item').style.opacity = "1";
+            
+            // MANDA O SERVIDOR LIMPAR A DATA (false)
+            google.script.run.gerenciarVisitaEndereco(row, false);
+
+            // (Opcional) Remove o badge de data da tela imediatamente se existir
+            var itemDiv = el.closest('.address-item');
+            var badgeData = itemDiv.querySelector('.badge.bg-light'); // A classe do reloginho
+            if(badgeData) badgeData.remove();
+
         } else {
-            // Marcar (Local + Servidor)
+            // ================= MARCAR =================
+            // Salva no cache local
             localStorage.setItem(key, "true");
+            
+            // Atualiza visual
             el.classList.add('checked');
             el.closest('.address-item').style.opacity = "0.5";
             
-            // NOVO: Salva data na planilha silenciosamente
-            google.script.run.registrarVisitaEndereco(row);
+            // MANDA O SERVIDOR SALVAR A DATA (true)
+            google.script.run.gerenciarVisitaEndereco(row, true);
         }
     }
 

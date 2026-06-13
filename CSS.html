@@ -146,29 +146,17 @@
     filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
   }
 
-  .status-15d i {
-    color: #198754;
-    font-size: 20px;
-  }
+/* --- STATUS POR TEMPO (Concluídos) --- */
+  .status-15d i   { color: #198754; font-size: 20px; } /* Verde Forte (<15) */
+  .status-30d i   { color: #81c784; font-size: 20px; } /* Verde Claro (<30) */
+  .status-60d i   { color: #ffca28; font-size: 20px; } /* Amarelo (<60) */
+  .status-90d i   { color: #fd7e14; font-size: 20px; } /* Laranja (<90) */
+  .status-alert i { color: #dc3545; font-size: 20px; } /* Vermelho (>90) */
 
-  .status-30d i {
-    color: #81c784;
-    font-size: 20px;
-  }
-
-  .status-60d i {
-    color: #ffca28;
-    font-size: 20px;
-  }
-
-  .status-90d i {
-    color: #fd7e14;
-    font-size: 20px;
-  }
-
-  .status-alert i {
-    color: #dc3545;
-    font-size: 20px;
+  /* --- STATUS INICIADO (Novo) --- */
+  .status-iniciado i { 
+      color: #0d6efd; /* Azul Play */
+      font-size: 22px; /* Um pouco maior para destaque */
   }
 
   @media print {

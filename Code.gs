@@ -50,6 +50,21 @@ function getPoligonosQuadras() {
   }).filter(x => x !== null);
 }
 
+// Função inteligente: Salva a data OU Limpa a célula
+function gerenciarVisitaEndereco(row, status) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  // Coluna 19 é a Coluna S (Data da Última Visita)
+  
+  if (status === true) {
+      // Se marcou: Salva a data de hoje
+      sheet.getRange(row, 19).setValue(new Date());
+  } else {
+      // Se desmarcou: pega a anterior
+      var anterior = sheet.getRange(row, 20).getValue()
+      sheet.getRange(row, 19).setValue(anterior);
+  }
+}
+
 function getDadosTerritorios() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -252,6 +267,35 @@ function salvarLoteTerritorios(updates) {
   return "Atualizado";
 }
 
+function salvarInicioQuadras(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetQ = ss.getSheetByName("Quadras");
+  let sheetReg = ss.getSheetByName("Registros");
+
+  if (!sheetReg) { sheetReg = ss.insertSheet("Registros"); sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]); }
+
+  const data = sheetQ.getDataRange().getValues();
+  const idsParaSalvar = e.ids; 
+  
+  // Converte a string recebida de volta para Data, ou usa new Date() se falhar
+  const dataEvento = e.data ? new Date(e.data) : new Date();
+  const timestamp = new Date(); // Data exata do registro
+
+  for(let i=1; i<data.length; i++) {
+    let idAtual = String(data[i][0]);
+    
+    if(idsParaSalvar.indexOf(idAtual) > -1) {
+       // Atualiza Status (Col H)
+       sheetQ.getRange(i+1, 8).setValue("Iniciado");
+       
+       // Histórico
+       sheetReg.appendRow([idAtual, dataEvento, "Iniciado", timestamp]);
+    }
+  }
+  
+  return { status: "SUCESSO" };
+}
+
 function salvarNovaQuadraDividida(dados) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Quadras");
@@ -452,7 +496,8 @@ function getDadosPublicos(idsString) {
 // Salva a data de hoje na Coluna S (19) quando o publicador marca o check
 function registrarVisitaEndereco(row) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
-  // row é a linha da planilha. Coluna 19 é a S.
+  // row é a linha da planilha. Coluna 19 é a S. 20 é o anterior. Registra o anterior e salva o novo.
+  sheet.getRange(row, 20).setValue(sheet.getRange(row, 19).getValue())
   sheet.getRange(row, 19).setValue(new Date());
 }
 
@@ -462,38 +507,60 @@ function definirStatusQuadra(id, status) {
   const sheetQ = ss.getSheetByName("Quadras");
   let sheetReg = ss.getSheetByName("Registros");
 
-  // Se a aba Registros não existir, cria ela
+  // Garante que a aba Registros existe
   if (!sheetReg) {
     sheetReg = ss.insertSheet("Registros");
-    sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]); // Cabeçalho padrão
+    sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]);
   }
 
-  // 1. Atualiza a aba "Quadras" (Status Atual)
-  // Isso faz o marcador mudar de cor no Gestor
+  // 1. Atualiza o status atual na aba Quadras (para o mapa saber a cor)
+  // Assumindo: Col A = ID, Col H = Status, Col I = Data
   const data = sheetQ.getDataRange().getValues();
   for(let i=1; i<data.length; i++) {
-    if(String(data[i][0]) === String(id)) { // Procura pelo ID (Col A)
-       sheetQ.getRange(i+1, 8).setValue(status); // Coluna H (Status)
+    if(String(data[i][0]) === String(id)) {
+       sheetQ.getRange(i+1, 8).setValue(status); // Coluna H
        
-       // Se for conclusão, atualiza a data de referência na Coluna I
-       if(status === "Concluído") {
-          sheetQ.getRange(i+1, 9).setValue(new Date());
-       }
+       // Se for "Iniciado", registra a data de hoje na coluna de data também?
+       // Geralmente sim, para saber "desde quando" está iniciado.
+       sheetQ.getRange(i+1, 9).setValue(new Date()); 
        break; 
     }
   }
 
-  // 2. Grava na aba "Registros" (Histórico)
-  // Isso garante que fique registrado quem iniciou/concluiu e quando
-  const hoje = new Date();
+  // 2. Cria o log histórico na aba Registros
   sheetReg.appendRow([
-      id,       // ID da Quadra
-      hoje,     // Data do evento
-      status,   // "Iniciado" ou "Concluído"
-      hoje      // Timestamp completo
+      id,           // ID
+      new Date(),   // Data
+      status,       // "Iniciado" ou "Concluído"
+      new Date()    // Timestamp
   ]);
   
-  return "Status registrado: " + status;
+  return "Quadra " + id + " marcada como " + status;
+}
+
+function definirStatusEmMassa(ids, status) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetQ = ss.getSheetByName("Quadras");
+  let sheetReg = ss.getSheetByName("Registros");
+
+  if (!sheetReg) { sheetReg = ss.insertSheet("Registros"); sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]); }
+
+  const data = sheetQ.getDataRange().getValues();
+  const hoje = new Date();
+
+  // Varre a planilha e atualiza quem estiver na lista de IDs
+  for(let i=1; i<data.length; i++) {
+    let idAtual = String(data[i][0]);
+    
+    if(ids.includes(idAtual)) {
+       // Atualiza Status (Col H / Index 7)
+       sheetQ.getRange(i+1, 8).setValue(status);
+       
+       // Grava no Histórico
+       sheetReg.appendRow([idAtual, hoje, status, new Date()]);
+    }
+  }
+  return "Atualizado";
 }
 
 // Salva a nova ordem quando você arrasta os itens no celular
