@@ -784,3 +784,18 @@ function limparCacheServidor() {
   var cache = CacheService.getScriptCache();
   cache.remove('DADOS_MAPA_CACHE');
 }
+
+function salvarConfiguracoesCampanha(nome, data) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('CAMPANHA_NOME', nome);
+  props.setProperty('CAMPANHA_DATA', data);
+  return true;
+}
+
+function obterConfiguracoesCampanha() {
+  var props = PropertiesService.getScriptProperties();
+  return {
+    nome: props.getProperty('CAMPANHA_NOME') || "",
+    data: props.getProperty('CAMPANHA_DATA') || ""
+  };
+}
