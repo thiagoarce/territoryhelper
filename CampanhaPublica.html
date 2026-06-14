@@ -135,6 +135,11 @@
       margin: 0 0 10px;
       padding: 0 24px;
     }
+    #listaObjetivosPub { padding: 0 24px 6px; }
+    .tab-obj { background:transparent; border:1px solid rgba(255,255,255,0.25);
+      color:#fff; padding:6px 14px; border-radius:999px; font-size:.85rem;
+      opacity:0.7; cursor:pointer; }
+    .tab-obj.ativo { background:#16a34a; border-color:#16a34a; opacity:1; }
 
     .objetivo-card {
       background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(14,165,233,0.08));
@@ -323,6 +328,11 @@
       </div>
     </div>
 
+    <div id="secaoObjetivos" class="d-none">
+      <h6 class="secao-titulo">Objetivos</h6>
+      <div id="listaObjetivosPub"></div>
+    </div>
+
     <h6 class="secao-titulo">Mapa do território</h6>
     <div class="mapa-wrapper">
       <div id="mapa"></div>
@@ -353,6 +363,7 @@
           document.getElementById('app').classList.remove('d-none');
           renderizar();
           desenharMapa();
+          carregarObjetivosPublicos();
         })
         .withFailureHandler(function(e){
           document.getElementById('loader').innerHTML = '<div style="color:#f87171">Erro: ' + (e && e.message ? e.message : e) + '</div>';
@@ -490,6 +501,88 @@
       var p = ymd.split('-');
       if (p.length === 3) return p[2] + '/' + p[1] + '/' + p[0];
       return ymd;
+    }
+
+    var MODALIDADES_PUB = [
+      { key:'casa',      label:'Casa em casa',       icone:'fa-house' },
+      { key:'comercial', label:'Comercial',          icone:'fa-briefcase' },
+      { key:'rural',     label:'Rural',              icone:'fa-tractor' },
+      { key:'cartas',    label:'Cartas',             icone:'fa-envelope' },
+      { key:'telefone',  label:'Telefone',           icone:'fa-phone' },
+      { key:'publico',   label:'Testemunho público', icone:'fa-bullhorn' }
+    ];
+
+    function escapeHtmlPub(s){
+      return String(s||'').replace(/[&<>"']/g, function(c){
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+      });
+    }
+
+    function carregarObjetivosPublicos() {
+      google.script.run
+        .withSuccessHandler(function(lista){
+          if (!lista || lista.length === 0) return;
+          var sec = document.getElementById('secaoObjetivos');
+          var box = document.getElementById('listaObjetivosPub');
+          sec.classList.remove('d-none');
+
+          // Tabs Gerais / Semana
+          var temGeral = lista.some(function(o){ return (o.tipo||'geral') === 'geral'; });
+          var temSemana = lista.some(function(o){ return o.tipo === 'semana'; });
+
+          var html = '';
+          if (temSemana && temGeral) {
+            html += '<div class="tabs-obj" style="display:flex;gap:8px;margin-bottom:12px">' +
+                      '<button class="tab-obj ativo" data-t="geral" onclick="trocarTabObj(this,\'geral\')">Gerais</button>' +
+                      '<button class="tab-obj" data-t="semana" onclick="trocarTabObj(this,\'semana\')">Semana</button>' +
+                    '</div>';
+          }
+          html += '<div id="objetivosConteudo"></div>';
+          box.innerHTML = html;
+
+          window._listaObjPub = lista;
+          renderObjPub(temSemana && !temGeral ? 'semana' : 'geral');
+        })
+        .withFailureHandler(function(){})
+        .listarObjetivosCampanhaPublicos();
+    }
+
+    window.trocarTabObj = function(el, tipo) {
+      document.querySelectorAll('.tab-obj').forEach(function(b){ b.classList.toggle('ativo', b.dataset.t === tipo); });
+      renderObjPub(tipo);
+    };
+
+    function renderObjPub(tipo) {
+      var lista = (window._listaObjPub || []).filter(function(o){ return (o.tipo||'geral') === tipo; });
+      var box = document.getElementById('objetivosConteudo');
+      if (lista.length === 0) {
+        box.innerHTML = '<div style="opacity:.6;font-size:.9em">Nenhum objetivo publicado.</div>';
+        return;
+      }
+      var grupos = {};
+      lista.forEach(function(o){
+        var k = o.modalidade || 'outros';
+        if (!grupos[k]) grupos[k] = [];
+        grupos[k].push(o);
+      });
+      var html = '';
+      MODALIDADES_PUB.concat([{ key:'outros', label:'Outros', icone:'fa-list' }]).forEach(function(m){
+        if (!grupos[m.key]) return;
+        html += '<div style="margin-bottom:14px">' +
+                  '<div style="font-weight:700;color:#16a34a;margin-bottom:6px"><i class="fa-solid ' + m.icone + '" style="margin-right:6px"></i>' + m.label + '</div>';
+        grupos[m.key].forEach(function(o){
+          var rec = '';
+          if (o.link) rec += '<a href="' + escapeHtmlPub(o.link) + '" target="_blank" style="margin-right:10px;color:#2563eb"><i class="fa-solid fa-link"></i> Link</a>';
+          if (o.anexoUrl) rec += '<a href="' + escapeHtmlPub(o.anexoUrl) + '" target="_blank" style="color:#2563eb"><i class="fa-solid fa-paperclip"></i> ' + escapeHtmlPub(o.anexoNome || 'Anexo') + '</a>';
+          html += '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
+                    '<div style="font-weight:600">' + escapeHtmlPub(o.titulo) + '</div>' +
+                    (o.descricao ? '<div style="color:#6b7280;font-size:.9em;margin-top:2px">' + escapeHtmlPub(o.descricao) + '</div>' : '') +
+                    (rec ? '<div style="margin-top:6px;font-size:.9em">' + rec + '</div>' : '') +
+                  '</div>';
+        });
+        html += '</div>';
+      });
+      box.innerHTML = html;
     }
   </script>
 </body>

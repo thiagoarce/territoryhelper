@@ -45,6 +45,24 @@ var COL = {
     LABEL_TYPE:  5
   },
 
+  // Aba "Campanha" (objetivos estruturados)
+  CAMPANHA: {
+    ID_1IDX:         1,  // A
+    TIPO_1IDX:       2,  // B  "geral" | "semana"
+    MODALIDADE_1IDX: 3,  // C  ver MODALIDADES_CAMPANHA
+    TITULO_1IDX:     4,  // D
+    DESCRICAO_1IDX:  5,  // E
+    LINK_1IDX:       6,  // F  URL externa (Drive, Sheets, etc)
+    ANEXO_NOME_1IDX: 7,  // G  nome do arquivo subido pro Drive
+    ANEXO_URL_1IDX:  8,  // H  URL pública do arquivo no Drive
+    PUBLICO_1IDX:    9,  // I  TRUE/FALSE — aparece no painel público
+    CRIADO_1IDX:    10,  // J  timestamp
+    ORDEM_1IDX:     11,  // K  ordem manual
+    // 0-indexed
+    ID: 0, TIPO: 1, MODALIDADE: 2, TITULO: 3, DESCRICAO: 4,
+    LINK: 5, ANEXO_NOME: 6, ANEXO_URL: 7, PUBLICO: 8, CRIADO: 9, ORDEM: 10
+  },
+
   // Aba "Dados Brutos" (endereços)
   DADOS: {
     QUADRA_1IDX:        1,  // A
@@ -95,8 +113,20 @@ var SHEET = {
   QUADRAS:     "Quadras",
   TERRITORIOS: "Territorios", // fallback "Territórios"
   DADOS:       "Dados Brutos",
-  REGISTROS:   "Registros"
+  REGISTROS:   "Registros",
+  CAMPANHA:    "Campanha"
 };
+
+// Modalidades de pregação pra classificar objetivos da campanha.
+// Chave é o valor persistido (estável); label é o que aparece na UI.
+var MODALIDADES_CAMPANHA = [
+  { key: "casa",      label: "Casa em casa",       icone: "fa-house" },
+  { key: "comercial", label: "Comercial",          icone: "fa-briefcase" },
+  { key: "rural",     label: "Rural",              icone: "fa-tractor" },
+  { key: "cartas",    label: "Cartas",             icone: "fa-envelope" },
+  { key: "telefone",  label: "Telefone",           icone: "fa-phone" },
+  { key: "publico",   label: "Testemunho público", icone: "fa-bullhorn" }
+];
 
 // Tipos residenciais para classificação de faces
 var TIPOS_RESIDENCIAIS = [

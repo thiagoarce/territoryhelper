@@ -1325,3 +1325,160 @@ function obterConfiguracoesCampanha() {
     metaSemanal: parseInt(props.getProperty('CAMPANHA_META_SEMANAL') || "0", 10) || 0
   };
 }
+// =================================================================
+// OBJETIVOS DA CAMPANHA (aba "Campanha")
+// CRUD + upload de anexos pro Drive
+// =================================================================
+
+// Garante que a aba existe com os headers corretos. Idempotente:
+// pode ser chamado em todas as leituras/escritas sem custo.
+function ensureSheetCampanha_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.CAMPANHA);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.CAMPANHA);
+  sh.appendRow([
+    'id', 'tipo', 'modalidade', 'titulo', 'descricao',
+    'link', 'anexoNome', 'anexoUrl', 'publico', 'criado', 'ordem'
+  ]);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function _gerarIdObjetivo_() {
+  return 'obj_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function _linhaParaObjetivo_(linha) {
+  return {
+    id:         String(linha[COL.CAMPANHA.ID] || ''),
+    tipo:       String(linha[COL.CAMPANHA.TIPO] || 'geral'),
+    modalidade: String(linha[COL.CAMPANHA.MODALIDADE] || ''),
+    titulo:     String(linha[COL.CAMPANHA.TITULO] || ''),
+    descricao:  String(linha[COL.CAMPANHA.DESCRICAO] || ''),
+    link:       String(linha[COL.CAMPANHA.LINK] || ''),
+    anexoNome:  String(linha[COL.CAMPANHA.ANEXO_NOME] || ''),
+    anexoUrl:   String(linha[COL.CAMPANHA.ANEXO_URL] || ''),
+    publico:    linha[COL.CAMPANHA.PUBLICO] === true || String(linha[COL.CAMPANHA.PUBLICO]).toUpperCase() === 'TRUE',
+    criado:     linha[COL.CAMPANHA.CRIADO] ? new Date(linha[COL.CAMPANHA.CRIADO]).getTime() : 0,
+    ordem:      Number(linha[COL.CAMPANHA.ORDEM]) || 0
+  };
+}
+
+// Listagem para o admin (Gestão): todos os objetivos
+function listarObjetivosCampanha() {
+  var sh = ensureSheetCampanha_();
+  var ult = sh.getLastRow();
+  if (ult < 2) return [];
+  var dados = sh.getRange(2, 1, ult - 1, 11).getValues();
+  return dados.map(_linhaParaObjetivo_).filter(function(o){ return o.id; });
+}
+
+// Listagem para o público: só os com publico=true
+function listarObjetivosCampanhaPublicos() {
+  return listarObjetivosCampanha().filter(function(o){ return o.publico; });
+}
+
+function _acharLinhaObjetivo_(sh, id) {
+  var ult = sh.getLastRow();
+  if (ult < 2) return -1;
+  var col = sh.getRange(2, 1, ult - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]) === String(id)) return i + 2; // 1-idx + header
+  }
+  return -1;
+}
+
+// Cria um objetivo novo. obj: { tipo, modalidade, titulo, descricao,
+// link, anexoNome, anexoUrl, publico, ordem }
+function criarObjetivoCampanha(obj) {
+  return withLock_(function(){
+    var sh = ensureSheetCampanha_();
+    var id = _gerarIdObjetivo_();
+    sh.appendRow([
+      id,
+      sanitizar_(obj.tipo || 'geral'),
+      sanitizar_(obj.modalidade || ''),
+      sanitizar_(obj.titulo || ''),
+      sanitizar_(obj.descricao || ''),
+      sanitizar_(obj.link || ''),
+      sanitizar_(obj.anexoNome || ''),
+      sanitizar_(obj.anexoUrl || ''),
+      obj.publico === true,
+      new Date(),
+      Number(obj.ordem) || 0
+    ]);
+    return { ok: true, id: id };
+  });
+}
+
+// Atualiza campos do objetivo (parcial — só envia o que muda)
+function atualizarObjetivoCampanha(id, patch) {
+  return withLock_(function(){
+    var sh = ensureSheetCampanha_();
+    var linha = _acharLinhaObjetivo_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'Objetivo não encontrado' };
+
+    var mapa = {
+      tipo:       COL.CAMPANHA.TIPO_1IDX,
+      modalidade: COL.CAMPANHA.MODALIDADE_1IDX,
+      titulo:     COL.CAMPANHA.TITULO_1IDX,
+      descricao:  COL.CAMPANHA.DESCRICAO_1IDX,
+      link:       COL.CAMPANHA.LINK_1IDX,
+      anexoNome:  COL.CAMPANHA.ANEXO_NOME_1IDX,
+      anexoUrl:   COL.CAMPANHA.ANEXO_URL_1IDX,
+      publico:    COL.CAMPANHA.PUBLICO_1IDX,
+      ordem:      COL.CAMPANHA.ORDEM_1IDX
+    };
+    Object.keys(patch || {}).forEach(function(k){
+      if (!(k in mapa)) return;
+      var valor = patch[k];
+      if (k === 'publico') valor = valor === true;
+      else if (k === 'ordem') valor = Number(valor) || 0;
+      else valor = sanitizar_(valor);
+      sh.getRange(linha, mapa[k]).setValue(valor);
+    });
+    return { ok: true };
+  });
+}
+
+function removerObjetivoCampanha(id) {
+  return withLock_(function(){
+    var sh = ensureSheetCampanha_();
+    var linha = _acharLinhaObjetivo_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'Objetivo não encontrado' };
+    sh.deleteRow(linha);
+    return { ok: true };
+  });
+}
+
+// Recebe arquivo do front (base64 + nome + mime) e salva numa pasta
+// dedicada do Drive. Retorna URL pública (acessível com link).
+// O usuário precisa autorizar o escopo drive.file na primeira chamada.
+function uploadAnexoCampanha(payload) {
+  if (!payload || !payload.base64 || !payload.nome) {
+    return { ok: false, erro: 'Payload inválido' };
+  }
+  try {
+    var pasta = _pastaAnexosCampanha_();
+    var bytes = Utilities.base64Decode(payload.base64);
+    var blob = Utilities.newBlob(bytes, payload.mime || 'application/octet-stream', payload.nome);
+    var arq = pasta.createFile(blob);
+    arq.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return {
+      ok: true,
+      nome: arq.getName(),
+      url:  arq.getUrl()
+    };
+  } catch (e) {
+    logErro_('uploadAnexoCampanha', e);
+    return { ok: false, erro: String(e && e.message || e) };
+  }
+}
+
+function _pastaAnexosCampanha_() {
+  var nome = 'Territory Helper — Anexos Campanha';
+  var iter = DriveApp.getFoldersByName(nome);
+  if (iter.hasNext()) return iter.next();
+  return DriveApp.createFolder(nome);
+}

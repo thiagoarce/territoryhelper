@@ -82,9 +82,10 @@ window.mudarAba = function(aba) {
     }
     
     // Rota da Campanha
-    if(aba === 'campanha') { 
-        window.carregarDadosCampanha(); 
-        setTimeout(() => { if(mapCampanha) mapCampanha.invalidateSize(); }, 200); 
+    if(aba === 'campanha') {
+        window.carregarDadosCampanha();
+        window.carregarObjetivosCampanha();
+        setTimeout(() => { if(mapCampanha) mapCampanha.invalidateSize(); }, 200);
     }
   };
 
@@ -1697,4 +1698,207 @@ window.confirmarAssociacao = function(layerQuadra) {
   window.formatarDataBR = function(ymd) { if(!ymd) return ""; var p = ymd.split('-'); if(p.length === 3) return p[2]+'/'+p[1]+'/'+p[0]; return ymd; };
   window.ativarGPS=function(t){if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){var m=(t==='geral'?mapGeral:t==='registro'?mapRegistro:mapPoligonos); if(m){L.circleMarker([p.coords.latitude,p.coords.longitude],{radius:6,color:'blue'}).addTo(m);m.setView([p.coords.latitude,p.coords.longitude],17)}})};
   window.latLngsToString = function(ll) { var arr = Array.isArray(ll[0]) ? ll[0] : ll; return arr.map(function(p){return p.lat+","+p.lng}).join(" | "); };
+
+  // ======================================================
+  // OBJETIVOS DA CAMPANHA — UI (admin)
+  // ======================================================
+  // Mantidas como variáveis de módulo: lista atual + tab ativo + id editando
+  var _objetivos = [];
+  var _objTipoAtivo = 'geral';
+  var _objEditandoId = null;
+
+  // Modalidades — espelhadas do Constants.gs pra evitar nova roundtrip.
+  // Mudou no backend, mude aqui.
+  var MODALIDADES = [
+    { key: 'casa',      label: 'Casa em casa',       icone: 'fa-house' },
+    { key: 'comercial', label: 'Comercial',          icone: 'fa-briefcase' },
+    { key: 'rural',     label: 'Rural',              icone: 'fa-tractor' },
+    { key: 'cartas',    label: 'Cartas',             icone: 'fa-envelope' },
+    { key: 'telefone',  label: 'Telefone',           icone: 'fa-phone' },
+    { key: 'publico',   label: 'Testemunho público', icone: 'fa-bullhorn' }
+  ];
+
+  function _labelModalidade(key) {
+    var m = MODALIDADES.find(function(x){ return x.key === key; });
+    return m ? m.label : (key || 'Sem modalidade');
+  }
+  function _iconeModalidade(key) {
+    var m = MODALIDADES.find(function(x){ return x.key === key; });
+    return m ? m.icone : 'fa-circle-question';
+  }
+
+  window.carregarObjetivosCampanha = function() {
+    google.script.run
+      .withSuccessHandler(function(lista){
+        _objetivos = lista || [];
+        renderObjetivos();
+      })
+      .withFailureHandler(function(e){
+        document.getElementById('listaObjetivos').innerHTML =
+          '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+      })
+      .listarObjetivosCampanha();
+  };
+
+  function renderObjetivos() {
+    var cont = document.getElementById('listaObjetivos');
+    var filtro = _objetivos.filter(function(o){ return (o.tipo || 'geral') === _objTipoAtivo; });
+    if (filtro.length === 0) {
+      cont.innerHTML = '<div class="text-muted text-center py-3 small">Nenhum objetivo cadastrado nesse tipo. Toque em <b>Adicionar</b>.</div>';
+      return;
+    }
+    // Agrupa por modalidade
+    var grupos = {};
+    filtro.forEach(function(o){
+      var k = o.modalidade || 'outros';
+      if (!grupos[k]) grupos[k] = [];
+      grupos[k].push(o);
+    });
+
+    var html = '';
+    MODALIDADES.concat([{ key: 'outros', label: 'Outros', icone: 'fa-list' }]).forEach(function(m){
+      if (!grupos[m.key]) return;
+      html += '<div class="mb-3">' +
+                '<div class="fw-bold text-success mb-1"><i class="fa-solid ' + m.icone + ' me-1"></i>' + m.label + '</div>';
+      grupos[m.key].forEach(function(o){
+        var icones = [];
+        if (o.link) icones.push('<a href="' + escapeHtml(o.link) + '" target="_blank" class="text-decoration-none text-primary me-2" title="Abrir link"><i class="fa-solid fa-link"></i></a>');
+        if (o.anexoUrl) icones.push('<a href="' + escapeHtml(o.anexoUrl) + '" target="_blank" class="text-decoration-none text-primary me-2" title="' + escapeHtml(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>');
+        var olho = o.publico
+          ? '<i class="fa-regular fa-eye text-success" title="Visível no painel público"></i>'
+          : '<i class="fa-regular fa-eye-slash text-muted" title="Privado"></i>';
+        html += '<div class="d-flex align-items-start gap-2 py-2 px-2 mb-1 rounded" style="background:#fff;border:1px solid #e5e7eb">' +
+                  '<div class="flex-grow-1" onclick="window.abrirModalObjetivo(\'' + o.id + '\')" style="cursor:pointer">' +
+                    '<div class="fw-semibold">' + escapeHtml(o.titulo || '(sem título)') + '</div>' +
+                    (o.descricao ? '<div class="text-muted small">' + escapeHtml(o.descricao) + '</div>' : '') +
+                  '</div>' +
+                  '<div class="d-flex align-items-center gap-1">' +
+                    icones.join('') + olho +
+                  '</div>' +
+                '</div>';
+      });
+      html += '</div>';
+    });
+    cont.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+
+  window.filtrarObjetivos = function(tipo) {
+    _objTipoAtivo = tipo;
+    document.querySelectorAll('#tabsObjetivos .nav-link').forEach(function(b){
+      b.classList.toggle('active', b.dataset.tab === tipo);
+    });
+    renderObjetivos();
+  };
+
+  function popularSelectModalidades() {
+    var sel = document.getElementById('objInputModalidade');
+    if (sel.options.length > 0) return; // já populado
+    MODALIDADES.forEach(function(m){
+      var op = document.createElement('option');
+      op.value = m.key;
+      op.text = m.label;
+      sel.appendChild(op);
+    });
+  }
+
+  window.abrirModalObjetivo = function(id) {
+    popularSelectModalidades();
+    _objEditandoId = id || null;
+    var obj = id ? _objetivos.find(function(o){ return o.id === id; }) : null;
+
+    document.getElementById('lblTituloModalObjetivo').innerText = obj ? 'Editar objetivo' : 'Novo objetivo';
+    document.getElementById('objInputId').value = id || '';
+    document.querySelector('input[name="objInputTipo"][value="' + (obj ? obj.tipo : _objTipoAtivo) + '"]').checked = true;
+    document.getElementById('objInputModalidade').value = obj ? (obj.modalidade || 'casa') : 'casa';
+    document.getElementById('objInputTitulo').value = obj ? obj.titulo : '';
+    document.getElementById('objInputDescricao').value = obj ? obj.descricao : '';
+    document.getElementById('objInputLink').value = obj ? obj.link : '';
+    document.getElementById('objInputArquivo').value = '';
+    document.getElementById('objAnexoAtual').innerHTML = (obj && obj.anexoNome)
+      ? 'Anexo atual: <a href="' + escapeHtml(obj.anexoUrl) + '" target="_blank">' + escapeHtml(obj.anexoNome) + '</a>'
+      : 'Nenhum anexo enviado';
+    document.getElementById('objInputPublico').checked = obj ? !!obj.publico : false;
+    document.getElementById('btnRemoverObjetivo').style.display = id ? '' : 'none';
+
+    new bootstrap.Modal(document.getElementById('modalObjetivo')).show();
+  };
+
+  window.salvarObjetivoAtual = function() {
+    var id = document.getElementById('objInputId').value || null;
+    var titulo = document.getElementById('objInputTitulo').value.trim();
+    if (!titulo) { alert('Dá um título pro objetivo.'); return; }
+
+    var dados = {
+      tipo: document.querySelector('input[name="objInputTipo"]:checked').value,
+      modalidade: document.getElementById('objInputModalidade').value,
+      titulo: titulo,
+      descricao: document.getElementById('objInputDescricao').value.trim(),
+      link: document.getElementById('objInputLink').value.trim(),
+      publico: document.getElementById('objInputPublico').checked
+    };
+
+    var arquivoEl = document.getElementById('objInputArquivo');
+    var arquivo = arquivoEl.files && arquivoEl.files[0];
+
+    function persistir() {
+      var fn = id
+        ? function(cb){ google.script.run.withSuccessHandler(cb).withFailureHandler(onErro).atualizarObjetivoCampanha(id, dados); }
+        : function(cb){ google.script.run.withSuccessHandler(cb).withFailureHandler(onErro).criarObjetivoCampanha(dados); };
+      fn(function(r){
+        if (r && r.ok) {
+          bootstrap.Modal.getInstance(document.getElementById('modalObjetivo')).hide();
+          window.carregarObjetivosCampanha();
+        } else {
+          alert('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'));
+        }
+      });
+    }
+    function onErro(e) { alert('Erro: ' + (e && e.message ? e.message : e)); }
+
+    if (arquivo) {
+      // Limite prudente — Apps Script aceita até ~50MB mas o roundtrip
+      // base64 fica pesado. 10MB cobre PDFs e planilhas normais.
+      if (arquivo.size > 10 * 1024 * 1024) {
+        alert('Arquivo muito grande (máx 10 MB). Use o campo de link.');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var base64 = ev.target.result.split(',')[1];
+        google.script.run
+          .withSuccessHandler(function(r){
+            if (!r || !r.ok) { alert('Erro no upload: ' + (r && r.erro ? r.erro : 'desconhecido')); return; }
+            dados.anexoNome = r.nome;
+            dados.anexoUrl = r.url;
+            persistir();
+          })
+          .withFailureHandler(onErro)
+          .uploadAnexoCampanha({ base64: base64, nome: arquivo.name, mime: arquivo.type });
+      };
+      reader.readAsDataURL(arquivo);
+    } else {
+      persistir();
+    }
+  };
+
+  window.removerObjetivoAtual = function() {
+    var id = document.getElementById('objInputId').value;
+    if (!id) return;
+    if (!confirm('Excluir este objetivo?')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (r && r.ok) {
+          bootstrap.Modal.getInstance(document.getElementById('modalObjetivo')).hide();
+          window.carregarObjetivosCampanha();
+        }
+      })
+      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .removerObjetivoCampanha(id);
+  };
 </script>
