@@ -1557,6 +1557,11 @@ window.confirmarAssociacao = function(layerQuadra) {
 
       let total = countCompletas + countCinza;
       let porcentagem = total > 0 ? Math.round((countCompletas / total) * 100) : 0;
+      // Espelha pro compartilhamento da imagem
+      window.dadosDashCampanha = {
+        completas: countCompletas, restantes: countCinza,
+        totalQuadras: total, porcentagem: porcentagem
+      };
 
       document.getElementById('campanhaCompletas').innerText = countCompletas;
       document.getElementById('campanhaCinza').innerText = countCinza;
@@ -1640,6 +1645,8 @@ window.confirmarAssociacao = function(layerQuadra) {
     google.script.run
       .withSuccessHandler(function(d) {
         if (!d) return;
+        // Espelha no global pra reaproveitar no compartilhamento da imagem
+        window.dadosDashCampanha = d;
         try {
           // Média semanal
           var medEl = document.getElementById('kpiMedia4Sem');
@@ -1901,4 +1908,118 @@ window.confirmarAssociacao = function(layerQuadra) {
       .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
       .removerObjetivoCampanha(id);
   };
+
+  // ======================================================
+  // COMPARTILHAR CAMPANHA — gera PNG do template oculto e
+  // dispara navigator.share com texto "Acompanhe mais detalhes".
+  // ======================================================
+  window.compartilharImagemCampanha = function() {
+    var btn = event && event.currentTarget;
+    var textoOrig = btn ? btn.innerHTML : null;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+
+    // Pega URL pública pra mandar no texto da mensagem
+    google.script.run.withSuccessHandler(function(baseUrl){
+      var linkPub = (baseUrl || window.location.href.split('?')[0]) + '?v=campanha';
+      preencherTemplateCampanha();
+      var tpl = document.getElementById('cardCampanhaTemplate');
+
+      domtoimage.toBlob(tpl, { bgcolor: '#0f172a', cacheBust: true })
+        .then(function(blob){
+          var nomeArq = 'campanha-' + new Date().toISOString().split('T')[0] + '.png';
+          var file = new File([blob], nomeArq, { type: 'image/png' });
+          var texto = montarMsgCampanha(linkPub);
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], title: 'Campanha', text: texto })
+              .catch(function(){})
+              .finally(restaurar);
+          } else {
+            // Fallback desktop: baixa a imagem
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = nomeArq;
+            document.body.appendChild(a); a.click();
+            setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 500);
+            restaurar();
+          }
+        })
+        .catch(function(e){
+          alert('Erro: ' + (e && e.message ? e.message : e));
+          restaurar();
+        });
+    }).withFailureHandler(function(){
+      preencherTemplateCampanha();
+      restaurar();
+    }).getScriptUrl();
+
+    function restaurar() {
+      if (btn && textoOrig != null) { btn.disabled = false; btn.innerHTML = textoOrig; }
+    }
+  };
+
+  function preencherTemplateCampanha() {
+    var cfg = window.configCampanhaGlobal || {};
+    var dados = window.dadosDashCampanha || {};
+
+    document.getElementById('tplNome').innerText = cfg.nome || 'Campanha';
+    var per = [];
+    if (cfg.data) per.push(window.formatarDataBR(cfg.data));
+    if (cfg.dataFim) per.push('até ' + window.formatarDataBR(cfg.dataFim));
+    document.getElementById('tplPeriodo').innerText = per.join(' ');
+
+    // Countdown
+    var cd = document.getElementById('tplCountdown');
+    if (cfg.dataFim) {
+      var diff = Math.ceil((new Date(cfg.dataFim + 'T23:59:59') - new Date()) / (1000*60*60*24));
+      if (diff < 0) cd.innerText = 'Campanha encerrada';
+      else if (diff === 0) cd.innerText = 'Último dia!';
+      else cd.innerText = 'Faltam ' + diff + ' dia' + (diff === 1 ? '' : 's');
+      cd.style.display = '';
+    } else {
+      cd.style.display = 'none';
+    }
+
+    // Progresso
+    var pct = Number(dados.porcentagem) || 0;
+    document.getElementById('tplPct').innerText = pct + '%';
+    document.getElementById('tplCompletas').innerText = dados.completas || 0;
+    document.getElementById('tplTotal').innerText = dados.totalQuadras || 0;
+    document.getElementById('tplBarra').style.width = pct + '%';
+
+    // Objetivos da semana (públicos)
+    var semana = (_objetivos || []).filter(function(o){
+      return o.tipo === 'semana' && o.publico;
+    });
+    var box = document.getElementById('tplObjetivos');
+    if (semana.length === 0) {
+      box.innerHTML = '<div style="opacity:.55; font-size:14px; padding:10px 0">Sem objetivos da semana definidos.</div>';
+      return;
+    }
+    box.innerHTML = '<div style="font-size:13px; letter-spacing:2px; text-transform:uppercase; opacity:.55; margin-bottom:10px">Esta semana</div>' +
+      semana.map(function(o){
+        var m = MODALIDADES.find(function(x){ return x.key === o.modalidade; })
+              || { label: 'Outros', icone: 'fa-list' };
+        return '<div style="background:linear-gradient(135deg,#16a34a,#15803d); padding:14px 18px; border-radius:14px; margin-bottom:10px">' +
+                 '<div style="font-size:13px; opacity:.85; margin-bottom:4px"><i class="fa-solid ' + m.icone + '" style="margin-right:6px"></i>' + m.label + '</div>' +
+                 '<div style="font-size:18px; font-weight:700">' + escapeHtml(o.titulo) + '</div>' +
+               '</div>';
+      }).join('');
+  }
+
+  function montarMsgCampanha(link) {
+    var cfg = window.configCampanhaGlobal || {};
+    var dados = window.dadosDashCampanha || {};
+    var linhas = ['🎯 ' + (cfg.nome || 'Campanha')];
+    var pct = Number(dados.porcentagem) || 0;
+    linhas.push(pct + '% concluído (' + (dados.completas || 0) + '/' + (dados.totalQuadras || 0) + ' quadras)');
+    if (cfg.dataFim) {
+      var diff = Math.ceil((new Date(cfg.dataFim + 'T23:59:59') - new Date()) / (1000*60*60*24));
+      if (diff > 0) linhas.push('⏳ Faltam ' + diff + ' dia' + (diff === 1 ? '' : 's'));
+      else if (diff === 0) linhas.push('⚡ Último dia!');
+    }
+    linhas.push('');
+    linhas.push('Acompanhe mais detalhes:');
+    linhas.push(link);
+    return linhas.join('\n');
+  }
 </script>
