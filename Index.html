@@ -578,6 +578,10 @@
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.5.0/dist/dom-to-image-more.min.js"></script>
+  <!-- html2canvas é usado pra capturar o cardCampanhaTemplate, que
+       extrapola o viewport mobile. dom-to-image-more (SVG foreignObject)
+       corta nesse caso; html2canvas renderiza tudo. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <?!= include('JS_Core'); ?>
   <?!= include('JS_App'); ?>
 </body>

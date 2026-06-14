@@ -1951,7 +1951,21 @@ window.confirmarAssociacao = function(layerQuadra) {
       // 2 RAFs garantem que o browser fez layout + paint do template
       // novo antes da captura, evitando snapshots cortados.
       requestAnimationFrame(function(){ requestAnimationFrame(function(){
-      domtoimage.toBlob(tpl, { bgcolor: '#0f172a', cacheBust: true })
+      // html2canvas em vez de dom-to-image: o template é 720px mas a
+      // viewport mobile é ~390px. O dom-to-image (SVG) corta o que
+      // extrapola; html2canvas renderiza tudo respeitando o tamanho
+      // declarado do elemento.
+      html2canvas(tpl, {
+        backgroundColor: '#0f172a',
+        scale: 1.5,
+        useCORS: true,
+        width: 720,
+        height: tpl.scrollHeight,
+        windowWidth: 720,
+        windowHeight: tpl.scrollHeight
+      }).then(function(canvas){
+        return new Promise(function(res){ canvas.toBlob(res, 'image/png'); });
+      })
         .then(function(blob){
           tpl.style.opacity = '0';
           var nomeArq = 'campanha-' + new Date().toISOString().split('T')[0] + '.png';
