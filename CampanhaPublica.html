@@ -442,17 +442,8 @@
       document.getElementById('infoDias').innerHTML = infoDias;
       document.getElementById('infoRitmo').innerHTML = infoRitmo;
 
-      // Objetivo
-      if (dados.objetivo && dados.objetivo.trim()) {
-        document.getElementById('textoObjetivo').innerText = dados.objetivo;
-        document.getElementById('secaoObjetivo').classList.remove('d-none');
-      }
-
-      // Estratégia
-      if (dados.estrategia && dados.estrategia.trim()) {
-        document.getElementById('textoEstrategia').innerText = dados.estrategia;
-        document.getElementById('secaoEstrategia').classList.remove('d-none');
-      }
+      // (Os campos objetivo/estrategia em texto livre foram substituídos
+      // pela seção Objetivos estruturada — ver carregarObjetivosPublicos)
 
       // Meta da semana
       var meta = dados.metaSemanal || 0;
