@@ -910,6 +910,151 @@ function dirigenteMarcarStatus(ids, status, data) {
 }
 
 /**
+ * Retorna estatísticas agregadas para o dashboard interno da campanha.
+ * - kpis: totais e percentuais
+ * - porSemana: array com {label, completas} das últimas 12 semanas
+ * - porTerritorio: ranking dos territórios com mais conclusões na campanha
+ * - porMes: array com últimos 12 meses (label, completas) para gráfico
+ */
+function getDadosDashboard() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = getSheetByName_(SHEET.QUADRAS);
+  var sheetReg = getSheetByName_(SHEET.REGISTROS);
+  var cfg = obterConfiguracoesCampanha();
+
+  var dataInicio = cfg.data ? new Date(cfg.data + "T00:00:00") : null;
+
+  var totalQuadras = 0, completasCampanha = 0;
+  var porTerritorio = {}; // nome -> { total, completas }
+  var ritmoSemana = {};   // 'YYYY-WW' -> count
+  var ritmoMes = {};      // 'YYYY-MM' -> count
+
+  function chaveSemana(d) {
+    var oneJan = new Date(d.getFullYear(), 0, 1);
+    var dias = Math.floor((d - oneJan) / (1000*60*60*24));
+    var semana = Math.ceil((dias + oneJan.getDay() + 1) / 7);
+    return d.getFullYear() + '-' + (semana < 10 ? '0' + semana : semana);
+  }
+  function chaveMes(d) {
+    var m = d.getMonth() + 1;
+    return d.getFullYear() + '-' + (m < 10 ? '0' + m : m);
+  }
+
+  if (sheetQ && sheetQ.getLastRow() > 1) {
+    var dataQ = sheetQ.getRange(2, 1, sheetQ.getLastRow() - 1, sheetQ.getLastColumn()).getValues();
+    dataQ.forEach(function(r) {
+      var id = String(r[COL.QUADRAS.ID] || '').trim();
+      if (!id) return;
+      totalQuadras++;
+      var terr = String(r[COL.QUADRAS.TERRITORIO] || 'Sem território');
+      if (!porTerritorio[terr]) porTerritorio[terr] = { total: 0, completas: 0 };
+      porTerritorio[terr].total++;
+
+      var dataConc = (r[COL.QUADRAS.DATA_CONC] instanceof Date) ? r[COL.QUADRAS.DATA_CONC] : null;
+      if (dataConc && dataInicio && dataConc >= dataInicio) {
+        completasCampanha++;
+        porTerritorio[terr].completas++;
+      }
+    });
+  }
+
+  // Ritmo semanal/mensal — busca aba Registros
+  if (sheetReg && sheetReg.getLastRow() > 1) {
+    var dataR = sheetReg.getRange(2, 1, sheetReg.getLastRow() - 1, sheetReg.getLastColumn()).getValues();
+    dataR.forEach(function(r) {
+      var tipo = String(r[2] || '').toLowerCase();
+      if (tipo.indexOf('conclu') === -1 && tipo !== 'auto' && tipo !== 'apenas_historico') return;
+      var d = r[1];
+      if (!(d instanceof Date)) {
+        if (typeof r[1] === 'string') { d = new Date(r[1].indexOf('T') > -1 ? r[1] : r[1] + 'T00:00:00'); }
+        if (!d || isNaN(d.getTime())) return;
+      }
+      if (dataInicio && d < dataInicio) return; // só dentro da campanha
+
+      var ks = chaveSemana(d);
+      ritmoSemana[ks] = (ritmoSemana[ks] || 0) + 1;
+      var km = chaveMes(d);
+      ritmoMes[km] = (ritmoMes[km] || 0) + 1;
+    });
+  }
+
+  // Pega últimas 12 semanas (em ordem cronológica)
+  var hoje = new Date();
+  var porSemana = [];
+  for (var i = 11; i >= 0; i--) {
+    var d = new Date(hoje.getTime() - i * 7 * 24*60*60*1000);
+    var k = chaveSemana(d);
+    porSemana.push({ label: 'S' + k.split('-')[1], completas: ritmoSemana[k] || 0 });
+  }
+
+  // Últimos 12 meses
+  var porMes = [];
+  for (var j = 11; j >= 0; j--) {
+    var dm = new Date(hoje.getFullYear(), hoje.getMonth() - j, 1);
+    var km2 = chaveMes(dm);
+    var mes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][dm.getMonth()];
+    porMes.push({ label: mes, completas: ritmoMes[km2] || 0 });
+  }
+
+  // Ranking
+  var ranking = Object.keys(porTerritorio).map(function(nome) {
+    var t = porTerritorio[nome];
+    var pct = t.total > 0 ? Math.round((t.completas / t.total) * 100) : 0;
+    return { nome: nome, total: t.total, completas: t.completas, porcentagem: pct };
+  }).sort(function(a, b) { return b.porcentagem - a.porcentagem || b.completas - a.completas; });
+
+  // Média/semana
+  var ultimas4 = porSemana.slice(-4).reduce(function(s, x) { return s + x.completas; }, 0) / 4;
+
+  return {
+    kpis: {
+      totalQuadras: totalQuadras,
+      completasCampanha: completasCampanha,
+      restantes: totalQuadras - completasCampanha,
+      porcentagem: totalQuadras > 0 ? Math.round((completasCampanha / totalQuadras) * 100) : 0,
+      mediaSemana4: Math.round(ultimas4 * 10) / 10
+    },
+    porSemana: porSemana,
+    porMes: porMes,
+    ranking: ranking.slice(0, 10)
+  };
+}
+
+/**
+ * Retorna o histórico de eventos (designação, conclusão, etc) de uma quadra,
+ * ordenado do mais recente para o mais antigo. Limita a 50 eventos.
+ */
+function getHistoricoQuadra(id) {
+  if (!id) return [];
+  var sheetReg = getSheetByName_(SHEET.REGISTROS);
+  if (!sheetReg || sheetReg.getLastRow() < 2) return [];
+
+  var data = sheetReg.getRange(2, 1, sheetReg.getLastRow() - 1, sheetReg.getLastColumn()).getValues();
+  var alvo = String(id).trim();
+  var tz = Session.getScriptTimeZone();
+
+  var eventos = [];
+  for (var i = 0; i < data.length; i++) {
+    var rowId = String(data[i][0] || '').trim();
+    if (rowId !== alvo) continue;
+
+    var dataEvt = data[i][1];
+    var tipo = String(data[i][2] || '');
+    var ts = data[i][3];
+
+    eventos.push({
+      data: (dataEvt instanceof Date) ? Utilities.formatDate(dataEvt, tz, "yyyy-MM-dd") : String(dataEvt),
+      tipo: tipo,
+      timestamp: (ts instanceof Date) ? Utilities.formatDate(ts, tz, "yyyy-MM-dd HH:mm") : String(ts)
+    });
+  }
+
+  // mais recente primeiro
+  eventos.sort(function(a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
+  return eventos.slice(0, 50);
+}
+
+/**
  * Envia email com o link de designação ao dirigente.
  * Retorna { status: 'SUCESSO' } ou { status: 'ERRO', msg }.
  */

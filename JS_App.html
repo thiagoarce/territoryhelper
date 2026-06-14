@@ -982,6 +982,21 @@ window.iniciarMapaRegistro = function(qs, ops) {
                   }
                   window.atualizarBarraSelecaoRegistro();
               });
+
+              // --- LONG-PRESS / CONTEXT-MENU = abre histórico ---
+              poly.on('contextmenu', function(e) {
+                  L.DomEvent.stopPropagation(e);
+                  window.abrirHistoricoQuadra(q.id);
+              });
+              var lpTimer = null;
+              poly.on('mousedown touchstart', function(e) {
+                  if (lpTimer) clearTimeout(lpTimer);
+                  var alvoId = q.id;
+                  lpTimer = setTimeout(function() { window.abrirHistoricoQuadra(alvoId); lpTimer = null; }, 700);
+              });
+              poly.on('mouseup mouseout touchend touchcancel touchmove', function() {
+                  if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+              });
               
               // --- LÓGICA DOS ÍCONES (concluída por idade ou pendente) ---
               var iconCls = "status-alert";
@@ -1027,6 +1042,52 @@ window.iniciarMapaRegistro = function(qs, ops) {
       if(window.renderizarLabelsRegistro) window.renderizarLabelsRegistro();
       if(window.ativarGPS) window.ativarGPS('registro');
   };
+
+window.abrirHistoricoQuadra = function(id) {
+    if (!id) return;
+    document.getElementById('lblHistoricoQuadraId').innerText = id;
+    var conteudo = document.getElementById('historicoQuadraConteudo');
+    conteudo.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+
+    if (!window._modalHistoricoQuadra) {
+      window._modalHistoricoQuadra = new bootstrap.Modal(document.getElementById('modalHistoricoQuadra'));
+    }
+    window._modalHistoricoQuadra.show();
+
+    google.script.run
+      .withSuccessHandler(function(eventos) {
+        if (!eventos || eventos.length === 0) {
+          conteudo.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-inbox" style="font-size:2rem; opacity:.4"></i><div class="mt-2">Sem histórico ainda.</div></div>';
+          return;
+        }
+        var iconePorTipo = function(tipo) {
+          var t = (tipo || '').toLowerCase();
+          if (t.indexOf('conclu') > -1) return { ico: 'fa-circle-check', cor: 'text-success' };
+          if (t.indexOf('iniciado') > -1) return { ico: 'fa-circle-play', cor: 'text-primary' };
+          if (t.indexOf('design') > -1) return { ico: 'fa-user-tie', cor: 'text-info' };
+          if (t.indexOf('historico') > -1 || t.indexOf('apenas') > -1) return { ico: 'fa-clock-rotate-left', cor: 'text-muted' };
+          return { ico: 'fa-circle-dot', cor: 'text-secondary' };
+        };
+        var html = '<div class="list-group list-group-flush">';
+        eventos.forEach(function(ev) {
+          var ic = iconePorTipo(ev.tipo);
+          var dataExibida = ev.data ? window.formatarDataBR(ev.data) : '';
+          html += '<div class="list-group-item d-flex align-items-center gap-3">' +
+                    '<i class="fa-solid ' + ic.ico + ' ' + ic.cor + '" style="font-size:1.3rem"></i>' +
+                    '<div class="flex-grow-1">' +
+                      '<div class="fw-bold">' + (ev.tipo || 'Evento') + '</div>' +
+                      '<div class="small text-muted">' + dataExibida + ' • registrado em ' + ev.timestamp + '</div>' +
+                    '</div>' +
+                  '</div>';
+        });
+        html += '</div>';
+        conteudo.innerHTML = html;
+      })
+      .withFailureHandler(function(e) {
+        conteudo.innerHTML = '<div class="alert alert-danger">Erro ao carregar histórico: ' + (e && e.message ? e.message : e) + '</div>';
+      })
+      .getHistoricoQuadra(id);
+};
 
 window.atualizarBarraSelecaoRegistro = function() {
     var bar = document.getElementById('barraSelecaoRegistro');
@@ -1558,6 +1619,53 @@ window.confirmarAssociacao = function(layerQuadra) {
 
       window.focarMapaInteligente(mapCampanha, lgCampanhaQuadras);
     });
+
+    // Dashboard (KPIs, gráfico semanal, ranking) — em paralelo
+    window.carregarDashboardCampanha();
+  };
+
+  window.carregarDashboardCampanha = function() {
+    google.script.run
+      .withSuccessHandler(function(d) {
+        if (!d) return;
+        try {
+          // Média semanal
+          var medEl = document.getElementById('kpiMedia4Sem');
+          if (medEl) medEl.innerText = d.kpis.mediaSemana4 || 0;
+
+          // Gráfico de barras das últimas 12 semanas
+          var g = document.getElementById('graficoSemanal');
+          if (g && d.porSemana) {
+            var max = Math.max.apply(null, d.porSemana.map(function(x){ return x.completas; }).concat([1]));
+            g.innerHTML = d.porSemana.map(function(x){
+              var pct = max > 0 ? Math.round((x.completas / max) * 100) : 0;
+              return '<div class="bar-col">' +
+                       '<div class="bar" style="height:' + pct + '%" data-v="' + x.completas + '"></div>' +
+                       '<div class="label">' + x.label + '</div>' +
+                     '</div>';
+            }).join('');
+          }
+
+          // Ranking de territórios
+          var r = document.getElementById('rankingTerritorios');
+          if (r && d.ranking) {
+            if (d.ranking.length === 0) {
+              r.innerHTML = '<div class="text-muted small text-center py-2">Sem territórios cadastrados.</div>';
+            } else {
+              r.innerHTML = d.ranking.map(function(t, i){
+                return '<div class="rank-row">' +
+                         '<div class="rank-pos">' + (i+1) + '</div>' +
+                         '<div class="rank-nome">' + t.nome + '</div>' +
+                         '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + t.porcentagem + '%"></div></div>' +
+                         '<div class="rank-num"><b>' + t.completas + '</b>/' + t.total + ' (' + t.porcentagem + '%)</div>' +
+                       '</div>';
+              }).join('');
+            }
+          }
+        } catch(e) { console.error('Erro ao renderizar dashboard:', e); }
+      })
+      .withFailureHandler(function(e){ console.error('Erro dashboard:', e); })
+      .getDadosDashboard();
   };
 
   function formatarDataBR(ymd) {

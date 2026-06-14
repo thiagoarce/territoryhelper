@@ -198,6 +198,79 @@
     }
   }
 
+  /* ===== DASHBOARD ===== */
+  .dashboard-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 120px;
+    padding: 8px 0;
+  }
+  .dashboard-bars .bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+  }
+  .dashboard-bars .bar {
+    width: 100%;
+    background: linear-gradient(180deg, #4ade80, #16a34a);
+    border-radius: 4px 4px 0 0;
+    min-height: 2px;
+    transition: height .6s cubic-bezier(.2,.8,.2,1);
+    position: relative;
+  }
+  .dashboard-bars .bar[data-v]:not([data-v="0"]):hover::after {
+    content: attr(data-v);
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a1a;
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .dashboard-bars .label {
+    font-size: 0.65rem;
+    color: #6c757d;
+    margin-top: 4px;
+    text-align: center;
+  }
+  .dashboard-ranking .rank-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .dashboard-ranking .rank-row:last-child { border-bottom: 0; }
+  .dashboard-ranking .rank-pos {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #495057;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+  .dashboard-ranking .rank-row:nth-child(1) .rank-pos { background: #ffd700; color: #5d4400; }
+  .dashboard-ranking .rank-row:nth-child(2) .rank-pos { background: #c0c0c0; color: #333; }
+  .dashboard-ranking .rank-row:nth-child(3) .rank-pos { background: #cd7f32; color: white; }
+  .dashboard-ranking .rank-nome { flex: 1; font-weight: 600; font-size: 0.9rem; }
+  .dashboard-ranking .rank-bar-wrap { flex: 2; background: #f1f3f5; height: 8px; border-radius: 99px; overflow: hidden; }
+  .dashboard-ranking .rank-bar { height: 100%; background: linear-gradient(90deg, #4ade80, #16a34a); border-radius: 99px; }
+  .dashboard-ranking .rank-num { width: 70px; text-align: right; font-size: 0.8rem; color: #6c757d; }
+  .dashboard-ranking .rank-num b { color: #198754; }
+
   /* ===== TOAST SYSTEM ===== */
   .th-toast-host {
     position: fixed;
