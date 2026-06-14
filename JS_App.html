@@ -137,6 +137,25 @@ window.mudarAba = function(aba) {
   window.gerarLinkPublico = function() { window._abrirModalLinkPublico('publico', 'Link para Publicador'); };
   window.gerarLinkDirigente = function() { window._abrirModalLinkPublico('dirigente', 'Link para Dirigente — Designar'); };
 
+  window.compartilharWhatsApp = function() {
+    var link = document.getElementById('inputLinkPublico').value;
+    if (!link) return;
+    var msg = encodeURIComponent('Olá! Segue o link das quadras designadas:\n\n' + link);
+    window.open('https://wa.me/?text=' + msg, '_blank');
+  };
+
+  window.compartilharNativo = function() {
+    var link = document.getElementById('inputLinkPublico').value;
+    if (!link) return;
+    if (navigator.share) {
+      navigator.share({ title: 'Quadras designadas', text: 'Quadras para hoje', url: link })
+        .catch(function(){ /* user cancelou */ });
+    } else {
+      window.copiarLinkGerado();
+      window.toast('Compartilhamento nativo indisponível — link copiado.', 'info');
+    }
+  };
+
   window.copiarLinkGerado = function() {
     var inp = document.getElementById('inputLinkPublico');
     if (!inp || !inp.value) return;

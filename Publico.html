@@ -342,6 +342,12 @@
 
   <button class="btn-float-reorder" onclick="toggleReorder()" id="btnReorder"><i class="fa-solid fa-sort"></i></button>
   <button class="btn-float-add" onclick="iniciarAdicaoPeloMapa()"><i class="fa-solid fa-plus"></i></button>
+  <button id="btnVoltarTopo" onclick="window.scrollTo({top:0,behavior:'smooth'})"
+          class="position-fixed d-none"
+          style="bottom:80px; right:20px; width:42px; height:42px; border-radius:50%; border:0; background:#1a1a1a; color:white; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:1500"
+          title="Voltar ao topo">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
 
   <div class="modal fade" id="modalEdicao" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -460,6 +466,14 @@
        window.addEventListener('online', atualizarOnline);
        window.addEventListener('offline', atualizarOnline);
        atualizarOnline();
+
+       // Voltar ao topo
+       window.addEventListener('scroll', function() {
+         var btn = document.getElementById('btnVoltarTopo');
+         if (!btn) return;
+         if (window.scrollY > 600) btn.classList.remove('d-none');
+         else btn.classList.add('d-none');
+       });
     };
 
     function carregarDados() {
@@ -638,6 +652,11 @@ function verificarSeRecente(dataStr) {
 function renderizarLista() {
         var container = document.getElementById('lista-territorio');
         container.innerHTML = "";
+
+        if (!dadosGerais || dadosGerais.length === 0) {
+          container.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-inbox" style="font-size:3rem; opacity:.3"></i><div class="mt-2">Sem endereços disponíveis.</div></div>';
+          return;
+        }
 
         dadosGerais.forEach(function(quadra) {
             var html = `
