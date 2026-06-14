@@ -31,7 +31,9 @@ jobs:
           node-version: '20'
 
       - name: Instalar clasp
-        run: npm install -g @google/clasp@2.4.2
+        # @latest porque o Cloud Shell já vem com clasp v3 (formato novo de
+        # credenciais: tokens.default.refresh_token). Manter sincronizado.
+        run: npm install -g @google/clasp@latest
 
       - name: Configurar credenciais do clasp
         env:
@@ -45,7 +47,10 @@ jobs:
           chmod 600 ~/.clasprc.json
 
       - name: Verificar autenticação
-        run: clasp login --status || (echo "❌ Token expirado — rode 'clasp login' local e atualize o secret" && exit 1)
+        run: |
+          clasp show-authorized-user 2>/dev/null \
+            || clasp login --status 2>/dev/null \
+            || (echo "❌ Token expirado — rode 'clasp login' local e atualize o secret" && exit 1)
 
       - name: Push para Apps Script
         run: clasp push --force
