@@ -1,0 +1,33 @@
+name: Sync apps-script branch
+
+# Sempre que algum arquivo do Apps Script for alterado na main, sincroniza
+# automaticamente para a branch `apps-script` (que é a usada pela extensão
+# "Apps Script GitHub Assistant"). Sem isso você teria que fazer pull duas vezes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.gs'
+      - '*.html'
+      - 'appsscript.json'
+      - 'readme.md'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Sincronizar
+        run: bash scripts/sync-apps-script.sh
