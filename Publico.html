@@ -427,7 +427,8 @@
 
   <script>
     var dadosGerais = [];
-    var map, userMarker, layerQuadra, layerPontos;
+    var contextoPolys = [];
+    var map, userMarker, layerQuadra, layerPontos, layerContexto;
     var modalEdicao;
     var isReorder = false;
     var isPickingLocation = false; // Estado de adicionar pelo mapa
@@ -481,30 +482,33 @@
              var ids = location.parameter.ids;
              if(!ids) { alert("Link inválido (sem IDs)."); return; }
 
-             var cacheKey = 'publico_dados_' + ids;
+             // v2: inclui contexto (outras quadras do mesmo território, esmaecidas)
+             var cacheKey = 'publico_dados_v2_' + ids;
              var cached = null;
              try { cached = localStorage.getItem(cacheKey); } catch(e) {}
+
+             function aplicar(payload) {
+               dadosGerais = payload.designadas || [];
+               contextoPolys = payload.contexto || [];
+               mostrarApp();
+             }
 
              // Stale-while-revalidate: mostra o cache primeiro (se houver) e
              // busca dados frescos em background.
              if (cached) {
-               try {
-                 dadosGerais = JSON.parse(cached);
-                 mostrarApp();
-               } catch(e) {}
+               try { aplicar(JSON.parse(cached)); } catch(e) {}
              }
 
              google.script.run
                 .withSuccessHandler(function(data) {
-                    if(!data || data.length === 0) {
+                    if(!data || !data.designadas || data.designadas.length === 0) {
                       if (!cached) alert("Nenhum dado encontrado.");
                       return;
                     }
                     var novoStr = JSON.stringify(data);
                     if (novoStr === cached) return; // sem mudança
                     try { localStorage.setItem(cacheKey, novoStr); } catch(e) {}
-                    dadosGerais = data;
-                    mostrarApp();
+                    aplicar(data);
                 })
                 .withFailureHandler(function(e) {
                     if (!cached) {
@@ -512,7 +516,7 @@
                         '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
                     }
                 })
-                .getDadosPublicos(ids);
+                .getDadosComContexto(ids);
         });
     }
 
@@ -528,25 +532,49 @@
         if (map) { renderizarMapa(); return; }
         map = L.map('mapa-topo').setView([-7.115, -34.863], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        // Ordem importa: contexto fica ATRÁS das designadas e dos pontos
+        layerContexto = L.featureGroup().addTo(map);
         layerQuadra = L.featureGroup().addTo(map);
         layerPontos = L.featureGroup().addTo(map);
         map.on('click', function(e) { if (isPickingLocation) concluirAdicaoPeloMapa(e.latlng.lat, e.latlng.lng); });
         renderizarMapa();
     }
 
+    function parsePolyPub(s) {
+        return s.split('|').map(function(p) {
+            var c = p.trim().split(',');
+            return [parseFloat(c[0]), parseFloat(c[1])];
+        }).filter(function(pt){ return !isNaN(pt[0]) && !isNaN(pt[1]); });
+    }
+
     function renderizarMapa() {
+        layerContexto.clearLayers();
         layerQuadra.clearLayers();
         layerPontos.clearLayers();
 
+        // Contexto: território inteiro, esmaecido, pra dar referência
+        // visual sem competir com as quadras designadas.
+        contextoPolys.forEach(function(q) {
+            if (!q.polyString) return;
+            var pts = parsePolyPub(q.polyString);
+            if (pts.length < 3) return;
+            var estilo = q.concluidaRecente
+              ? { color:'#28a745', weight:1, fillColor:'#28a745', fillOpacity:0.22 }
+              : { color:'#9ca3af', weight:1, fillColor:'#9ca3af', fillOpacity:0.10 };
+            L.polygon(pts, estilo).addTo(layerContexto);
+        });
+
         dadosGerais.forEach(function(q) {
             if (q.polyString) {
-                var pts = q.polyString.split('|').map(function(p) {
-                    var c = p.trim().split(',');
-                    return [parseFloat(c[0]), parseFloat(c[1])];
-                });
-                L.polygon(pts, {color: '#666', weight: 1, fillOpacity: 0.05})
-                  .bindTooltip(q.id, { permanent: true, direction: "center", className: "label-quadra" })
-                  .addTo(layerQuadra);
+                var pts = parsePolyPub(q.polyString);
+                if (pts.length >= 3) {
+                    L.polygon(pts, {
+                        color: '#0d47a1', weight: 2,
+                        fillColor: '#1976d2', fillOpacity: 0.45
+                    })
+                      .bindTooltip(q.id, { permanent: true, direction: "center", className: "label-quadra" })
+                      .addTo(layerQuadra);
+                }
             }
 
             q.itens.forEach(function(item) {
@@ -560,7 +588,9 @@
             });
         });
 
+        // fitBounds prioriza pontos (endereços designados), depois quadras
         if (layerPontos.getLayers().length > 0) map.fitBounds(layerPontos.getBounds());
+        else if (layerQuadra.getBounds && layerQuadra.getBounds().isValid()) map.fitBounds(layerQuadra.getBounds());
     }
 
     // ================= ADICIONAR PELO MAPA =================
