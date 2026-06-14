@@ -566,8 +566,8 @@
             if (pts.length < 3) return;
             // Vermelho = concluída recente; cinza = disponível
             var estilo = q.concluidaRecente
-              ? { color:'#b91c1c', weight:1, fillColor:'#dc2626', fillOpacity:0.28 }
-              : { color:'#9ca3af', weight:1, fillColor:'#9ca3af', fillOpacity:0.10 };
+              ? { color:'#b91c1c', weight:1.5, fillColor:'#dc2626', fillOpacity:0.30 }
+              : { color:'#4b5563', weight:1.5, fillColor:'#9ca3af', fillOpacity:0.32 };
             L.polygon(pts, estilo).addTo(layerContexto);
         });
 
