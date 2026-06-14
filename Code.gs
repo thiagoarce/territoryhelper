@@ -909,6 +909,35 @@ function dirigenteMarcarStatus(ids, status, data) {
   return designarQuadras(ids);
 }
 
+/**
+ * Envia email com o link de designação ao dirigente.
+ * Retorna { status: 'SUCESSO' } ou { status: 'ERRO', msg }.
+ */
+function enviarEmailDesignacao(emailDestino, nomeDirigente, link, totalQuadras) {
+  try {
+    if (!emailDestino) return { status: 'ERRO', msg: 'Email vazio' };
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(emailDestino).trim())) {
+      return { status: 'ERRO', msg: 'Email inválido' };
+    }
+
+    var nome = (nomeDirigente && nomeDirigente.trim()) ? nomeDirigente.trim() : 'irmão(ã)';
+    var assunto = 'Designação de território — ' + totalQuadras + ' quadra(s)';
+    var corpo =
+      'Olá, ' + nome + '!\n\n' +
+      'Você foi designado(a) a coordenar ' + totalQuadras + ' quadra(s).\n\n' +
+      'Acesse o painel com o link abaixo para ver as quadras, marcar como concluídas\n' +
+      'e enviar os endereços aos publicadores:\n\n' +
+      link + '\n\n' +
+      '— Gestor de Territórios';
+
+    MailApp.sendEmail({ to: String(emailDestino).trim(), subject: assunto, body: corpo });
+    return { status: 'SUCESSO' };
+  } catch (e) {
+    logErro_('enviarEmailDesignacao', e);
+    return { status: 'ERRO', msg: String(e && e.message ? e.message : e) };
+  }
+}
+
 // Marca as quadras designadas como Pendente — não apaga histórico de conclusão.
 // Usada pelo servo de território quando designa quadras a um dirigente.
 function designarQuadras(ids) {

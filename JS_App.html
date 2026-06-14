@@ -63,6 +63,47 @@
     return { fechar: fechar };
   };
 
+  // Modal de confirmação async, substituindo confirm() nativo.
+  //   window.confirmar({ titulo, mensagem, okLabel, okClass, perigo: true }).then(ok => { if(ok) ... })
+  window.confirmar = function(opts) {
+    opts = opts || {};
+    return new Promise(function(resolve) {
+      var titEl = document.getElementById('modalConfirmacaoTitulo');
+      var msgEl = document.getElementById('modalConfirmacaoMensagem');
+      var btnOk = document.getElementById('modalConfirmacaoBtnOk');
+      var header = document.getElementById('modalConfirmacaoHeader');
+      if (!titEl || !btnOk) { resolve(window.confirm(opts.mensagem || 'Confirmar?')); return; }
+
+      titEl.innerText = opts.titulo || 'Confirmar';
+      msgEl.innerText = opts.mensagem || 'Tem certeza?';
+      btnOk.className = 'btn ' + (opts.okClass || (opts.perigo ? 'btn-danger' : 'btn-primary'));
+      btnOk.innerText = opts.okLabel || 'Confirmar';
+      header.className = 'modal-header' + (opts.perigo ? ' bg-danger text-white' : '');
+
+      if (!window._modalConfirmacao) {
+        window._modalConfirmacao = new bootstrap.Modal(document.getElementById('modalConfirmacao'));
+      }
+
+      var resolved = false;
+      var onOk = function() {
+        if (resolved) return; resolved = true;
+        btnOk.removeEventListener('click', onOk);
+        document.getElementById('modalConfirmacao').removeEventListener('hidden.bs.modal', onCancel);
+        window._modalConfirmacao.hide();
+        resolve(true);
+      };
+      var onCancel = function() {
+        if (resolved) return; resolved = true;
+        btnOk.removeEventListener('click', onOk);
+        document.getElementById('modalConfirmacao').removeEventListener('hidden.bs.modal', onCancel);
+        resolve(false);
+      };
+      btnOk.addEventListener('click', onOk);
+      document.getElementById('modalConfirmacao').addEventListener('hidden.bs.modal', onCancel);
+      window._modalConfirmacao.show();
+    });
+  };
+
   // Helper para envolver chamadas google.script.run com toast de erro padrão
   window.runApp = function(cfg) {
     var loadingMsg = cfg.loading;
@@ -191,7 +232,87 @@ window.mudarAba = function(aba) {
   };
   window.gerarLinkPublico = function() { window._abrirModalLinkPublico('publico', 'Link para Publicador'); };
   window.gerarLinkDirigente = function() { window._abrirModalLinkPublico('dirigente', 'Link para Dirigente — Designar'); };
+
+  window.copiarLinkGerado = function() {
+    var inp = document.getElementById('inputLinkPublico');
+    if (!inp || !inp.value) return;
+    var fallback = function(){ inp.select(); try { document.execCommand('copy'); } catch(e){} };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(inp.value)
+        .then(function(){ window.toast('Link copiado!', 'success'); })
+        .catch(function(){ fallback(); window.toast('Link copiado!', 'success'); });
+    } else { fallback(); window.toast('Link copiado!', 'success'); }
+  };
+
+  window.enviarLinkPorEmail = function() {
+    var email = (document.getElementById('inputEmailDestino').value || '').trim();
+    var nome = (document.getElementById('inputNomeDestino').value || '').trim();
+    var link = document.getElementById('inputLinkPublico').value;
+
+    if (!email) { window.toast('Informe o email do destinatário.', 'warn'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { window.toast('Email inválido.', 'warn'); return; }
+    if (!link) { window.toast('Sem link para enviar.', 'warn'); return; }
+
+    // Total = número de ids no link (?ids=...)
+    var match = link.match(/[?&]ids=([^&]+)/);
+    var total = match ? match[1].split(',').length : 0;
+
+    showLoading(true, 'Enviando email...');
+    google.script.run
+      .withSuccessHandler(function(r) {
+        showLoading(false);
+        if (r && r.status === 'SUCESSO') {
+          window.toast('Email enviado para ' + email, 'success');
+        } else {
+          window.toast('Falha ao enviar: ' + (r && r.msg ? r.msg : 'erro desconhecido'), 'error', 6000);
+        }
+      })
+      .withFailureHandler(function(e){
+        showLoading(false);
+        window.toast('Erro: ' + (e && e.message ? e.message : e), 'error', 6000);
+      })
+      .enviarEmailDesignacao(email, nome, link, total);
+  };
   window.toggleCamadasGeral = function() { var q = document.getElementById('checkGeralQuadras').checked; var t = document.getElementById('checkGeralTerritorios').checked; if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras); if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); } };
+
+  // Busca de quadra no Visão Geral — destaca e dá zoom no match.
+  window.buscarQuadraGeral = function(termo) {
+    if (!lgGeralQuadras) return;
+    var q = (termo || '').toLowerCase().trim();
+    var matchLayer = null;
+    var matchBounds = null;
+
+    lgGeralQuadras.eachLayer(function(l) {
+      if (!l.metaData) return;
+      var id = String(l.metaData.id || '').toLowerCase();
+      var terr = String(l.metaData.territory || '').toLowerCase();
+      var bate = q && (id.indexOf(q) > -1 || terr.indexOf(q) > -1);
+      if (bate) {
+        l.setStyle({ color: '#ff8800', weight: 3, opacity: 1, fillOpacity: 0.8 });
+        var b = l.getBounds();
+        if (!matchBounds) matchBounds = b;
+        else matchBounds.extend(b);
+        if (!matchLayer) matchLayer = l;
+      } else {
+        // restaura estilo padrão (a menos que esteja selecionada para share)
+        if (shareSelecionados.has(l.metaData.id)) {
+          l.setStyle({ color: 'blue', weight: 4 });
+        } else {
+          l.setStyle({ color: '#666', weight: 1, opacity: 1, fillOpacity: 0.6 });
+        }
+      }
+    });
+
+    if (matchBounds && matchBounds.isValid()) {
+      mapGeral.fitBounds(matchBounds, { padding: [40, 40], maxZoom: 17 });
+    }
+  };
+
+  window.limparBuscaGeral = function() {
+    var inp = document.getElementById('inputBuscaQuadra');
+    if (inp) inp.value = '';
+    window.buscarQuadraGeral('');
+  };
 
 
   // =================================================================
@@ -693,8 +814,36 @@ window.carregarEditorDados = function() {
       }
   };
 
-  window.deletarQuadraAtual = function() { if(confirm("Excluir quadra?")) { google.script.run.withSuccessHandler(() => { modalEdicao.hide(); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).excluirQuadra(currentEditLayer.metaData.id); } };
-  window.deletarTerritorioAtual = function() { if(confirm("Excluir território?")) { google.script.run.withSuccessHandler(() => { modalEditarTerritorio.hide(); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).excluirTerritorio(editingTerritoryData.data.name); } };
+  window.deletarQuadraAtual = function() {
+    var id = currentEditLayer && currentEditLayer.metaData ? currentEditLayer.metaData.id : '';
+    window.confirmar({
+      titulo: 'Excluir quadra',
+      mensagem: 'A quadra ' + id + ' será removida permanentemente. Deseja continuar?',
+      perigo: true,
+      okLabel: 'Excluir'
+    }).then(function(ok){
+      if (!ok) return;
+      google.script.run
+        .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
+        .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
+        .excluirQuadra(id);
+    });
+  };
+  window.deletarTerritorioAtual = function() {
+    var nome = editingTerritoryData && editingTerritoryData.data ? editingTerritoryData.data.name : '';
+    window.confirmar({
+      titulo: 'Excluir território',
+      mensagem: 'O território "' + nome + '" será removido. As quadras vinculadas ficarão sem território. Continuar?',
+      perigo: true,
+      okLabel: 'Excluir'
+    }).then(function(ok){
+      if (!ok) return;
+      google.script.run
+        .withSuccessHandler(function(){ modalEditarTerritorio.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Território excluído', 'success'); })
+        .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
+        .excluirTerritorio(nome);
+    });
+  };
 
 window.converterGeoJsonParaString = function(geometry) {
     if (!geometry || !geometry.coordinates) return "";

@@ -32,6 +32,11 @@
         <input class="form-check-input" type="checkbox" id="checkGeralTerritorios" onchange="window.toggleCamadasGeral()"><label class="form-check-label small fw-bold">Territórios</label>
       </div>
     </div>
+    <div class="input-group input-group-sm mb-2">
+      <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+      <input type="text" class="form-control" id="inputBuscaQuadra" placeholder="Buscar quadra por ID ou território..." oninput="window.buscarQuadraGeral(this.value)">
+      <button class="btn btn-outline-secondary" onclick="window.limparBuscaGeral()" title="Limpar"><i class="fa-solid fa-xmark"></i></button>
+    </div>
     <div id="barraCompartilhar" class="alert alert-info py-2 d-none d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="small fw-bold"><span id="countShare">0</span> quadra(s) selecionada(s)</span>
       <div class="d-flex gap-2">
@@ -230,14 +235,29 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Link para Publicador</h5><button class="btn-close" data-bs-dismiss="modal"></button>
+          <h5 class="modal-title">Compartilhar</h5><button class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-body text-center">
-          <p>Copie o link abaixo e envie ao publicador:</p>
-          <div class="input-group">
-            <input type="text" class="form-control" id="inputLinkPublico" readonly><button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('inputLinkPublico').value);alert('Copiado!')"><i class="fa-regular fa-copy"></i></button>
+        <div class="modal-body">
+          <label class="form-label small fw-bold mb-1">Link gerado</label>
+          <div class="input-group mb-2">
+            <input type="text" class="form-control" id="inputLinkPublico" readonly>
+            <button class="btn btn-outline-secondary" onclick="window.copiarLinkGerado()" title="Copiar"><i class="fa-regular fa-copy"></i></button>
           </div>
-          <br><small class="text-muted">Apenas quadras do território <b><span id="lblTerritorioShare"></span></b>.</small>
+          <small class="text-muted d-block mb-3"><b><span id="lblTerritorioShare"></span></b></small>
+
+          <hr>
+          <label class="form-label small fw-bold mb-1"><i class="fa-solid fa-envelope me-1"></i>Enviar por email (opcional)</label>
+          <div class="row g-2">
+            <div class="col-7">
+              <input type="email" class="form-control form-control-sm" id="inputEmailDestino" placeholder="email@exemplo.com">
+            </div>
+            <div class="col-5">
+              <input type="text" class="form-control form-control-sm" id="inputNomeDestino" placeholder="Nome (opcional)">
+            </div>
+          </div>
+          <button class="btn btn-success btn-sm w-100 mt-2" onclick="window.enviarLinkPorEmail()">
+            <i class="fa-solid fa-paper-plane"></i> Enviar email
+          </button>
         </div>
       </div>
     </div>
@@ -297,6 +317,23 @@
 
     <div class="map-wrapper shadow-sm" style="border: 4px solid white; border-radius: 15px; height: 40vh; overflow: hidden;">
         <div id="mapCampanha" style="height: 100%; width: 100%;"></div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalConfirmacao" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header" id="modalConfirmacaoHeader">
+          <h5 class="modal-title"><i class="fa-solid fa-circle-question me-2"></i><span id="modalConfirmacaoTitulo">Confirmar</span></h5>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0" id="modalConfirmacaoMensagem">Tem certeza?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal" id="modalConfirmacaoBtnCancelar">Cancelar</button>
+          <button class="btn btn-primary" id="modalConfirmacaoBtnOk">Confirmar</button>
+        </div>
+      </div>
     </div>
   </div>
 
