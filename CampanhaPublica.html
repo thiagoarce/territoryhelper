@@ -497,8 +497,10 @@
       map = L.map('mapa', { zoomControl: false, attributionControl: false })
               .setView([-7.115, -34.863], 14);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd', maxZoom: 19
+      // OSM padrão — mais confiável que CDNs alternativos. Cores claras
+      // mas funcional em qualquer rede.
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
       }).addTo(map);
       L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -507,19 +509,21 @@
       (dados.quadras || []).forEach(function(q) {
         var pts = parsePoly(q.polyString);
         if (pts.length < 3) return;
-        var cor = (q.estado === 'completa') ? '#22c55e' : '#475569';
+        var cor = (q.estado === 'completa') ? '#22c55e' : '#94a3b8';
 
         L.polygon(pts, {
           color: '#0a1929',
           weight: 1,
           fillColor: cor,
-          fillOpacity: 0.85
+          fillOpacity: 0.55
         }).addTo(layerQuadras);
       });
 
       if (layerQuadras.getBounds().isValid()) {
         map.fitBounds(layerQuadras.getBounds(), { padding: [10, 10] });
       }
+      // Força recálculo após o container ficar visível
+      setTimeout(function(){ if (map) map.invalidateSize(); }, 250);
     }
 
     function parsePoly(str) {
