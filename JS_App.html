@@ -1830,7 +1830,9 @@ window.confirmarAssociacao = function(layerQuadra) {
     document.getElementById('objAnexoAtual').innerHTML = (obj && obj.anexoNome)
       ? 'Anexo atual: <a href="' + escapeHtml(obj.anexoUrl) + '" target="_blank">' + escapeHtml(obj.anexoNome) + '</a>'
       : 'Nenhum anexo enviado';
-    document.getElementById('objInputPublico').checked = obj ? !!obj.publico : false;
+    // Novo objetivo já vem marcado como público — esse é o caso comum.
+    // Pra esconder do painel, basta desmarcar.
+    document.getElementById('objInputPublico').checked = obj ? !!obj.publico : true;
     document.getElementById('btnRemoverObjetivo').style.display = id ? '' : 'none';
 
     new bootstrap.Modal(document.getElementById('modalObjetivo')).show();
@@ -1923,9 +1925,17 @@ window.confirmarAssociacao = function(layerQuadra) {
       var linkPub = (baseUrl || window.location.href.split('?')[0]) + '?v=campanha';
       preencherTemplateCampanha();
       var tpl = document.getElementById('cardCampanhaTemplate');
+      // Torna opaco momentaneamente pra o dom-to-image pegar o conteúdo
+      // renderizado de fato (com opacity:0 alguns navegadores skipam
+      // partes do layout no snapshot).
+      tpl.style.opacity = '1';
 
+      // 2 RAFs garantem que o browser fez layout + paint do template
+      // novo antes da captura, evitando snapshots cortados.
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
       domtoimage.toBlob(tpl, { bgcolor: '#0f172a', cacheBust: true })
         .then(function(blob){
+          tpl.style.opacity = '0';
           var nomeArq = 'campanha-' + new Date().toISOString().split('T')[0] + '.png';
           var file = new File([blob], nomeArq, { type: 'image/png' });
           var texto = montarMsgCampanha(linkPub);
@@ -1944,11 +1954,12 @@ window.confirmarAssociacao = function(layerQuadra) {
           }
         })
         .catch(function(e){
+          tpl.style.opacity = '0';
           alert('Erro: ' + (e && e.message ? e.message : e));
           restaurar();
         });
+      })}); // fecha os 2 requestAnimationFrame
     }).withFailureHandler(function(){
-      preencherTemplateCampanha();
       restaurar();
     }).getScriptUrl();
 

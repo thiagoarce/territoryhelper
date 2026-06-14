@@ -308,7 +308,7 @@
     </div>
 
     <span id="labelNomeCampanhaTela" class="badge bg-success fs-6 shadow-sm px-3 py-2 mb-2 d-inline-block"></span>
-    <p class="text-muted small mb-3" id="objetivoCampanhaTela" style="white-space: pre-wrap;"></p>
+    <p class="text-muted small mb-3 d-none" id="objetivoCampanhaTela" style="white-space: pre-wrap;"></p>
 
     <div class="card shadow-sm border-0 mb-3" style="border-radius: 15px;">
         <div class="card-body">
@@ -471,12 +471,15 @@
     </div>
   </div>
 
-  <!-- Template oculto pra renderizar a imagem de compartilhamento da
-       campanha. Fica fora da tela mas dentro do DOM pro dom-to-image
-       conseguir capturar. -->
-  <div id="cardCampanhaTemplate" style="position:fixed; left:-9999px; top:0;
-       width:720px; padding:36px; background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
-       color:#fff; font-family:system-ui,-apple-system,sans-serif; border-radius:18px;">
+  <!-- Template pra renderizar a imagem de compartilhamento. Fica em
+       position:fixed com opacity 0 pra não atrapalhar a UI, mas dentro
+       do flow visual (left/top:0) — dom-to-image precisa do elemento
+       estar no layout, não off-screen, pra capturar dimensões certas. -->
+  <div id="cardCampanhaTemplate" style="position:fixed; left:0; top:0; opacity:0;
+       pointer-events:none; z-index:-1; width:720px; padding:36px;
+       background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+       color:#fff; font-family:system-ui,-apple-system,sans-serif; border-radius:18px;
+       box-sizing:border-box;">
     <div style="text-transform:uppercase; letter-spacing:3px; font-size:14px; opacity:.6; margin-bottom:6px">Campanha</div>
     <div id="tplNome" style="font-size:34px; font-weight:800; line-height:1.1; margin-bottom:8px">—</div>
     <div id="tplPeriodo" style="opacity:.7; font-size:15px; margin-bottom:18px">—</div>
