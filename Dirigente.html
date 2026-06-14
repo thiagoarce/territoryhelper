@@ -91,11 +91,23 @@
           <button class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <p class="small text-muted">Copie e envie ao publicador para ele acessar os endereços destas quadras:</p>
-          <div class="input-group">
-            <input type="text" class="form-control" id="inputLinkPub" readonly>
-            <button class="btn btn-outline-secondary" onclick="copiarLinkPub()"><i class="fa-regular fa-copy"></i></button>
+          <p class="small text-muted mb-1">Mensagem pronta — toque em copiar ou abra direto no WhatsApp:</p>
+          <textarea class="form-control mb-2" id="msgDesignacao" readonly rows="5" style="font-size:.9rem"></textarea>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary flex-fill" onclick="copiarMsgDesignacao()">
+              <i class="fa-regular fa-copy me-1"></i> Copiar
+            </button>
+            <button class="btn btn-success flex-fill" onclick="abrirWhatsApp()">
+              <i class="fa-brands fa-whatsapp me-1"></i> WhatsApp
+            </button>
           </div>
+          <details class="mt-3">
+            <summary class="small text-muted">Mostrar só o link</summary>
+            <div class="input-group mt-2">
+              <input type="text" class="form-control" id="inputLinkPub" readonly>
+              <button class="btn btn-outline-secondary" onclick="copiarLinkPub()"><i class="fa-regular fa-copy"></i></button>
+            </div>
+          </details>
         </div>
       </div>
     </div>
@@ -392,11 +404,41 @@
            var baseUrl = url || window.location.href.split('?')[0];
            var finalUrl = baseUrl + "?v=publico&ids=" + idsEnvio.join(",");
            document.getElementById('inputLinkPub').value = finalUrl;
+           document.getElementById('msgDesignacao').value = montarMensagemDesignacao(idsEnvio, finalUrl);
            var m = new bootstrap.Modal(document.getElementById('modalLinkPub'));
            m.show();
         })
         .withFailureHandler(function(e){ alert("Erro: " + (e && e.message ? e.message : e)); })
         .getScriptUrl();
+    }
+
+    // Mensagem padrão pra mandar ao publicador (WhatsApp ou cópia).
+    // Inclui território, lista de quadras designadas e o link.
+    function montarMensagemDesignacao(ids, link) {
+      var nomes = (window.territoriosNomes && window.territoriosNomes.length > 0)
+        ? window.territoriosNomes.join(' / ') : '';
+      var linhas = ['Olá! Segue sua designação de território:'];
+      if (nomes) linhas.push('');
+      if (nomes) linhas.push('📍 Território: ' + nomes);
+      linhas.push('🔢 Quadra(s) (' + ids.length + '): ' + ids.join(', '));
+      if (link) { linhas.push(''); linhas.push(link); }
+      return linhas.join('\n');
+    }
+
+    function copiarMsgDesignacao() {
+      var ta = document.getElementById('msgDesignacao');
+      ta.select();
+      navigator.clipboard.writeText(ta.value).then(function(){
+        alert('Mensagem copiada!');
+      }).catch(function(){
+        document.execCommand('copy');
+        alert('Mensagem copiada!');
+      });
+    }
+
+    function abrirWhatsApp() {
+      var msg = document.getElementById('msgDesignacao').value;
+      window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
     }
 
     function abrirModalConcluir(id) {
@@ -457,8 +499,10 @@
       google.script.run
         .withSuccessHandler(function(url){
            var baseUrl = url || window.location.href.split('?')[0];
+           var idsTodas = IDS.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
            var finalUrl = baseUrl + "?v=publico&ids=" + IDS;
            document.getElementById('inputLinkPub').value = finalUrl;
+           document.getElementById('msgDesignacao').value = montarMensagemDesignacao(idsTodas, finalUrl);
            var m = new bootstrap.Modal(document.getElementById('modalLinkPub'));
            m.show();
         })
@@ -634,10 +678,11 @@
             var file = new File([blob], nomeArq, { type: 'image/png' });
 
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              var idsDesignadas = dados.map(function(q){ return q.id; });
               navigator.share({
                 files: [file],
                 title: 'Cartão de Território',
-                text: dados.length + ' quadra(s) designada(s) — ' + dataHoje
+                text: montarMensagemDesignacao(idsDesignadas, '') + '\n\n— ' + dataHoje
               }).catch(function(){ })
                 .finally(restaurar);
             } else {
