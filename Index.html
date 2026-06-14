@@ -371,6 +371,24 @@
 
     <div class="card shadow-sm border-0 mb-3" style="border-radius: 15px;">
       <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <h6 class="m-0 fw-bold text-success"><i class="fa-solid fa-bullseye me-1"></i>Objetivos</h6>
+          <button class="btn btn-sm btn-success" onclick="window.abrirModalObjetivo()">
+            <i class="fa-solid fa-plus me-1"></i> Adicionar
+          </button>
+        </div>
+        <ul class="nav nav-pills nav-fill mb-3" role="tablist" id="tabsObjetivos">
+          <li class="nav-item"><button class="nav-link active" data-tab="geral" onclick="window.filtrarObjetivos('geral')">Gerais</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="semana" onclick="window.filtrarObjetivos('semana')">Semana</button></li>
+        </ul>
+        <div id="listaObjetivos" class="small">
+          <div class="text-muted text-center py-3">Carregando…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3" style="border-radius: 15px;">
+      <div class="card-body">
         <h6 class="m-0 fw-bold text-success mb-2"><i class="fa-solid fa-trophy me-1"></i>Ranking de territórios</h6>
         <div id="rankingTerritorios" class="dashboard-ranking"></div>
       </div>
@@ -453,6 +471,68 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal: adicionar/editar objetivo da campanha (com upload opcional) -->
+  <div class="modal fade" id="modalObjetivo" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-bullseye me-2"></i><span id="lblTituloModalObjetivo">Novo objetivo</span></h5>
+          <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="objInputId">
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Tipo</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="objInputTipo" id="objTipoGeral" value="geral" checked>
+              <label class="btn btn-outline-success" for="objTipoGeral">Geral</label>
+              <input type="radio" class="btn-check" name="objInputTipo" id="objTipoSemana" value="semana">
+              <label class="btn btn-outline-success" for="objTipoSemana">Semana</label>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Modalidade</label>
+            <select class="form-select" id="objInputModalidade"></select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Título</label>
+            <input type="text" class="form-control" id="objInputTitulo" placeholder="Ex: Cartas para clientes do Centro">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Descrição (opcional)</label>
+            <textarea class="form-control" id="objInputDescricao" rows="2"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Link (opcional)</label>
+            <input type="url" class="form-control" id="objInputLink" placeholder="https://docs.google.com/...">
+            <div class="form-text">Cola um link do Drive, Sheets, Docs, etc</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Anexar arquivo (opcional)</label>
+            <input type="file" class="form-control" id="objInputArquivo">
+            <div class="form-text" id="objAnexoAtual"></div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="objInputPublico">
+            <label class="form-check-label" for="objInputPublico">
+              <i class="fa-regular fa-eye me-1"></i> Mostrar no painel público
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-danger" id="btnRemoverObjetivo" onclick="window.removerObjetivoAtual()" style="display:none">
+            <i class="fa-regular fa-trash-can"></i> Excluir
+          </button>
+          <div class="d-flex gap-2 ms-auto">
+            <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-success" onclick="window.salvarObjetivoAtual()"><i class="fa-solid fa-check"></i> Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <nav class="bottom-nav no-print" role="navigation" aria-label="Navegação principal">
     <div class="nav-item active" id="btnAbaGeral" onclick="window.mudarAba('geral')" role="button" tabindex="0" aria-label="Visão Geral"><i class="fa-solid fa-map"></i><br>Geral</div>
     <div class="nav-item" id="btnAbaPoligonos" onclick="window.mudarAba('poligonos')" role="button" tabindex="0" aria-label="Editor de polígonos">
