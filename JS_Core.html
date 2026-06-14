@@ -1,0 +1,111 @@
+<script>
+  // =================================================================
+  // JS_Core — utilities compartilhadas pelo app (toast, confirmar,
+  // runApp). Este arquivo é incluído ANTES de JS_App.html no Index.html
+  // para que todas as outras funções já o tenham disponível.
+  // =================================================================
+
+  // -----------------------------------------------------------------
+  // TOAST — feedback não-bloqueante. Substitui alert() na maioria dos
+  // casos. Tipos: 'success' | 'error' | 'warn' | 'info'.
+  //   window.toast("Salvo!", "success");
+  //   window.toast("Algo falhou", "error", 6000);
+  // -----------------------------------------------------------------
+  window.toast = function(msg, tipo, duracaoMs) {
+    tipo = tipo || 'info';
+    duracaoMs = duracaoMs == null ? 3000 : duracaoMs;
+    var host = document.getElementById('thToastHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'thToastHost';
+      host.className = 'th-toast-host';
+      document.body.appendChild(host);
+    }
+    var icons = { success:'fa-circle-check', error:'fa-circle-exclamation', warn:'fa-triangle-exclamation', info:'fa-circle-info' };
+    var el = document.createElement('div');
+    el.className = 'th-toast t-' + tipo;
+    el.innerHTML = '<i class="fa-solid ' + (icons[tipo] || icons.info) + ' ico"></i>' +
+                   '<div class="msg"></div>' +
+                   '<button class="close" aria-label="Fechar">&times;</button>';
+    el.querySelector('.msg').textContent = msg;
+    el.querySelector('.close').addEventListener('click', function(){ fechar(); });
+    host.appendChild(el);
+    requestAnimationFrame(function(){ el.classList.add('show'); });
+
+    var t = null;
+    function fechar() {
+      if (t) { clearTimeout(t); t = null; }
+      el.classList.remove('show');
+      setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 250);
+    }
+    if (duracaoMs > 0) t = setTimeout(fechar, duracaoMs);
+    return { fechar: fechar };
+  };
+
+  // -----------------------------------------------------------------
+  // CONFIRMAR — modal Bootstrap async. Substitui o confirm() nativo.
+  //   window.confirmar({ titulo, mensagem, okLabel, okClass, perigo: true })
+  //     .then(ok => { if(ok) ... });
+  // -----------------------------------------------------------------
+  window.confirmar = function(opts) {
+    opts = opts || {};
+    return new Promise(function(resolve) {
+      var titEl = document.getElementById('modalConfirmacaoTitulo');
+      var msgEl = document.getElementById('modalConfirmacaoMensagem');
+      var btnOk = document.getElementById('modalConfirmacaoBtnOk');
+      var header = document.getElementById('modalConfirmacaoHeader');
+      if (!titEl || !btnOk) { resolve(window.confirm(opts.mensagem || 'Confirmar?')); return; }
+
+      titEl.innerText = opts.titulo || 'Confirmar';
+      msgEl.innerText = opts.mensagem || 'Tem certeza?';
+      btnOk.className = 'btn ' + (opts.okClass || (opts.perigo ? 'btn-danger' : 'btn-primary'));
+      btnOk.innerText = opts.okLabel || 'Confirmar';
+      header.className = 'modal-header' + (opts.perigo ? ' bg-danger text-white' : '');
+
+      if (!window._modalConfirmacao) {
+        window._modalConfirmacao = new bootstrap.Modal(document.getElementById('modalConfirmacao'));
+      }
+
+      var resolved = false;
+      var onOk = function() {
+        if (resolved) return; resolved = true;
+        btnOk.removeEventListener('click', onOk);
+        document.getElementById('modalConfirmacao').removeEventListener('hidden.bs.modal', onCancel);
+        window._modalConfirmacao.hide();
+        resolve(true);
+      };
+      var onCancel = function() {
+        if (resolved) return; resolved = true;
+        btnOk.removeEventListener('click', onOk);
+        document.getElementById('modalConfirmacao').removeEventListener('hidden.bs.modal', onCancel);
+        resolve(false);
+      };
+      btnOk.addEventListener('click', onOk);
+      document.getElementById('modalConfirmacao').addEventListener('hidden.bs.modal', onCancel);
+      window._modalConfirmacao.show();
+    });
+  };
+
+  // -----------------------------------------------------------------
+  // runApp — wrap em google.script.run com toast/loading padrão.
+  //   runApp({ loading:"Salvando...", sucesso:"Salvo!", onSuccess: fn })
+  //     .funcaoApps Script(args);
+  // -----------------------------------------------------------------
+  window.runApp = function(cfg) {
+    var loadingMsg = cfg.loading;
+    var sucessoMsg = cfg.sucesso;
+    if (loadingMsg) window.showLoading(true, loadingMsg);
+    return google.script.run
+      .withSuccessHandler(function(r) {
+        if (loadingMsg) window.showLoading(false);
+        if (sucessoMsg) window.toast(sucessoMsg, 'success');
+        if (cfg.onSuccess) cfg.onSuccess(r);
+      })
+      .withFailureHandler(function(e) {
+        if (loadingMsg) window.showLoading(false);
+        var msg = (e && e.message) ? e.message : String(e);
+        window.toast(msg, 'error', 6000);
+        if (cfg.onError) cfg.onError(e);
+      });
+  };
+</script>

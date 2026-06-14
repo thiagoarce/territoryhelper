@@ -37,7 +37,7 @@ function checkHtmlScripts(file) {
 });
 
 // --- Frontend ---
-['Index.html', 'JS_App.html', 'Publico.html', 'Dirigente.html', 'CampanhaPublica.html', 'CSS.html'].forEach(f => {
+['Index.html', 'JS_App.html', 'JS_Core.html', 'Publico.html', 'Dirigente.html', 'CampanhaPublica.html', 'CSS.html'].forEach(f => {
   test('sintaxe: ' + f, () => {
     const err = checkHtmlScripts(f);
     assertTrue(err === null, err || '');

@@ -8,9 +8,7 @@ const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 
-function loadGsFiles() {
-  // Apps Script: Constants.gs, Utils.gs, e funções a serem testadas do Code.gs
-  // Code.gs depende de SpreadsheetApp etc — então só carregamos as funções "puras".
+function loadGsFiles(includeCodeGs) {
   const constants = fs.readFileSync(path.join(ROOT, 'Constants.gs'), 'utf8');
   const utils = fs.readFileSync(path.join(ROOT, 'Utils.gs'), 'utf8');
 
@@ -23,14 +21,18 @@ function loadGsFiles() {
     HtmlService: undefined,
     Session: undefined,
     ScriptApp: undefined,
+    MailApp: undefined,
     console: console
   };
   vm.createContext(context);
 
-  // Carrega const+utils. Utils depende de LockService só no withLock_; testes
-  // não chamam essa função então não precisamos mockar.
   vm.runInContext(constants, context);
   vm.runInContext(utils, context);
+
+  if (includeCodeGs) {
+    const code = fs.readFileSync(path.join(ROOT, 'Code.gs'), 'utf8');
+    vm.runInContext(code, context);
+  }
 
   return context;
 }
