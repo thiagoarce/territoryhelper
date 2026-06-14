@@ -304,6 +304,11 @@
     <button class="map-btn btn-gps" onclick="centralizarGPS()"><i class="fa-solid fa-crosshairs"></i></button>
     <button class="map-btn btn-rota" onclick="abrirRotaGoogle()"><i class="fa-solid fa-diamond-turn-right"></i></button>
   </div>
+  <div id="legenda" class="d-none px-3 py-2 d-flex flex-wrap gap-3 small" style="background:#f8f9fa; border-bottom:1px solid #e5e7eb">
+    <span><span class="legenda-bola" style="background:#1976d2"></span> Designada</span>
+    <span><span class="legenda-bola" style="background:#dc2626"></span> Concluída (não pode)</span>
+    <span><span class="legenda-bola" style="background:#9ca3af"></span> Disponível</span>
+  </div>
 
   <div id="app-content" class="container mt-0 px-0 d-none">
     <div class="px-2 py-2 bg-white shadow-sm sticky-top" style="top:0; z-index:500; border-bottom:1px solid #e5e7eb">
@@ -523,6 +528,7 @@
     function mostrarApp() {
       document.getElementById('loader').classList.add('d-none');
       document.getElementById('mapa-container').classList.remove('d-none');
+      document.getElementById('legenda').classList.remove('d-none');
       document.getElementById('app-content').classList.remove('d-none');
       iniciarMapa();
       renderizarLista();

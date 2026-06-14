@@ -25,6 +25,7 @@
     #mapa { height:100%; width:100%; z-index:1; }
     .label-quadra { background:transparent; border:none; box-shadow:none; font-weight:bold; color:#0d6efd; font-size:14px;
       text-shadow: 2px 0 #fff, -2px 0 #fff, 0 2px #fff, 0 -2px #fff, 1px 1px #fff, -1px -1px #fff, 1px -1px #fff, -1px 1px #fff; }
+    .legenda-bola { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:middle; margin-right:4px; border:1px solid rgba(0,0,0,0.15); }
     .quadra-card { background:white; border-radius:14px; box-shadow:0 2px 6px rgba(0,0,0,0.08); margin:12px; overflow:hidden; }
     .quadra-header { padding:14px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #f1f1f1; }
     .quadra-header .quadra-id { font-size:1.3rem; font-weight:700; color:#0d6efd; }
@@ -72,6 +73,11 @@
 
     <div id="mapa-container">
       <div id="mapa"></div>
+    </div>
+    <div id="legenda" class="px-3 py-2 d-flex flex-wrap gap-3 small" style="background:#f8f9fa; border-bottom:1px solid #e5e7eb">
+      <span><span class="legenda-bola" style="background:#1976d2"></span> Designada</span>
+      <span><span class="legenda-bola" style="background:#dc2626"></span> Concluída (não pode)</span>
+      <span><span class="legenda-bola" style="background:#9ca3af"></span> Disponível</span>
     </div>
 
     <div id="lista"></div>
@@ -209,7 +215,39 @@
 
       if (layerQuadras.getBounds().isValid()) {
         map.fitBounds(layerQuadras.getBounds(), { padding:[20,20] });
+        resolverLocalidade(layerQuadras.getBounds().getCenter());
       }
+    }
+
+    // Reverse-geocoding via Nominatim (OSM) com cache em localStorage.
+    // Sem chave, rate limit ~1 req/seg. Fallback silencioso —
+    // se falhar, o cartão usa "Congregação Aeroclube" no exportarMapaImagem.
+    function resolverLocalidade(latlng) {
+      if (!latlng) return;
+      var key = 'loc_' + latlng.lat.toFixed(4) + '_' + latlng.lng.toFixed(4);
+      try {
+        var cached = localStorage.getItem(key);
+        if (cached) { window.localidadeNome = cached; return; }
+      } catch(e) {}
+
+      var url = 'https://nominatim.openstreetmap.org/reverse?format=json'
+              + '&lat=' + latlng.lat + '&lon=' + latlng.lng
+              + '&zoom=16&addressdetails=1&accept-language=pt-BR';
+      fetch(url, { headers: { 'Accept': 'application/json' }})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(j){
+          if (!j || !j.address) return;
+          var a = j.address;
+          var bairro = a.suburb || a.neighbourhood || a.city_district || a.village || a.town;
+          var cidade = a.city || a.town || a.municipality;
+          var nome = bairro && cidade && bairro !== cidade
+            ? bairro + ', ' + cidade
+            : (bairro || cidade || '');
+          if (!nome) return;
+          window.localidadeNome = nome;
+          try { localStorage.setItem(key, nome); } catch(e) {}
+        })
+        .catch(function(){});
     }
 
     // Considera "concluída recente" só quando há data de conclusão < 30 dias.
@@ -513,13 +551,12 @@
           ctx.font = labelSize + 'px Georgia, serif';
           ctx.textAlign = 'left';
           ctx.fillText('Localidade', Math.round(W * 0.04), Math.round(headerH * 0.92));
-          // linha sob "Localidade"
-          ctx.beginPath();
-          ctx.moveTo(Math.round(W * 0.13), Math.round(headerH * 0.95));
-          ctx.lineTo(Math.round(W * 0.40), Math.round(headerH * 0.95));
-          ctx.strokeStyle = '#000';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
+          // Nome da localidade ao lado de "Localidade" (resolvido por
+          // reverse-geocoding do Nominatim, com fallback)
+          ctx.font = 'italic ' + labelSize + 'px Georgia, serif';
+          var localidade = window.localidadeNome || 'Congregação Aeroclube';
+          ctx.fillText(localidade, Math.round(W * 0.14), Math.round(headerH * 0.92));
+          ctx.font = labelSize + 'px Georgia, serif';
 
           ctx.textAlign = 'right';
           var dataHoje = new Date().toLocaleDateString('pt-BR');
@@ -532,6 +569,40 @@
 
           // ========== MAPA ==========
           ctx.drawImage(mapaCanvas, 0, headerH);
+
+          // ========== LEGENDA ==========
+          // Faixa branca semi-transparente no canto inferior do mapa
+          // explicando o significado das cores. Posicionada DENTRO do
+          // mapa pra não disputar espaço com o rodapé tradicional.
+          var legY = headerH + mapaCanvas.height - Math.round(W * 0.055);
+          var legH = Math.round(W * 0.045);
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          ctx.fillRect(Math.round(W * 0.02), legY, Math.round(W * 0.96), legH);
+          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(Math.round(W * 0.02), legY, Math.round(W * 0.96), legH);
+
+          var itens = [
+            { cor: '#1976d2', texto: 'Designada' },
+            { cor: '#dc2626', texto: 'Concluída (não pode)' },
+            { cor: '#9ca3af', texto: 'Disponível' }
+          ];
+          var fontLeg = Math.round(W * 0.022);
+          ctx.font = fontLeg + 'px Georgia, serif';
+          ctx.fillStyle = '#000';
+          ctx.textAlign = 'left';
+          var legCx = Math.round(W * 0.04);
+          var legCy = legY + Math.round(legH * 0.62);
+          var box = Math.round(W * 0.022);
+          itens.forEach(function(it) {
+            ctx.fillStyle = it.cor;
+            ctx.fillRect(legCx, legCy - box + 2, box, box);
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.strokeRect(legCx, legCy - box + 2, box, box);
+            ctx.fillStyle = '#000';
+            ctx.fillText(it.texto, legCx + box + Math.round(W * 0.008), legCy);
+            legCx += ctx.measureText(it.texto).width + box + Math.round(W * 0.035);
+          });
 
           // ========== RODAPÉ ==========
           ctx.fillStyle = '#000';
