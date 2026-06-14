@@ -558,8 +558,9 @@
             if (!q.polyString) return;
             var pts = parsePolyPub(q.polyString);
             if (pts.length < 3) return;
+            // Vermelho = concluída recente; cinza = disponível
             var estilo = q.concluidaRecente
-              ? { color:'#28a745', weight:1, fillColor:'#28a745', fillOpacity:0.22 }
+              ? { color:'#b91c1c', weight:1, fillColor:'#dc2626', fillOpacity:0.28 }
               : { color:'#9ca3af', weight:1, fillColor:'#9ca3af', fillOpacity:0.10 };
             L.polygon(pts, estilo).addTo(layerContexto);
         });

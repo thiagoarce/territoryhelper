@@ -141,6 +141,7 @@
           if (designadas.length === 0) { alert("Nenhuma quadra encontrada."); return; }
           dados = designadas;
           contexto = (r && r.contexto) || [];
+          window.territoriosNomes = (r && r.territorios) || [];
           document.getElementById('loader').classList.add('d-none');
           document.getElementById('app').classList.remove('d-none');
           document.getElementById('lblTotalQuadras').innerText = dados.length;
@@ -175,11 +176,16 @@
         var pts = parsePoly(q.polyString);
         if (pts.length < 3) return;
 
+        // Vermelho = concluída recente (não pode revisitar agora)
+        // Cinza = pendente (pode ser designada)
         var estilo = q.concluidaRecente
-          ? { color:'#28a745', weight:1, fillColor:'#28a745', fillOpacity:0.22 }
+          ? { color:'#b91c1c', weight:1, fillColor:'#dc2626', fillOpacity:0.28 }
           : { color:'#9ca3af', weight:1, fillColor:'#9ca3af', fillOpacity:0.10 };
 
-        L.polygon(pts, estilo).addTo(layerContexto);
+        var poly = L.polygon(pts, estilo);
+        poly.bindTooltip(q.id + (q.concluidaRecente ? ' — feita ' + q.ultimaData : ''),
+                         { sticky: true });
+        layerContexto.addLayer(poly);
       });
 
       // Camada de DESIGNADAS: as quadras desse cartão, azul forte, com label.
@@ -285,6 +291,31 @@
                   '</div>' +
                 '</div>';
       });
+
+      // Lista das outras quadras do território (contexto) — apenas
+      // informativo, sem ações. Mostra status atual pra dar ideia do
+      // que está disponível ou bloqueado no entorno.
+      if (contexto && contexto.length > 0) {
+        html += '<div class="px-3 pt-4 pb-2" style="border-top:1px solid #e5e7eb">' +
+                  '<small class="text-muted text-uppercase fw-bold" style="letter-spacing:.05em">' +
+                    'Outras quadras do território (' + contexto.length + ')' +
+                  '</small>' +
+                '</div>';
+        contexto.forEach(function(q){
+          var bloqueada = q.concluidaRecente;
+          var corBadge = bloqueada ? 'bg-danger' : 'bg-secondary';
+          var rotulo = bloqueada ? 'Concluída ' + q.ultimaData : 'Disponível';
+          html += '<div class="card mx-3 mb-2 shadow-sm" style="opacity:' + (bloqueada ? '0.85' : '0.7') + '">' +
+                    '<div class="card-body py-2 d-flex justify-content-between align-items-center">' +
+                      '<div>' +
+                        '<div class="fw-bold">Quadra ' + q.id + '</div>' +
+                        '<small class="text-muted">' + rotulo + '</small>' +
+                      '</div>' +
+                      '<span class="badge ' + corBadge + '">' + (bloqueada ? 'Não pode' : 'Pode designar') + '</span>' +
+                    '</div>' +
+                  '</div>';
+        });
+      }
 
       c.innerHTML = html;
       atualizarLabelSelecionadas();
@@ -467,15 +498,11 @@
           ctx.textAlign = 'center';
           ctx.fillText('Cartão de Mapa de Território', W / 2, Math.round(headerH * 0.40));
 
-          // Rua/nome principal (se houver) — usa o nome do território da 1ª quadra
+          // Subtítulo: nome(s) do território resolvido(s) pelo backend
           var subtitulo = '';
-          if (dados.length > 0) {
-            var territoriosUnicos = {};
-            dados.forEach(function(q){ if (q.territorio) territoriosUnicos[q.territorio] = true; });
-            var nomes = Object.keys(territoriosUnicos);
-            if (nomes.length === 1) subtitulo = nomes[0];
-            else if (nomes.length > 1) subtitulo = nomes.length + ' territórios';
-          }
+          var nomes = window.territoriosNomes || [];
+          if (nomes.length === 1) subtitulo = nomes[0];
+          else if (nomes.length > 1) subtitulo = nomes.length + ' territórios';
           if (subtitulo) {
             ctx.font = 'italic ' + Math.round(fSize * 0.78) + 'px Georgia, serif';
             ctx.fillText(subtitulo, W / 2, Math.round(headerH * 0.72));
@@ -496,7 +523,12 @@
 
           ctx.textAlign = 'right';
           var dataHoje = new Date().toLocaleDateString('pt-BR');
-          ctx.fillText('Terr. Nº  ' + (dados.length + ' quadra(s)'), Math.round(W * 0.96), Math.round(headerH * 0.92));
+          // Prioriza o nome do território (vindo do backend). Fallback
+          // pra contagem de quadras quando nenhum território foi resolvido.
+          var labelTerr = (window.territoriosNomes && window.territoriosNomes.length > 0)
+            ? window.territoriosNomes.join(' / ')
+            : dados.length + ' quadra(s)';
+          ctx.fillText('Terr. Nº  ' + labelTerr, Math.round(W * 0.96), Math.round(headerH * 0.92));
 
           // ========== MAPA ==========
           ctx.drawImage(mapaCanvas, 0, headerH);

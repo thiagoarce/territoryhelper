@@ -918,13 +918,17 @@ function getDadosDirigente(idsString) {
   return publico;
 }
 
-// Quadras designadas + contexto (outras quadras dos mesmos territórios)
-// usado pra desenhar o território inteiro no mapa, com as não-designadas
-// esmaecidas atrás das designadas. Busca os territórios por dois caminhos:
-// (1) coluna TERRITORIO na própria aba Quadras
-// (2) aba Territorios, coluna IDS_QUADRAS (lista CSV de ids)
-// Robusto contra dados incompletos: basta um dos dois caminhos resolver.
+// Quadras designadas + contexto (outras quadras "próximas") usado pra
+// desenhar o território inteiro no mapa. Estratégia em camadas:
+//   (1) tenta resolver por território explícito (coluna TERRITORIO da
+//       Quadras ou aba Territorios.IDS_QUADRAS)
+//   (2) se não achar nenhum, fallback geográfico: bounding box das
+//       designadas expandido em 60%, pega todas as quadras cujo centro
+//       cai dentro (até COTA_FALLBACK pra não estourar payload)
+// Retorna também `territorios` (nomes únicos) pro cabeçalho do cartão.
 function getDadosComContexto(idsString) {
+  var COTA_FALLBACK = 80;
+
   var designadas = getDadosDirigente(idsString);
 
   var idsSet = {};
@@ -934,74 +938,144 @@ function getDadosComContexto(idsString) {
   var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
   var dataQ = sheetQ ? sheetQ.getDataRange().getValues() : [];
 
-  // (1) territórios diretos da aba Quadras
+  // (1a) territórios diretos da aba Quadras
   var territoriosSet = {};
   designadas.forEach(function(q){
     if (q.territory) territoriosSet[String(q.territory).trim()] = true;
   });
 
-  // (2) territórios via aba Territorios.IDS_QUADRAS
+  // (1b) territórios via aba Territorios.IDS_QUADRAS
   var sheetT = ss.getSheetByName(SHEET.TERRITORIOS)
             || ss.getSheetByName("Territórios"); // fallback com acento
-  if (sheetT) {
-    var dataT = sheetT.getDataRange().getValues();
-    for (var i = 1; i < dataT.length; i++) {
-      var nome = String(dataT[i][COL.TERRITORIOS.NOME] || "").trim();
-      if (!nome) continue;
-      var ids = String(dataT[i][COL.TERRITORIOS.IDS_QUADRAS] || "")
-        .split(/[,;\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
-      for (var j = 0; j < ids.length; j++) {
-        if (idsSet[ids[j]]) { territoriosSet[nome] = true; break; }
-      }
+  var dataT = sheetT ? sheetT.getDataRange().getValues() : [];
+  for (var i = 1; i < dataT.length; i++) {
+    var nome = String(dataT[i][COL.TERRITORIOS.NOME] || "").trim();
+    if (!nome) continue;
+    var ids = String(dataT[i][COL.TERRITORIOS.IDS_QUADRAS] || "")
+      .split(/[,;\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
+    for (var j = 0; j < ids.length; j++) {
+      if (idsSet[ids[j]]) { territoriosSet[nome] = true; break; }
     }
   }
 
-  // Sem nenhum território identificado → nada de contexto
-  if (Object.keys(territoriosSet).length === 0) {
-    return { designadas: designadas, contexto: [] };
-  }
-
-  // Coleta IDs que pertencem aos territórios identificados, via aba
-  // Territorios (CSV) OU coluna TERRITORIO na Quadras.
-  var idsContexto = {};
-  if (sheetT) {
-    var dataT2 = sheetT.getDataRange().getValues();
-    for (var k = 1; k < dataT2.length; k++) {
-      var nome2 = String(dataT2[k][COL.TERRITORIOS.NOME] || "").trim();
-      if (!territoriosSet[nome2]) continue;
-      var ids2 = String(dataT2[k][COL.TERRITORIOS.IDS_QUADRAS] || "")
-        .split(/[,;\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
-      ids2.forEach(function(id){ if (!idsSet[id]) idsContexto[id] = true; });
-    }
-  }
-
-  // Monta o contexto a partir das linhas da Quadras (precisa polyString)
-  var contexto = [];
+  // Limite de "concluída recente" — quadra concluída há ≤30 dias não
+  // deve ser revisitada (regra padrão de descanso de território)
   var limite = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  for (var m = 1; m < dataQ.length; m++) {
-    var id = String(dataQ[m][COL.QUADRAS.ID]).trim();
-    if (!id || idsSet[id]) continue;
-    var territorio = String(dataQ[m][COL.QUADRAS.TERRITORIO] || "").trim();
-    var pertence = idsContexto[id] || territoriosSet[territorio];
-    if (!pertence) continue;
-    var poly = dataQ[m][COL.QUADRAS.POLYSTRING];
-    if (!poly) continue;
-    var status = String(dataQ[m][COL.QUADRAS.STATUS] || STATUS.PENDENTE);
-    var dataConc = dataQ[m][COL.QUADRAS.DATA_CONC];
+
+  function montarItem(linha) {
+    var id = String(linha[COL.QUADRAS.ID]).trim();
+    var poly = linha[COL.QUADRAS.POLYSTRING];
+    if (!id || !poly) return null;
+    var status = String(linha[COL.QUADRAS.STATUS] || STATUS.PENDENTE);
+    var dataConc = linha[COL.QUADRAS.DATA_CONC];
     var recente = false;
+    var dataConcStr = "";
     if (status === STATUS.CONCLUIDO && dataConc) {
       var t = new Date(dataConc).getTime();
       recente = !isNaN(t) && t >= limite;
+      if (!isNaN(t)) {
+        dataConcStr = Utilities.formatDate(new Date(dataConc), "GMT-3", "dd/MM/yyyy");
+      }
     }
-    contexto.push({
+    return {
       id: id,
       polyString: poly,
       status: status,
+      ultimaData: dataConcStr,
       concluidaRecente: recente
-    });
+    };
   }
 
-  return { designadas: designadas, contexto: contexto };
+  var contexto = [];
+
+  // (1) Caminho preferido: contexto via território identificado
+  if (Object.keys(territoriosSet).length > 0) {
+    // Coleta IDs que pertencem aos territórios (CSV + coluna direta)
+    var idsContexto = {};
+    for (var k = 1; k < dataT.length; k++) {
+      var nome2 = String(dataT[k][COL.TERRITORIOS.NOME] || "").trim();
+      if (!territoriosSet[nome2]) continue;
+      var ids2 = String(dataT[k][COL.TERRITORIOS.IDS_QUADRAS] || "")
+        .split(/[,;\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
+      ids2.forEach(function(id){ if (!idsSet[id]) idsContexto[id] = true; });
+    }
+
+    for (var m = 1; m < dataQ.length; m++) {
+      var idM = String(dataQ[m][COL.QUADRAS.ID]).trim();
+      if (!idM || idsSet[idM]) continue;
+      var territ = String(dataQ[m][COL.QUADRAS.TERRITORIO] || "").trim();
+      if (!idsContexto[idM] && !territoriosSet[territ]) continue;
+      var item = montarItem(dataQ[m]);
+      if (item) contexto.push(item);
+    }
+  }
+
+  // (2) Fallback geográfico: ninguém marcou território, mas a gente
+  // ainda quer dar contexto visual. Usa bounding box das designadas.
+  if (contexto.length === 0) {
+    var bbox = bboxDasDesignadas_(designadas);
+    if (bbox) {
+      // expande 60% pra cada lado pra capturar quadras vizinhas
+      var dlat = (bbox.maxLat - bbox.minLat) * 0.6;
+      var dlng = (bbox.maxLng - bbox.minLng) * 0.6;
+      bbox.minLat -= dlat; bbox.maxLat += dlat;
+      bbox.minLng -= dlng; bbox.maxLng += dlng;
+
+      var candidatos = [];
+      for (var n = 1; n < dataQ.length; n++) {
+        var idN = String(dataQ[n][COL.QUADRAS.ID]).trim();
+        if (!idN || idsSet[idN]) continue;
+        var polyN = dataQ[n][COL.QUADRAS.POLYSTRING];
+        if (!polyN) continue;
+        var centro = centroPoly_(polyN);
+        if (!centro) continue;
+        if (centro.lat < bbox.minLat || centro.lat > bbox.maxLat) continue;
+        if (centro.lng < bbox.minLng || centro.lng > bbox.maxLng) continue;
+        var item2 = montarItem(dataQ[n]);
+        if (item2) candidatos.push(item2);
+      }
+
+      contexto = candidatos.slice(0, COTA_FALLBACK);
+    }
+  }
+
+  return {
+    designadas: designadas,
+    contexto: contexto,
+    territorios: Object.keys(territoriosSet)
+  };
+}
+
+function bboxDasDesignadas_(designadas) {
+  var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  var algumPonto = false;
+  designadas.forEach(function(q){
+    if (!q.polyString) return;
+    var pts = String(q.polyString).split('|');
+    pts.forEach(function(p){
+      var c = p.trim().split(',');
+      var lat = parseFloat(c[0]), lng = parseFloat(c[1]);
+      if (isNaN(lat) || isNaN(lng)) return;
+      algumPonto = true;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    });
+  });
+  return algumPonto ? { minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng } : null;
+}
+
+function centroPoly_(polyString) {
+  var pts = String(polyString).split('|');
+  var sumLat = 0, sumLng = 0, n = 0;
+  for (var i = 0; i < pts.length; i++) {
+    var c = pts[i].trim().split(',');
+    var lat = parseFloat(c[0]), lng = parseFloat(c[1]);
+    if (isNaN(lat) || isNaN(lng)) continue;
+    sumLat += lat; sumLng += lng; n++;
+  }
+  return n > 0 ? { lat: sumLat / n, lng: sumLng / n } : null;
 }
 
 // Função restrita usada pelo dirigente — só aceita IDs que foram passados via link
