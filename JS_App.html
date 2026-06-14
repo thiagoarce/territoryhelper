@@ -1054,14 +1054,13 @@ window.atualizarBarraSelecaoRegistro = function() {
 // Pode incluir quadras de territórios diferentes (sem restrição).
 // Antes de gerar o link, marca as quadras como Pendente para o dirigente poder concluir.
 window.designarSelecaoRegistro = function() {
-    if (registroSelecionados.size === 0) window.toast("Selecione quadras para designar.", "warn"); return;
+    if (registroSelecionados.size === 0) { window.toast("Selecione quadras para designar.", "warn"); return; }
 
     var ids = Array.from(registroSelecionados);
 
     showLoading(true, "Designando...");
     google.script.run
       .withSuccessHandler(function() {
-        // Atualiza cache local para refletir Pendente imediatamente
         cacheQuadrasRegistro.forEach(function(q) {
           if (ids.indexOf(q.id) > -1) {
             q.status = "Pendente";
@@ -1083,12 +1082,12 @@ window.designarSelecaoRegistro = function() {
               window.atualizarBarraSelecaoRegistro();
               window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
           })
-          .withFailureHandler(function(e){ showLoading(false); alert(e); })
+          .withFailureHandler(function(e){ showLoading(false); window.toast("Erro ao gerar URL: " + (e && e.message ? e.message : e), "error", 6000); })
           .getScriptUrl();
       })
       .withFailureHandler(function(e){
         showLoading(false);
-        alert("Erro ao designar: " + (e && e.message ? e.message : e));
+        window.toast("Erro ao designar: " + (e && e.message ? e.message : e), "error", 6000);
       })
       .designarQuadras(ids);
 };
@@ -1168,20 +1167,55 @@ window.designarSelecaoRegistro = function() {
       }
   };
 
+// Quando há faces selecionadas, "abaixa" os polígonos das quadras
+// (reduz opacidade + desabilita interatividade) para os pontos ficarem
+// fáceis de clicar sem o polígono atrás capturar o clique.
+window.atualizarModoVinculo = function() {
+    if (!layerGroupQuadras) return;
+    var ativo = facesSelecionadas.size > 0;
+    layerGroupQuadras.eachLayer(function(layer) {
+        if (ativo) {
+            layer.setStyle({ fillOpacity: 0.05, opacity: 0.3 });
+            if (layer.getElement) {
+                var el = layer.getElement();
+                if (el) el.style.pointerEvents = 'none';
+            }
+        } else {
+            var d = layer.metaData;
+            layer.setStyle({ fillColor: (d && d.color) || '#3388ff', fillOpacity: 0.3, color: '#666', opacity: 1 });
+            if (layer.getElement) {
+                var el = layer.getElement();
+                if (el) el.style.pointerEvents = '';
+            }
+        }
+    });
+    // Tooltips das quadras (labels) — esconde durante o modo
+    if (layerGroupQuadras.getLayers().length > 0) {
+        layerGroupQuadras.eachLayer(function(layer) {
+            var tt = layer.getTooltip && layer.getTooltip();
+            if (!tt) return;
+            var el = tt.getElement && tt.getElement();
+            if (el) el.style.opacity = ativo ? '0.2' : '1';
+        });
+    }
+};
+
 window.criarMarkerFace = function(f, corBase) {
-      // Define estilo visual inicial
-      // Se já atribuída: Opacidade total. Se não: Transparente (0.4)
-      var opacidade = f.isAssigned ? 1.0 : 0.4;
-      var borda = f.isAssigned ? 'white' : 'transparent'; 
-      var pesoBorda = f.isAssigned ? 1 : 0;
-      
+      // Pontos mais visíveis (raio 8 vs antigo 5) e com borda branca sempre.
+      // Borda mais clara nos não-atribuídos para ficar fácil de clicar mesmo
+      // com polígono atrás.
+      var opacidade = f.isAssigned ? 1.0 : 0.7;
+      var borda = 'white';
+      var pesoBorda = f.isAssigned ? 1.5 : 1;
+
       var m = L.circleMarker([f.lat, f.lng], {
-          radius: 5,
+          radius: 8,
           fillColor: corBase,
           color: borda,
           weight: pesoBorda,
           fillOpacity: opacidade,
-          interactive: true
+          interactive: true,
+          pane: 'markerPane' // garante que fica acima dos polígonos
       });
       
       // Guarda dados no próprio objeto do marcador para facilitar
@@ -1197,34 +1231,32 @@ window.criarMarkerFace = function(f, corBase) {
       });
       
       m.on('click', function(e) {
-          L.DomEvent.stopPropagation(e); // Não deixa o clique passar para o mapa
-          
+          L.DomEvent.stopPropagation(e);
+
           if(facesSelecionadas.has(f.key)) {
-              // SE JÁ ESTAVA SELECIONADO -> DESMARCA (Volta ao normal)
               facesSelecionadas.delete(f.key);
-              
-              this.setStyle({ 
-                  fillColor: m.corOriginal, 
-                  color: m.bordaOriginal, 
+              this.setStyle({
+                  fillColor: m.corOriginal,
+                  color: m.bordaOriginal,
                   weight: m.pesoBordaOriginal,
-                  radius: 5, 
-                  fillOpacity: m.opacidadeOriginal 
+                  radius: 8,
+                  fillOpacity: m.opacidadeOriginal
               });
-              
           } else {
-              // SE NÃO ESTAVA -> MARCA (Fica Vermelho/Amarelo)
               facesSelecionadas.set(f.key, f);
-              
-              this.setStyle({ 
-                  fillColor: 'red',     // Cor de destaque
-                  color: 'yellow',      // Borda de destaque
-                  weight: 2,
-                  radius: 8,            // Aumenta tamanho
-                  fillOpacity: 1 
+              this.setStyle({
+                  fillColor: 'red',
+                  color: 'yellow',
+                  weight: 3,
+                  radius: 11,
+                  fillOpacity: 1
               });
           }
-          
-          // NENHUM ALERT AQUI! O fluxo segue liso.
+
+          // Atualiza o modo foco — quando há seleção, "abaixa" os polígonos
+          if (typeof window.atualizarModoVinculo === 'function') {
+              window.atualizarModoVinculo();
+          }
       });
       
       return m;
@@ -1236,43 +1268,38 @@ window.criarMarkerFace = function(f, corBase) {
 window.confirmarAssociacao = function(layerQuadra) {
       var quadraId = layerQuadra.metaData.id;
       var qtdFaces = facesSelecionadas.size;
-      
       if(qtdFaces === 0) return;
-      
-      // Calcula o total de endereços somando os totais de cada face
+
       var totalEnderecos = 0;
       var todasLinhas = [];
-      
       facesSelecionadas.forEach(function(faceObj) {
           totalEnderecos += faceObj.total;
           if(faceObj.rows && Array.isArray(faceObj.rows)) {
               todasLinhas = todasLinhas.concat(faceObj.rows);
           }
       });
-      
-      
-      var confirmacao = confirm("Vincular " + qtdFaces + " face(s) (" + totalEnderecos + " endereços) à quadra " + quadraId + "?");
-      
-      if(confirmacao) {
-          var payload = {
-              quadraId: quadraId,
-              linhas: todasLinhas
-          };
-          
+
+      window.confirmar({
+        titulo: 'Vincular endereços',
+        mensagem: 'Vincular ' + qtdFaces + ' face(s) (' + totalEnderecos + ' endereços) à quadra ' + quadraId + '?',
+        okLabel: 'Vincular'
+      }).then(function(ok) {
+          if (!ok) return;
           showLoading(true, "Vinculando " + totalEnderecos + " endereços...");
-          
           google.script.run
               .withSuccessHandler(function() {
                   window.toast("Endereços vinculados!", "success");
                   facesSelecionadas.clear();
-                  (window.invalidarCacheMapa(), window.carregarEditorDados());
+                  window.atualizarModoVinculo();
+                  window.invalidarCacheMapa();
+                  window.carregarEditorDados();
               })
               .withFailureHandler(function(e){
                   showLoading(false);
                   window.toast("Erro ao vincular: " + (e && e.message ? e.message : e), "error", 6000);
               })
-              .salvarAssociacaoFaces(payload);
-      }
+              .salvarAssociacaoFaces({ quadraId: quadraId, linhas: todasLinhas });
+      });
   };
 
   // =================================================================

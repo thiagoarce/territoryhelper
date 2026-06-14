@@ -376,8 +376,10 @@
       });
     }
 
-    // Exporta o mapa como imagem (PNG). Em mobile, usa Web Share API para
-    // abrir o sheet de compartilhamento direto no WhatsApp. Em desktop, baixa.
+    // Exporta o mapa como "Cartão de Mapa de Território" no estilo
+    // tradicional impresso (cabeçalho centralizado, Localidade/Terr.Nº,
+    // borda preta, rodapé de instrução). Mobile: abre share nativo;
+    // desktop: baixa.
     function exportarMapaImagem() {
       var mapaEl = document.getElementById('mapa');
       if (!mapaEl) return;
@@ -386,7 +388,14 @@
       var textoOriginal = btn ? btn.innerHTML : null;
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando...'; }
 
-      // Aguarda os tiles renderizarem
+      // Garante que o mapa esteja enquadrado nas quadras designadas antes
+      // de capturar (corrige o problema de quadras ficarem fora do mapa)
+      if (layerQuadras && layerQuadras.getBounds().isValid()) {
+        map.invalidateSize();
+        map.fitBounds(layerQuadras.getBounds(), { padding: [50, 50], animate: false });
+      }
+
+      // Aguarda tiles + fitBounds estabilizarem (1 segundo)
       setTimeout(function() {
         html2canvas(mapaEl, {
           useCORS: true,
@@ -394,37 +403,99 @@
           backgroundColor: '#ffffff',
           logging: false,
           scale: 2
-        }).then(function(canvas) {
-          // Adiciona um cabeçalho com nome/quantidade no topo
-          var finalCanvas = document.createElement('canvas');
-          var headerH = 80;
-          finalCanvas.width = canvas.width;
-          finalCanvas.height = canvas.height + headerH;
-          var ctx = finalCanvas.getContext('2d');
+        }).then(function(mapaCanvas) {
+          var W = mapaCanvas.width;
+          var headerH = Math.round(W * 0.13);
+          var footerH = Math.round(W * 0.09);
+          var bordaIn = Math.round(W * 0.012);
 
-          ctx.fillStyle = '#198754';
-          ctx.fillRect(0, 0, finalCanvas.width, headerH);
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 30px -apple-system, sans-serif';
-          ctx.fillText('Quadras designadas', 24, 36);
-          ctx.font = '20px -apple-system, sans-serif';
-          ctx.fillText(dados.length + ' quadra(s) • ' + new Date().toLocaleDateString('pt-BR'), 24, 64);
+          var totalH = headerH + mapaCanvas.height + footerH;
+          var final = document.createElement('canvas');
+          final.width = W;
+          final.height = totalH;
+          var ctx = final.getContext('2d');
 
-          ctx.drawImage(canvas, 0, headerH);
+          // Fundo branco
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, W, totalH);
 
-          finalCanvas.toBlob(function(blob) {
-            var nomeArq = 'quadras-' + new Date().toISOString().split('T')[0] + '.png';
+          // ========== CABEÇALHO ==========
+          var fSize = Math.round(W * 0.045);
+          ctx.fillStyle = '#000';
+          ctx.font = 'bold ' + fSize + 'px Georgia, "Times New Roman", serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Cartão de Mapa de Território', W / 2, Math.round(headerH * 0.40));
+
+          // Rua/nome principal (se houver) — usa o nome do território da 1ª quadra
+          var subtitulo = '';
+          if (dados.length > 0) {
+            var territoriosUnicos = {};
+            dados.forEach(function(q){ if (q.territorio) territoriosUnicos[q.territorio] = true; });
+            var nomes = Object.keys(territoriosUnicos);
+            if (nomes.length === 1) subtitulo = nomes[0];
+            else if (nomes.length > 1) subtitulo = nomes.length + ' territórios';
+          }
+          if (subtitulo) {
+            ctx.font = 'italic ' + Math.round(fSize * 0.78) + 'px Georgia, serif';
+            ctx.fillText(subtitulo, W / 2, Math.round(headerH * 0.72));
+          }
+
+          // "Localidade" à esquerda, "Terr. Nº" à direita
+          var labelSize = Math.round(W * 0.026);
+          ctx.font = labelSize + 'px Georgia, serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('Localidade', Math.round(W * 0.04), Math.round(headerH * 0.92));
+          // linha sob "Localidade"
+          ctx.beginPath();
+          ctx.moveTo(Math.round(W * 0.13), Math.round(headerH * 0.95));
+          ctx.lineTo(Math.round(W * 0.40), Math.round(headerH * 0.95));
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.textAlign = 'right';
+          var dataHoje = new Date().toLocaleDateString('pt-BR');
+          ctx.fillText('Terr. Nº  ' + (dados.length + ' quadra(s)'), Math.round(W * 0.96), Math.round(headerH * 0.92));
+
+          // ========== MAPA ==========
+          ctx.drawImage(mapaCanvas, 0, headerH);
+
+          // ========== RODAPÉ ==========
+          ctx.fillStyle = '#000';
+          ctx.textAlign = 'center';
+          var rodapeY = headerH + mapaCanvas.height + Math.round(footerH * 0.35);
+          ctx.font = 'italic ' + Math.round(W * 0.022) + 'px Georgia, serif';
+          ctx.fillText('Guarde este cartão no envelope. Tome cuidado para não manchar ou marcar.',
+                       W / 2, rodapeY);
+          ctx.fillText('Ao devolver, queira informar disso o irmão que cuida do arquivo de territórios.',
+                       W / 2, rodapeY + Math.round(W * 0.030));
+
+          // Rodapé: data à esquerda, "Impresso no Brasil" à direita
+          ctx.font = Math.round(W * 0.020) + 'px Georgia, serif';
+          ctx.textAlign = 'left';
+          ctx.fillText(dataHoje, Math.round(W * 0.04), headerH + mapaCanvas.height + Math.round(footerH * 0.88));
+          ctx.textAlign = 'right';
+          ctx.fillText('Gerado por Territory Helper', Math.round(W * 0.96), headerH + mapaCanvas.height + Math.round(footerH * 0.88));
+
+          // ========== BORDA PRETA DUPLA ==========
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = Math.round(W * 0.005);
+          ctx.strokeRect(0, 0, W, totalH);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(bordaIn, bordaIn, W - 2 * bordaIn, totalH - 2 * bordaIn);
+
+          final.toBlob(function(blob) {
+            var nomeArq = 'cartao-territorio-' + new Date().toISOString().split('T')[0] + '.png';
             var file = new File([blob], nomeArq, { type: 'image/png' });
 
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
               navigator.share({
                 files: [file],
-                title: 'Quadras designadas',
-                text: dados.length + ' quadra(s) designada(s)'
-              }).catch(function(){ /* user cancelou */ })
+                title: 'Cartão de Território',
+                text: dados.length + ' quadra(s) designada(s) — ' + dataHoje
+              }).catch(function(){ })
                 .finally(restaurar);
             } else {
-              // Fallback: baixa o arquivo
               var url = URL.createObjectURL(blob);
               var a = document.createElement('a');
               a.href = url; a.download = nomeArq;
@@ -437,7 +508,7 @@
           alert('Falha ao gerar imagem: ' + (err && err.message ? err.message : err));
           restaurar();
         });
-      }, 400);
+      }, 1000);
 
       function restaurar() {
         if (btn && textoOriginal != null) { btn.disabled = false; btn.innerHTML = textoOriginal; }
