@@ -339,40 +339,42 @@ function salvarNovaQuadraDividida(dados) {
 }
 
 function salvarEdicaoQuadra(dados) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Quadras");
-  const data = sheet.getDataRange().getValues();
+  return withLock_(function() {
+    if (!dados) throw new Error("Dados ausentes.");
+    var vId = validarId_(dados.idNovo); if (!vId.ok) throw new Error(vId.msg);
+    var vPoly = validarPolyString_(dados.polyString); if (!vPoly.ok) throw new Error(vPoly.msg);
+    var cor = validarCor_(dados.color);
 
-  let row = -1;
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(dados.idOriginal)) { row = i + 1; break; }
-  }
+    var sheet = getSheetByName_(SHEET.QUADRAS);
+    if (!sheet) throw new Error("Aba Quadras não encontrada.");
+    var data = sheet.getDataRange().getValues();
+    var row = acharLinhaQuadra_(data, dados.idOriginal);
 
-  if (row !== -1) {
-    sheet.getRange(row, 1).setValue(dados.idNovo);
-    sheet.getRange(row, 5).setValue(dados.polyString);
-    sheet.getRange(row, 6).setValue(dados.color);
-    sheet.getRange(row, 7).setValue(dados.territory);
-  } else {
-    // Se não achou (ex: id mudou e não achou original), cria nova
-    sheet.appendRow([dados.idNovo, 0, "", "", dados.polyString, dados.color, dados.territory]);
-  }
-  _invalidar();
-  return "Salvo";
+    if (row !== -1) {
+      sheet.getRange(row, COL.QUADRAS.ID_1IDX).setValue(sanitizar_(dados.idNovo));
+      sheet.getRange(row, COL.QUADRAS.POLYSTRING_1IDX).setValue(dados.polyString);
+      sheet.getRange(row, COL.QUADRAS.COLOR_1IDX).setValue(cor);
+      sheet.getRange(row, COL.QUADRAS.TERRITORIO_1IDX).setValue(sanitizar_(dados.territory));
+    } else {
+      sheet.appendRow([sanitizar_(dados.idNovo), 0, "", "", dados.polyString, cor, sanitizar_(dados.territory), STATUS.PENDENTE, ""]);
+    }
+    _invalidar();
+    return "Salvo";
+  });
 }
 
 function excluirQuadra(id) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Quadras");
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(id)) {
-      sheet.deleteRow(i + 1);
-      _invalidar();
-      return "Excluída";
-    }
-  }
-  return "Não encontrada";
+  return withLock_(function() {
+    if (!id) throw new Error("ID ausente.");
+    var sheet = getSheetByName_(SHEET.QUADRAS);
+    if (!sheet) throw new Error("Aba Quadras não encontrada.");
+    var data = sheet.getDataRange().getValues();
+    var row = acharLinhaQuadra_(data, id);
+    if (row === -1) return "Não encontrada";
+    sheet.deleteRow(row);
+    _invalidar();
+    return "Excluída";
+  });
 }
 
 function salvarJuncaoQuadras(dados) {
@@ -625,10 +627,17 @@ function salvarNotaEmMassa(d) {
 }
 
 function salvarConclusaoQuadras(payload) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetQ = ss.getSheetByName("Quadras");
-  var sheetReg = ss.getSheetByName("Registros");
-  if (!sheetReg) { sheetReg = ss.insertSheet("Registros"); sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]); }
+  if (!payload || !Array.isArray(payload.ids) || payload.ids.length === 0) {
+    throw new Error("Sem IDs para concluir.");
+  }
+  var vData = validarData_(payload.data); if (!vData.ok) throw new Error(vData.msg);
+
+  return withLock_(function() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = getSheetByName_(SHEET.QUADRAS);
+  if (!sheetQ) throw new Error("Aba Quadras não encontrada.");
+  var sheetReg = getSheetByName_(SHEET.REGISTROS);
+  if (!sheetReg) { sheetReg = ss.insertSheet(SHEET.REGISTROS); sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]); }
 
   const dataQ = sheetQ.getDataRange().getValues();
   const mapIndex = {};
@@ -652,10 +661,9 @@ function salvarConclusaoQuadras(payload) {
     var row = mapIndex[id];
     if (row) {
       if (payload.modo !== "apenas_historico") {
-        sheetQ.getRange(row, 8).setValue("Concluído");
-        sheetQ.getRange(row, 9).setValue(payload.data);
-        // Atualiza Território se necessário
-        var nmTerr = dataQ[row - 1][6];
+        sheetQ.getRange(row, COL.QUADRAS.STATUS_1IDX).setValue(STATUS.CONCLUIDO);
+        sheetQ.getRange(row, COL.QUADRAS.DATA_CONC_1IDX).setValue(payload.data);
+        var nmTerr = dataQ[row - 1][COL.QUADRAS.TERRITORIO];
         if (nmTerr) verificarStatusTerritorio(nmTerr, payload.data);
       }
       sheetReg.appendRow([id, payload.data, payload.modo, new Date()]);
@@ -663,6 +671,7 @@ function salvarConclusaoQuadras(payload) {
   });
   _invalidar();
   return { status: "SUCESSO" };
+  });
 }
 
 function verificarStatusTerritorio(nome, dataRef) {
@@ -903,25 +912,31 @@ function dirigenteMarcarStatus(ids, status, data) {
 // Marca as quadras designadas como Pendente — não apaga histórico de conclusão.
 // Usada pelo servo de território quando designa quadras a um dirigente.
 function designarQuadras(ids) {
-  if (!Array.isArray(ids) || ids.length === 0) return { status: "ERRO", msg: "Sem IDs" };
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetQ = ss.getSheetByName("Quadras");
-  var sheetReg = ss.getSheetByName("Registros");
-  if (!sheetReg) { sheetReg = ss.insertSheet("Registros"); sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]); }
-
-  var data = sheetQ.getDataRange().getValues();
-  var hoje = new Date();
-
-  for (var i = 1; i < data.length; i++) {
-    var id = String(data[i][0]);
-    if (ids.indexOf(id) > -1) {
-      sheetQ.getRange(i + 1, 8).setValue("Pendente");  // Col H
-      sheetReg.appendRow([id, hoje, "Designada", new Date()]);
+  return withLock_(function() {
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error("Sem IDs para designar.");
+    var sheetQ = getSheetByName_(SHEET.QUADRAS);
+    if (!sheetQ) throw new Error("Aba Quadras não encontrada.");
+    var sheetReg = getSheetByName_(SHEET.REGISTROS);
+    if (!sheetReg) {
+      sheetReg = SpreadsheetApp.getActiveSpreadsheet().insertSheet(SHEET.REGISTROS);
+      sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]);
     }
-  }
-  _invalidar();
-  return { status: "SUCESSO" };
+
+    var data = sheetQ.getDataRange().getValues();
+    var hoje = new Date();
+    var atualizadas = 0;
+
+    for (var i = 1; i < data.length; i++) {
+      var id = String(data[i][COL.QUADRAS.ID]);
+      if (ids.indexOf(id) > -1) {
+        sheetQ.getRange(i + 1, COL.QUADRAS.STATUS_1IDX).setValue(STATUS.PENDENTE);
+        sheetReg.appendRow([id, hoje, "Designada", new Date()]);
+        atualizadas++;
+      }
+    }
+    _invalidar();
+    return { status: "SUCESSO", atualizadas: atualizadas };
+  });
 }
 
 function salvarConfiguracoesCampanha(nome, data) {

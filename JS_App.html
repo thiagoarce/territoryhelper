@@ -26,6 +26,62 @@
   var editingTerritoryData = null; 
   var divisionMarkers = []; var divisionIndices = [];
 
+  // =================================================================
+  // TOAST — feedback não-bloqueante. Use em vez de alert() sempre que
+  // não precisar travar a UX. Erros críticos ainda podem usar alert.
+  //   window.toast("Salvo!", "success");
+  //   window.toast("Algo falhou", "error", 6000);
+  // =================================================================
+  window.toast = function(msg, tipo, duracaoMs) {
+    tipo = tipo || 'info';
+    duracaoMs = duracaoMs == null ? 3000 : duracaoMs;
+    var host = document.getElementById('thToastHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'thToastHost';
+      host.className = 'th-toast-host';
+      document.body.appendChild(host);
+    }
+    var icons = { success:'fa-circle-check', error:'fa-circle-exclamation', warn:'fa-triangle-exclamation', info:'fa-circle-info' };
+    var el = document.createElement('div');
+    el.className = 'th-toast t-' + tipo;
+    el.innerHTML = '<i class="fa-solid ' + (icons[tipo] || icons.info) + ' ico"></i>' +
+                   '<div class="msg"></div>' +
+                   '<button class="close" aria-label="Fechar">&times;</button>';
+    el.querySelector('.msg').textContent = msg;
+    el.querySelector('.close').addEventListener('click', function(){ fechar(); });
+    host.appendChild(el);
+    requestAnimationFrame(function(){ el.classList.add('show'); });
+
+    var t = null;
+    function fechar() {
+      if (t) { clearTimeout(t); t = null; }
+      el.classList.remove('show');
+      setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 250);
+    }
+    if (duracaoMs > 0) t = setTimeout(fechar, duracaoMs);
+    return { fechar: fechar };
+  };
+
+  // Helper para envolver chamadas google.script.run com toast de erro padrão
+  window.runApp = function(cfg) {
+    var loadingMsg = cfg.loading;
+    var sucessoMsg = cfg.sucesso;
+    if (loadingMsg) window.showLoading(true, loadingMsg);
+    return google.script.run
+      .withSuccessHandler(function(r) {
+        if (loadingMsg) window.showLoading(false);
+        if (sucessoMsg) window.toast(sucessoMsg, 'success');
+        if (cfg.onSuccess) cfg.onSuccess(r);
+      })
+      .withFailureHandler(function(e) {
+        if (loadingMsg) window.showLoading(false);
+        var msg = (e && e.message) ? e.message : String(e);
+        window.toast(msg, 'error', 6000);
+        if (cfg.onError) cfg.onError(e);
+      });
+  };
+
  window.onload = function() {
     try {
        // Limpa chaves obsoletas de versões anteriores do motor offline
@@ -127,7 +183,7 @@ window.mudarAba = function(aba) {
     if (view === 'dirigente') {
       google.script.run
         .withSuccessHandler(function(){ window.invalidarCacheMapa(); doGenerate(); })
-        .withFailureHandler(function(e){ showLoading(false); alert("Erro ao designar: " + e); })
+        .withFailureHandler(function(e){ showLoading(false); window.toast("Erro ao designar: " + (e && e.message ? e.message : e), "error", 6000); })
         .designarQuadras(ids);
     } else {
       doGenerate();
@@ -162,7 +218,7 @@ window.iniciarMapaPoligonos = function() {
     } catch(e) {
       console.error("Falha iniciarMapaPoligonos:", e);
       showLoading(false);
-      alert("Falha ao iniciar o editor: " + (e && e.message ? e.message : e));
+      window.toast("Falha ao iniciar o editor: " + (e && e.message ? e.message : e), "error", 6000);
     }
   };
 
@@ -180,7 +236,7 @@ window.carregarEditorDados = function() {
           if (falhou) return;
           falhou = true;
           showLoading(false);
-          alert("Erro ao carregar editor: " + (e && e.message ? e.message : e));
+          window.toast("Erro ao carregar editor: " + (e && e.message ? e.message : e), "error", 6000);
       }
 
       google.script.run
@@ -371,7 +427,7 @@ window.carregarEditorDados = function() {
        var novoTipo = document.getElementById('editTerrLabelType').value; // Opcional vs Visível
        
        if(!nomeOriginal) {
-           alert("Erro: Nome original perdido. Feche e abra o modal novamente.");
+           window.toast("Nome original perdido. Reabra o modal.", "error", 6000);
            return;
        }
 
@@ -405,12 +461,12 @@ window.carregarEditorDados = function() {
        
        google.script.run
            .withSuccessHandler(function() {
-              alert("Território atualizado com sucesso!");
+              window.toast("Território atualizado!", "success");
               (window.invalidarCacheMapa(), window.carregarEditorDados()); // Recarrega o mapa para mostrar a nova cor/rótulo
           })
           .withFailureHandler(function(e){
               showLoading(false);
-              alert("Erro ao salvar: " + e);
+              window.toast("Erro ao salvar: " + (e && e.message ? e.message : e), "error", 6000);
           })
           .salvarLoteTerritorios(up);
   };
@@ -435,7 +491,7 @@ window.carregarEditorDados = function() {
       
       // Atualiza para mostrar o label draggable
       window.atualizarLabelsTerritorioEditor(); 
-      alert("Clique nas quadras para adicionar/remover. Arraste o nome para mover.");
+      window.toast("Clique nas quadras para adicionar/remover. Arraste o nome para mover.", "info", 5000);
   };
 
   // 4. Salvar Alteração de Quadras (Revisão)
@@ -475,7 +531,7 @@ window.carregarEditorDados = function() {
       showLoading(true, "Salvando território...");
       
       google.script.run.withSuccessHandler(function() {
-          alert("Território atualizado com sucesso!");
+          window.toast("Território atualizado!", "success");
           isEditingTerritory = false;
           
           // Esconde painel de edição e volta botoes
@@ -491,7 +547,7 @@ window.carregarEditorDados = function() {
       modalEditarTerritorio.hide();
       var l = editingTerritoryData.layer;
       l.pm.enable({ allowSelfIntersection: false, snappable: true });
-      alert("Edite a forma e clique no território para salvar.");
+      window.toast("Edite a forma e clique no território para salvar.", "info", 5000);
       l.off('click');
       l.on('click', function(e) {
          if(confirm("Salvar forma?")) {
@@ -515,7 +571,7 @@ window.carregarEditorDados = function() {
              l.pm.disable();
              showLoading(true);
              google.script.run.withSuccessHandler(function() {
-                 alert("Salvo!");
+                 window.toast("Salvo!", "success");
                  (window.invalidarCacheMapa(), window.carregarEditorDados());
              }).salvarLoteTerritorios(up);
          } 
@@ -528,7 +584,7 @@ window.carregarEditorDados = function() {
   window.iniciarFusaoQuadras = function() {
         // Verifica se tem pelo menos 2 selecionadas
         if(selectedQuadras.length < 2) {
-            return alert("Selecione pelo menos 2 quadras para realizar a fusão.");
+            window.toast("Selecione pelo menos 2 quadras para a fusão.", "warn"); return;
         }
 
         try {
@@ -568,7 +624,7 @@ window.carregarEditorDados = function() {
             
             google.script.run
               .withSuccessHandler(function() {
-                  alert("Fusão realizada com sucesso!");
+                  window.toast("Fusão concluída!", "success");
                   window.alternarModoSelecao(false);
                   
                   // FORÇA O RECARREGAMENTO TOTAL DOS DADOS
@@ -576,13 +632,13 @@ window.carregarEditorDados = function() {
               })
               .withFailureHandler(function(e){
                   showLoading(false);
-                  alert("Erro na fusão: " + e);
+                  window.toast("Erro na fusão: " + (e && e.message ? e.message : e), "error", 6000);
               })
               .salvarJuncaoQuadras(payload);
 
         } catch(e) {
             console.error(e);
-            alert("Erro técnico ao tentar unir: " + e);
+            window.toast("Erro na união geométrica: " + (e && e.message ? e.message : e), "error", 6000);
             showLoading(false);
         }
     };
@@ -590,7 +646,7 @@ window.carregarEditorDados = function() {
   window.iniciarDivisaoPorVertices = function() {
       if(!currentEditLayer) return;
       modalEdicao.hide();
-      alert("Clique em DOIS vértices (bolinhas azuis) para dividir a quadra.");
+      window.toast("Clique em DOIS vértices (bolinhas azuis) para dividir.", "info", 5000);
       var latlngs = currentEditLayer.getLatLngs()[0];
       divisionMarkers = []; divisionIndices = [];
       latlngs.forEach(function(ll, idx) {
@@ -621,7 +677,7 @@ window.carregarEditorDados = function() {
           var polyStrA = window.latLngsToString(pointsA); var polyStrB = window.latLngsToString(pointsB);
           
           showLoading(true);
-          google.script.run.withSuccessHandler(() => { alert("Dividido!"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
+          google.script.run.withSuccessHandler(() => { window.toast("Quadra dividida!", "success"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
       } catch(e) { alert(e); window.carregarEditorDados(); }
   };
 
@@ -629,7 +685,7 @@ window.carregarEditorDados = function() {
       modalEdicao.hide();
       if(currentEditLayer) {
           currentEditLayer.pm.enable({ allowSelfIntersection: false, snappable: true });
-          alert("Edite e clique na quadra para salvar.");
+          window.toast("Edite a forma e clique na quadra para salvar.", "info", 5000);
           currentEditLayer.off('click');
           currentEditLayer.on('click', function(e) {
               if(confirm("Salvar forma?")) { currentEditLayer.pm.disable(); window.salvarQuadraAtual(); }
@@ -668,12 +724,12 @@ window.converterGeoJsonParaString = function(geometry) {
 
   // UI Helpers
   window.abrirModalEdicao=function(l){ currentEditLayer=l; document.getElementById('editId').value=l.metaData.id; document.getElementById('editOriginalId').value=l.metaData.id; document.getElementById('editTerritory').value=l.metaData.territory; document.getElementById('editColor').value=l.metaData.color; modalEdicao.show(); };
-  window.salvarQuadraAtual=function(){ var poly = window.latLngsToString(currentEditLayer.getLatLngs()); modalEdicao.hide(); showLoading(true); google.script.run.withSuccessHandler(() => { alert("Salvo"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarEdicaoQuadra({ idOriginal:document.getElementById('editOriginalId').value, idNovo:document.getElementById('editId').value, territory:document.getElementById('editTerritory').value, color:document.getElementById('editColor').value, polyString:poly }); };
+  window.salvarQuadraAtual=function(){ var poly = window.latLngsToString(currentEditLayer.getLatLngs()); modalEdicao.hide(); showLoading(true); google.script.run.withSuccessHandler(() => { window.toast("Salvo!", "success"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarEdicaoQuadra({ idOriginal:document.getElementById('editOriginalId').value, idNovo:document.getElementById('editId').value, territory:document.getElementById('editTerritory').value, color:document.getElementById('editColor').value, polyString:poly }); };
   window.abrirModalSalvarTerritorio=function(){ document.getElementById('lblCountTerritorio').innerText=selectedQuadras.length; modalNovoTerritorio.show(); };
 
   window.confirmarSalvarTerritorio = function() {
       var nome = document.getElementById('newTerritoryName').value; 
-      if(!nome) return alert("Por favor, digite um nome para o território.");
+      if(!nome) window.toast("Digite um nome para o território.", "warn"); return;
       
       modalNovoTerritorio.hide(); 
       showLoading(true, "Criando território...");
@@ -702,7 +758,7 @@ window.converterGeoJsonParaString = function(geometry) {
       }];
       
       google.script.run.withSuccessHandler(function() {
-          alert("Território criado com sucesso!");
+          window.toast("Território criado!", "success");
           window.alternarModoSelecao(false); 
           (window.invalidarCacheMapa(), window.carregarEditorDados());
       }).salvarLoteTerritorios(up);
@@ -837,7 +893,7 @@ window.atualizarBarraSelecaoRegistro = function() {
 // Pode incluir quadras de territórios diferentes (sem restrição).
 // Antes de gerar o link, marca as quadras como Pendente para o dirigente poder concluir.
 window.designarSelecaoRegistro = function() {
-    if (registroSelecionados.size === 0) return alert("Selecione quadras para designar");
+    if (registroSelecionados.size === 0) window.toast("Selecione quadras para designar.", "warn"); return;
 
     var ids = Array.from(registroSelecionados);
 
@@ -878,7 +934,20 @@ window.designarSelecaoRegistro = function() {
 
   window.renderizarLabelsRegistro=function(){ if(!layerGroupRegistroLabels)return; layerGroupRegistroLabels.clearLayers(); var show=document.getElementById('toggleLabelsRegistro').checked; if(show){ dadosTerritoriosCache.forEach(function(t){ if(t.labelType!=='optional'){ var pts=window.stringParaLatLng(t.polyString); if(pts.length<3)return; var pt=L.polygon(pts,{interactive:false,fill:false,stroke:false}); var c=pt.getBounds().getCenter(); if(t.labelPos && t.labelPos.includes(',')){var s=t.labelPos.split(',');c=[parseFloat(s[0]),parseFloat(s[1])]} var badge='<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>'; layerGroupRegistroLabels.addLayer(L.marker(c,{icon:L.divIcon({html:badge}),interactive:false})); } }); } };
   window.toggleLabelsRegistro=function(){window.renderizarLabelsRegistro()};
-  window.iniciarSalvamentoConclusao=function(){ if(registroSelecionados.size===0)return alert("Selecione quadras"); var d=document.getElementById('dataRegistro').value; if(!d)return alert("Data?"); tempConflitoPayload={ids:Array.from(registroSelecionados), data:d, modo:'auto'}; showLoading(true); google.script.run.withSuccessHandler(window.processarRespostaRegistro).salvarConclusaoQuadras(tempConflitoPayload); };
+  window.iniciarSalvamentoConclusao = function() {
+    if (registroSelecionados.size === 0) { window.toast("Selecione quadras para concluir.", "warn"); return; }
+    var d = document.getElementById('dataRegistro').value;
+    if (!d) { window.toast("Escolha a data de conclusão.", "warn"); return; }
+    tempConflitoPayload = { ids: Array.from(registroSelecionados), data: d, modo: 'auto' };
+    showLoading(true, "Salvando...");
+    google.script.run
+      .withSuccessHandler(window.processarRespostaRegistro)
+      .withFailureHandler(function(e){
+        showLoading(false);
+        window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000);
+      })
+      .salvarConclusaoQuadras(tempConflitoPayload);
+  };
   
   window.processarRespostaRegistro = function(r) {
       showLoading(false);
@@ -894,10 +963,12 @@ window.designarSelecaoRegistro = function() {
               }
           });
 
+          var n = idsSalvos.length;
           registroSelecionados.clear();
           window.atualizarBarraSelecaoRegistro();
           window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
           window.invalidarCacheMapa();
+          window.toast(n + " quadra(s) marcada(s) como concluída(s)", "success");
       } else {
           modalConflitoData.show();
       }
@@ -1033,13 +1104,13 @@ window.confirmarAssociacao = function(layerQuadra) {
           
           google.script.run
               .withSuccessHandler(function() {
-                  alert("Vínculo realizado!");
+                  window.toast("Endereços vinculados!", "success");
                   facesSelecionadas.clear();
                   (window.invalidarCacheMapa(), window.carregarEditorDados());
               })
               .withFailureHandler(function(e){
                   showLoading(false);
-                  alert("Erro ao vincular: " + e);
+                  window.toast("Erro ao vincular: " + (e && e.message ? e.message : e), "error", 6000);
               })
               .salvarAssociacaoFaces(payload);
       }

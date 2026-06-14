@@ -303,6 +303,33 @@
   </div>
 
   <div id="app-content" class="container mt-0 px-0 d-none">
+    <div class="px-2 py-2 bg-white shadow-sm sticky-top" style="top:0; z-index:500; border-bottom:1px solid #e5e7eb">
+      <div class="input-group input-group-sm mb-2">
+        <span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+        <input type="text" class="form-control border-start-0" id="inputBuscaEndereco"
+               placeholder="Buscar rua, número, prédio..."
+               oninput="aplicarFiltros()">
+        <button class="btn btn-outline-secondary" type="button" onclick="limparBusca()" title="Limpar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="filtroVisita" id="filtroTodos" value="todos" checked onchange="aplicarFiltros()">
+          <label class="btn btn-outline-secondary" for="filtroTodos">Todos</label>
+
+          <input type="radio" class="btn-check" name="filtroVisita" id="filtroPendentes" value="pendentes" onchange="aplicarFiltros()">
+          <label class="btn btn-outline-primary" for="filtroPendentes">Pendentes</label>
+
+          <input type="radio" class="btn-check" name="filtroVisita" id="filtroFeitos" value="feitos" onchange="aplicarFiltros()">
+          <label class="btn btn-outline-success" for="filtroFeitos">Feitos</label>
+        </div>
+        <div class="ms-auto small text-muted">
+          <i class="fa-solid fa-circle-check text-success"></i>
+          <span id="lblProgresso">0/0</span>
+        </div>
+      </div>
+    </div>
     <div id="lista-territorio"></div>
   </div>
 
@@ -634,6 +661,7 @@ function renderizarLista() {
         });
 
         if(isReorder) ativarSortable();
+        if (typeof aplicarFiltros === 'function') aplicarFiltros();
     }
 
     function agruparItens(itens) {
@@ -891,6 +919,7 @@ function toggleVisita(row, el) {
             // MANDA O SERVIDOR SALVAR A DATA (true)
             google.script.run.gerenciarVisitaEndereco(row, true);
         }
+        if (typeof aplicarFiltros === 'function') aplicarFiltros();
     }
 
     function mudarStatusQuadra(qId, status) {
@@ -904,6 +933,66 @@ function toggleVisita(row, el) {
             // Recarrega para atualizar dados se necessário (ex: data de conclusão)
             if(status === 'Concluído') carregarDados(); 
         }).definirStatusQuadra(qId, status);
+    }
+
+    // ===== BUSCA + FILTROS =====
+    function aplicarFiltros() {
+      var q = (document.getElementById('inputBuscaEndereco').value || '').toLowerCase().trim();
+      var filtroVisita = (document.querySelector('input[name="filtroVisita"]:checked') || {}).value || 'todos';
+
+      var totalItens = 0;
+      var totalFeitos = 0;
+
+      document.querySelectorAll('.address-item').forEach(function(el) {
+        var row = el.getAttribute('data-row');
+        var obj = null;
+        try { obj = JSON.parse(el.getAttribute('data-obj')); } catch(e) { obj = {}; }
+
+        var texto = (
+          (obj.logradouro || '') + ' ' +
+          (obj.numero || '') + ' ' +
+          (obj.nome || '') + ' ' +
+          (obj.complemento || '') + ' ' +
+          (obj.tipo || '') + ' ' +
+          (obj.nota || '')
+        ).toLowerCase();
+
+        var bateBusca = !q || texto.indexOf(q) > -1;
+
+        var feito = el.querySelector('.check-visita.checked') !== null;
+        var bateVisita = (filtroVisita === 'todos') ||
+                         (filtroVisita === 'feitos' && feito) ||
+                         (filtroVisita === 'pendentes' && !feito);
+
+        var visivel = bateBusca && bateVisita;
+        el.style.display = visivel ? '' : 'none';
+
+        totalItens++;
+        if (feito) totalFeitos++;
+      });
+
+      // Esconde grupos sem itens visíveis
+      document.querySelectorAll('.group-body').forEach(function(gb) {
+        var visiveis = Array.from(gb.querySelectorAll('.address-item')).filter(function(it){ return it.style.display !== 'none'; }).length;
+        var grpHeader = gb.previousElementSibling;
+        if (grpHeader) grpHeader.style.display = visiveis > 0 ? '' : 'none';
+        gb.style.display = visiveis > 0 ? '' : 'none';
+      });
+
+      // Esconde quadras sem nada visível
+      document.querySelectorAll('.quadra-card').forEach(function(qc) {
+        var visiveis = Array.from(qc.querySelectorAll('.address-item')).filter(function(it){ return it.style.display !== 'none'; }).length;
+        qc.style.display = visiveis > 0 ? '' : 'none';
+      });
+
+      // Atualiza progresso global
+      var lbl = document.getElementById('lblProgresso');
+      if (lbl) lbl.innerText = totalFeitos + '/' + totalItens;
+    }
+
+    function limparBusca() {
+      document.getElementById('inputBuscaEndereco').value = '';
+      aplicarFiltros();
     }
 
     function toggleDisplay(id) { document.getElementById(id).classList.toggle('d-none'); }
