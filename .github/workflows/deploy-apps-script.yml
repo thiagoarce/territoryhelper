@@ -1,0 +1,56 @@
+name: Deploy Apps Script
+
+# Toda vez que algum arquivo do Apps Script muda na main, faz `clasp push`
+# para o projeto real. Setup uma vez (ver docs/clasp-setup.md) e nunca mais
+# precisa abrir a extensão para sincronizar.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.gs'
+      - '*.html'
+      - 'appsscript.json'
+      - '.clasp.json'
+      - '.claspignore'
+
+  # Permite disparar manualmente pelo GitHub UI
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: clasp-deploy
+      cancel-in-progress: false  # nunca cancela um push em andamento
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar clasp
+        run: npm install -g @google/clasp@2.4.2
+
+      - name: Configurar credenciais do clasp
+        env:
+          CLASP_CREDENTIALS: ${{ secrets.CLASP_CREDENTIALS }}
+        run: |
+          if [ -z "$CLASP_CREDENTIALS" ]; then
+            echo "❌ Secret CLASP_CREDENTIALS não configurada. Veja docs/clasp-setup.md"
+            exit 1
+          fi
+          echo "$CLASP_CREDENTIALS" > ~/.clasprc.json
+          chmod 600 ~/.clasprc.json
+
+      - name: Verificar autenticação
+        run: clasp login --status || (echo "❌ Token expirado — rode 'clasp login' local e atualize o secret" && exit 1)
+
+      - name: Push para Apps Script
+        run: clasp push --force
+
+      - name: Confirmar
+        run: |
+          echo "✅ Deploy concluído em $(date -u)"
+          clasp list-versions | head -5 || true

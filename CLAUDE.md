@@ -52,10 +52,18 @@ node tests/run.js
 Sintaxe de TODOS os arquivos `.gs` e `<script>` em `.html` é verificada.
 Refatorações que quebram sintaxe falham aqui ANTES de chegar no Apps Script.
 
-## Branch
+## Branch / Deploy
 
-Branch principal: `main`. Desenvolva em branches e merge para `main`
-quando estiver com testes passando.
+- `main` — branch principal de dev. Contém TUDO (testes, CI, docs, clasp).
+- `apps-script` — espelho automático da `main` SÓ com arquivos do Apps
+  Script. Existe para a extensão gas-github poder pullar sem engasgar
+  com pastas estranhas. Atualizada pelo workflow `sync-apps-script.yml`.
+- Deploy automático para o Apps Script real: workflow `deploy-apps-script.yml`
+  usa o `clasp` com refresh token guardado em `secrets.CLASP_CREDENTIALS`.
+  Setup descrito em `docs/clasp-setup.md`.
+
+Desenvolva em feature branches e merge para `main` quando estiver com
+testes passando.
 
 ## Limitações
 

@@ -27,7 +27,7 @@ for padrao in "${ARQUIVOS[@]}"; do
 done
 
 # Garante que NÃO existem coisas que possam quebrar a extensão
-rm -rf tests .github CLAUDE.md scripts 2>/dev/null || true
+rm -rf tests .github CLAUDE.md scripts docs .clasp.json .claspignore 2>/dev/null || true
 
 if git diff --quiet && git diff --staged --quiet; then
   echo ">> Sem mudanças. apps-script já está em sincronia com main."

@@ -1,0 +1,13 @@
+{
+  "scriptId": "COLE_SEU_SCRIPT_ID_AQUI",
+  "rootDir": "./",
+  "fileExtension": "gs",
+  "filePushOrder": [
+    "appsscript.json",
+    "Constants.gs",
+    "Utils.gs",
+    "Code.gs",
+    "ObterRuas.gs",
+    "ObterQuadrasTurf.gs"
+  ]
+}
