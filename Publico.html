@@ -3,7 +3,10 @@
 
 <head>
   <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0d6efd">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Território">
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -333,6 +336,10 @@
     <div id="lista-territorio"></div>
   </div>
 
+  <div id="indicadorOffline" class="d-none position-fixed" style="bottom:80px; left:50%; transform:translateX(-50%); background:#1a1a1a; color:white; padding:8px 16px; border-radius:20px; font-size:0.85rem; z-index:2000; box-shadow:0 4px 12px rgba(0,0,0,0.3)">
+    <i class="fa-solid fa-wifi" style="opacity:0.5"></i> Sem conexão — usando dados salvos
+  </div>
+
   <button class="btn-float-reorder" onclick="toggleReorder()" id="btnReorder"><i class="fa-solid fa-sort"></i></button>
   <button class="btn-float-add" onclick="iniciarAdicaoPeloMapa()"><i class="fa-solid fa-plus"></i></button>
 
@@ -442,82 +449,105 @@
     window.onload = function() {
        modalEdicao = new bootstrap.Modal(document.getElementById('modalEdicao'));
        carregarDados();
+
+       // Indicador de conexão
+       var atualizarOnline = function() {
+         var el = document.getElementById('indicadorOffline');
+         if (!el) return;
+         if (navigator.onLine) el.classList.add('d-none');
+         else el.classList.remove('d-none');
+       };
+       window.addEventListener('online', atualizarOnline);
+       window.addEventListener('offline', atualizarOnline);
+       atualizarOnline();
     };
 
     function carregarDados() {
         google.script.url.getLocation(function(location) {
              var ids = location.parameter.ids;
-             if(!ids) { 
-                 // ids = "Q-3"; // Debug local
-                 alert("Link inválido (sem IDs)."); return; 
+             if(!ids) { alert("Link inválido (sem IDs)."); return; }
+
+             var cacheKey = 'publico_dados_' + ids;
+             var cached = null;
+             try { cached = localStorage.getItem(cacheKey); } catch(e) {}
+
+             // Stale-while-revalidate: mostra o cache primeiro (se houver) e
+             // busca dados frescos em background.
+             if (cached) {
+               try {
+                 dadosGerais = JSON.parse(cached);
+                 mostrarApp();
+               } catch(e) {}
              }
 
              google.script.run
                 .withSuccessHandler(function(data) {
-                    if(!data || data.length === 0) return alert("Nenhum dado encontrado.");
+                    if(!data || data.length === 0) {
+                      if (!cached) alert("Nenhum dado encontrado.");
+                      return;
+                    }
+                    var novoStr = JSON.stringify(data);
+                    if (novoStr === cached) return; // sem mudança
+                    try { localStorage.setItem(cacheKey, novoStr); } catch(e) {}
                     dadosGerais = data;
-                    
-                    document.getElementById('loader').classList.add('d-none');
-                    document.getElementById('mapa-container').classList.remove('d-none');
-                    document.getElementById('app-content').classList.remove('d-none');
-                    
-                    iniciarMapa();
-                    renderizarLista();
+                    mostrarApp();
+                })
+                .withFailureHandler(function(e) {
+                    if (!cached) {
+                      document.getElementById('loader').innerHTML =
+                        '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
+                    }
                 })
                 .getDadosPublicos(ids);
         });
     }
 
-    // ================= MAPA =================
+    function mostrarApp() {
+      document.getElementById('loader').classList.add('d-none');
+      document.getElementById('mapa-container').classList.remove('d-none');
+      document.getElementById('app-content').classList.remove('d-none');
+      iniciarMapa();
+      renderizarLista();
+    }
+
     function iniciarMapa() {
-        if(map) return;
+        if (map) { renderizarMapa(); return; }
         map = L.map('mapa-topo').setView([-7.115, -34.863], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        
         layerQuadra = L.featureGroup().addTo(map);
         layerPontos = L.featureGroup().addTo(map);
+        map.on('click', function(e) { if (isPickingLocation) concluirAdicaoPeloMapa(e.latlng.lat, e.latlng.lng); });
+        renderizarMapa();
+    }
+
+    function renderizarMapa() {
+        layerQuadra.clearLayers();
+        layerPontos.clearLayers();
 
         dadosGerais.forEach(function(q) {
-            // Polígono com Rótulo
-            if(q.polyString) {
-                var pts = q.polyString.split('|').map(p => {
+            if (q.polyString) {
+                var pts = q.polyString.split('|').map(function(p) {
                     var c = p.trim().split(',');
                     return [parseFloat(c[0]), parseFloat(c[1])];
                 });
-                
-                var poly = L.polygon(pts, {color: '#666', weight: 1, fillOpacity: 0.05}).addTo(layerQuadra);
-                
-                // NOVO: Adiciona o tooltip com o ID da quadra
-                poly.bindTooltip(q.id, {
-                    permanent: true, 
-                    direction: "center", 
-                    className: "label-quadra"
-                });
+                L.polygon(pts, {color: '#666', weight: 1, fillOpacity: 0.05})
+                  .bindTooltip(q.id, { permanent: true, direction: "center", className: "label-quadra" })
+                  .addTo(layerQuadra);
             }
-            
-            // Pontos dos endereços
+
             q.itens.forEach(function(item) {
-                if(item.lat && item.lng) {
+                if (item.lat && item.lng) {
                     var vis = getVisualPorTipo(item.tipo);
                     var corFill = item.naoVisitar ? '#dc3545' : vis.color;
-                    
-                    var m = L.circleMarker([item.lat, item.lng], {
+                    L.circleMarker([item.lat, item.lng], {
                         radius: 6, color: 'white', weight: 1, fillColor: corFill, fillOpacity: 0.9
-                    });
-                    
-                    var popupHtml = `<b>${item.logradouro}, ${item.numero}</b><br>${item.nome || item.tipo}`;
-                    m.bindPopup(popupHtml);
-                    m.addTo(layerPontos);
+                    }).bindPopup(`<b>${item.logradouro}, ${item.numero}</b><br>${item.nome || item.tipo}`).addTo(layerPontos);
                 }
             });
         });
 
-        if(layerPontos.getLayers().length > 0) map.fitBounds(layerPontos.getBounds());
-        
-        map.on('click', function(e) {
-            if(isPickingLocation) concluirAdicaoPeloMapa(e.latlng.lat, e.latlng.lng);
-        });
-    } 
+        if (layerPontos.getLayers().length > 0) map.fitBounds(layerPontos.getBounds());
+    }
 
     // ================= ADICIONAR PELO MAPA =================
     function iniciarAdicaoPeloMapa() {

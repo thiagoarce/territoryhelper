@@ -87,6 +87,33 @@
   };
 
   // -----------------------------------------------------------------
+  // TEMA ESCURO — persiste preferência no localStorage, sincroniza com
+  // prefers-color-scheme do sistema na primeira visita.
+  // -----------------------------------------------------------------
+  window.alternarTema = function() {
+    var atual = document.body.classList.contains('tema-escuro') ? 'escuro' : 'claro';
+    var novo = atual === 'escuro' ? 'claro' : 'escuro';
+    document.body.classList.toggle('tema-escuro', novo === 'escuro');
+    try { localStorage.setItem('th_tema', novo); } catch(e) {}
+    var icone = document.getElementById('iconeTema');
+    if (icone) icone.className = novo === 'escuro' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+  };
+
+  // Aplica tema salvo (ou prefers-color-scheme) o quanto antes para evitar flash
+  (function() {
+    try {
+      var salvo = localStorage.getItem('th_tema');
+      var prefereEscuro = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var escuro = salvo ? (salvo === 'escuro') : prefereEscuro;
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.classList.toggle('tema-escuro', escuro);
+        var icone = document.getElementById('iconeTema');
+        if (icone) icone.className = escuro ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+      });
+    } catch(e) {}
+  })();
+
+  // -----------------------------------------------------------------
   // runApp — wrap em google.script.run com toast/loading padrão.
   //   runApp({ loading:"Salvando...", sucesso:"Salvo!", onSuccess: fn })
   //     .funcaoApps Script(args);

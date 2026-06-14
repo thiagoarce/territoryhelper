@@ -9,7 +9,7 @@
   var mapCampanha, lgCampanhaQuadras;
   var configCampanhaGlobal = { nome: "", data: "" };
 
-  var facesSelecionadas = new Map(); // Mudado de Set para Map
+  var facesSelecionadas = new Map();
   var registroSelecionados = new Set();
   var shareSelecionados = new Set(); 
   var selectedQuadras = []; 
@@ -59,7 +59,6 @@
 
   window.showLoading = function(show, txt) { var l=document.getElementById('loading'); if(l) l.style.display=show?'flex':'none'; if(txt) document.getElementById('loadingText').innerText=txt; };
 
-  // ... (Funções de Abas e Mapa Geral mantidas iguais) ...
 window.mudarAba = function(aba) {
     document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active')); 
     document.querySelectorAll('.screen').forEach(e => e.classList.remove('active'));
@@ -346,7 +345,7 @@ window.carregarEditorDados = function() {
              weight: 3, 
              fillOpacity: 0.15, 
              dashArray: '10,5', 
-             interactive: true // AGORA SEMPRE INTERATIVO
+             interactive: true
          });
          pt.metaData = t;
          
@@ -538,7 +537,6 @@ window.carregarEditorDados = function() {
                   u = turf.union(u, feats[i]);
               }
               
-              // USA A NOVA FUNÇÃO DE CONVERSÃO CORRIGIDA
               poly = window.converterGeoJsonParaString(u.geometry);
               
           } catch(e) { console.log("Erro na união geométrica", e); }
@@ -631,7 +629,6 @@ window.carregarEditorDados = function() {
             
             if(!novoId) return; // Cancelado
 
-            // 4. Converte usando a FUNÇÃO SEGURA (Isso garante que não inverta errado)
             var polyString = window.converterGeoJsonParaString(uniao.geometry);
 
             // 5. Herda dados da primeira quadra (Território/Cor)
@@ -798,7 +795,6 @@ window.converterGeoJsonParaString = function(geometry) {
               u = turf.union(u, feats[i]);
           }
           
-          // USA A NOVA FUNÇÃO DE CONVERSÃO CORRIGIDA
           poly = window.converterGeoJsonParaString(u.geometry);
           
       } catch(e){ console.error(e); }
@@ -861,7 +857,6 @@ window.iniciarMapaRegistro = function(qs, ops) {
           });
           
           if (!isOpt) {
-              // --- TOOLTIP ---
               var dataFormatada = q.dataConclusao ? window.formatarDataBR(q.dataConclusao) : "Nunca feita";
               var territorioNome = q.territory || "Sem Território";
               
@@ -875,7 +870,6 @@ window.iniciarMapaRegistro = function(qs, ops) {
                   sticky: true, direction: 'top', opacity: 0.95 
               });
 
-              // --- CLIQUE (SELEÇÃO) ---
               poly.on('click', function() {
                   var id = q.id;
                   if (registroSelecionados.has(id)) {
@@ -903,7 +897,6 @@ window.iniciarMapaRegistro = function(qs, ops) {
                   if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
               });
               
-              // --- LÓGICA DOS ÍCONES (concluída por idade ou pendente) ---
               var iconCls = "status-alert";
               var iconHtml = '<i class="fa-solid fa-triangle-exclamation"></i>';
 
@@ -1150,7 +1143,6 @@ window.criarMarkerFace = function(f, corBase) {
           offset: [0, -5]
       });
       
-      // LOGICA DE CLIQUE (ACUMULATIVA E SILENCIOSA)
       m.on('click', function(e) {
           L.DomEvent.stopPropagation(e); // Não deixa o clique passar para o mapa
           
@@ -1232,7 +1224,7 @@ window.confirmarAssociacao = function(layerQuadra) {
   };
 
   // =================================================================
-  // LÓGICA DA CAMPANHA E GPS INTELIGENTE
+  // CAMPANHA
   // =================================================================
 
   window.focarMapaInteligente = function(mapa, layerPoligonos) {
@@ -1364,7 +1356,6 @@ window.confirmarAssociacao = function(layerQuadra) {
   };
 
   // =================================================================
-  // RECONSTRUINDO OS MAPAS PARA USAR O MOTOR OFFLINE
   // =================================================================
 
   window.carregarMapaGeral = function() {

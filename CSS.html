@@ -5,7 +5,35 @@
     margin: 0;
     overflow: hidden;
     background-color: #f8f9fa;
+    transition: background-color .2s ease;
   }
+
+  /* ===== TEMA ESCURO ===== */
+  body.tema-escuro { background-color: #1a1d20; color: #e8eef5; }
+  body.tema-escuro .bg-white { background-color: #2a2f33 !important; color: #e8eef5; }
+  body.tema-escuro .text-muted { color: #95a4b3 !important; }
+  body.tema-escuro .text-dark { color: #e8eef5 !important; }
+  body.tema-escuro .card { background-color: #2a2f33; color: #e8eef5; border-color: #3a4047; }
+  body.tema-escuro .bottom-nav { background-color: #2a2f33; border-top-color: #3a4047; }
+  body.tema-escuro .nav-item { color: #95a4b3; }
+  body.tema-escuro .nav-item.active { color: #5ba4ff; }
+  body.tema-escuro .form-control,
+  body.tema-escuro .form-select { background-color: #1a1d20; color: #e8eef5; border-color: #3a4047; }
+  body.tema-escuro .form-control:focus,
+  body.tema-escuro .form-select:focus { background-color: #1a1d20; color: #e8eef5; }
+  body.tema-escuro .form-control::placeholder { color: #6c7884; }
+  body.tema-escuro .input-group-text { background-color: #1a1d20; color: #e8eef5; border-color: #3a4047; }
+  body.tema-escuro .modal-content { background-color: #2a2f33; color: #e8eef5; }
+  body.tema-escuro .alert-info { background-color: #1f3a4d; color: #b8d4e8; border-color: #2c5870; }
+  body.tema-escuro .alert-success { background-color: #1e3d2b; color: #b8e5c5; border-color: #2d6b41; }
+  body.tema-escuro .border, body.tema-escuro .border-secondary { border-color: #3a4047 !important; }
+  body.tema-escuro .th-toast { background: #2a2f33; color: #e8eef5; }
+  body.tema-escuro .territory-badge { background: rgba(40,45,50,0.95); color: #e8eef5; border-color: #5ba4ff; }
+  body.tema-escuro .dashboard-bars .bar { background: linear-gradient(180deg, #16a34a, #0d6e36); }
+  body.tema-escuro .dashboard-ranking .rank-pos { background: #3a4047; color: #cbd5e1; }
+  body.tema-escuro .dashboard-ranking .rank-bar-wrap { background: #1a1d20; }
+  body.tema-escuro .list-group-item { background: #2a2f33; color: #e8eef5; border-color: #3a4047; }
+  body.tema-escuro .loading-overlay { background: rgba(20,22,25,0.92); }
 
   .loading-overlay {
     position: fixed;
