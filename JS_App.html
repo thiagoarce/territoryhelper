@@ -93,32 +93,48 @@ window.mudarAba = function(aba) {
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
   window._abrirModalLinkPublico = function(view, labelHeader) {
     if(shareSelecionados.size === 0) return;
-    var terrUnico = null; var erro = false;
     var ids = Array.from(shareSelecionados);
+
+    // Coleta territórios para mostrar como label (apenas informativo)
+    var terrs = new Set();
     lgGeralQuadras.eachLayer(function(l) {
-      if(shareSelecionados.has(l.metaData.id)) {
-        if(terrUnico === null) terrUnico = l.metaData.territory;
-        else if(terrUnico !== l.metaData.territory) erro = true;
+      if(shareSelecionados.has(l.metaData.id) && l.metaData.territory) {
+        terrs.add(l.metaData.territory);
       }
     });
-    if(erro || !terrUnico) return alert("Erro: Selecione quadras de APENAS UM território.");
+    var labelTerritorio = (terrs.size === 1)
+      ? Array.from(terrs)[0]
+      : ids.length + " quadra(s)" + (terrs.size > 1 ? " (" + terrs.size + " territórios)" : "");
+
+    var doGenerate = function() {
+      google.script.run
+        .withSuccessHandler(function(url) {
+          showLoading(false);
+          var baseUrl = url || window.location.href.split('?')[0];
+          var finalUrl = baseUrl + "?v=" + view + "&ids=" + ids.join(",");
+          document.getElementById('inputLinkPublico').value = finalUrl;
+          document.getElementById('lblTerritorioShare').innerText = labelTerritorio;
+          var titulo = document.querySelector('#modalLinkPublico .modal-title');
+          if (titulo) titulo.innerText = labelHeader;
+          modalLinkPublico.show();
+        })
+        .withFailureHandler(function(e){ showLoading(false); alert(e); })
+        .getScriptUrl();
+    };
+
     showLoading(true);
-    google.script.run
-      .withSuccessHandler(function(url) {
-        showLoading(false);
-        var baseUrl = url || window.location.href.split('?')[0];
-        var finalUrl = baseUrl + "?v=" + view + "&ids=" + ids.join(",");
-        document.getElementById('inputLinkPublico').value = finalUrl;
-        document.getElementById('lblTerritorioShare').innerText = terrUnico;
-        var titulo = document.querySelector('#modalLinkPublico .modal-title');
-        if (titulo) titulo.innerText = labelHeader;
-        modalLinkPublico.show();
-      })
-      .withFailureHandler(function(e){ showLoading(false); alert(e); })
-      .getScriptUrl();
+    // Se é designação (dirigente), marca as quadras como Pendente antes
+    if (view === 'dirigente') {
+      google.script.run
+        .withSuccessHandler(function(){ window.invalidarCacheMapa(); doGenerate(); })
+        .withFailureHandler(function(e){ showLoading(false); alert("Erro ao designar: " + e); })
+        .designarQuadras(ids);
+    } else {
+      doGenerate();
+    }
   };
   window.gerarLinkPublico = function() { window._abrirModalLinkPublico('publico', 'Link para Publicador'); };
-  window.gerarLinkDirigente = function() { window._abrirModalLinkPublico('dirigente', 'Link para Dirigente'); };
+  window.gerarLinkDirigente = function() { window._abrirModalLinkPublico('dirigente', 'Link para Dirigente — Designar'); };
   window.toggleCamadasGeral = function() { var q = document.getElementById('checkGeralQuadras').checked; var t = document.getElementById('checkGeralTerritorios').checked; if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras); if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); } };
 
 
@@ -126,21 +142,28 @@ window.mudarAba = function(aba) {
   // EDITOR
   // =================================================================
 window.iniciarMapaPoligonos = function() {
-    if(!mapPoligonos) {
-      mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
-      mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
+    try {
+      if(!mapPoligonos) {
+        mapPoligonos = L.map('mapPoligonos').setView([-7.115, -34.863], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapPoligonos);
+        if (mapPoligonos.pm && mapPoligonos.pm.setGlobalOptions) {
+          mapPoligonos.pm.setGlobalOptions({ allowSelfIntersection: false });
+        }
 
-      layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
-      layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
+        layerGroupQuadras = L.featureGroup().addTo(mapPoligonos);
+        layerGroupTerritorios = L.featureGroup().addTo(mapPoligonos);
+        layerGroupFacesRes = L.featureGroup().addTo(mapPoligonos);
+        layerGroupFacesCom = L.featureGroup().addTo(mapPoligonos);
 
-      layerGroupFacesRes = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 40 }).addTo(mapPoligonos);
-      layerGroupFacesCom = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 40 }).addTo(mapPoligonos);
-
-      // div pode ter sido criado oculto — precisa recalcular tamanho
-      setTimeout(function(){ if(mapPoligonos) mapPoligonos.invalidateSize(); }, 80);
+        // div pode ter sido criado oculto — recalcula tamanho
+        setTimeout(function(){ if(mapPoligonos) mapPoligonos.invalidateSize(); }, 80);
+      }
+      window.carregarEditorDados();
+    } catch(e) {
+      console.error("Falha iniciarMapaPoligonos:", e);
+      showLoading(false);
+      alert("Falha ao iniciar o editor: " + (e && e.message ? e.message : e));
     }
-    window.carregarEditorDados();
   };
 
 window.carregarEditorDados = function() {
@@ -810,37 +833,47 @@ window.atualizarBarraSelecaoRegistro = function() {
     }
 };
 
-// Designar = gera link de dirigente para as quadras selecionadas no Registro
+// Designar = gera link de dirigente para as quadras selecionadas no Registro.
+// Pode incluir quadras de territórios diferentes (sem restrição).
+// Antes de gerar o link, marca as quadras como Pendente para o dirigente poder concluir.
 window.designarSelecaoRegistro = function() {
     if (registroSelecionados.size === 0) return alert("Selecione quadras para designar");
 
     var ids = Array.from(registroSelecionados);
-    var terrUnico = null;
-    var erro = false;
 
-    // Procura territory entre as quadras selecionadas a partir do cache
-    cacheQuadrasRegistro.forEach(function(q) {
-        if (registroSelecionados.has(q.id)) {
-            if (terrUnico === null) terrUnico = q.territory;
-            else if (terrUnico !== q.territory) erro = true;
-        }
-    });
-    if (erro) return alert("Selecione quadras de APENAS UM território para designar.");
-
-    showLoading(true, "Gerando link...");
+    showLoading(true, "Designando...");
     google.script.run
-      .withSuccessHandler(function(url) {
-          showLoading(false);
-          var baseUrl = url || window.location.href.split('?')[0];
-          var finalUrl = baseUrl + "?v=dirigente&ids=" + ids.join(",");
-          document.getElementById('inputLinkPublico').value = finalUrl;
-          document.getElementById('lblTerritorioShare').innerText = terrUnico || "—";
-          var titulo = document.querySelector('#modalLinkPublico .modal-title');
-          if (titulo) titulo.innerText = "Designar — Link para Dirigente";
-          modalLinkPublico.show();
+      .withSuccessHandler(function() {
+        // Atualiza cache local para refletir Pendente imediatamente
+        cacheQuadrasRegistro.forEach(function(q) {
+          if (ids.indexOf(q.id) > -1) {
+            q.status = "Pendente";
+          }
+        });
+        window.invalidarCacheMapa();
+
+        google.script.run
+          .withSuccessHandler(function(url) {
+              showLoading(false);
+              var baseUrl = url || window.location.href.split('?')[0];
+              var finalUrl = baseUrl + "?v=dirigente&ids=" + ids.join(",");
+              document.getElementById('inputLinkPublico').value = finalUrl;
+              document.getElementById('lblTerritorioShare').innerText = ids.length + " quadra(s)";
+              var titulo = document.querySelector('#modalLinkPublico .modal-title');
+              if (titulo) titulo.innerText = "Designar — Link para Dirigente";
+              modalLinkPublico.show();
+              registroSelecionados.clear();
+              window.atualizarBarraSelecaoRegistro();
+              window.iniciarMapaRegistro(cacheQuadrasRegistro, cacheOpsRegistro);
+          })
+          .withFailureHandler(function(e){ showLoading(false); alert(e); })
+          .getScriptUrl();
       })
-      .withFailureHandler(function(e){ showLoading(false); alert(e); })
-      .getScriptUrl();
+      .withFailureHandler(function(e){
+        showLoading(false);
+        alert("Erro ao designar: " + (e && e.message ? e.message : e));
+      })
+      .designarQuadras(ids);
 };
 
   window.renderizarLabelsRegistro=function(){ if(!layerGroupRegistroLabels)return; layerGroupRegistroLabels.clearLayers(); var show=document.getElementById('toggleLabelsRegistro').checked; if(show){ dadosTerritoriosCache.forEach(function(t){ if(t.labelType!=='optional'){ var pts=window.stringParaLatLng(t.polyString); if(pts.length<3)return; var pt=L.polygon(pts,{interactive:false,fill:false,stroke:false}); var c=pt.getBounds().getCenter(); if(t.labelPos && t.labelPos.includes(',')){var s=t.labelPos.split(',');c=[parseFloat(s[0]),parseFloat(s[1])]} var badge='<div class="territory-badge" style="border-color:'+t.color+'">'+t.name+'</div>'; layerGroupRegistroLabels.addLayer(L.marker(c,{icon:L.divIcon({html:badge}),interactive:false})); } }); } };

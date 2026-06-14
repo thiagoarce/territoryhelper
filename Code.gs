@@ -889,14 +889,39 @@ function getDadosDirigente(idsString) {
 // Função restrita usada pelo dirigente — só aceita IDs que foram passados via link
 function dirigenteMarcarStatus(ids, status, data) {
   if (!Array.isArray(ids) || ids.length === 0) return { status: "ERRO", msg: "Sem IDs" };
-  if (status !== "Iniciado" && status !== "Concluído") return { status: "ERRO", msg: "Status inválido" };
+  if (status !== "Concluído" && status !== "Pendente") return { status: "ERRO", msg: "Status inválido" };
 
   if (status === "Concluído") {
     var dataFinal = data || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
     return salvarConclusaoQuadras({ ids: ids, data: dataFinal, modo: 'auto' });
-  } else {
-    return salvarInicioQuadras({ ids: ids, data: new Date().toISOString() });
   }
+
+  // Pendente = reabrir quadra (mantém histórico, mas status volta a "Pendente")
+  return designarQuadras(ids);
+}
+
+// Marca as quadras designadas como Pendente — não apaga histórico de conclusão.
+// Usada pelo servo de território quando designa quadras a um dirigente.
+function designarQuadras(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return { status: "ERRO", msg: "Sem IDs" };
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName("Quadras");
+  var sheetReg = ss.getSheetByName("Registros");
+  if (!sheetReg) { sheetReg = ss.insertSheet("Registros"); sheetReg.appendRow(["ID", "Data", "Tipo", "Timestamp"]); }
+
+  var data = sheetQ.getDataRange().getValues();
+  var hoje = new Date();
+
+  for (var i = 1; i < data.length; i++) {
+    var id = String(data[i][0]);
+    if (ids.indexOf(id) > -1) {
+      sheetQ.getRange(i + 1, 8).setValue("Pendente");  // Col H
+      sheetReg.appendRow([id, hoje, "Designada", new Date()]);
+    }
+  }
+  _invalidar();
+  return { status: "SUCESSO" };
 }
 
 function salvarConfiguracoesCampanha(nome, data) {

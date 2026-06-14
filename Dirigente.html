@@ -108,6 +108,7 @@
     var layerQuadras;
     var quadraEmConfirmacao = null;
     var modalConfirma;
+    var quadrasSelecionadas = new Set();
 
     var IDS = "<?= ids ?>";
 
@@ -165,16 +166,37 @@
       }
     }
 
+    // Considera "concluída recente" só quando há data de conclusão < 30 dias.
+    // Passado 1 mês, o dirigente pode marcar como concluída de novo sem precisar reabrir.
     function statusVisual(q) {
       var s = (q.status || '').toLowerCase();
-      if (s.indexOf('conclu') > -1) return { cls:'status-concluido', label:'Concluída' };
-      if (s.indexOf('iniciado') > -1) return { cls:'status-iniciado', label:'Em andamento' };
-      return { cls:'status-pendente', label:'Pendente' };
+      var ultimaConc = parseUltimaDataConc(q.ultimaData);
+      var recente = ultimaConc && (Date.now() - ultimaConc.getTime()) < 30 * 24 * 60 * 60 * 1000;
+
+      if (s.indexOf('conclu') > -1 && recente) return { cls:'status-concluido', label:'Concluída', recente: true };
+      return { cls:'status-pendente', label:'Pendente', recente: false };
+    }
+
+    function parseUltimaDataConc(dataStr) {
+      if (!dataStr || dataStr === 'Nunca') return null;
+      // formato dd/mm/yyyy vindo do backend
+      var p = dataStr.split('/');
+      if (p.length !== 3) return null;
+      var d = new Date(parseInt(p[2], 10), parseInt(p[1], 10) - 1, parseInt(p[0], 10));
+      return isNaN(d.getTime()) ? null : d;
     }
 
     function renderizarLista() {
       var c = document.getElementById('lista');
       var html = '';
+
+      // Cabeçalho com botão "Compartilhar com Publicador" usando a seleção
+      html += '<div class="d-flex justify-content-between align-items-center px-3 py-2 mb-2" style="background:#f1f3f5; border-bottom:1px solid #e5e7eb">' +
+                '<small class="text-muted"><span id="lblQuadrasSelecionadas">0</span> quadra(s) selecionada(s)</small>' +
+                '<button class="btn btn-sm btn-primary" onclick="enviarSelecaoParaPublicador()">' +
+                  '<i class="fa-solid fa-share-nodes me-1"></i>Enviar ao publicador' +
+                '</button>' +
+              '</div>';
 
       dados.forEach(function(q) {
         var sv = statusVisual(q);
@@ -183,26 +205,29 @@
         var ultima = q.ultimaData || 'Nunca';
 
         var btnAcao = '';
-        if (sv.label === 'Concluída') {
+        if (sv.recente) {
+          // Concluída há menos de 30 dias — pode reabrir se quiser refazer
           btnAcao = '<button class="btn btn-outline-secondary" onclick="reabrirQuadra(\'' + q.id + '\')">' +
                       '<i class="fa-solid fa-rotate-left"></i> Reabrir' +
                     '</button>';
         } else {
-          if (sv.label !== 'Em andamento') {
-            btnAcao += '<button class="btn btn-warning text-dark" onclick="iniciarQuadra(\'' + q.id + '\')">' +
-                         '<i class="fa-solid fa-play"></i> Iniciar' +
-                       '</button>';
-          }
-          btnAcao += '<button class="btn btn-success" onclick="abrirModalConcluir(\'' + q.id + '\')">' +
-                       '<i class="fa-solid fa-check"></i> Marcar Concluída' +
-                     '</button>';
+          // Pendente ou já passou 1 mês — pode marcar como concluída
+          btnAcao = '<button class="btn btn-success" onclick="abrirModalConcluir(\'' + q.id + '\')">' +
+                      '<i class="fa-solid fa-check"></i> Marcar Concluída' +
+                    '</button>';
         }
+
+        var checked = quadrasSelecionadas.has(q.id) ? 'checked' : '';
 
         html += '<div class="quadra-card" id="card-' + q.id + '">' +
                   '<div class="quadra-header">' +
-                    '<div>' +
-                      '<div class="quadra-id">Quadra ' + q.id + '</div>' +
-                      '<div class="territorio">' + territorio + '</div>' +
+                    '<div class="d-flex align-items-center gap-2">' +
+                      '<input type="checkbox" class="form-check-input" ' + checked +
+                        ' onchange="window.toggleSelecaoQuadra(\'' + q.id + '\', this.checked)" style="cursor:pointer">' +
+                      '<div>' +
+                        '<div class="quadra-id">Quadra ' + q.id + '</div>' +
+                        '<div class="territorio">' + territorio + '</div>' +
+                      '</div>' +
                     '</div>' +
                     '<span class="status-pill ' + sv.cls + '">' + sv.label + '</span>' +
                   '</div>' +
@@ -217,11 +242,37 @@
       });
 
       c.innerHTML = html;
+      atualizarLabelSelecionadas();
     }
 
-    function iniciarQuadra(id) {
-      if (!confirm('Marcar quadra ' + id + ' como Iniciada?')) return;
-      processarSalvamento([id], 'Iniciado', null);
+    function atualizarLabelSelecionadas() {
+      var el = document.getElementById('lblQuadrasSelecionadas');
+      if (el) el.innerText = quadrasSelecionadas.size;
+    }
+
+    window.toggleSelecaoQuadra = function(id, checked) {
+      if (checked) quadrasSelecionadas.add(id);
+      else quadrasSelecionadas.delete(id);
+      atualizarLabelSelecionadas();
+    };
+
+    function enviarSelecaoParaPublicador() {
+      var idsEnvio = quadrasSelecionadas.size > 0
+        ? Array.from(quadrasSelecionadas)
+        : dados.map(function(q){ return q.id; });
+
+      if (idsEnvio.length === 0) return alert("Sem quadras para enviar.");
+
+      google.script.run
+        .withSuccessHandler(function(url){
+           var baseUrl = url || window.location.href.split('?')[0];
+           var finalUrl = baseUrl + "?v=publico&ids=" + idsEnvio.join(",");
+           document.getElementById('inputLinkPub').value = finalUrl;
+           var m = new bootstrap.Modal(document.getElementById('modalLinkPub'));
+           m.show();
+        })
+        .withFailureHandler(function(e){ alert("Erro: " + (e && e.message ? e.message : e)); })
+        .getScriptUrl();
     }
 
     function abrirModalConcluir(id) {
@@ -239,8 +290,7 @@
 
     function reabrirQuadra(id) {
       if (!confirm('Reabrir quadra ' + id + ' (voltar para Pendente)?')) return;
-      // Reabertura = marca como Iniciado novamente (ou poderia ser status custom)
-      processarSalvamento([id], 'Iniciado', null);
+      processarSalvamento([id], 'Pendente', null);
     }
 
     function processarSalvamento(ids, status, data) {
@@ -259,6 +309,7 @@
             if (ids.indexOf(q.id) > -1) {
               q.status = status;
               if (status === 'Concluído') q.ultimaData = formatarBR(data);
+              else if (status === 'Pendente') q.ultimaData = q.ultimaData; // mantém histórico
             }
           });
           iniciarMapa();
