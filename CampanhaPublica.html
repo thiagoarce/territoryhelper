@@ -135,11 +135,37 @@
       margin: 0 0 10px;
       padding: 0 24px;
     }
-    #listaObjetivosPub { padding: 0 24px 6px; }
-    .tab-obj { background:transparent; border:1px solid rgba(255,255,255,0.25);
-      color:#fff; padding:6px 14px; border-radius:999px; font-size:.85rem;
-      opacity:0.7; cursor:pointer; }
-    .tab-obj.ativo { background:#16a34a; border-color:#16a34a; opacity:1; }
+    #listaObjGerais, #listaObjSemana { padding: 0 24px 6px; }
+
+    /* Countdown no header */
+    .countdown { display:inline-block; margin-top:8px; padding:6px 14px;
+      border-radius:999px; background:rgba(255,255,255,0.10);
+      font-size:.85rem; font-weight:600; letter-spacing:.5px; }
+    .countdown.urgente { background:#dc2626; color:#fff; animation: pulsoCd 1.6s infinite; }
+    @keyframes pulsoCd { 0%,100% { transform:scale(1) } 50% { transform:scale(1.05) } }
+
+    /* Objetivo da SEMANA — card grande, destaque máximo */
+    .obj-semana { background:linear-gradient(135deg,#16a34a 0%, #15803d 100%);
+      color:#fff; padding:18px 20px; border-radius:18px; margin-bottom:12px;
+      box-shadow:0 6px 18px rgba(22,163,74,0.35); }
+    .obj-semana .head { display:flex; align-items:center; gap:10px; margin-bottom:8px; font-weight:700; font-size:1rem; }
+    .obj-semana .head i { font-size:1.2rem; }
+    .obj-semana .titulo { font-size:1.15rem; font-weight:700; line-height:1.3; }
+    .obj-semana .desc { font-size:.92rem; opacity:0.92; margin-top:6px; }
+    .obj-semana .anexos { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; }
+    .obj-semana .anexos a { display:inline-flex; align-items:center; gap:5px;
+      background:rgba(255,255,255,0.18); color:#fff; padding:5px 12px;
+      border-radius:999px; font-size:.85rem; text-decoration:none; }
+    .obj-semana .anexos a:hover { background:rgba(255,255,255,0.30); }
+
+    /* Objetivo GERAL — linha enxuta, ícone + título inline */
+    .obj-geral { display:flex; align-items:center; gap:10px;
+      padding:10px 14px; margin-bottom:6px; border-radius:10px;
+      background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); }
+    .obj-geral i.modalidade { color:#22c55e; font-size:1rem; flex-shrink:0; width:18px; text-align:center; }
+    .obj-geral .titulo { flex-grow:1; font-weight:500; font-size:.95rem; color:#fff; }
+    .obj-geral .links { display:flex; gap:8px; flex-shrink:0; }
+    .obj-geral .links a { color:#93c5fd; font-size:.9rem; text-decoration:none; }
 
     .objetivo-card {
       background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(14,165,233,0.08));
@@ -271,6 +297,7 @@
       <div class="tag">CAMPANHA</div>
       <h1 id="nomeCampanha">—</h1>
       <div class="periodo" id="periodoCampanha">—</div>
+      <div id="countdown" class="countdown d-none"></div>
     </div>
 
     <div class="card-app progresso">
@@ -313,24 +340,16 @@
       <div class="ritmo" id="ritmoSemana"></div>
     </div>
 
-    <div id="secaoObjetivo" class="d-none">
-      <h6 class="secao-titulo">Nosso objetivo</h6>
-      <div class="objetivo-card">
-        <div class="icone"><i class="fa-solid fa-bullseye"></i></div>
-        <div id="textoObjetivo"></div>
-      </div>
+    <!-- Objetivos da semana: protagonistas, cards grandes -->
+    <div id="secaoObjSemana" class="d-none">
+      <h6 class="secao-titulo">Esta semana</h6>
+      <div id="listaObjSemana"></div>
     </div>
 
-    <div id="secaoEstrategia" class="d-none">
-      <div class="estrategia-card">
-        <div class="titulo"><i class="fa-solid fa-route me-2"></i>Como vamos trabalhar</div>
-        <div id="textoEstrategia"></div>
-      </div>
-    </div>
-
-    <div id="secaoObjetivos" class="d-none">
-      <h6 class="secao-titulo">Objetivos</h6>
-      <div id="listaObjetivosPub"></div>
+    <!-- Objetivos gerais: lista enxuta, ícone + título inline -->
+    <div id="secaoObjGerais" class="d-none">
+      <h6 class="secao-titulo">Objetivos gerais</h6>
+      <div id="listaObjGerais"></div>
     </div>
 
     <h6 class="secao-titulo">Mapa do território</h6>
@@ -379,6 +398,24 @@
       if (dados.dataInicio) per.push(formatarBR(dados.dataInicio));
       if (dados.dataFim) per.push('até ' + formatarBR(dados.dataFim));
       document.getElementById('periodoCampanha').innerText = per.join(' ') || '—';
+
+      // Countdown — dias até o fim
+      if (dados.dataFim) {
+        var fim = new Date(dados.dataFim + 'T23:59:59');
+        var diff = Math.ceil((fim - new Date()) / (1000*60*60*24));
+        var cd = document.getElementById('countdown');
+        cd.classList.remove('d-none');
+        if (diff < 0) {
+          cd.innerHTML = '<i class="fa-solid fa-flag-checkered me-1"></i>Campanha encerrada';
+        } else if (diff === 0) {
+          cd.classList.add('urgente');
+          cd.innerHTML = '<i class="fa-solid fa-bolt me-1"></i>Último dia!';
+        } else {
+          if (diff <= 7) cd.classList.add('urgente');
+          cd.innerHTML = '<i class="fa-solid fa-hourglass-half me-1"></i>Faltam ' + diff + ' dia' + (diff === 1 ? '' : 's');
+        }
+        window._diasRestantes = diff;
+      }
 
       // Numbers principais
       document.getElementById('numCompletas').innerText = dados.completas;
@@ -518,71 +555,60 @@
       });
     }
 
+    function modalidadeMeta(key) {
+      var m = MODALIDADES_PUB.find(function(x){ return x.key === key; });
+      return m || { label: 'Outros', icone: 'fa-list' };
+    }
+
     function carregarObjetivosPublicos() {
       google.script.run
         .withSuccessHandler(function(lista){
           if (!lista || lista.length === 0) return;
-          var sec = document.getElementById('secaoObjetivos');
-          var box = document.getElementById('listaObjetivosPub');
-          sec.classList.remove('d-none');
-
-          // Tabs Gerais / Semana
-          var temGeral = lista.some(function(o){ return (o.tipo||'geral') === 'geral'; });
-          var temSemana = lista.some(function(o){ return o.tipo === 'semana'; });
-
-          var html = '';
-          if (temSemana && temGeral) {
-            html += '<div class="tabs-obj" style="display:flex;gap:8px;margin-bottom:12px">' +
-                      '<button class="tab-obj ativo" data-t="geral" onclick="trocarTabObj(this,\'geral\')">Gerais</button>' +
-                      '<button class="tab-obj" data-t="semana" onclick="trocarTabObj(this,\'semana\')">Semana</button>' +
-                    '</div>';
-          }
-          html += '<div id="objetivosConteudo"></div>';
-          box.innerHTML = html;
-
           window._listaObjPub = lista;
-          renderObjPub(temSemana && !temGeral ? 'semana' : 'geral');
+
+          var gerais = lista.filter(function(o){ return (o.tipo||'geral') === 'geral'; });
+          var semana = lista.filter(function(o){ return o.tipo === 'semana'; });
+
+          if (semana.length > 0) {
+            document.getElementById('secaoObjSemana').classList.remove('d-none');
+            document.getElementById('listaObjSemana').innerHTML = renderSemana(semana);
+          }
+          if (gerais.length > 0) {
+            document.getElementById('secaoObjGerais').classList.remove('d-none');
+            document.getElementById('listaObjGerais').innerHTML = renderGerais(gerais);
+          }
         })
         .withFailureHandler(function(){})
         .listarObjetivosCampanhaPublicos();
     }
 
-    window.trocarTabObj = function(el, tipo) {
-      document.querySelectorAll('.tab-obj').forEach(function(b){ b.classList.toggle('ativo', b.dataset.t === tipo); });
-      renderObjPub(tipo);
-    };
+    function renderSemana(lista) {
+      return lista.map(function(o){
+        var meta = modalidadeMeta(o.modalidade);
+        var anexos = '';
+        if (o.link)     anexos += '<a href="' + escapeHtmlPub(o.link)     + '" target="_blank"><i class="fa-solid fa-link"></i> Link</a>';
+        if (o.anexoUrl) anexos += '<a href="' + escapeHtmlPub(o.anexoUrl) + '" target="_blank"><i class="fa-solid fa-paperclip"></i> ' + escapeHtmlPub(o.anexoNome || 'Anexo') + '</a>';
+        return '<div class="obj-semana">' +
+                 '<div class="head"><i class="fa-solid ' + meta.icone + '"></i>' + escapeHtmlPub(meta.label) + '</div>' +
+                 '<div class="titulo">' + escapeHtmlPub(o.titulo) + '</div>' +
+                 (o.descricao ? '<div class="desc">' + escapeHtmlPub(o.descricao) + '</div>' : '') +
+                 (anexos ? '<div class="anexos">' + anexos + '</div>' : '') +
+               '</div>';
+      }).join('');
+    }
 
-    function renderObjPub(tipo) {
-      var lista = (window._listaObjPub || []).filter(function(o){ return (o.tipo||'geral') === tipo; });
-      var box = document.getElementById('objetivosConteudo');
-      if (lista.length === 0) {
-        box.innerHTML = '<div style="opacity:.6;font-size:.9em">Nenhum objetivo publicado.</div>';
-        return;
-      }
-      var grupos = {};
-      lista.forEach(function(o){
-        var k = o.modalidade || 'outros';
-        if (!grupos[k]) grupos[k] = [];
-        grupos[k].push(o);
-      });
-      var html = '';
-      MODALIDADES_PUB.concat([{ key:'outros', label:'Outros', icone:'fa-list' }]).forEach(function(m){
-        if (!grupos[m.key]) return;
-        html += '<div style="margin-bottom:14px">' +
-                  '<div style="font-weight:700;color:#16a34a;margin-bottom:6px"><i class="fa-solid ' + m.icone + '" style="margin-right:6px"></i>' + m.label + '</div>';
-        grupos[m.key].forEach(function(o){
-          var rec = '';
-          if (o.link) rec += '<a href="' + escapeHtmlPub(o.link) + '" target="_blank" style="margin-right:10px;color:#2563eb"><i class="fa-solid fa-link"></i> Link</a>';
-          if (o.anexoUrl) rec += '<a href="' + escapeHtmlPub(o.anexoUrl) + '" target="_blank" style="color:#2563eb"><i class="fa-solid fa-paperclip"></i> ' + escapeHtmlPub(o.anexoNome || 'Anexo') + '</a>';
-          html += '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
-                    '<div style="font-weight:600">' + escapeHtmlPub(o.titulo) + '</div>' +
-                    (o.descricao ? '<div style="color:#6b7280;font-size:.9em;margin-top:2px">' + escapeHtmlPub(o.descricao) + '</div>' : '') +
-                    (rec ? '<div style="margin-top:6px;font-size:.9em">' + rec + '</div>' : '') +
-                  '</div>';
-        });
-        html += '</div>';
-      });
-      box.innerHTML = html;
+    function renderGerais(lista) {
+      return lista.map(function(o){
+        var meta = modalidadeMeta(o.modalidade);
+        var links = '';
+        if (o.link)     links += '<a href="' + escapeHtmlPub(o.link)     + '" target="_blank" title="Link"><i class="fa-solid fa-link"></i></a>';
+        if (o.anexoUrl) links += '<a href="' + escapeHtmlPub(o.anexoUrl) + '" target="_blank" title="' + escapeHtmlPub(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>';
+        return '<div class="obj-geral" title="' + escapeHtmlPub(meta.label) + '">' +
+                 '<i class="fa-solid ' + meta.icone + ' modalidade"></i>' +
+                 '<div class="titulo">' + escapeHtmlPub(o.titulo) + '</div>' +
+                 (links ? '<div class="links">' + links + '</div>' : '') +
+               '</div>';
+      }).join('');
     }
   </script>
 </body>

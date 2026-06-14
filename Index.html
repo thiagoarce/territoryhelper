@@ -300,9 +300,10 @@
 <div id="telaCampanha" class="screen container-fluid py-3" style="background-color: #f8f9fa;">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="fw-bold m-0 text-success"><i class="fa-solid fa-chart-pie me-2"></i>Campanha</h4>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
           <button class="btn btn-sm btn-outline-secondary" onclick="window.abrirEditorCampanha()"><i class="fa-solid fa-sliders"></i> Editar</button>
-          <button class="btn btn-sm btn-outline-primary" onclick="window.gerarLinkCampanhaPublica()"><i class="fa-solid fa-share-nodes"></i> Link público</button>
+          <button class="btn btn-sm btn-outline-primary" onclick="window.gerarLinkCampanhaPublica()"><i class="fa-solid fa-share-nodes"></i> Link</button>
+          <button class="btn btn-sm btn-success" onclick="window.compartilharImagemCampanha()"><i class="fa-brands fa-whatsapp"></i> Compartilhar</button>
         </div>
     </div>
 
@@ -451,24 +452,50 @@
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label small fw-bold">Objetivo / mensagem</label>
-            <textarea class="form-control" id="campanhaInputObjetivo" rows="3" placeholder="Ex: Cobrir todo o território no período da campanha, com foco em cartas e visitas..."></textarea>
-          </div>
-          <div class="mb-3">
             <label class="form-label small fw-bold">Meta semanal (quadras por semana)</label>
             <input type="number" class="form-control" id="campanhaInputMetaSemanal" min="0" placeholder="Ex: 8">
             <div class="form-text">Quantas quadras queremos fechar por semana?</div>
           </div>
-          <div class="mb-3">
-            <label class="form-label small fw-bold">Estratégia / como vamos trabalhar</label>
-            <textarea class="form-control" id="campanhaInputEstrategia" rows="3" placeholder="Ex: Sextas e sábados de manhã com cartas, terças à noite em grupos de 4..."></textarea>
+          <div class="form-text small text-muted">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            Os campos "Objetivo" e "Estratégia" agora vivem na seção <b>Objetivos</b> da campanha, classificados por modalidade.
           </div>
+          <input type="hidden" id="campanhaInputObjetivo">
+          <input type="hidden" id="campanhaInputEstrategia">
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button class="btn btn-success" onclick="window.salvarEditorCampanha()"><i class="fa-solid fa-check"></i> Salvar</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Template oculto pra renderizar a imagem de compartilhamento da
+       campanha. Fica fora da tela mas dentro do DOM pro dom-to-image
+       conseguir capturar. -->
+  <div id="cardCampanhaTemplate" style="position:fixed; left:-9999px; top:0;
+       width:720px; padding:36px; background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+       color:#fff; font-family:system-ui,-apple-system,sans-serif; border-radius:18px;">
+    <div style="text-transform:uppercase; letter-spacing:3px; font-size:14px; opacity:.6; margin-bottom:6px">Campanha</div>
+    <div id="tplNome" style="font-size:34px; font-weight:800; line-height:1.1; margin-bottom:8px">—</div>
+    <div id="tplPeriodo" style="opacity:.7; font-size:15px; margin-bottom:18px">—</div>
+    <div id="tplCountdown" style="display:inline-block; padding:10px 20px; border-radius:999px;
+         background:#dc2626; color:#fff; font-weight:700; font-size:16px; margin-bottom:22px"></div>
+    <div style="display:flex; align-items:flex-end; gap:18px; margin-bottom:18px">
+      <div id="tplPct" style="font-size:72px; font-weight:800; line-height:1; color:#22c55e">0%</div>
+      <div style="padding-bottom:10px">
+        <div style="font-size:18px"><b id="tplCompletas">0</b> de <b id="tplTotal">0</b></div>
+        <div style="font-size:13px; opacity:.6">quadras concluídas</div>
+      </div>
+    </div>
+    <div style="height:14px; background:rgba(255,255,255,0.1); border-radius:999px; overflow:hidden; margin-bottom:26px">
+      <div id="tplBarra" style="height:100%; width:0%; background:linear-gradient(90deg,#22c55e,#16a34a)"></div>
+    </div>
+    <div id="tplObjetivos"></div>
+    <div style="margin-top:28px; padding-top:18px; border-top:1px solid rgba(255,255,255,0.1);
+         font-size:13px; opacity:.55; text-align:center">
+      Gerado por Territory Helper
     </div>
   </div>
 
@@ -547,6 +574,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.5.0/dist/dom-to-image-more.min.js"></script>
   <?!= include('JS_Core'); ?>
   <?!= include('JS_App'); ?>
 </body>
