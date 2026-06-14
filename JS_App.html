@@ -592,7 +592,7 @@ window.carregarEditorDados = function() {
               
               poly = window.converterGeoJsonParaString(u.geometry);
               
-          } catch(e) { console.log("Erro na união geométrica", e); }
+          } catch(e) { console.error("Erro na união geométrica", e); }
       }
       
       // Prepara o pacote para o backend
@@ -1250,7 +1250,6 @@ window.confirmarAssociacao = function(layerQuadra) {
           }
       });
       
-      console.log("Linhas para salvar:", todasLinhas); // Diagnóstico
       
       var confirmacao = confirm("Vincular " + qtdFaces + " face(s) (" + totalEnderecos + " endereços) à quadra " + quadraId + "?");
       
@@ -1573,6 +1572,40 @@ window.confirmarAssociacao = function(layerQuadra) {
 
     // Dashboard (KPIs, gráfico semanal, ranking) — em paralelo
     window.carregarDashboardCampanha();
+  };
+
+  // Copia resumo da campanha em texto para colar no WhatsApp/reunião
+  window.copiarResumoCampanha = function() {
+    var nome = configCampanhaGlobal.nome || 'Campanha';
+    var completas = parseInt(document.getElementById('campanhaCompletas').innerText || '0', 10);
+    var restantes = parseInt(document.getElementById('campanhaCinza').innerText || '0', 10);
+    var pct = document.getElementById('campanhaPorcentagem').innerText || '0%';
+    var media = document.getElementById('kpiMedia4Sem').innerText || '0';
+    var feitasSemana = parseInt(document.getElementById('campanhaSemanaFeitas').innerText || '0', 10);
+    var metaSemana = document.getElementById('campanhaSemanaMeta').innerText || '—';
+
+    var texto =
+      '📊 *' + nome + '*\n\n' +
+      '✅ Concluídas: ' + completas + '\n' +
+      '⏳ Restantes: ' + restantes + '\n' +
+      '📈 Progresso: ' + pct + '\n' +
+      '⚡ Esta semana: ' + feitasSemana + (metaSemana !== '—' ? ' / ' + metaSemana : '') + '\n' +
+      '🎯 Média últimas 4 semanas: ' + media + ' quadras/semana';
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(texto).then(function(){
+        window.toast('Resumo copiado!', 'success');
+      }).catch(function(){
+        window.toast('Falha ao copiar.', 'error');
+      });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = texto;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); window.toast('Resumo copiado!', 'success'); } catch(e) {}
+      ta.remove();
+    }
   };
 
   window.carregarDashboardCampanha = function() {
