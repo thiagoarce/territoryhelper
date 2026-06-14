@@ -1772,8 +1772,8 @@ window.confirmarAssociacao = function(layerQuadra) {
         if (o.link) icones.push('<a href="' + escapeHtml(o.link) + '" target="_blank" class="text-decoration-none text-primary me-2" title="Abrir link"><i class="fa-solid fa-link"></i></a>');
         if (o.anexoUrl) icones.push('<a href="' + escapeHtml(o.anexoUrl) + '" target="_blank" class="text-decoration-none text-primary me-2" title="' + escapeHtml(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>');
         var olho = o.publico
-          ? '<i class="fa-regular fa-eye text-success" title="Visível no painel público"></i>'
-          : '<i class="fa-regular fa-eye-slash text-muted" title="Privado"></i>';
+          ? '<button class="btn btn-sm btn-link p-0 ms-1" onclick="window.alternarPublicoObjetivo(\'' + o.id + '\', false)" title="Visível — clique pra esconder"><i class="fa-regular fa-eye text-success"></i></button>'
+          : '<button class="btn btn-sm btn-link p-0 ms-1" onclick="window.alternarPublicoObjetivo(\'' + o.id + '\', true)" title="Escondido — clique pra mostrar"><i class="fa-regular fa-eye-slash text-muted"></i></button>';
         html += '<div class="d-flex align-items-start gap-2 py-2 px-2 mb-1 rounded" style="background:#fff;border:1px solid #e5e7eb">' +
                   '<div class="flex-grow-1" onclick="window.abrirModalObjetivo(\'' + o.id + '\')" style="cursor:pointer">' +
                     '<div class="fw-semibold">' + escapeHtml(o.titulo || '(sem título)') + '</div>' +
@@ -1894,6 +1894,24 @@ window.confirmarAssociacao = function(layerQuadra) {
     } else {
       persistir();
     }
+  };
+
+  window.alternarPublicoObjetivo = function(id, novoEstado) {
+    // Otimista: atualiza UI local antes do round-trip, reverte se falhar
+    var idx = _objetivos.findIndex(function(o){ return o.id === id; });
+    if (idx >= 0) { _objetivos[idx].publico = novoEstado; renderObjetivos(); }
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) {
+          if (idx >= 0) { _objetivos[idx].publico = !novoEstado; renderObjetivos(); }
+          alert('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'));
+        }
+      })
+      .withFailureHandler(function(e){
+        if (idx >= 0) { _objetivos[idx].publico = !novoEstado; renderObjetivos(); }
+        alert('Erro: ' + (e && e.message ? e.message : e));
+      })
+      .atualizarObjetivoCampanha(id, { publico: novoEstado });
   };
 
   window.removerObjetivoAtual = function() {

@@ -247,8 +247,9 @@
       margin: 0 18px 12px;
       border-radius: 20px;
       overflow: hidden;
-      height: 42vh;
+      aspect-ratio: 4 / 3;
       min-height: 280px;
+      max-height: 60vh;
       border: 1px solid rgba(255,255,255,0.06);
     }
     #mapa { width: 100%; height: 100%; background: #0a1929; }
@@ -567,8 +568,8 @@
     function carregarObjetivosPublicos() {
       google.script.run
         .withSuccessHandler(function(lista){
+          window._listaObjPub = lista || [];
           if (!lista || lista.length === 0) return;
-          window._listaObjPub = lista;
 
           var gerais = lista.filter(function(o){ return (o.tipo||'geral') === 'geral'; });
           var semana = lista.filter(function(o){ return o.tipo === 'semana'; });
@@ -582,7 +583,9 @@
             document.getElementById('listaObjGerais').innerHTML = renderGerais(gerais);
           }
         })
-        .withFailureHandler(function(){})
+        .withFailureHandler(function(e){
+          console.error('Erro objetivos:', e);
+        })
         .listarObjetivosCampanhaPublicos();
     }
 
