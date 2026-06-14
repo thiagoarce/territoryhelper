@@ -113,7 +113,10 @@
 
   <script>
     var dados = [];
+    var contexto = [];
     var map;
+    var tileLayer;
+    var layerContexto;
     var layerQuadras;
     var quadraEmConfirmacao = null;
     var modalConfirma;
@@ -131,8 +134,10 @@
       if (!IDS) { alert("Link inválido — sem IDs."); return; }
       google.script.run
         .withSuccessHandler(function(r) {
-          if (!r || r.length === 0) { alert("Nenhuma quadra encontrada."); return; }
-          dados = r;
+          var designadas = (r && r.designadas) || [];
+          if (designadas.length === 0) { alert("Nenhuma quadra encontrada."); return; }
+          dados = designadas;
+          contexto = (r && r.contexto) || [];
           document.getElementById('loader').classList.add('d-none');
           document.getElementById('app').classList.remove('d-none');
           document.getElementById('lblTotalQuadras').innerText = dados.length;
@@ -140,28 +145,51 @@
           renderizarLista();
         })
         .withFailureHandler(function(e){ alert("Erro: " + (e && e.message ? e.message : e)); })
-        .getDadosDirigente(IDS);
+        .getDadosComContexto(IDS);
+    }
+
+    function parsePoly(s) {
+      return s.split('|').map(function(p){
+        var c = p.trim().split(',');
+        return [parseFloat(c[0]), parseFloat(c[1])];
+      }).filter(function(pt){ return !isNaN(pt[0]) && !isNaN(pt[1]); });
     }
 
     function iniciarMapa() {
       if (map) { map.remove(); }
       map = L.map('mapa').setView([-7.115, -34.863], 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-      layerQuadras = L.featureGroup().addTo(map);
+      // crossOrigin: anonymous deixa html2canvas conseguir ler os tiles na hora
+      // de exportar o cartão como PNG (caso contrário o canvas vira tainted)
+      tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        crossOrigin: 'anonymous'
+      }).addTo(map);
 
-      dados.forEach(function(q) {
+      // Camada de CONTEXTO: outras quadras do mesmo território, esmaecidas.
+      // Adicionada PRIMEIRO pra ficar atrás das designadas.
+      layerContexto = L.featureGroup().addTo(map);
+      contexto.forEach(function(q) {
         if (!q.polyString) return;
-        var pts = q.polyString.split('|').map(function(p){
-          var c = p.trim().split(',');
-          return [parseFloat(c[0]), parseFloat(c[1])];
-        });
+        var pts = parsePoly(q.polyString);
         if (pts.length < 3) return;
 
-        var cor = '#6c757d';
-        if (q.status && q.status.toLowerCase().indexOf('iniciado') > -1) cor = '#ffc107';
-        else if (q.status && q.status.toLowerCase().indexOf('conclu') > -1) cor = '#28a745';
+        var estilo = q.concluidaRecente
+          ? { color:'#28a745', weight:1, fillColor:'#28a745', fillOpacity:0.22 }
+          : { color:'#9ca3af', weight:1, fillColor:'#9ca3af', fillOpacity:0.10 };
 
-        var poly = L.polygon(pts, { color:'#333', weight:1.5, fillColor: cor, fillOpacity: 0.55 });
+        L.polygon(pts, estilo).addTo(layerContexto);
+      });
+
+      // Camada de DESIGNADAS: as quadras desse cartão, azul forte, com label.
+      layerQuadras = L.featureGroup().addTo(map);
+      dados.forEach(function(q) {
+        if (!q.polyString) return;
+        var pts = parsePoly(q.polyString);
+        if (pts.length < 3) return;
+
+        var poly = L.polygon(pts, {
+          color: '#0d47a1', weight: 2,
+          fillColor: '#1976d2', fillOpacity: 0.55
+        });
         poly.bindTooltip(q.id, { permanent:true, direction:'center', className:'label-quadra' });
         poly.on('click', function() {
           var el = document.getElementById('card-' + q.id);
@@ -395,8 +423,11 @@
         map.fitBounds(layerQuadras.getBounds(), { padding: [50, 50], animate: false });
       }
 
-      // Aguarda tiles + fitBounds estabilizarem (1 segundo)
-      setTimeout(function() {
+      // Aguarda TODOS os tiles do basemap carregarem antes do html2canvas
+      // capturar. Sem isso, o canvas pega o estado intermediário e os
+      // polígonos saem deslocados em relação às ruas. Fallback de 3s
+      // protege contra rede lenta / tiles que nunca completam.
+      aguardarTiles(tileLayer, 3000, function() {
         html2canvas(mapaEl, {
           useCORS: true,
           allowTaint: false,
@@ -508,11 +539,26 @@
           alert('Falha ao gerar imagem: ' + (err && err.message ? err.message : err));
           restaurar();
         });
-      }, 1000);
+      });
 
       function restaurar() {
         if (btn && textoOriginal != null) { btn.disabled = false; btn.innerHTML = textoOriginal; }
       }
+    }
+
+    // Aguarda o tileLayer terminar de carregar OU expirar o timeout.
+    // Necessário antes do html2canvas pra evitar polígonos deslocados
+    // em relação aos tiles do basemap no PNG exportado.
+    function aguardarTiles(tile, timeoutMs, cb) {
+      var disparado = false;
+      function disparar() {
+        if (disparado) return;
+        disparado = true;
+        // pequeno buffer pra o canvas dos tiles assentar antes do snapshot
+        setTimeout(cb, 200);
+      }
+      if (tile) tile.once('load', disparar);
+      setTimeout(disparar, timeoutMs);
     }
   </script>
 </body>

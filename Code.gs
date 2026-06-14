@@ -918,6 +918,52 @@ function getDadosDirigente(idsString) {
   return publico;
 }
 
+// Quadras designadas + contexto (outras quadras dos mesmos territórios)
+// usado pra desenhar o território inteiro no mapa, com as não-designadas
+// esmaecidas atrás das designadas.
+function getDadosComContexto(idsString) {
+  var designadas = getDadosDirigente(idsString);
+
+  var idsSet = {};
+  designadas.forEach(function(q){ idsSet[String(q.id).trim()] = true; });
+
+  var territoriosSet = {};
+  designadas.forEach(function(q){
+    if (q.territory) territoriosSet[q.territory] = true;
+  });
+
+  var contexto = [];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
+  if (sheetQ && Object.keys(territoriosSet).length > 0) {
+    var dataQ = sheetQ.getDataRange().getValues();
+    var limite = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    for (var i = 1; i < dataQ.length; i++) {
+      var id = String(dataQ[i][COL.QUADRAS.ID]).trim();
+      if (idsSet[id]) continue;
+      var territorio = String(dataQ[i][COL.QUADRAS.TERRITORIO] || "");
+      if (!territoriosSet[territorio]) continue;
+      var poly = dataQ[i][COL.QUADRAS.POLYSTRING];
+      if (!poly) continue;
+      var status = String(dataQ[i][COL.QUADRAS.STATUS] || STATUS.PENDENTE);
+      var dataConc = dataQ[i][COL.QUADRAS.DATA_CONC];
+      var recente = false;
+      if (status === STATUS.CONCLUIDO && dataConc) {
+        var t = new Date(dataConc).getTime();
+        recente = !isNaN(t) && t >= limite;
+      }
+      contexto.push({
+        id: id,
+        polyString: poly,
+        status: status,
+        concluidaRecente: recente
+      });
+    }
+  }
+
+  return { designadas: designadas, contexto: contexto };
+}
+
 // Função restrita usada pelo dirigente — só aceita IDs que foram passados via link
 function dirigenteMarcarStatus(ids, status, data) {
   if (!Array.isArray(ids) || ids.length === 0) return { status: "ERRO", msg: "Sem IDs" };
