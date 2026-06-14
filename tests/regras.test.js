@@ -216,3 +216,103 @@ test('salvarConfiguracoesCampanhaCompleta persiste campos novos', () => {
   assertEq(lido.objetivo, 'Cobrir');
   assertEq(lido.dataFim, '2026-12-01');
 });
+
+// =================================================================
+// getHistoricoQuadra
+// =================================================================
+test('getHistoricoQuadra devolve eventos da quadra do mais recente para o mais antigo', () => {
+  const registros = makeSheet('Registros', [
+    ['ID','Data','Tipo','TS'],
+    ['Q1', new Date('2026-05-01'), 'Designada', new Date('2026-05-01T10:00:00')],
+    ['Q2', new Date('2026-06-01'), 'Designada', new Date('2026-06-01T10:00:00')],
+    ['Q1', new Date('2026-06-10'), 'Concluído', new Date('2026-06-10T15:30:00')],
+    ['Q1', new Date('2026-04-01'), 'Designada', new Date('2026-04-01T09:00:00')]
+  ]);
+  const ctx = setup([makeSheet('Quadras', [['ID']]), registros]);
+  const r = ctx.getHistoricoQuadra('Q1');
+  assertEq(r.length, 3);
+  assertEq(r[0].tipo, 'Concluído'); // mais recente primeiro
+  assertEq(r[2].tipo, 'Designada'); // mais antigo no fim
+});
+
+test('getHistoricoQuadra retorna [] para ID inexistente', () => {
+  const ctx = setup([makeSheet('Quadras', [['ID']]), makeSheet('Registros', [['ID','Data','Tipo','TS'], ['Q1', new Date(), 'Concluído', new Date()]])]);
+  assertEq(ctx.getHistoricoQuadra('Q999'), []);
+});
+
+test('getHistoricoQuadra limita a 50 eventos', () => {
+  const rows = [['ID','Data','Tipo','TS']];
+  for (let i = 0; i < 80; i++) {
+    rows.push(['Q1', new Date(2026, 0, 1 + i), 'Concluído', new Date(2026, 0, 1 + i, 12, 0)]);
+  }
+  const ctx = setup([makeSheet('Quadras', [['ID']]), makeSheet('Registros', rows)]);
+  const r = ctx.getHistoricoQuadra('Q1');
+  assertEq(r.length, 50);
+});
+
+// =================================================================
+// healthCheck
+// =================================================================
+test('healthCheck retorna ok=true quando abas críticas existem', () => {
+  const ctx = setup([
+    makeSheet('Quadras', [['ID']]),
+    makeSheet('Dados Brutos', [['Quadra']])
+  ]);
+  const r = ctx.healthCheck();
+  assertEq(r.ok, true);
+  assertEq(r.sheetQuadras, true);
+  assertEq(r.sheetDados, true);
+});
+
+test('healthCheck retorna ok=false sem aba Quadras', () => {
+  const ctx = setup([makeSheet('Dados Brutos', [['Quadra']])]);
+  const r = ctx.healthCheck();
+  assertEq(r.ok, false);
+  assertEq(r.sheetQuadras, false);
+});
+
+// =================================================================
+// getDadosDashboard
+// =================================================================
+test('getDadosDashboard computa KPIs e ranking corretamente', () => {
+  const dataInicio = new Date('2026-01-01');
+  const dataDentro = new Date('2026-03-15');
+  const dataAntes = new Date('2025-11-01');
+
+  const quadras = makeSheet('Quadras', [
+    ['ID','Setor','NumQ','NumF','Poly','Cor','Terr','Status','Data'],
+    ['Q1', 1, '', '', '', '', 'A', 'Concluído', dataDentro],
+    ['Q2', 1, '', '', '', '', 'A', 'Concluído', dataDentro],
+    ['Q3', 1, '', '', '', '', 'A', 'Pendente', ''],
+    ['Q4', 1, '', '', '', '', 'B', 'Concluído', dataDentro],
+    ['Q5', 1, '', '', '', '', 'B', 'Pendente', ''],
+    ['Q6', 1, '', '', '', '', 'B', 'Pendente', ''],
+    ['Q7', 1, '', '', '', '', 'C', 'Concluído', dataAntes] // antes da campanha
+  ]);
+  const registros = makeSheet('Registros', [['ID','Data','Tipo','TS']]);
+  const ctx = setup([quadras, registros]);
+  ctx.salvarConfiguracoesCampanhaCompleta({ nome: 'X', data: '2026-01-01' });
+
+  const r = ctx.getDadosDashboard();
+  assertEq(r.kpis.totalQuadras, 7);
+  assertEq(r.kpis.completasCampanha, 3); // Q1, Q2, Q4 (Q7 antes do início)
+  assertEq(r.kpis.restantes, 4);
+
+  // Ranking: A tem 2/3 = 67%, B tem 1/3 = 33%, C tem 0/1 = 0%
+  const ranking = r.ranking;
+  assertEq(ranking[0].nome, 'A');
+  assertEq(ranking[0].porcentagem, 67);
+  assertEq(ranking[1].nome, 'B');
+  assertEq(ranking[2].nome, 'C');
+});
+
+test('getDadosDashboard porSemana e porMes têm 12 entradas', () => {
+  const ctx = setup([
+    makeSheet('Quadras', [['ID']]),
+    makeSheet('Registros', [['ID','Data','Tipo','TS']])
+  ]);
+  ctx.salvarConfiguracoesCampanhaCompleta({ nome: 'X', data: '2026-01-01' });
+  const r = ctx.getDadosDashboard();
+  assertEq(r.porSemana.length, 12);
+  assertEq(r.porMes.length, 12);
+});

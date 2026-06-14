@@ -22,7 +22,24 @@ function loadGsFiles(includeCodeGs) {
     Session: undefined,
     ScriptApp: undefined,
     MailApp: undefined,
-    console: console
+    console: console,
+    // Expor Date/Object/Array do host para que instanceof funcione
+    Date: Date,
+    Object: Object,
+    Array: Array,
+    String: String,
+    Number: Number,
+    Boolean: Boolean,
+    Math: Math,
+    JSON: JSON,
+    RegExp: RegExp,
+    Error: Error,
+    Set: Set,
+    Map: Map,
+    parseInt: parseInt,
+    parseFloat: parseFloat,
+    isNaN: isNaN,
+    isFinite: isFinite
   };
   vm.createContext(context);
 

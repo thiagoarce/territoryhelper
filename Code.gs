@@ -754,6 +754,29 @@ function salvarNovoEnderecoPublico(dados) {
   return "Criado";
 }
 
+/**
+ * Health-check leve: rota chamável para verificar se backend está vivo
+ * e se as abas críticas existem. Útil para debugging.
+ */
+function healthCheck() {
+  var checks = {};
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    checks.spreadsheet = !!ss;
+    checks.sheetQuadras = !!ss.getSheetByName(SHEET.QUADRAS);
+    checks.sheetTerritorios = !!getSheetByName_(SHEET.TERRITORIOS);
+    checks.sheetDados = !!ss.getSheetByName(SHEET.DADOS);
+    checks.sheetRegistros = !!ss.getSheetByName(SHEET.REGISTROS);
+    checks.timestamp = new Date().toISOString();
+    checks.timezone = Session.getScriptTimeZone();
+    checks.ok = checks.spreadsheet && checks.sheetQuadras && checks.sheetDados;
+  } catch (e) {
+    checks.ok = false;
+    checks.error = String(e && e.message ? e.message : e);
+  }
+  return checks;
+}
+
 // =================================================================
 // OTIMIZAÇÃO: BUSCA MESTRA COM CACHE
 // =================================================================

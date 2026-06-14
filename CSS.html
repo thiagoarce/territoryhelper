@@ -58,6 +58,11 @@
   .screen.active {
     display: flex;
     flex-direction: column;
+    animation: th-fade-in .25s ease;
+  }
+  @keyframes th-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   .map-wrapper {
