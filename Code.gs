@@ -920,45 +920,85 @@ function getDadosDirigente(idsString) {
 
 // Quadras designadas + contexto (outras quadras dos mesmos territórios)
 // usado pra desenhar o território inteiro no mapa, com as não-designadas
-// esmaecidas atrás das designadas.
+// esmaecidas atrás das designadas. Busca os territórios por dois caminhos:
+// (1) coluna TERRITORIO na própria aba Quadras
+// (2) aba Territorios, coluna IDS_QUADRAS (lista CSV de ids)
+// Robusto contra dados incompletos: basta um dos dois caminhos resolver.
 function getDadosComContexto(idsString) {
   var designadas = getDadosDirigente(idsString);
 
   var idsSet = {};
   designadas.forEach(function(q){ idsSet[String(q.id).trim()] = true; });
 
-  var territoriosSet = {};
-  designadas.forEach(function(q){
-    if (q.territory) territoriosSet[q.territory] = true;
-  });
-
-  var contexto = [];
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
-  if (sheetQ && Object.keys(territoriosSet).length > 0) {
-    var dataQ = sheetQ.getDataRange().getValues();
-    var limite = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    for (var i = 1; i < dataQ.length; i++) {
-      var id = String(dataQ[i][COL.QUADRAS.ID]).trim();
-      if (idsSet[id]) continue;
-      var territorio = String(dataQ[i][COL.QUADRAS.TERRITORIO] || "");
-      if (!territoriosSet[territorio]) continue;
-      var poly = dataQ[i][COL.QUADRAS.POLYSTRING];
-      if (!poly) continue;
-      var status = String(dataQ[i][COL.QUADRAS.STATUS] || STATUS.PENDENTE);
-      var dataConc = dataQ[i][COL.QUADRAS.DATA_CONC];
-      var recente = false;
-      if (status === STATUS.CONCLUIDO && dataConc) {
-        var t = new Date(dataConc).getTime();
-        recente = !isNaN(t) && t >= limite;
+  var dataQ = sheetQ ? sheetQ.getDataRange().getValues() : [];
+
+  // (1) territórios diretos da aba Quadras
+  var territoriosSet = {};
+  designadas.forEach(function(q){
+    if (q.territory) territoriosSet[String(q.territory).trim()] = true;
+  });
+
+  // (2) territórios via aba Territorios.IDS_QUADRAS
+  var sheetT = ss.getSheetByName(SHEET.TERRITORIOS)
+            || ss.getSheetByName("Territórios"); // fallback com acento
+  if (sheetT) {
+    var dataT = sheetT.getDataRange().getValues();
+    for (var i = 1; i < dataT.length; i++) {
+      var nome = String(dataT[i][COL.TERRITORIOS.NOME] || "").trim();
+      if (!nome) continue;
+      var ids = String(dataT[i][COL.TERRITORIOS.IDS_QUADRAS] || "")
+        .split(/[,;\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
+      for (var j = 0; j < ids.length; j++) {
+        if (idsSet[ids[j]]) { territoriosSet[nome] = true; break; }
       }
-      contexto.push({
-        id: id,
-        polyString: poly,
-        status: status,
-        concluidaRecente: recente
-      });
     }
+  }
+
+  // Sem nenhum território identificado → nada de contexto
+  if (Object.keys(territoriosSet).length === 0) {
+    return { designadas: designadas, contexto: [] };
+  }
+
+  // Coleta IDs que pertencem aos territórios identificados, via aba
+  // Territorios (CSV) OU coluna TERRITORIO na Quadras.
+  var idsContexto = {};
+  if (sheetT) {
+    var dataT2 = sheetT.getDataRange().getValues();
+    for (var k = 1; k < dataT2.length; k++) {
+      var nome2 = String(dataT2[k][COL.TERRITORIOS.NOME] || "").trim();
+      if (!territoriosSet[nome2]) continue;
+      var ids2 = String(dataT2[k][COL.TERRITORIOS.IDS_QUADRAS] || "")
+        .split(/[,;\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
+      ids2.forEach(function(id){ if (!idsSet[id]) idsContexto[id] = true; });
+    }
+  }
+
+  // Monta o contexto a partir das linhas da Quadras (precisa polyString)
+  var contexto = [];
+  var limite = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  for (var m = 1; m < dataQ.length; m++) {
+    var id = String(dataQ[m][COL.QUADRAS.ID]).trim();
+    if (!id || idsSet[id]) continue;
+    var territorio = String(dataQ[m][COL.QUADRAS.TERRITORIO] || "").trim();
+    var pertence = idsContexto[id] || territoriosSet[territorio];
+    if (!pertence) continue;
+    var poly = dataQ[m][COL.QUADRAS.POLYSTRING];
+    if (!poly) continue;
+    var status = String(dataQ[m][COL.QUADRAS.STATUS] || STATUS.PENDENTE);
+    var dataConc = dataQ[m][COL.QUADRAS.DATA_CONC];
+    var recente = false;
+    if (status === STATUS.CONCLUIDO && dataConc) {
+      var t = new Date(dataConc).getTime();
+      recente = !isNaN(t) && t >= limite;
+    }
+    contexto.push({
+      id: id,
+      polyString: poly,
+      status: status,
+      concluidaRecente: recente
+    });
   }
 
   return { designadas: designadas, contexto: contexto };
