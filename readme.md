@@ -2,6 +2,8 @@
 
 Uma aplicação web baseada em **Google Apps Script** e **Leaflet.js** para gestão geográfica de pregação, permitindo o mapeamento de endereços, organização de quadras e territórios, e acompanhamento de registros de campo em tempo real.
 
+> 💡 Para devs/agentes IA contribuindo: leia [CLAUDE.md](./CLAUDE.md) para convenções de código e arquitetura.
+
 ---
 
 ## 🚀 Funcionalidades Principais
@@ -60,3 +62,26 @@ Este projeto está sob a licença MIT. Sinta-se à vontade para clonar e adaptar
 
 ---
 **Desenvolvido para otimizar a organização e o zelo no trabalho de campo.** 🌍
+
+---
+
+## 🧪 Testes
+
+Testes automatizados (Node sem deps externas) cobrem validações, regras
+de negócio e sintaxe de todos os arquivos.
+
+```bash
+node tests/run.js
+```
+
+CI: GitHub Actions roda o suite a cada push/PR em `main`.
+
+## 🔗 Rotas (parâmetro `?v=`)
+
+| URL                             | Tela                                     |
+|---------------------------------|------------------------------------------|
+| `/`                             | App de gestão (servo de território)      |
+| `/?v=publico&ids=Q1,Q2`         | Endereços para o publicador              |
+| `/?v=dirigente&ids=Q1,Q2`       | Painel do dirigente (conclui/designa)    |
+| `/?v=campanha`                  | Tela pública motivacional da campanha    |
+

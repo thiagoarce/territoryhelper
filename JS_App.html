@@ -198,6 +198,40 @@ window.mudarAba = function(aba) {
   };
   window.toggleCamadasGeral = function() { var q = document.getElementById('checkGeralQuadras').checked; var t = document.getElementById('checkGeralTerritorios').checked; if(q) mapGeral.addLayer(lgGeralQuadras); else mapGeral.removeLayer(lgGeralQuadras); if(t) { mapGeral.addLayer(lgGeralTerritorios); mapGeral.addLayer(lgGeralLabels); } else { mapGeral.removeLayer(lgGeralTerritorios); mapGeral.removeLayer(lgGeralLabels); } };
 
+  // Coloração das quadras no Visão Geral: por território (cor da planilha)
+  // ou por status (verde recente / amarelo > 30d / vermelho > 90d / cinza pendente).
+  window.atualizarColoracaoGeral = function() {
+    if (!lgGeralQuadras) return;
+    var modo = (document.getElementById('coloracaoGeral') || {}).value || 'territorio';
+    var hoje = new Date();
+
+    lgGeralQuadras.eachLayer(function(l) {
+      if (!l.metaData) return;
+      var d = l.metaData;
+      var cor;
+      if (modo === 'status') {
+        if (d.dataConclusao) {
+          var p = d.dataConclusao.split('-');
+          var dt = new Date(parseInt(p[0],10), parseInt(p[1],10) - 1, parseInt(p[2],10));
+          var dias = Math.ceil((hoje - dt) / (864e5));
+          if (dias <= 30) cor = '#198754';      // verde — feito recente
+          else if (dias <= 90) cor = '#ffc107'; // amarelo
+          else cor = '#dc3545';                  // vermelho
+        } else {
+          cor = '#9ca3af'; // cinza — nunca feita
+        }
+      } else {
+        cor = d.color || '#3388ff';
+      }
+      // Preserva destaque de seleção/busca
+      if (shareSelecionados.has(d.id)) {
+        l.setStyle({ fillColor: cor, color: 'blue', weight: 4, fillOpacity: 0.6 });
+      } else {
+        l.setStyle({ fillColor: cor, color: '#666', weight: 1, fillOpacity: 0.6 });
+      }
+    });
+  };
+
   // Busca de quadra no Visão Geral — destaca e dá zoom no match.
   window.buscarQuadraGeral = function(termo) {
     if (!lgGeralQuadras) return;
@@ -1429,6 +1463,8 @@ window.confirmarAssociacao = function(layerQuadra) {
              }
           });
       }
+      // Aplica coloração escolhida (se for por status)
+      window.atualizarColoracaoGeral();
   };
 
   window.carregarDadosRegistro = function() {

@@ -36,13 +36,19 @@
         </button>
       </div>
     </div>
-    <div class="filter-bar mb-2 d-flex gap-3 justify-content-center bg-white p-2 border rounded shadow-sm">
-      <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="checkGeralQuadras" checked onchange="window.toggleCamadasGeral()"><label class="form-check-label small fw-bold">Quadras</label>
+    <div class="filter-bar mb-2 d-flex gap-3 justify-content-between bg-white p-2 border rounded shadow-sm flex-wrap">
+      <div class="d-flex gap-3">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="checkGeralQuadras" checked onchange="window.toggleCamadasGeral()"><label class="form-check-label small fw-bold">Quadras</label>
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="checkGeralTerritorios" onchange="window.toggleCamadasGeral()"><label class="form-check-label small fw-bold">Territórios</label>
+        </div>
       </div>
-      <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="checkGeralTerritorios" onchange="window.toggleCamadasGeral()"><label class="form-check-label small fw-bold">Territórios</label>
-      </div>
+      <select id="coloracaoGeral" class="form-select form-select-sm w-auto" onchange="window.atualizarColoracaoGeral()">
+        <option value="territorio" selected>Cor por território</option>
+        <option value="status">Cor por status</option>
+      </select>
     </div>
     <div class="input-group input-group-sm mb-2">
       <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
