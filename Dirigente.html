@@ -450,6 +450,11 @@
         .withSuccessHandler(function(r){
           if (!r || !r.ok) {
             if (!confirm('Não deu pra criar a designação pessoal: ' + (r && r.erro || '?') + '\n\nEnviar mesmo assim?')) return;
+          } else if (r.conflitos && r.conflitos.length > 0) {
+            // Aviso (não-bloqueante): essas quadras já estavam em outra
+            // designação aberta. O dirigente saberá no WhatsApp se quiser
+            // ajustar; aqui só registra a sobreposição.
+            console.warn('Conflito de designação:', r.conflitos);
           }
           acao();
         })

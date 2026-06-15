@@ -141,6 +141,13 @@ var STATUS = {
   CONCLUIDO: "Concluído"
 };
 
+// Status do território pessoal (aba Designacoes)
+var STATUS_DESIGNACAO = {
+  ABERTA:     "aberta",
+  CONCLUIDA:  "concluida",
+  CANCELADA:  "cancelada"
+};
+
 var SHEET = {
   QUADRAS:     "Quadras",
   TERRITORIOS: "Territorios", // fallback "Territórios"

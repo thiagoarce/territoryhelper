@@ -1503,12 +1503,34 @@ window.confirmarAssociacao = function(layerQuadra) {
       window.atualizarDesignacoesNoMapa();
   };
 
+  // Util compartilhado de escape HTML (definido depois) — usamos via
+  // window.escapeHtmlGeral pra evitar TDZ entre módulos.
+  function _escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+
   // Overlay no mapa geral: pra cada quadra com designação pessoal aberta,
   // desenha um ícone de cadeado no centro + tooltip com publicador e
   // prazo. Quadras vencidas ficam em vermelho.
+  // IMPORTANTE: antes de aplicar estilos override, restauramos o estilo
+  // base de cada poly. Sem isso, designação cancelada/concluída deixaria
+  // a borda azul "fantasma" no mapa até o usuário trocar de aba.
   window.atualizarDesignacoesNoMapa = function() {
     if (typeof lgGeralDesignacoes === 'undefined' || !lgGeralDesignacoes) return;
     lgGeralDesignacoes.clearLayers();
+
+    // Restaura estilo base de TODAS as quadras (a coloração por status
+    // é re-aplicada por atualizarColoracaoGeral abaixo).
+    lgGeralQuadras.eachLayer(function(poly){
+      poly.setStyle({ color: '#666', weight: 1 });
+    });
+    // Reaplica coloração corrente (status / cor de quadra) se disponível
+    if (typeof window.atualizarColoracaoGeral === 'function') {
+      try { window.atualizarColoracaoGeral(); } catch(e) {}
+    }
+
     google.script.run
       .withSuccessHandler(function(mapa){
         if (!mapa) return;
@@ -1530,11 +1552,12 @@ window.confirmarAssociacao = function(layerQuadra) {
             icon: L.divIcon({ html: html, className: '', iconSize: [24,24], iconAnchor: [12,12] }),
             interactive: true
           });
+          // bindTooltip aceita HTML — escapamos publicador (vem do user)
           icone.bindTooltip(
-            '<b>' + d.id + '</b><br>' +
+            '<b>' + _escHtml(d.id) + '</b><br>' +
             (info.vencida ? '⚠️ Vencida<br>' : '') +
-            'Com: ' + (info.publicador || '?') + '<br>' +
-            'Até: ' + prazoStr,
+            'Com: ' + _escHtml(info.publicador || '?') + '<br>' +
+            'Até: ' + _escHtml(prazoStr),
             { direction: 'top' }
           );
           lgGeralDesignacoes.addLayer(icone);
@@ -2165,7 +2188,9 @@ window.confirmarAssociacao = function(layerQuadra) {
       if (p.irmaoMora) badges.push('<span class="badge bg-warning text-dark"><i class="fa-solid fa-house-user me-1"></i>Irmão mora</span>');
       if (p.ultimaCartaStr) badges.push('<span class="badge bg-success"><i class="fa-solid fa-envelope-circle-check me-1"></i>Entregue ' + escapeHtml(p.ultimaCartaStr) + '</span>');
       var qdrs = p.quadras.length > 0 ? ' · ' + p.quadras.join(', ') : '';
-      return '<div class="card mb-2 shadow-sm" onclick="window.abrirModalPredio(\'' + escapeAttr(p.chave) + '\')" style="cursor:pointer">' +
+      // data-chave + delegação (resolve em runtime) — evita escape ruim
+      // se a chave tiver \, ", ou outros caracteres especiais.
+      return '<div class="card mb-2 shadow-sm predio-card" data-chave="' + escapeHtml(p.chave) + '" style="cursor:pointer">' +
                '<div class="card-body py-2 px-3">' +
                  '<div class="d-flex justify-content-between align-items-start">' +
                    '<div class="flex-grow-1">' +
@@ -2179,11 +2204,19 @@ window.confirmarAssociacao = function(layerQuadra) {
                '</div>' +
              '</div>';
     }).join('');
-  };
 
-  function escapeAttr(s) {
-    return String(s||'').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-  }
+    // Delegação: 1 listener no container em vez de N inline.
+    var box = document.getElementById('listaPredios');
+    if (box && !box._bound) {
+      box._bound = true;
+      box.addEventListener('click', function(ev){
+        var card = ev.target.closest('.predio-card');
+        if (!card) return;
+        var chave = card.getAttribute('data-chave');
+        if (chave) window.abrirModalPredio(chave);
+      });
+    }
+  };
 
   window.abrirModalPredio = function(chave) {
     var p = _predios.find(function(x){ return x.chave === chave; });
