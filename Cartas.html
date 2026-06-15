@@ -32,19 +32,26 @@
 
     /* ===== Cards: APTOS (visão de um prédio, com ?p=) ===== */
     .apto-card { background:#fff; border-radius:14px; padding:14px 16px; margin:8px 16px;
-      box-shadow:0 1px 4px rgba(0,0,0,.06); }
-    .apto-card.desocupado { opacity:0.55; }
+      box-shadow:0 1px 4px rgba(0,0,0,.06); transition: all 0.15s; }
+    .apto-card.desocupado, .apto-card.naoEscrever { opacity:0.6; }
+    .apto-card.naoEscrever { border-left:4px solid #dc2626; }
     .apto-header { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
     .apto-titulo { font-weight:700; font-size:1.05rem; }
     .apto-anterior { font-size:.7rem; color:#6b7280; }
-    .acoes { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-    .acao-btn { flex:1; min-width:120px; padding:8px 10px; border-radius:10px; border:1.5px solid #e5e7eb;
-      background:#fff; font-size:.85rem; font-weight:600; color:#374151; cursor:pointer; display:flex;
-      align-items:center; justify-content:center; gap:6px; transition: all 0.15s; }
-    .acao-btn .data { font-size:.7rem; opacity:0.7; }
+    .acoes { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+    .acao-btn { flex:1; min-width:84px; padding:8px 10px; border-radius:10px; border:1.5px solid #e5e7eb;
+      background:#fff; font-size:.82rem; font-weight:600; color:#374151; cursor:pointer; display:flex;
+      align-items:center; justify-content:center; gap:5px; transition: all 0.15s; flex-direction:column;}
+    .acao-btn i { font-size:0.95rem; }
+    .acao-btn .data { font-size:.65rem; opacity:0.7; }
+    /* Escrita = AZUL (carta pronta) */
     .acao-btn.feito.escrita { background:#dbeafe; border-color:#2563eb; color:#1e40af; }
+    /* Entregue = VERDE */
     .acao-btn.feito.entregue { background:#d1fae5; border-color:#16a34a; color:#065f46; }
+    /* Desocupado = CINZA */
     .acao-btn.feito.desocupado { background:#f3f4f6; border-color:#9ca3af; color:#6b7280; }
+    /* Não escrever = VERMELHO */
+    .acao-btn.feito.naoEscrever { background:#fee2e2; border-color:#dc2626; color:#991b1b; }
 
     .resumo { padding:12px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
     .resumo .numero { font-size:1.6rem; font-weight:800; color:#16a34a; }
@@ -190,17 +197,18 @@
     }
 
     function renderAptos() {
-      var nEscritas = 0, nEntregues = 0, nDesocupados = 0;
+      var nEscritas = 0, nEntregues = 0, nDesocupados = 0, nNaoEsc = 0;
       dados.forEach(function(a){
         if (a.cartaEscritaStr) nEscritas++;
         if (a.cartaEntregueStr) nEntregues++;
         if (a.desocupado) nDesocupados++;
+        if (a.naoEscrever) nNaoEsc++;
       });
-      var ativos = dados.length - nDesocupados;
+      var ativos = dados.length - nDesocupados - nNaoEsc;
       document.getElementById('resumoBox').innerHTML =
-        '<div><div class="numero">' + nEscritas + '</div><div class="label">Escritas</div></div>' +
+        '<div><div class="numero" style="color:#2563eb">' + nEscritas + '</div><div class="label">Escritas</div></div>' +
         '<div><div class="numero">' + nEntregues + '</div><div class="label">Entregues</div></div>' +
-        '<div><div class="numero">' + ativos + '</div><div class="label">Ativos</div></div>';
+        '<div><div class="numero" style="color:#6b7280">' + ativos + '</div><div class="label">Ativos</div></div>';
 
       var box = document.getElementById('listaAptos');
       if (dados.length === 0) {
@@ -220,23 +228,31 @@
         var escClass = a.cartaEscritaStr ? 'feito escrita' : '';
         var entClass = a.cartaEntregueStr ? 'feito entregue' : '';
         var desClass = a.desocupado ? 'feito desocupado' : '';
+        var naoClass = a.naoEscrever ? 'feito naoEscrever' : '';
         var escData = a.cartaEscritaStr ? '<div class="data">' + escapeHtml(a.cartaEscritaStr) + '</div>' : '';
         var entData = a.cartaEntregueStr ? '<div class="data">' + escapeHtml(a.cartaEntregueStr) + '</div>' : '';
 
-        return '<div class="apto-card ' + (a.desocupado ? 'desocupado' : '') + '" data-row="' + a.row + '">' +
+        var cardCls = [];
+        if (a.desocupado) cardCls.push('desocupado');
+        if (a.naoEscrever) cardCls.push('naoEscrever');
+
+        return '<div class="apto-card ' + cardCls.join(' ') + '" data-row="' + a.row + '">' +
                  '<div class="apto-header">' +
                    '<div class="apto-titulo">' + escapeHtml(titulo) + '</div>' +
                    antes +
                  '</div>' +
                  '<div class="acoes">' +
-                   '<button class="acao-btn ' + escClass + '" data-acao="cartaEscrita">' +
-                     '<i class="fa-solid fa-pen-to-square"></i> Escrita' + escData +
+                   '<button class="acao-btn ' + escClass + '" data-acao="cartaEscrita" title="Carta pronta pra entregar">' +
+                     '<i class="fa-solid fa-pen-to-square"></i><span>Escrita</span>' + escData +
                    '</button>' +
-                   '<button class="acao-btn ' + entClass + '" data-acao="cartaEntregue">' +
-                     '<i class="fa-solid fa-envelope-circle-check"></i> Entregue' + entData +
+                   '<button class="acao-btn ' + entClass + '" data-acao="cartaEntregue" title="Carta entregue no apto">' +
+                     '<i class="fa-solid fa-envelope-circle-check"></i><span>Entregue</span>' + entData +
                    '</button>' +
-                   '<button class="acao-btn ' + desClass + '" data-acao="desocupado">' +
-                     '<i class="fa-solid fa-door-closed"></i> Desocupado' +
+                   '<button class="acao-btn ' + desClass + '" data-acao="desocupado" title="Apto desocupado">' +
+                     '<i class="fa-solid fa-door-closed"></i><span>Desocupado</span>' +
+                   '</button>' +
+                   '<button class="acao-btn ' + naoClass + '" data-acao="naoEscrever" title="Não escrever carta pra esse apto">' +
+                     '<i class="fa-solid fa-ban"></i><span>Não escrever</span>' +
                    '</button>' +
                  '</div>' +
                '</div>';
@@ -271,6 +287,9 @@
       } else if (acao === 'desocupado') {
         apto.desocupado = !apto.desocupado;
         patch.desocupado = apto.desocupado;
+      } else if (acao === 'naoEscrever') {
+        apto.naoEscrever = !apto.naoEscrever;
+        patch.naoEscrever = apto.naoEscrever;
       }
       renderAptos();
       btn.disabled = true;

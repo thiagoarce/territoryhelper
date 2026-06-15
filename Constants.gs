@@ -80,15 +80,16 @@ var COL = {
   },
 
   // Aba "PrediosAptos" — overlay per-apartamento dentro de um prédio.
-  // Status individual (carta escrita, carta entregue, desocupado).
   PREDIOS_APTOS: {
     ROW_1IDX:            1,  // A  linha do Dados Brutos
     CARTA_ESCRITA_1IDX:  2,  // B  data
     CARTA_ENTREGUE_1IDX: 3,  // C  data
     DESOCUPADO_1IDX:     4,  // D  bool
     ATUALIZADO_1IDX:     5,  // E
+    NAO_ESCREVER_1IDX:   6,  // F  bool — não escrever carta pra esse apto
     // 0-indexed
-    ROW: 0, CARTA_ESCRITA: 1, CARTA_ENTREGUE: 2, DESOCUPADO: 3, ATUALIZADO: 4
+    ROW: 0, CARTA_ESCRITA: 1, CARTA_ENTREGUE: 2, DESOCUPADO: 3,
+    ATUALIZADO: 4, NAO_ESCREVER: 5
   },
 
   // Aba "Campanha" (objetivos estruturados)
