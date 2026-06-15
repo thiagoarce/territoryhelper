@@ -27,7 +27,10 @@
   <div id="telaGeral" class="screen active container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="fw-bold m-0"><i class="fa-solid fa-map-location-dot text-primary me-2"></i>Visão Geral</h5>
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-primary btn-sm" onclick="window.abrirDesignacoes()" title="Ver designações pessoais ativas">
+          <i class="fa-solid fa-lock"></i> Designações
+        </button>
         <button class="btn btn-outline-dark btn-sm" onclick="window.alternarTema()" title="Alternar tema escuro">
           <i class="fa-solid fa-moon" id="iconeTema"></i>
         </button>
@@ -255,6 +258,24 @@
     </div>
   </div>
 
+  <!-- Modal: Designações pessoais ativas (gerenciar) -->
+  <div class="modal fade" id="modalDesignacoes" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fa-solid fa-lock me-2"></i>Território Pessoal</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted mb-2">Quadras travadas em nome de publicadores. Fechadas automaticamente quando todas viram Concluído.</p>
+          <div id="listaDesignacoes">
+            <div class="text-center text-muted small py-3">Carregando...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="modalLinkPublico" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
@@ -262,6 +283,25 @@
           <h5 class="modal-title">Compartilhar</h5><button class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+          <!-- Território Pessoal (opcional): se preencher nome, registra
+               uma designação na aba Designacoes travando essas quadras em
+               nome do publicador até a conclusão. Visível no mapa Geral
+               com cadeado. Em branco = só link, sem travar. -->
+          <div class="card bg-light border-0 mb-3" id="cardTerritorioPessoal">
+            <div class="card-body py-2 px-3">
+              <p class="small fw-bold mb-2 text-success"><i class="fa-solid fa-lock me-1"></i>Território Pessoal (opcional)</p>
+              <div class="row g-2">
+                <div class="col-7">
+                  <input type="text" class="form-control form-control-sm" id="adminInputPubNome" placeholder="Nome do publicador">
+                </div>
+                <div class="col-5">
+                  <input type="date" class="form-control form-control-sm" id="adminInputPubPrazo" title="Prazo para devolver">
+                </div>
+              </div>
+              <div class="form-text small">Preencha pra travar essas quadras em nome do publicador. Em branco = só compartilha link.</div>
+            </div>
+          </div>
+
           <label class="form-label small fw-bold mb-1">Link gerado</label>
           <div class="input-group mb-2">
             <input type="text" class="form-control" id="inputLinkPublico" readonly>

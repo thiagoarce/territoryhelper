@@ -113,6 +113,24 @@ window.mudarAba = function(aba) {
       ? Array.from(terrs)[0]
       : ids.length + " quadra(s)" + (terrs.size > 1 ? " (" + terrs.size + " territórios)" : "");
 
+    // Guarda os ids no escopo do modal pro fluxo de Território Pessoal
+    window._idsCompartilharCorrente = ids;
+    window._designacaoCriadaParaIds = null; // reseta — modal foi reaberto
+
+    // Pré-popula prazo default = hoje + 30d (limpa nome)
+    var inpNome = document.getElementById('adminInputPubNome');
+    var inpPrazo = document.getElementById('adminInputPubPrazo');
+    var cardTerritorioPessoal = document.getElementById('cardTerritorioPessoal');
+    if (inpNome) inpNome.value = '';
+    if (inpPrazo) {
+      var d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      inpPrazo.value = d30.toISOString().slice(0, 10);
+    }
+    // Território Pessoal só faz sentido no link de Publicador
+    if (cardTerritorioPessoal) {
+      cardTerritorioPessoal.style.display = (view === 'publico') ? '' : 'none';
+    }
+
     var doGenerate = function() {
       google.script.run
         .withSuccessHandler(function(url) {
@@ -143,34 +161,76 @@ window.mudarAba = function(aba) {
   window.gerarLinkPublico = function() { window._abrirModalLinkPublico('publico', 'Link para Publicador'); };
   window.gerarLinkDirigente = function() { window._abrirModalLinkPublico('dirigente', 'Link para Dirigente — Designar'); };
 
+  // Cria a designação pessoal ANTES de qualquer ação de compartilhar,
+  // se o nome do publicador estiver preenchido. Idempotente por id de
+  // sessão — sem nome, não faz nada.
+  function comDesignacaoAdmin(acao) {
+    var nomeEl = document.getElementById('adminInputPubNome');
+    var nome = nomeEl ? nomeEl.value.trim() : '';
+    if (!nome || !window._idsCompartilharCorrente) { acao(); return; }
+    if (window._designacaoCriadaParaIds === window._idsCompartilharCorrente) {
+      // Já criou pra essa seleção — não duplica
+      acao(); return;
+    }
+    var prazo = (document.getElementById('adminInputPubPrazo') || {}).value || '';
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) {
+          if (!confirm('Não criou a designação: ' + ((r && r.erro) || '?') + '\n\nEnviar mesmo assim?')) return;
+        } else {
+          window._designacaoCriadaParaIds = window._idsCompartilharCorrente;
+          if (r.conflitos && r.conflitos.length) {
+            console.warn('Quadras já em outra designação:', r.conflitos);
+          }
+          window.atualizarDesignacoesNoMapa && window.atualizarDesignacoesNoMapa();
+        }
+        acao();
+      })
+      .withFailureHandler(function(e){
+        if (!confirm('Não criou a designação: ' + (e && e.message || e) + '\n\nEnviar mesmo assim?')) return;
+        acao();
+      })
+      .criarDesignacao({
+        ids: window._idsCompartilharCorrente,
+        publicador: nome,
+        prazo: prazo
+      });
+  }
+
   window.compartilharWhatsApp = function() {
     var link = document.getElementById('inputLinkPublico').value;
     if (!link) return;
-    var msg = encodeURIComponent('Olá! Segue o link das quadras designadas:\n\n' + link);
-    window.open('https://wa.me/?text=' + msg, '_blank');
+    comDesignacaoAdmin(function(){
+      var msg = encodeURIComponent('Olá! Segue o link das quadras designadas:\n\n' + link);
+      window.open('https://wa.me/?text=' + msg, '_blank');
+    });
   };
 
   window.compartilharNativo = function() {
     var link = document.getElementById('inputLinkPublico').value;
     if (!link) return;
-    if (navigator.share) {
-      navigator.share({ title: 'Quadras designadas', text: 'Quadras para hoje', url: link })
-        .catch(function(){ /* user cancelou */ });
-    } else {
-      window.copiarLinkGerado();
-      window.toast('Compartilhamento nativo indisponível — link copiado.', 'info');
-    }
+    comDesignacaoAdmin(function(){
+      if (navigator.share) {
+        navigator.share({ title: 'Quadras designadas', text: 'Quadras para hoje', url: link })
+          .catch(function(){ /* user cancelou */ });
+      } else {
+        window.copiarLinkGerado();
+        window.toast('Compartilhamento nativo indisponível — link copiado.', 'info');
+      }
+    });
   };
 
   window.copiarLinkGerado = function() {
     var inp = document.getElementById('inputLinkPublico');
     if (!inp || !inp.value) return;
-    var fallback = function(){ inp.select(); try { document.execCommand('copy'); } catch(e){} };
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(inp.value)
-        .then(function(){ window.toast('Link copiado!', 'success'); })
-        .catch(function(){ fallback(); window.toast('Link copiado!', 'success'); });
-    } else { fallback(); window.toast('Link copiado!', 'success'); }
+    comDesignacaoAdmin(function(){
+      var fallback = function(){ inp.select(); try { document.execCommand('copy'); } catch(e){} };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(inp.value)
+          .then(function(){ window.toast('Link copiado!', 'success'); })
+          .catch(function(){ fallback(); window.toast('Link copiado!', 'success'); });
+      } else { fallback(); window.toast('Link copiado!', 'success'); }
+    });
   };
 
   window.enviarLinkPorEmail = function() {
@@ -2149,6 +2209,69 @@ window.confirmarAssociacao = function(layerQuadra) {
                '</div>';
       }).join('');
   }
+
+  // ======================================================
+  // DESIGNAÇÕES — gerenciar Território Pessoal ativo
+  // ======================================================
+  window.abrirDesignacoes = function() {
+    var box = document.getElementById('listaDesignacoes');
+    box.innerHTML = '<div class="text-center text-muted small py-3">Carregando...</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalDesignacoes')).show();
+    google.script.run
+      .withSuccessHandler(function(r){
+        var abertas = (r && r.abertas) || [];
+        var vencidas = (r && r.vencidas) || [];
+        if (abertas.length === 0 && vencidas.length === 0) {
+          box.innerHTML = '<div class="text-center text-muted small py-3">Sem designações ativas.<br><small>Crie ao compartilhar quadras com publicador.</small></div>';
+          return;
+        }
+        function card(d, vencida) {
+          var prazoStr = d.prazo ? new Date(d.prazo).toLocaleDateString('pt-BR') : '—';
+          var cor = vencida ? 'border-danger' : 'border-primary';
+          var badge = vencida
+            ? '<span class="badge bg-danger">Vencida</span>'
+            : '<span class="badge bg-primary">Aberta</span>';
+          return '<div class="card mb-2 shadow-sm ' + cor + '" style="border-left-width:4px">' +
+                   '<div class="card-body py-2 px-3">' +
+                     '<div class="d-flex justify-content-between align-items-start gap-2">' +
+                       '<div class="flex-grow-1">' +
+                         '<div class="fw-bold">' + escapeHtml(d.publicador) + ' ' + badge + '</div>' +
+                         '<div class="small text-muted">' + d.idsQuadras.length + ' quadra(s): ' + escapeHtml(d.idsQuadras.join(', ')) + '</div>' +
+                         '<div class="small text-muted"><i class="fa-regular fa-clock"></i> Prazo: ' + escapeHtml(prazoStr) + '</div>' +
+                       '</div>' +
+                       '<button class="btn btn-sm btn-outline-danger" onclick="window.cancelarDesignacaoUI(\'' + d.id + '\')" title="Cancelar designação"><i class="fa-solid fa-xmark"></i></button>' +
+                     '</div>' +
+                   '</div>' +
+                 '</div>';
+        }
+        var html = '';
+        if (vencidas.length > 0) {
+          html += '<div class="small fw-bold text-danger mb-1">Vencidas (' + vencidas.length + ')</div>';
+          html += vencidas.map(function(d){ return card(d, true); }).join('');
+        }
+        if (abertas.length > 0) {
+          html += '<div class="small fw-bold text-primary mb-1 mt-2">Em andamento (' + abertas.length + ')</div>';
+          html += abertas.map(function(d){ return card(d, false); }).join('');
+        }
+        box.innerHTML = html;
+      })
+      .withFailureHandler(function(e){
+        box.innerHTML = '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+      })
+      .listarDesignacoes();
+  };
+
+  window.cancelarDesignacaoUI = function(id) {
+    if (!confirm('Cancelar essa designação? As quadras voltam a ficar livres pra outros publicadores.')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { alert('Erro: ' + (r && r.erro || '?')); return; }
+        window.abrirDesignacoes();
+        if (window.atualizarDesignacoesNoMapa) window.atualizarDesignacoesNoMapa();
+      })
+      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .cancelarDesignacao(id);
+  };
 
   // ======================================================
   // PRÉDIOS — UI admin (lista + editar + compartilhar)
