@@ -270,9 +270,12 @@
   </div>
 
   <!-- Modal: Renomear quadras em massa por território — modo interativo
-       (clique nas quadras no mapa pra definir a ordem de atribuição) -->
-  <div class="modal fade" id="modalRenomear" tabindex="-1" data-bs-backdrop="false">
-    <div class="modal-dialog modal-dialog-scrollable" style="max-width: 380px; position:absolute; right:12px; top:12px;">
+       (clique nas quadras no mapa pra definir a ordem de atribuição).
+       pointer-events: none no .modal deixa cliques fora do dialog
+       passarem pro mapa atrás. .modal-dialog reativa pointer-events
+       pra continuar interativo dentro dele. -->
+  <div class="modal fade" id="modalRenomear" tabindex="-1" data-bs-backdrop="false" style="pointer-events: none;">
+    <div class="modal-dialog modal-dialog-scrollable" style="max-width: 380px; position:absolute; right:12px; top:12px; pointer-events: auto;">
       <div class="modal-content shadow-lg">
         <div class="modal-header bg-warning py-2">
           <h6 class="modal-title m-0"><i class="fa-solid fa-font-awesome me-2"></i>Renomear quadras</h6>
