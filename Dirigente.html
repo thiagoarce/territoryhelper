@@ -91,6 +91,20 @@
           <button class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+          <div class="card bg-light border-0 mb-3">
+            <div class="card-body py-2 px-3">
+              <p class="small fw-bold mb-2 text-success"><i class="fa-solid fa-lock me-1"></i>Território Pessoal (opcional)</p>
+              <div class="row g-2">
+                <div class="col-7">
+                  <input type="text" class="form-control form-control-sm" id="inputPubNome" placeholder="Nome do publicador">
+                </div>
+                <div class="col-5">
+                  <input type="date" class="form-control form-control-sm" id="inputPubPrazo" title="Prazo para devolver">
+                </div>
+              </div>
+              <div class="form-text small">Preencha pra travar essas quadras em nome do publicador até a conclusão. Deixe em branco se não quiser travar.</div>
+            </div>
+          </div>
           <p class="small text-muted mb-1">Mensagem pronta — toque em copiar ou abra direto no WhatsApp:</p>
           <textarea class="form-control mb-2" id="msgDesignacao" readonly rows="5" style="font-size:.9rem"></textarea>
           <div class="d-flex gap-2">
@@ -401,6 +415,15 @@
 
       if (idsEnvio.length === 0) return alert("Sem quadras para enviar.");
 
+      // Pré-popula campos: nome em branco; prazo default = hoje + 30 dias
+      var hoje30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      var ymd = hoje30.toISOString().slice(0, 10);
+      var inpNome = document.getElementById('inputPubNome');
+      var inpPrazo = document.getElementById('inputPubPrazo');
+      if (inpNome) inpNome.value = '';
+      if (inpPrazo) inpPrazo.value = ymd;
+
+      _idsEnvioCorrente = idsEnvio;
       google.script.run
         .withSuccessHandler(function(url){
            var baseUrl = url || window.location.href.split('?')[0];
@@ -412,6 +435,29 @@
         })
         .withFailureHandler(function(e){ alert("Erro: " + (e && e.message ? e.message : e)); })
         .getScriptUrl();
+    }
+
+    var _idsEnvioCorrente = [];
+
+    // Quando o usuário copia ou abre WhatsApp, se tiver nome preenchido,
+    // cria a designação pessoal antes de retornar o texto.
+    function comDesignacaoSeNecessario(acao) {
+      var nome = (document.getElementById('inputPubNome') || {}).value || '';
+      nome = nome.trim();
+      if (!nome) { acao(); return; }
+      var prazo = (document.getElementById('inputPubPrazo') || {}).value || '';
+      google.script.run
+        .withSuccessHandler(function(r){
+          if (!r || !r.ok) {
+            if (!confirm('Não deu pra criar a designação pessoal: ' + (r && r.erro || '?') + '\n\nEnviar mesmo assim?')) return;
+          }
+          acao();
+        })
+        .withFailureHandler(function(e){
+          if (!confirm('Não deu pra criar a designação pessoal: ' + (e && e.message || e) + '\n\nEnviar mesmo assim?')) return;
+          acao();
+        })
+        .criarDesignacao({ ids: _idsEnvioCorrente, publicador: nome, prazo: prazo });
     }
 
     // Mensagem padrão pra mandar ao publicador (WhatsApp ou cópia).
@@ -428,19 +474,23 @@
     }
 
     function copiarMsgDesignacao() {
-      var ta = document.getElementById('msgDesignacao');
-      ta.select();
-      navigator.clipboard.writeText(ta.value).then(function(){
-        alert('Mensagem copiada!');
-      }).catch(function(){
-        document.execCommand('copy');
-        alert('Mensagem copiada!');
+      comDesignacaoSeNecessario(function(){
+        var ta = document.getElementById('msgDesignacao');
+        ta.select();
+        navigator.clipboard.writeText(ta.value).then(function(){
+          alert('Mensagem copiada!');
+        }).catch(function(){
+          document.execCommand('copy');
+          alert('Mensagem copiada!');
+        });
       });
     }
 
     function abrirWhatsApp() {
-      var msg = document.getElementById('msgDesignacao').value;
-      window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+      comDesignacaoSeNecessario(function(){
+        var msg = document.getElementById('msgDesignacao').value;
+        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+      });
     }
 
     function abrirModalConcluir(id) {
