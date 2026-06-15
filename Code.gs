@@ -1015,9 +1015,12 @@ function getDadosComContexto(idsString) {
   if (contexto.length === 0) {
     var bbox = bboxDasDesignadas_(designadas);
     if (bbox) {
-      // expande 60% pra cada lado pra capturar quadras vizinhas
-      var dlat = (bbox.maxLat - bbox.minLat) * 0.6;
-      var dlng = (bbox.maxLng - bbox.minLng) * 0.6;
+      // Expande 60% pra cada lado pra capturar quadras vizinhas.
+      // Mínimo absoluto (~110m) evita degenerar quando designamos uma
+      // única quadra (bbox quase pontual em graus).
+      var MIN_DELTA = 0.001;
+      var dlat = Math.max((bbox.maxLat - bbox.minLat) * 0.6, MIN_DELTA);
+      var dlng = Math.max((bbox.maxLng - bbox.minLng) * 0.6, MIN_DELTA);
       bbox.minLat -= dlat; bbox.maxLat += dlat;
       bbox.minLng -= dlng; bbox.maxLng += dlng;
 
@@ -1473,26 +1476,38 @@ function uploadAnexoCampanha(payload) {
   if (!payload || !payload.base64 || !payload.nome) {
     return { ok: false, erro: 'Payload inválido' };
   }
-  try {
-    var pasta = _pastaAnexosCampanha_();
-    var bytes = Utilities.base64Decode(payload.base64);
-    var blob = Utilities.newBlob(bytes, payload.mime || 'application/octet-stream', payload.nome);
-    var arq = pasta.createFile(blob);
-    arq.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return {
-      ok: true,
-      nome: arq.getName(),
-      url:  arq.getUrl()
-    };
-  } catch (e) {
-    logErro_('uploadAnexoCampanha', e);
-    return { ok: false, erro: String(e && e.message || e) };
-  }
+  // Lock serializa _pastaAnexosCampanha_ — sem isso, 2 uploads
+  // concorrentes na 1ª vez criariam 2 pastas com o mesmo nome.
+  return withLock_(function(){
+    try {
+      var pasta = _pastaAnexosCampanha_();
+      var bytes = Utilities.base64Decode(payload.base64);
+      var blob = Utilities.newBlob(bytes, payload.mime || 'application/octet-stream', payload.nome);
+      var arq = pasta.createFile(blob);
+      arq.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return {
+        ok: true,
+        nome: arq.getName(),
+        url:  arq.getUrl()
+      };
+    } catch (e) {
+      logErro_('uploadAnexoCampanha', e);
+      return { ok: false, erro: String(e && e.message || e) };
+    }
+  });
 }
 
 function _pastaAnexosCampanha_() {
+  // Cache o ID em ScriptProperties pra evitar getFoldersByName em
+  // toda chamada — também fecha a race "pasta criada 2x" depois da 1ª.
+  var props = PropertiesService.getScriptProperties();
+  var idCached = props.getProperty('PASTA_ANEXOS_CAMPANHA_ID');
+  if (idCached) {
+    try { return DriveApp.getFolderById(idCached); } catch (e) {}
+  }
   var nome = 'Territory Helper — Anexos Campanha';
   var iter = DriveApp.getFoldersByName(nome);
-  if (iter.hasNext()) return iter.next();
-  return DriveApp.createFolder(nome);
+  var pasta = iter.hasNext() ? iter.next() : DriveApp.createFolder(nome);
+  props.setProperty('PASTA_ANEXOS_CAMPANHA_ID', pasta.getId());
+  return pasta;
 }

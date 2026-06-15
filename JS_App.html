@@ -1837,15 +1837,18 @@ window.confirmarAssociacao = function(layerQuadra) {
     document.getElementById('objInputDescricao').value = obj ? obj.descricao : '';
     document.getElementById('objInputLink').value = obj ? obj.link : '';
     document.getElementById('objInputArquivo').value = '';
-    document.getElementById('objAnexoAtual').innerHTML = (obj && obj.anexoNome)
-      ? 'Anexo atual: <a href="' + escapeHtml(obj.anexoUrl) + '" target="_blank">' + escapeHtml(obj.anexoNome) + '</a>'
-      : 'Nenhum anexo enviado';
+    var anexoHrefModal = obj ? safeUrl(obj.anexoUrl) : '';
+    document.getElementById('objAnexoAtual').innerHTML = (obj && obj.anexoNome && anexoHrefModal)
+      ? 'Anexo atual: <a href="' + escapeHtml(anexoHrefModal) + '" target="_blank" rel="noopener">' + escapeHtml(obj.anexoNome) + '</a>'
+      : (obj && obj.anexoNome ? 'Anexo atual: ' + escapeHtml(obj.anexoNome) + ' (link inválido)' : 'Nenhum anexo enviado');
     // Novo objetivo já vem marcado como público — esse é o caso comum.
     // Pra esconder do painel, basta desmarcar.
     document.getElementById('objInputPublico').checked = obj ? !!obj.publico : true;
     document.getElementById('btnRemoverObjetivo').style.display = id ? '' : 'none';
 
-    new bootstrap.Modal(document.getElementById('modalObjetivo')).show();
+    // getOrCreateInstance reaproveita o backdrop/listeners — sem isso,
+    // cada abertura criava uma instância nova com handlers próprios.
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalObjetivo')).show();
   };
 
   window.salvarObjetivoAtual = function() {
@@ -1909,18 +1912,28 @@ window.confirmarAssociacao = function(layerQuadra) {
     }
   };
 
+  var _togglesEmVoo = {};
   window.alternarPublicoObjetivo = function(id, novoEstado) {
-    // Otimista: atualiza UI local antes do round-trip, reverte se falhar
+    // Bloqueia clique repetido enquanto o anterior pro mesmo id não voltou
+    // — sem isso, respostas chegariam fora de ordem e a UI piscaria.
+    if (_togglesEmVoo[id]) return;
+    _togglesEmVoo[id] = true;
+
     var idx = _objetivos.findIndex(function(o){ return o.id === id; });
     if (idx >= 0) { _objetivos[idx].publico = novoEstado; renderObjetivos(); }
+
+    function liberar() { delete _togglesEmVoo[id]; }
+
     google.script.run
       .withSuccessHandler(function(r){
+        liberar();
         if (!r || !r.ok) {
           if (idx >= 0) { _objetivos[idx].publico = !novoEstado; renderObjetivos(); }
           alert('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'));
         }
       })
       .withFailureHandler(function(e){
+        liberar();
         if (idx >= 0) { _objetivos[idx].publico = !novoEstado; renderObjetivos(); }
         alert('Erro: ' + (e && e.message ? e.message : e));
       })
