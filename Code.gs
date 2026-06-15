@@ -959,6 +959,7 @@ function getDadosCampanhaPublico() {
   }
 
   return {
+    ativa: cfg.ativa,
     nome: cfg.nome || "Campanha",
     dataInicio: cfg.data || "",
     dataFim: cfg.dataFim || "",
@@ -1403,18 +1404,27 @@ function salvarConfiguracoesCampanhaCompleta(cfg) {
   props.setProperty('CAMPANHA_OBJETIVO', cfg.objetivo || "");
   props.setProperty('CAMPANHA_ESTRATEGIA', cfg.estrategia || "");
   props.setProperty('CAMPANHA_META_SEMANAL', String(cfg.metaSemanal || 0));
+  // Toggle explícito — quando false, o painel público mostra mensagem
+  // "sem campanha ativa" e o cálculo de "concluídas na campanha" usa
+  // o gradiente normal em vez de cortar pela dataInicio.
+  props.setProperty('CAMPANHA_ATIVA', cfg.ativa === false ? 'false' : 'true');
   return true;
 }
 
 function obterConfiguracoesCampanha() {
   var props = PropertiesService.getScriptProperties();
+  var ativaStr = props.getProperty('CAMPANHA_ATIVA');
+  // Default: ativa se tem datas configuradas (compat com config antiga)
+  var temData = !!props.getProperty('CAMPANHA_DATA');
+  var ativa = ativaStr === null ? temData : ativaStr !== 'false';
   return {
     nome: props.getProperty('CAMPANHA_NOME') || "",
     data: props.getProperty('CAMPANHA_DATA') || "",
     dataFim: props.getProperty('CAMPANHA_DATA_FIM') || "",
     objetivo: props.getProperty('CAMPANHA_OBJETIVO') || "",
     estrategia: props.getProperty('CAMPANHA_ESTRATEGIA') || "",
-    metaSemanal: parseInt(props.getProperty('CAMPANHA_META_SEMANAL') || "0", 10) || 0
+    metaSemanal: parseInt(props.getProperty('CAMPANHA_META_SEMANAL') || "0", 10) || 0,
+    ativa: ativa
   };
 }
 // =================================================================

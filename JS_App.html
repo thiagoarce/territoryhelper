@@ -1335,6 +1335,7 @@ window.confirmarAssociacao = function(layerQuadra) {
   };
 
   window.abrirEditorCampanha = function() {
+    document.getElementById('campanhaInputAtiva').checked = !!configCampanhaGlobal.ativa;
     document.getElementById('campanhaInputNome').value = configCampanhaGlobal.nome || "";
     document.getElementById('campanhaInputDataInicio').value = configCampanhaGlobal.data || "";
     document.getElementById('campanhaInputDataFim').value = configCampanhaGlobal.dataFim || "";
@@ -1350,6 +1351,7 @@ window.confirmarAssociacao = function(layerQuadra) {
 
   window.salvarEditorCampanha = function() {
     var cfg = {
+      ativa: document.getElementById('campanhaInputAtiva').checked,
       nome: document.getElementById('campanhaInputNome').value || "",
       data: document.getElementById('campanhaInputDataInicio').value || "",
       dataFim: document.getElementById('campanhaInputDataFim').value || "",
