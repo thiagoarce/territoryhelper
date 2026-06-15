@@ -1829,9 +1829,13 @@ function ensureSheetPredios_() {
 function ensureSheetPrediosAptos_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET.PREDIOS_APTOS);
-  if (sh) return sh;
+  if (sh) {
+    // Migração: completa a coluna naoEscrever se aba antiga
+    if (sh.getLastColumn() < 6) sh.getRange(1, 6).setValue('naoEscrever');
+    return sh;
+  }
   sh = ss.insertSheet(SHEET.PREDIOS_APTOS);
-  sh.appendRow(['row', 'cartaEscrita', 'cartaEntregue', 'desocupado', 'atualizado']);
+  sh.appendRow(['row', 'cartaEscrita', 'cartaEntregue', 'desocupado', 'atualizado', 'naoEscrever']);
   sh.setFrozenRows(1);
   return sh;
 }
@@ -2093,7 +2097,8 @@ function _mapaAptosStatus_() {
   var sh = ensureSheetPrediosAptos_();
   var ult = sh.getLastRow();
   if (ult < 2) return {};
-  var dados = sh.getRange(2, 1, ult - 1, 5).getValues();
+  var nCols = Math.max(sh.getLastColumn(), 6);
+  var dados = sh.getRange(2, 1, ult - 1, nCols).getValues();
   var mapa = {};
   dados.forEach(function(r){
     var row = Number(r[COL.PREDIOS_APTOS.ROW] || 0);
@@ -2104,7 +2109,9 @@ function _mapaAptosStatus_() {
       cartaEntregue: r[COL.PREDIOS_APTOS.CARTA_ENTREGUE]
         ? new Date(r[COL.PREDIOS_APTOS.CARTA_ENTREGUE]).getTime() : 0,
       desocupado: r[COL.PREDIOS_APTOS.DESOCUPADO] === true
-                  || String(r[COL.PREDIOS_APTOS.DESOCUPADO]).toUpperCase() === 'TRUE'
+                  || String(r[COL.PREDIOS_APTOS.DESOCUPADO]).toUpperCase() === 'TRUE',
+      naoEscrever: r[COL.PREDIOS_APTOS.NAO_ESCREVER] === true
+                  || String(r[COL.PREDIOS_APTOS.NAO_ESCREVER]).toUpperCase() === 'TRUE'
     };
   });
   return mapa;
@@ -2175,6 +2182,7 @@ function listarAptosDoPredio(chave) {
     a.cartaEntregueStr = s.cartaEntregue
       ? Utilities.formatDate(new Date(s.cartaEntregue), tz, 'dd/MM/yyyy') : '';
     a.desocupado = !!s.desocupado;
+    a.naoEscrever = !!s.naoEscrever;
     var u = ultimos[a.row];
     a.ultimoTipo = u ? u.tipo : '';
     a.ultimoDataStr = u && u.dataMs
@@ -2211,18 +2219,19 @@ function atualizarAptoStatus(row, patch) {
     var sh = ensureSheetPrediosAptos_();
     var linha = _acharLinhaAptoPorRow_(sh, rowNum);
     if (linha < 0) {
-      sh.appendRow([rowNum, '', '', false, new Date()]);
+      sh.appendRow([rowNum, '', '', false, new Date(), false]);
       linha = sh.getLastRow();
     }
     var mapa = {
       cartaEscrita:   COL.PREDIOS_APTOS.CARTA_ESCRITA_1IDX,
       cartaEntregue:  COL.PREDIOS_APTOS.CARTA_ENTREGUE_1IDX,
-      desocupado:     COL.PREDIOS_APTOS.DESOCUPADO_1IDX
+      desocupado:     COL.PREDIOS_APTOS.DESOCUPADO_1IDX,
+      naoEscrever:    COL.PREDIOS_APTOS.NAO_ESCREVER_1IDX
     };
     Object.keys(patch || {}).forEach(function(k){
       if (!(k in mapa)) return;
       var valor = patch[k];
-      if (k === 'desocupado') valor = valor === true;
+      if (k === 'desocupado' || k === 'naoEscrever') valor = valor === true;
       else if (valor === true) valor = new Date(); // toggle on com data atual
       else if (valor === false || valor === null || valor === '') valor = '';
       else if (typeof valor === 'string') valor = new Date(valor + 'T00:00:00');
