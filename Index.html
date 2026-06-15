@@ -76,12 +76,20 @@
     <h5 class="fw-bold mb-2"><i class="fa-solid fa-pen-ruler text-info me-2"></i>Editor</h5>
     <div class="filter-bar d-flex flex-wrap align-items-center gap-3 mb-2 justify-content-center">
       <select id="editorViewSelect" class="form-select form-select-sm w-auto border-secondary" onchange="window.mudarVisualizacao(this.value)"><option value="quadras">Quadras</option><option value="territorios">Territórios</option><option value="both" selected>Ambos</option></select>
-      <div class="d-flex gap-3 bg-light px-2 py-1 rounded border">
+      <div class="d-flex gap-3 bg-light px-2 py-1 rounded border" title="Tipo de imóvel">
         <div class="form-check form-switch m-0">
           <input class="form-check-input" type="checkbox" id="toggleFacesRes" onchange="window.renderizarFaces()"><label class="small text-primary fw-bold">Dom</label>
         </div>
         <div class="form-check form-switch m-0">
           <input class="form-check-input" type="checkbox" id="toggleFacesCom" onchange="window.renderizarFaces()"><label class="small text-warning fw-bold">Com</label>
+        </div>
+      </div>
+      <div class="d-flex gap-3 bg-light px-2 py-1 rounded border" title="Vínculo com quadra">
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="toggleFacesVinc" checked onchange="window.renderizarFaces()"><label class="small text-success fw-bold">Vinculados</label>
+        </div>
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="toggleFacesNaoVinc" checked onchange="window.renderizarFaces()"><label class="small text-danger fw-bold">Sem quadra</label>
         </div>
       </div>
       <div class="form-check form-switch ms-1">
