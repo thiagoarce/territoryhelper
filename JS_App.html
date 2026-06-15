@@ -945,19 +945,24 @@ window.converterGeoJsonParaString = function(geometry) {
 window.iniciarMapaRegistro = function(qs, ops) {
       if (!mapRegistro) {
           mapRegistro = L.map('mapRegistro', {
-              preferCanvas: true 
+              preferCanvas: true
           }).setView([-7.115, -34.863], 15);
-          
+
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapRegistro);
-          
+
           layerGroupRegistro = L.featureGroup().addTo(mapRegistro);
           layerGroupRegistroIcons = L.featureGroup().addTo(mapRegistro);
           layerGroupRegistroLabels = L.featureGroup().addTo(mapRegistro);
+          // Overlay de Território Pessoal — cadeado nas quadras designadas
+          layerGroupRegistroDesignacoes = L.featureGroup().addTo(mapRegistro);
       }
-      
+
       layerGroupRegistro.clearLayers();
       layerGroupRegistroIcons.clearLayers();
       layerGroupRegistroLabels.clearLayers();
+      if (typeof layerGroupRegistroDesignacoes !== 'undefined' && layerGroupRegistroDesignacoes) {
+        layerGroupRegistroDesignacoes.clearLayers();
+      }
       
       var hoje = new Date();
       
@@ -974,7 +979,8 @@ window.iniciarMapaRegistro = function(qs, ops) {
               weight: 1,
               fillOpacity: op
           });
-          
+          poly.metaData = q; // necessário pro overlay de designações
+
           if (!isOpt) {
               var dataFormatada = q.dataConclusao ? window.formatarDataBR(q.dataConclusao) : "Nunca feita";
               var territorioNome = q.territory || "Sem Território";
@@ -991,7 +997,21 @@ window.iniciarMapaRegistro = function(qs, ops) {
 
               poly.on('click', function() {
                   var id = q.id;
-                  if (registroSelecionados.has(id)) {
+                  var jaSelecionada = registroSelecionados.has(id);
+                  // Avisa se está prestes a marcar/selecionar uma quadra
+                  // com designação aberta — evita o servo concluir/redesignar
+                  // por engano em cima do trabalho do publicador.
+                  if (!jaSelecionada) {
+                    var ja = window._quadrasDesignadasCache || {};
+                    if (ja[id]) {
+                      var info = ja[id];
+                      var prazoStr = info.prazo ? new Date(info.prazo).toLocaleDateString('pt-BR') : '—';
+                      if (!confirm('Quadra ' + id + ' está designada para '
+                          + (info.publicador || '?') + ' (até ' + prazoStr + ').\n\n'
+                          + 'Continuar mesmo assim?')) return;
+                    }
+                  }
+                  if (jaSelecionada) {
                       registroSelecionados.delete(id);
                       this.setStyle({ color: q.color, weight: 1 });
                   } else {
@@ -1055,9 +1075,60 @@ window.iniciarMapaRegistro = function(qs, ops) {
           
           layerGroupRegistro.addLayer(poly);
       });
-      
+
       if(window.renderizarLabelsRegistro) window.renderizarLabelsRegistro();
       if(window.ativarGPS) window.ativarGPS('registro');
+      // Overlay de Território Pessoal (cadeados) no mapa do Registro,
+      // pra evitar que o servo marque/redesigne uma quadra travada.
+      if (window.atualizarDesignacoesNoMapaRegistro) window.atualizarDesignacoesNoMapaRegistro();
+  };
+
+  // Overlay no mapa do Registro com cadeado nas quadras designadas.
+  // Mesma estratégia do mapa Geral: borda destacada + ícone clicável
+  // com tooltip mostrando o publicador e o prazo.
+  window.atualizarDesignacoesNoMapaRegistro = function() {
+    if (typeof layerGroupRegistroDesignacoes === 'undefined' || !layerGroupRegistroDesignacoes) return;
+    layerGroupRegistroDesignacoes.clearLayers();
+
+    // Restaura estilo base de TODAS antes de aplicar override
+    layerGroupRegistro.eachLayer(function(poly){
+      var d = poly.metaData;
+      if (d && d.color) poly.setStyle({ color: d.color, weight: 1 });
+    });
+
+    google.script.run
+      .withSuccessHandler(function(mapa){
+        // Cache global pra outras camadas consultarem (Geral também usa)
+        window._quadrasDesignadasCache = mapa || {};
+        if (!mapa) return;
+        layerGroupRegistro.eachLayer(function(poly){
+          var d = poly.metaData;
+          if (!d || !mapa[d.id]) return;
+          var info = mapa[d.id];
+          var prazoStr = info.prazo ? new Date(info.prazo).toLocaleDateString('pt-BR') : '—';
+          var cor = info.vencida ? '#dc2626' : '#1d4ed8';
+          poly.setStyle({ color: cor, weight: 3 });
+          var c = poly.getBounds().getCenter();
+          var html = '<div style="background:' + cor + ';color:#fff;border-radius:50%;'
+                   + 'width:24px;height:24px;display:flex;align-items:center;'
+                   + 'justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,.3)">'
+                   + '<i class="fa-solid fa-lock" style="font-size:11px"></i></div>';
+          var icone = L.marker(c, {
+            icon: L.divIcon({ html: html, className: '', iconSize: [24,24], iconAnchor: [12,12] }),
+            interactive: true
+          });
+          icone.bindTooltip(
+            '<b>' + _escHtml(d.id) + '</b><br>' +
+            (info.vencida ? '⚠️ Vencida<br>' : '') +
+            'Com: ' + _escHtml(info.publicador || '?') + '<br>' +
+            'Até: ' + _escHtml(prazoStr),
+            { direction: 'top' }
+          );
+          layerGroupRegistroDesignacoes.addLayer(icone);
+        });
+      })
+      .withFailureHandler(function(){})
+      .getQuadrasDesignadas();
   };
 
 window.abrirHistoricoQuadra = function(id) {
@@ -1548,7 +1619,22 @@ window.confirmarAssociacao = function(layerQuadra) {
                 poly.metaData = d; // necessário para gerar link público/dirigente
                 poly.on('click', function(e) {
                    var id = d.id;
-                   if(shareSelecionados.has(id)) { shareSelecionados.delete(id); this.setStyle({color: '#666', weight: 1}); }
+                   var jaSelecionada = shareSelecionados.has(id);
+                   // Avisa se está prestes a SELECIONAR uma quadra que já
+                   // tem designação pessoal aberta — evita redesignar
+                   // sobre o trabalho de outro publicador.
+                   if (!jaSelecionada) {
+                     var ja = window._quadrasDesignadasCache || {};
+                     if (ja[id]) {
+                       var info = ja[id];
+                       var prazoStr = info.prazo ? new Date(info.prazo).toLocaleDateString('pt-BR') : '—';
+                       var msg = 'Quadra ' + id + ' já está designada para '
+                               + (info.publicador || '?') + ' (até ' + prazoStr + ').\n\n'
+                               + 'Selecionar mesmo assim?';
+                       if (!confirm(msg)) return;
+                     }
+                   }
+                   if (jaSelecionada) { shareSelecionados.delete(id); this.setStyle({color: '#666', weight: 1}); }
                    else { shareSelecionados.add(id); this.setStyle({color: 'blue', weight: 4}); }
                    window.atualizarBarraShare();
                 });
@@ -1595,6 +1681,8 @@ window.confirmarAssociacao = function(layerQuadra) {
 
     google.script.run
       .withSuccessHandler(function(mapa){
+        // Cache global — usado por outras camadas pra avisar o user
+        window._quadrasDesignadasCache = mapa || {};
         if (!mapa) return;
         lgGeralQuadras.eachLayer(function(poly){
           var d = poly.metaData;
