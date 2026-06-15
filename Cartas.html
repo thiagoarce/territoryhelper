@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Trabalho de Cartas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/4d1cf8b9eb.js" crossorigin="anonymous"></script>
+  <style>
+    body { background:#f0f2f5; padding-bottom:80px; }
+    .hero { background:linear-gradient(135deg,#16a34a 0%,#15803d 100%); color:#fff; padding:24px 20px 18px; }
+    .hero h1 { font-size:1.5rem; font-weight:800; margin:0; }
+    .hero .sub { font-size:.85rem; opacity:.85; margin-top:4px; }
+    .filtro { padding:12px 16px; background:#fff; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
+    .predio-card { background:#fff; border-radius:14px; padding:14px 16px; margin:10px 16px; box-shadow:0 1px 4px rgba(0,0,0,.06); display:flex; gap:12px; align-items:flex-start; }
+    .predio-card .info { flex:1; min-width:0; }
+    .predio-card .nome { font-weight:700; font-size:1rem; }
+    .predio-card .end { font-size:.85rem; color:#6b7280; }
+    .predio-card .badges { font-size:.75rem; margin-top:4px; display:flex; gap:6px; flex-wrap:wrap; }
+    .predio-card .badge-irmao { background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:999px; }
+    .predio-card .badge-feito { background:#d1fae5; color:#065f46; padding:2px 8px; border-radius:999px; }
+    .botao-feito { background:#16a34a; color:#fff; border:none; padding:10px 14px; border-radius:10px; font-weight:600; white-space:nowrap; }
+    .botao-feito.refazer { background:#fff; color:#16a34a; border:1px solid #16a34a; }
+    .vazio { text-align:center; padding:40px 20px; color:#9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1><i class="fa-solid fa-envelope me-2"></i>Trabalho de Cartas</h1>
+    <div class="sub">Toque em "Entreguei" depois de deixar a carta no prédio.</div>
+  </div>
+
+  <div class="filtro">
+    <div class="d-flex gap-2 align-items-center">
+      <input type="search" class="form-control form-control-sm" id="busca" placeholder="Buscar logradouro ou nome...">
+      <div class="form-check form-switch m-0">
+        <input class="form-check-input" type="checkbox" id="esconderIrmao">
+        <label class="form-check-label small" for="esconderIrmao">Esconder onde irmão mora</label>
+      </div>
+    </div>
+  </div>
+
+  <div id="loader" class="text-center py-5">
+    <div class="spinner-border text-success"></div>
+  </div>
+
+  <div id="lista"></div>
+
+  <script>
+    var dados = [];
+
+    window.onload = function() { carregar(); };
+
+    document.getElementById('busca').addEventListener('input', render);
+    document.getElementById('esconderIrmao').addEventListener('change', render);
+
+    function carregar() {
+      google.script.run
+        .withSuccessHandler(function(r){
+          dados = r || [];
+          document.getElementById('loader').classList.add('d-none');
+          render();
+        })
+        .withFailureHandler(function(e){
+          document.getElementById('loader').innerHTML =
+            '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+        })
+        .listarPrediosPublico();
+    }
+
+    function escapeHtml(s) {
+      return String(s||'').replace(/[&<>"']/g, function(c){
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+      });
+    }
+
+    function render() {
+      var termo = document.getElementById('busca').value.trim().toLowerCase();
+      var esc = document.getElementById('esconderIrmao').checked;
+      var lista = dados.filter(function(p){
+        if (esc && p.irmaoMora) return false;
+        if (!termo) return true;
+        return (p.logradouro + ' ' + p.nome + ' ' + p.numero).toLowerCase().indexOf(termo) > -1;
+      });
+      var box = document.getElementById('lista');
+      if (lista.length === 0) {
+        box.innerHTML = '<div class="vazio"><i class="fa-solid fa-inbox fa-2x mb-2"></i><br>Nenhum prédio</div>';
+        return;
+      }
+      box.innerHTML = lista.map(function(p){
+        var badges = [];
+        if (p.irmaoMora) badges.push('<span class="badge-irmao"><i class="fa-solid fa-house-user"></i> Irmão mora</span>');
+        if (p.ultimaCartaStr) badges.push('<span class="badge-feito"><i class="fa-solid fa-check"></i> Entregue ' + escapeHtml(p.ultimaCartaStr) + '</span>');
+        var jaFeito = !!p.ultimaCartaStr;
+        return '<div class="predio-card">' +
+                 '<div class="info">' +
+                   '<div class="nome">' + escapeHtml(p.nome) + '</div>' +
+                   '<div class="end">' + escapeHtml(p.logradouro) + ', ' + escapeHtml(p.numero) +
+                   ' &middot; ' + p.qtdEnderecos + ' apto(s)</div>' +
+                   (badges.length ? '<div class="badges">' + badges.join('') + '</div>' : '') +
+                 '</div>' +
+                 '<button class="botao-feito ' + (jaFeito ? 'refazer' : '') + '" ' +
+                   'onclick="marcar(this, \'' + p.chave.replace(/'/g, "\\'") + '\')">' +
+                   (jaFeito ? '<i class="fa-solid fa-rotate"></i>' : '<i class="fa-solid fa-check"></i> Entreguei') +
+                 '</button>' +
+               '</div>';
+      }).join('');
+    }
+
+    function marcar(btn, chave) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      google.script.run
+        .withSuccessHandler(function(r){
+          if (!r || !r.ok) { alert('Erro: ' + (r && r.erro || '?')); btn.disabled = false; return; }
+          // Atualiza local
+          var p = dados.find(function(x){ return x.chave === chave; });
+          if (p) p.ultimaCartaStr = new Date().toLocaleDateString('pt-BR');
+          render();
+        })
+        .withFailureHandler(function(e){
+          alert('Erro: ' + (e && e.message ? e.message : e));
+          btn.disabled = false;
+        })
+        .marcarCartaEntregue(chave);
+    }
+  </script>
+</body>
+</html>

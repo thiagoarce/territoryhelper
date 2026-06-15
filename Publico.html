@@ -242,6 +242,18 @@
       color: white;
     }
 
+    /* Botão "deixei carta" — só pra apartamentos / prédios */
+    .btn-carta {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 2px solid #ddd; color: #94a3b8;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; cursor: pointer; flex-shrink: 0;
+      margin-right: 6px; font-size: 0.85rem;
+    }
+    .btn-carta.feito {
+      background-color: #d97706; border-color: #d97706; color: #fff;
+    }
+
     /* Botões Flutuantes */
     .btn-float-add {
       position: fixed;
@@ -842,22 +854,30 @@ function criarItemHtml(item, isInsideGroup) {
         }
 
         // HTML da Data (Mostra sempre que existir)
-        var htmlData = item.ultimaVisita ? 
+        var htmlData = item.ultimaVisita ?
             `<span class="ms-2 badge bg-light text-secondary border fw-normal" style="font-size:0.7em"><i class="fa-solid fa-clock-rotate-left"></i> ${item.ultimaVisita}</span>` : '';
+
+        // Carta entregue: persistido localmente por endereço pra dar
+        // feedback visual sem precisar de roundtrip.
+        var cartaEntregue = localStorage.getItem("carta_" + item.row) === "true";
 
         return `
         <div class="address-item ${rowCls}" style="${opacidade}" data-row="${item.row}" data-obj='${JSON.stringify(item)}'>
             <div class="handle"><i class="fa-solid fa-bars"></i></div>
-            
+
             <div class="icon-box ${vis.cls}"><i class="fa-solid ${vis.icon}"></i></div>
-            
+
             <div class="flex-grow-1" onclick="abrirEdicao(${item.row})" style="cursor:pointer">
                 <div class="fw-bold text-dark">
-                    ${title} ${badgeNV} 
+                    ${title} ${badgeNV}
                     ${htmlData}
                 </div>
                 <div class="small text-muted">${sub}</div>
                 ${item.nota ? `<div class="small text-primary mt-1"><i class="fa-solid fa-note-sticky"></i> ${item.nota}</div>` : ''}
+            </div>
+
+            <div class="btn-carta ${cartaEntregue ? 'feito' : ''}" onclick="toggleCarta(${item.row}, this)" title="Deixei carta aqui">
+                <i class="fa-regular fa-envelope"></i>
             </div>
 
             <div class="check-visita ${checked ? 'checked' : ''}" onclick="toggleVisita(${item.row}, this)">
@@ -865,6 +885,21 @@ function criarItemHtml(item, isInsideGroup) {
             </div>
         </div>`;
     }
+
+    // Marca "deixei carta aqui" — feedback otimista, persiste local
+    // + registra no backend. Reversível com novo toque.
+    window.toggleCarta = function(row, el) {
+      var chave = "carta_" + row;
+      var jaFeito = localStorage.getItem(chave) === "true";
+      var novoEstado = !jaFeito;
+      localStorage.setItem(chave, novoEstado ? "true" : "false");
+      el.classList.toggle('feito', novoEstado);
+      if (!novoEstado) return; // desfazer é só local
+      google.script.run
+        .withSuccessHandler(function(){})
+        .withFailureHandler(function(){})
+        .registrarCartaEndereco(row);
+    };
 
     // ================= AÇÕES =================
     window.abrirEdicao = function(row) {
