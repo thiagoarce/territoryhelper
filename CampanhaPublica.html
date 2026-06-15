@@ -550,6 +550,12 @@
         return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
       });
     }
+    // Bloqueia esquemas perigosos em URLs (javascript:, data:, etc).
+    function safeUrlPub(s){
+      var u = String(s||'').trim();
+      if (!u) return '';
+      return (/^https?:\/\//i.test(u) || /^mailto:/i.test(u)) ? u : '';
+    }
 
     function modalidadeMeta(key) {
       var m = MODALIDADES_PUB.find(function(x){ return x.key === key; });
@@ -584,8 +590,10 @@
       return lista.map(function(o){
         var meta = modalidadeMeta(o.modalidade);
         var anexos = '';
-        if (o.link)     anexos += '<a href="' + escapeHtmlPub(o.link)     + '" target="_blank"><i class="fa-solid fa-link"></i> Link</a>';
-        if (o.anexoUrl) anexos += '<a href="' + escapeHtmlPub(o.anexoUrl) + '" target="_blank"><i class="fa-solid fa-paperclip"></i> ' + escapeHtmlPub(o.anexoNome || 'Anexo') + '</a>';
+        var lnk = safeUrlPub(o.link);
+        var anx = safeUrlPub(o.anexoUrl);
+        if (lnk) anexos += '<a href="' + escapeHtmlPub(lnk) + '" target="_blank" rel="noopener"><i class="fa-solid fa-link"></i> Link</a>';
+        if (anx) anexos += '<a href="' + escapeHtmlPub(anx) + '" target="_blank" rel="noopener"><i class="fa-solid fa-paperclip"></i> ' + escapeHtmlPub(o.anexoNome || 'Anexo') + '</a>';
         return '<div class="obj-semana">' +
                  '<div class="head"><i class="fa-solid ' + meta.icone + '"></i>' + escapeHtmlPub(meta.label) + '</div>' +
                  '<div class="titulo">' + escapeHtmlPub(o.titulo) + '</div>' +
@@ -599,8 +607,10 @@
       return lista.map(function(o){
         var meta = modalidadeMeta(o.modalidade);
         var links = '';
-        if (o.link)     links += '<a href="' + escapeHtmlPub(o.link)     + '" target="_blank" title="Link"><i class="fa-solid fa-link"></i></a>';
-        if (o.anexoUrl) links += '<a href="' + escapeHtmlPub(o.anexoUrl) + '" target="_blank" title="' + escapeHtmlPub(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>';
+        var lnk2 = safeUrlPub(o.link);
+        var anx2 = safeUrlPub(o.anexoUrl);
+        if (lnk2) links += '<a href="' + escapeHtmlPub(lnk2) + '" target="_blank" rel="noopener" title="Link"><i class="fa-solid fa-link"></i></a>';
+        if (anx2) links += '<a href="' + escapeHtmlPub(anx2) + '" target="_blank" rel="noopener" title="' + escapeHtmlPub(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>';
         return '<div class="obj-geral" title="' + escapeHtmlPub(meta.label) + '">' +
                  '<i class="fa-solid ' + meta.icone + ' modalidade"></i>' +
                  '<div class="titulo">' + escapeHtmlPub(o.titulo) + '</div>' +

@@ -487,10 +487,25 @@
              var ids = location.parameter.ids;
              if(!ids) { alert("Link inválido (sem IDs)."); return; }
 
-             // v2: inclui contexto (outras quadras do mesmo território, esmaecidas)
-             var cacheKey = 'publico_dados_v2_' + ids;
-             var cached = null;
-             try { cached = localStorage.getItem(cacheKey); } catch(e) {}
+             // v3: cache com TTL — payload+timestamp serializados juntos.
+             // Cache válido por 24h; depois exige nova busca pra evitar
+             // que o publicador veja designação obsoleta indefinidamente
+             // se o backend estiver fora do ar.
+             var TTL_MS = 24 * 60 * 60 * 1000;
+             var cacheKey = 'publico_dados_v3_' + ids;
+             var cachedRaw = null;
+             var cachedPayload = null;
+             var cachedAt = 0;
+             try {
+               cachedRaw = localStorage.getItem(cacheKey);
+               if (cachedRaw) {
+                 var env = JSON.parse(cachedRaw);
+                 if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
+                   cachedPayload = env.d;
+                   cachedAt = env.t;
+                 }
+               }
+             } catch(e) {}
 
              function aplicar(payload) {
                dadosGerais = payload.designadas || [];
@@ -498,25 +513,27 @@
                mostrarApp();
              }
 
-             // Stale-while-revalidate: mostra o cache primeiro (se houver) e
-             // busca dados frescos em background.
-             if (cached) {
-               try { aplicar(JSON.parse(cached)); } catch(e) {}
-             }
+             // Stale-while-revalidate: mostra cache (se válido) e busca frescos
+             if (cachedPayload) aplicar(cachedPayload);
 
              google.script.run
                 .withSuccessHandler(function(data) {
                     if(!data || !data.designadas || data.designadas.length === 0) {
-                      if (!cached) alert("Nenhum dado encontrado.");
+                      if (!cachedPayload) alert("Nenhum dado encontrado.");
                       return;
                     }
-                    var novoStr = JSON.stringify(data);
-                    if (novoStr === cached) return; // sem mudança
+                    var envelope = { t: Date.now(), d: data };
+                    var novoStr = JSON.stringify(envelope);
+                    if (cachedRaw && JSON.stringify(cachedPayload) === JSON.stringify(data)) {
+                      // Mesmo conteúdo — só renova o timestamp pra estender TTL
+                      try { localStorage.setItem(cacheKey, novoStr); } catch(e) {}
+                      return;
+                    }
                     try { localStorage.setItem(cacheKey, novoStr); } catch(e) {}
                     aplicar(data);
                 })
                 .withFailureHandler(function(e) {
-                    if (!cached) {
+                    if (!cachedPayload) {
                       document.getElementById('loader').innerHTML =
                         '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
                     }

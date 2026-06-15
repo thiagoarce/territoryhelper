@@ -31,9 +31,10 @@ jobs:
           node-version: '20'
 
       - name: Instalar clasp
-        # @latest porque o Cloud Shell já vem com clasp v3 (formato novo de
-        # credenciais: tokens.default.refresh_token). Manter sincronizado.
-        run: npm install -g @google/clasp@latest
+        # Range 3.x — formato novo de credenciais
+        # (tokens.default.refresh_token, compat com clasp do Cloud Shell).
+        # Range em vez de @latest pra evitar quebras de major (v4+).
+        run: npm install -g '@google/clasp@^3.0.0'
 
       - name: Configurar credenciais do clasp
         env:
