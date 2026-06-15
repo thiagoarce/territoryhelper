@@ -2170,13 +2170,17 @@ window.confirmarAssociacao = function(layerQuadra) {
     var box = document.getElementById('listaPredios');
     var termo = (document.getElementById('prediosBusca').value || '').trim().toLowerCase();
     var soIrmao = document.getElementById('prediosSoIrmao').checked;
+    var mostrarNaoPredio = document.getElementById('prediosMostrarNaoPredios').checked;
     var filtro = _predios.filter(function(p){
+      if (!mostrarNaoPredio && p.naoEhPredio) return false;
       if (soIrmao && !p.irmaoMora) return false;
       if (!termo) return true;
-      return (p.logradouro + ' ' + p.nome + ' ' + p.numero).toLowerCase().indexOf(termo) > -1;
+      var alvo = (p.logradouro + ' ' + p.nome + ' ' + p.numero + ' ' + (p.nomeIrmao || '')).toLowerCase();
+      return alvo.indexOf(termo) > -1;
     });
-    var resumo = _predios.length + ' prédio(s) detectado(s)';
-    if (filtro.length !== _predios.length) resumo += ' · ' + filtro.length + ' filtrado(s)';
+    var totalReal = _predios.filter(function(p){ return !p.naoEhPredio; }).length;
+    var resumo = totalReal + ' prédio(s) detectado(s)';
+    if (filtro.length !== totalReal) resumo += ' · ' + filtro.length + ' mostrando';
     document.getElementById('prediosResumo').innerText = resumo;
 
     if (filtro.length === 0) {
@@ -2185,12 +2189,17 @@ window.confirmarAssociacao = function(layerQuadra) {
     }
     box.innerHTML = filtro.map(function(p){
       var badges = [];
-      if (p.irmaoMora) badges.push('<span class="badge bg-warning text-dark"><i class="fa-solid fa-house-user me-1"></i>Irmão mora</span>');
+      if (p.naoEhPredio) badges.push('<span class="badge bg-secondary"><i class="fa-solid fa-circle-minus me-1"></i>Não é prédio</span>');
+      if (p.irmaoMora) {
+        var lbl = p.nomeIrmao ? 'Irmão: ' + escapeHtml(p.nomeIrmao) : 'Irmão mora';
+        badges.push('<span class="badge bg-warning text-dark"><i class="fa-solid fa-house-user me-1"></i>' + lbl + '</span>');
+      }
+      if (p.acessoInterfone === 'portaria') badges.push('<span class="badge bg-info text-dark"><i class="fa-solid fa-building-shield me-1"></i>Portaria eletrônica</span>');
+      else if (p.acessoInterfone === 'individual') badges.push('<span class="badge bg-success-subtle text-success border border-success"><i class="fa-solid fa-phone me-1"></i>Interfone</span>');
       if (p.ultimaCartaStr) badges.push('<span class="badge bg-success"><i class="fa-solid fa-envelope-circle-check me-1"></i>Entregue ' + escapeHtml(p.ultimaCartaStr) + '</span>');
       var qdrs = p.quadras.length > 0 ? ' · ' + p.quadras.join(', ') : '';
-      // data-chave + delegação (resolve em runtime) — evita escape ruim
-      // se a chave tiver \, ", ou outros caracteres especiais.
-      return '<div class="card mb-2 shadow-sm predio-card" data-chave="' + escapeHtml(p.chave) + '" style="cursor:pointer">' +
+      var opac = p.naoEhPredio ? 'opacity:0.6;' : '';
+      return '<div class="card mb-2 shadow-sm predio-card" data-chave="' + escapeHtml(p.chave) + '" style="cursor:pointer;' + opac + '">' +
                '<div class="card-body py-2 px-3">' +
                  '<div class="d-flex justify-content-between align-items-start">' +
                    '<div class="flex-grow-1">' +
@@ -2199,7 +2208,9 @@ window.confirmarAssociacao = function(layerQuadra) {
                        ' · ' + p.qtdEnderecos + ' apto(s)' + escapeHtml(qdrs) + '</div>' +
                      (badges.length ? '<div class="mt-1 d-flex gap-1 flex-wrap">' + badges.join('') + '</div>' : '') +
                    '</div>' +
-                   '<i class="fa-solid fa-chevron-right text-muted ms-2 align-self-center"></i>' +
+                   '<button class="btn btn-sm btn-outline-success ms-2 align-self-center predio-share" data-chave="' + escapeHtml(p.chave) + '" title="Compartilhar prédio">' +
+                     '<i class="fa-brands fa-whatsapp"></i>' +
+                   '</button>' +
                  '</div>' +
                '</div>' +
              '</div>';
@@ -2210,12 +2221,45 @@ window.confirmarAssociacao = function(layerQuadra) {
     if (box && !box._bound) {
       box._bound = true;
       box.addEventListener('click', function(ev){
+        var share = ev.target.closest('.predio-share');
+        if (share) {
+          ev.stopPropagation();
+          var chShare = share.getAttribute('data-chave');
+          if (chShare) window.compartilharPredio(chShare);
+          return;
+        }
         var card = ev.target.closest('.predio-card');
         if (!card) return;
         var chave = card.getAttribute('data-chave');
         if (chave) window.abrirModalPredio(chave);
       });
     }
+  };
+
+  // Compartilha o link público de UM prédio específico (?v=cartas&p=CHAVE)
+  window.compartilharPredio = function(chave) {
+    var p = _predios.find(function(x){ return x.chave === chave; });
+    if (!p) return;
+    google.script.run
+      .withSuccessHandler(function(baseUrl){
+        var url = (baseUrl || window.location.href.split('?')[0])
+                + '?v=cartas&p=' + encodeURIComponent(chave);
+        var texto = '✉️ Trabalho de cartas — ' + p.nome + '\n\n' +
+                    p.qtdEnderecos + ' apto(s) em ' + p.logradouro + ', ' + p.numero + '\n' + url;
+        if (navigator.share) {
+          navigator.share({ title: p.nome, text: texto }).catch(function(){});
+        } else {
+          navigator.clipboard.writeText(texto).then(function(){ alert('Link copiado!'); });
+        }
+      })
+      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .getScriptUrl();
+  };
+
+  // Compartilha o prédio atual no modal aberto
+  window.compartilharPredioAtual = function() {
+    var chave = document.getElementById('predioChave').value;
+    if (chave) window.compartilharPredio(chave);
   };
 
   window.abrirModalPredio = function(chave) {
@@ -2228,19 +2272,40 @@ window.confirmarAssociacao = function(layerQuadra) {
     document.getElementById('predioNome').value = p.nomeEditado ? p.nome : '';
     document.getElementById('predioNome').placeholder = p.nome;
     document.getElementById('predioIrmaoMora').checked = !!p.irmaoMora;
+    document.getElementById('predioNomeIrmao').value = p.nomeIrmao || '';
+    document.getElementById('boxNomeIrmao').style.display = p.irmaoMora ? '' : 'none';
     document.getElementById('predioNotas').value = p.notas || '';
+    document.getElementById('predioNaoEhPredio').checked = !!p.naoEhPredio;
+
+    // Acesso (radio group)
+    var radios = document.querySelectorAll('input[name="predioAcesso"]');
+    radios.forEach(function(r){ r.checked = (r.value === (p.acessoInterfone || '')); });
+
     document.getElementById('predioUltimaCarta').innerHTML = p.ultimaCartaStr
       ? '<i class="fa-solid fa-envelope-circle-check text-success me-1"></i>Última carta entregue em <b>' + escapeHtml(p.ultimaCartaStr) + '</b>'
       : '<i class="fa-regular fa-envelope-open me-1"></i>Nenhuma carta entregue ainda';
+
+    // Show/hide nome do irmão conforme o switch
+    var swIrmao = document.getElementById('predioIrmaoMora');
+    if (!swIrmao._bound) {
+      swIrmao._bound = true;
+      swIrmao.addEventListener('change', function(){
+        document.getElementById('boxNomeIrmao').style.display = this.checked ? '' : 'none';
+      });
+    }
+
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPredio')).show();
   };
 
   window.salvarPredio = function() {
     var chave = document.getElementById('predioChave').value;
-    var nome = document.getElementById('predioNome').value.trim();
+    var acessoSel = document.querySelector('input[name="predioAcesso"]:checked');
     var patch = {
-      nome: nome,
+      nome: document.getElementById('predioNome').value.trim(),
       irmaoMora: document.getElementById('predioIrmaoMora').checked,
+      nomeIrmao: document.getElementById('predioNomeIrmao').value.trim(),
+      acessoInterfone: acessoSel ? acessoSel.value : '',
+      naoEhPredio: document.getElementById('predioNaoEhPredio').checked,
       notas: document.getElementById('predioNotas').value.trim()
     };
     google.script.run

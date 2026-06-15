@@ -516,6 +516,22 @@ function getDadosPublicos(idsString) {
     }
   });
 
+  // Enriquece cada item com o ÚLTIMO desfecho registrado (badge "antes"
+  // pro publicador novo ver memória do território). Lê Registros 1 vez.
+  try {
+    var ultimos = _ultimoDesfechoPorRow_();
+    var tz = "GMT-3";
+    resultado.forEach(function(q){
+      (q.itens || []).forEach(function(it){
+        var u = ultimos[it.row];
+        if (u && u.dataMs) {
+          it.ultimoTipo = u.tipo;
+          it.ultimoDataStr = Utilities.formatDate(new Date(u.dataMs), tz, 'dd/MM/yy');
+        }
+      });
+    });
+  } catch (e) { /* enriquecimento é opcional — não derruba a leitura */ }
+
   return resultado;
 }
 
@@ -1767,11 +1783,36 @@ function _fecharDesignacoesCompletas_() {
 function ensureSheetPredios_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET.PREDIOS);
-  if (sh) return sh;
+  if (sh) {
+    // Migração: se a aba já existe mas com schema antigo, completa o
+    // cabeçalho com as colunas novas (idempotente, sem perda de dados).
+    var ult = sh.getLastColumn();
+    if (ult < 10) {
+      var faltam = [];
+      if (ult < 8)  faltam.push('nomeIrmao');
+      if (ult < 9)  faltam.push('acessoInterfone');
+      if (ult < 10) faltam.push('naoEhPredio');
+      if (faltam.length > 0) {
+        sh.getRange(1, ult + 1, 1, faltam.length).setValues([faltam]);
+      }
+    }
+    return sh;
+  }
   sh = ss.insertSheet(SHEET.PREDIOS);
   sh.appendRow([
-    'id', 'chave', 'nome', 'irmaoMora', 'ultimaCarta', 'notas', 'atualizado'
+    'id', 'chave', 'nome', 'irmaoMora', 'ultimaCarta', 'notas', 'atualizado',
+    'nomeIrmao', 'acessoInterfone', 'naoEhPredio'
   ]);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function ensureSheetPrediosAptos_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.PREDIOS_APTOS);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.PREDIOS_APTOS);
+  sh.appendRow(['row', 'cartaEscrita', 'cartaEntregue', 'desocupado', 'atualizado']);
   sh.setFrozenRows(1);
   return sh;
 }
@@ -1787,7 +1828,10 @@ function _mapaOverlaysPredios_() {
   var sh = ensureSheetPredios_();
   var ult = sh.getLastRow();
   if (ult < 2) return {};
-  var dados = sh.getRange(2, 1, ult - 1, 7).getValues();
+  // Lê todas as colunas disponíveis (varia entre 7 e 10 dependendo da
+  // versão do schema; ensureSheetPredios_ já completou cabeçalho)
+  var nCols = Math.max(sh.getLastColumn(), 10);
+  var dados = sh.getRange(2, 1, ult - 1, nCols).getValues();
   var mapa = {};
   dados.forEach(function(r){
     var chave = String(r[COL.PREDIOS.CHAVE] || '');
@@ -1797,7 +1841,10 @@ function _mapaOverlaysPredios_() {
       nome: String(r[COL.PREDIOS.NOME] || ''),
       irmaoMora: r[COL.PREDIOS.IRMAO_MORA] === true || String(r[COL.PREDIOS.IRMAO_MORA]).toUpperCase() === 'TRUE',
       ultimaCarta: r[COL.PREDIOS.ULTIMA_CARTA] ? new Date(r[COL.PREDIOS.ULTIMA_CARTA]).getTime() : 0,
-      notas: String(r[COL.PREDIOS.NOTAS] || '')
+      notas: String(r[COL.PREDIOS.NOTAS] || ''),
+      nomeIrmao: String(r[COL.PREDIOS.NOME_IRMAO] || ''),
+      acessoInterfone: String(r[COL.PREDIOS.ACESSO_INT] || ''),
+      naoEhPredio: r[COL.PREDIOS.NAO_EH_PREDIO] === true || String(r[COL.PREDIOS.NAO_EH_PREDIO]).toUpperCase() === 'TRUE'
     };
   });
   return mapa;
@@ -1877,6 +1924,9 @@ function listarPredios() {
       nome: ov.nome || nomeAuto || (g.logradouro + ', ' + g.numero),
       nomeEditado: !!ov.nome,
       irmaoMora: !!ov.irmaoMora,
+      nomeIrmao: ov.nomeIrmao || '',
+      acessoInterfone: ov.acessoInterfone || '',
+      naoEhPredio: !!ov.naoEhPredio,
       ultimaCarta: ov.ultimaCarta || 0,
       ultimaCartaStr: ov.ultimaCarta
         ? Utilities.formatDate(new Date(ov.ultimaCarta), Session.getScriptTimeZone(), "dd/MM/yyyy")
@@ -1907,29 +1957,35 @@ function _acharLinhaPredioPorChave_(sh, chave) {
 }
 
 // Cria ou atualiza o overlay manual de um prédio. patch pode conter:
-// nome (string), irmaoMora (bool), ultimaCarta (yyyy-MM-dd | true=hoje
-// | null), notas (string).
+// nome, irmaoMora, ultimaCarta, notas, nomeIrmao, acessoInterfone,
+// naoEhPredio.
 function atualizarPredio(chave, patch) {
   if (!chave) return { ok: false, erro: 'chave obrigatória' };
   return withLock_(function(){
     var sh = ensureSheetPredios_();
     var linha = _acharLinhaPredioPorChave_(sh, chave);
     if (linha < 0) {
-      // Cria linha nova com defaults
       var id = 'pr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-      sh.appendRow([id, chave, '', false, '', '', new Date()]);
+      sh.appendRow([id, chave, '', false, '', '', new Date(), '', '', false]);
       linha = sh.getLastRow();
     }
     var mapa = {
-      nome:        COL.PREDIOS.NOME_1IDX,
-      irmaoMora:   COL.PREDIOS.IRMAO_MORA_1IDX,
-      ultimaCarta: COL.PREDIOS.ULTIMA_CARTA_1IDX,
-      notas:       COL.PREDIOS.NOTAS_1IDX
+      nome:            COL.PREDIOS.NOME_1IDX,
+      irmaoMora:       COL.PREDIOS.IRMAO_MORA_1IDX,
+      ultimaCarta:     COL.PREDIOS.ULTIMA_CARTA_1IDX,
+      notas:           COL.PREDIOS.NOTAS_1IDX,
+      nomeIrmao:       COL.PREDIOS.NOME_IRMAO_1IDX,
+      acessoInterfone: COL.PREDIOS.ACESSO_INT_1IDX,
+      naoEhPredio:     COL.PREDIOS.NAO_EH_PREDIO_1IDX
     };
     Object.keys(patch || {}).forEach(function(k){
       if (!(k in mapa)) return;
       var valor = patch[k];
-      if (k === 'irmaoMora') valor = valor === true;
+      if (k === 'irmaoMora' || k === 'naoEhPredio') valor = valor === true;
+      else if (k === 'acessoInterfone') {
+        // Aceita só valores conhecidos
+        if (valor !== 'individual' && valor !== 'portaria') valor = '';
+      }
       else if (k === 'ultimaCarta') {
         if (valor === true) valor = new Date();
         else if (valor) valor = new Date(valor + 'T00:00:00');
@@ -1968,7 +2024,9 @@ function listarPrediosPublico() {
       qtdEnderecos: p.qtdEnderecos,
       lat: p.lat, lng: p.lng,
       ultimaCartaStr: p.ultimaCartaStr,
-      irmaoMora: p.irmaoMora
+      irmaoMora: p.irmaoMora,
+      acessoInterfone: p.acessoInterfone,
+      naoEhPredio: p.naoEhPredio
     };
   });
 }
@@ -1991,6 +2049,207 @@ function registrarCartaEndereco(row) {
       sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]);
     }
     sheetReg.appendRow(['endereco:' + rowNum, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'carta', new Date()]);
+    _invalidar();
+    return { ok: true };
+  });
+}
+
+// =================================================================
+// APTOS DENTRO DE PRÉDIOS (aba "PrediosAptos")
+// Overlay por endereço usado pelo trabalho de cartas focado num
+// prédio: marcar carta escrita, carta entregue, apto desocupado.
+// =================================================================
+
+function _acharLinhaAptoPorRow_(sh, row) {
+  var ult = sh.getLastRow();
+  if (ult < 2) return -1;
+  var col = sh.getRange(2, 1, ult - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (Number(col[i][0]) === Number(row)) return i + 2;
+  }
+  return -1;
+}
+
+function _mapaAptosStatus_() {
+  var sh = ensureSheetPrediosAptos_();
+  var ult = sh.getLastRow();
+  if (ult < 2) return {};
+  var dados = sh.getRange(2, 1, ult - 1, 5).getValues();
+  var mapa = {};
+  dados.forEach(function(r){
+    var row = Number(r[COL.PREDIOS_APTOS.ROW] || 0);
+    if (!row) return;
+    mapa[row] = {
+      cartaEscrita: r[COL.PREDIOS_APTOS.CARTA_ESCRITA]
+        ? new Date(r[COL.PREDIOS_APTOS.CARTA_ESCRITA]).getTime() : 0,
+      cartaEntregue: r[COL.PREDIOS_APTOS.CARTA_ENTREGUE]
+        ? new Date(r[COL.PREDIOS_APTOS.CARTA_ENTREGUE]).getTime() : 0,
+      desocupado: r[COL.PREDIOS_APTOS.DESOCUPADO] === true
+                  || String(r[COL.PREDIOS_APTOS.DESOCUPADO]).toUpperCase() === 'TRUE'
+    };
+  });
+  return mapa;
+}
+
+// Mapa { row -> {tipo, dataMs} } com o ÚLTIMO desfecho registrado por
+// endereço. Lê a aba Registros e indexa por endereço:row. Usado pra
+// mostrar "antes" tanto no painel do publicador quanto na lista de
+// aptos do trabalho de cartas.
+function _ultimoDesfechoPorRow_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetReg = ss.getSheetByName(SHEET.REGISTROS);
+  if (!sheetReg || sheetReg.getLastRow() < 2) return {};
+  var dados = sheetReg.getRange(2, 1, sheetReg.getLastRow() - 1, 4).getValues();
+  var mapa = {};
+  // Tipos que contam como "desfecho" do publicador (Pacote F).
+  // 'carta' fica de fora — é flag separada.
+  var TIPOS_DESFECHO = { naoAtendeu: 1, semConversa: 1, conversou: 1, interfone: 1 };
+  dados.forEach(function(r){
+    var id = String(r[0] || '');
+    if (id.indexOf('endereco:') !== 0) return;
+    var row = Number(id.slice(9));
+    if (!row) return;
+    var tipo = String(r[2] || '');
+    if (!TIPOS_DESFECHO[tipo]) return;
+    var ts = r[3] ? new Date(r[3]).getTime() : 0;
+    if (!mapa[row] || ts > mapa[row].dataMs) {
+      mapa[row] = { tipo: tipo, dataMs: ts };
+    }
+  });
+  return mapa;
+}
+
+// Lista os aptos (endereços) de UM prédio específico, enriquecidos com
+// status individual (carta escrita/entregue/desocupado) e último
+// desfecho. Usado pelo link público focado num prédio.
+function listarAptosDoPredio(chave) {
+  if (!chave) return { ok: false, erro: 'chave obrigatória' };
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (!sheetD || sheetD.getLastRow() < 2) return { ok: true, predio: null, aptos: [] };
+
+  var dados = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
+  var aptos = [];
+  dados.forEach(function(r, i){
+    var log = String(r[COL.DADOS.LOGRADOURO] || '').trim();
+    var num = String(r[COL.DADOS.NUMERO] || '').trim();
+    if (_chavePredio_(log, num) !== chave) return;
+    aptos.push({
+      row: i + 2,
+      complemento: String(r[COL.DADOS.COMPLEMENTO] || ''),
+      tipo: String(r[COL.DADOS.TIPO] || ''),
+      logradouro: log, numero: num
+    });
+  });
+
+  if (aptos.length === 0) return { ok: false, erro: 'Prédio não encontrado' };
+
+  var overlay = _mapaOverlaysPredios_()[chave] || {};
+  var status = _mapaAptosStatus_();
+  var ultimos = _ultimoDesfechoPorRow_();
+  var tz = Session.getScriptTimeZone();
+
+  aptos.forEach(function(a){
+    var s = status[a.row] || {};
+    a.cartaEscritaStr = s.cartaEscrita
+      ? Utilities.formatDate(new Date(s.cartaEscrita), tz, 'dd/MM/yyyy') : '';
+    a.cartaEntregueStr = s.cartaEntregue
+      ? Utilities.formatDate(new Date(s.cartaEntregue), tz, 'dd/MM/yyyy') : '';
+    a.desocupado = !!s.desocupado;
+    var u = ultimos[a.row];
+    a.ultimoTipo = u ? u.tipo : '';
+    a.ultimoDataStr = u && u.dataMs
+      ? Utilities.formatDate(new Date(u.dataMs), tz, 'dd/MM/yyyy') : '';
+  });
+
+  // Ordena por complemento alfanumérico (apto 101, 102, 201...)
+  aptos.sort(function(a, b){
+    return String(a.complemento).localeCompare(String(b.complemento), 'pt-BR', { numeric: true });
+  });
+
+  var nomeAuto = '';
+  for (var i = 0; i < aptos.length; i++) {
+    if (aptos[i].complemento) { /* skip */ }
+  }
+  var predio = {
+    chave: chave,
+    nome: overlay.nome || (aptos[0].logradouro + ', ' + aptos[0].numero),
+    logradouro: aptos[0].logradouro,
+    numero: aptos[0].numero,
+    qtdEnderecos: aptos.length,
+    irmaoMora: !!overlay.irmaoMora,
+    nomeIrmao: overlay.nomeIrmao || '',
+    acessoInterfone: overlay.acessoInterfone || '',
+    naoEhPredio: !!overlay.naoEhPredio
+  };
+  return { ok: true, predio: predio, aptos: aptos };
+}
+
+function atualizarAptoStatus(row, patch) {
+  var rowNum = parseInt(row, 10);
+  if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
+  return withLock_(function(){
+    var sh = ensureSheetPrediosAptos_();
+    var linha = _acharLinhaAptoPorRow_(sh, rowNum);
+    if (linha < 0) {
+      sh.appendRow([rowNum, '', '', false, new Date()]);
+      linha = sh.getLastRow();
+    }
+    var mapa = {
+      cartaEscrita:   COL.PREDIOS_APTOS.CARTA_ESCRITA_1IDX,
+      cartaEntregue:  COL.PREDIOS_APTOS.CARTA_ENTREGUE_1IDX,
+      desocupado:     COL.PREDIOS_APTOS.DESOCUPADO_1IDX
+    };
+    Object.keys(patch || {}).forEach(function(k){
+      if (!(k in mapa)) return;
+      var valor = patch[k];
+      if (k === 'desocupado') valor = valor === true;
+      else if (valor === true) valor = new Date(); // toggle on com data atual
+      else if (valor === false || valor === null || valor === '') valor = '';
+      else if (typeof valor === 'string') valor = new Date(valor + 'T00:00:00');
+      sh.getRange(linha, mapa[k]).setValue(valor);
+    });
+    sh.getRange(linha, COL.PREDIOS_APTOS.ATUALIZADO_1IDX).setValue(new Date());
+    _invalidar();
+    return { ok: true };
+  });
+}
+
+// =================================================================
+// PACOTE F — Desfecho de visita por endereço (Publico.html)
+// =================================================================
+// Registra o desfecho de tentativa de visita num endereço específico.
+// Tipos aceitos: 'naoAtendeu', 'semConversa', 'conversou'.
+// 'carta' tem endpoint separado (registrarCartaEndereco) por ser flag
+// independente.
+function registrarDesfechoEndereco(row, tipo) {
+  var rowNum = parseInt(row, 10);
+  if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
+  var TIPOS_VALIDOS = { naoAtendeu: 1, semConversa: 1, conversou: 1 };
+  if (!TIPOS_VALIDOS[tipo]) return { ok: false, erro: 'tipo inválido' };
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetD = getSheetByName_(SHEET.DADOS);
+    if (sheetD && rowNum > sheetD.getLastRow()) {
+      return { ok: false, erro: 'row fora do range' };
+    }
+    var sheetReg = getSheetByName_(SHEET.REGISTROS);
+    if (!sheetReg) {
+      sheetReg = ss.insertSheet(SHEET.REGISTROS);
+      sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]);
+    }
+    sheetReg.appendRow([
+      'endereco:' + rowNum,
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      tipo,
+      new Date()
+    ]);
+    // Mantém compat: atualiza coluna ULT_VISITA na Dados Brutos pra
+    // não quebrar quem depende dela (filtros do publicador, etc).
+    if (sheetD) {
+      sheetD.getRange(rowNum, 20).setValue(sheetD.getRange(rowNum, 19).getValue());
+      sheetD.getRange(rowNum, 19).setValue(new Date());
+    }
     _invalidar();
     return { ok: true };
   });

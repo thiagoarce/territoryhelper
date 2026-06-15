@@ -9,65 +9,91 @@
   <script src="https://kit.fontawesome.com/4d1cf8b9eb.js" crossorigin="anonymous"></script>
   <style>
     body { background:#f0f2f5; padding-bottom:80px; }
-    .hero { background:linear-gradient(135deg,#16a34a 0%,#15803d 100%); color:#fff; padding:24px 20px 18px; }
-    .hero h1 { font-size:1.5rem; font-weight:800; margin:0; }
-    .hero .sub { font-size:.85rem; opacity:.85; margin-top:4px; }
-    .filtro { padding:12px 16px; background:#fff; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
-    .predio-card { background:#fff; border-radius:14px; padding:14px 16px; margin:10px 16px; box-shadow:0 1px 4px rgba(0,0,0,.06); display:flex; gap:12px; align-items:flex-start; }
+    .hero { background:linear-gradient(135deg,#16a34a 0%,#15803d 100%); color:#fff; padding:24px 20px 20px; }
+    .hero h1 { font-size:1.4rem; font-weight:800; margin:0 0 4px; }
+    .hero .sub { font-size:.85rem; opacity:.85; }
+    .hero .badge-aviso { display:inline-block; margin-top:10px; padding:5px 12px; border-radius:999px;
+      background:rgba(255,255,255,0.18); font-size:.8rem; font-weight:600; }
+    .filtro { padding:10px 16px; background:#fff; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
+    .vazio { text-align:center; padding:40px 20px; color:#9ca3af; }
+
+    /* ===== Cards: lista de PRÉDIOS (visão geral, sem ?p=) ===== */
+    .predio-card { background:#fff; border-radius:14px; padding:14px 16px; margin:10px 16px;
+      box-shadow:0 1px 4px rgba(0,0,0,.06); display:flex; gap:12px; align-items:flex-start; }
     .predio-card .info { flex:1; min-width:0; }
     .predio-card .nome { font-weight:700; font-size:1rem; }
     .predio-card .end { font-size:.85rem; color:#6b7280; }
-    .predio-card .badges { font-size:.75rem; margin-top:4px; display:flex; gap:6px; flex-wrap:wrap; }
+    .predio-card .badges { font-size:.72rem; margin-top:4px; display:flex; gap:6px; flex-wrap:wrap; }
     .predio-card .badge-irmao { background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:999px; }
     .predio-card .badge-feito { background:#d1fae5; color:#065f46; padding:2px 8px; border-radius:999px; }
-    .botao-feito { background:#16a34a; color:#fff; border:none; padding:10px 14px; border-radius:10px; font-weight:600; white-space:nowrap; }
+    .predio-card .badge-portaria { background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:999px; }
+    .botao-feito { background:#16a34a; color:#fff; border:none; padding:9px 14px; border-radius:10px; font-weight:600; white-space:nowrap; align-self:center; }
     .botao-feito.refazer { background:#fff; color:#16a34a; border:1px solid #16a34a; }
-    .vazio { text-align:center; padding:40px 20px; color:#9ca3af; }
+
+    /* ===== Cards: APTOS (visão de um prédio, com ?p=) ===== */
+    .apto-card { background:#fff; border-radius:14px; padding:14px 16px; margin:8px 16px;
+      box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    .apto-card.desocupado { opacity:0.55; }
+    .apto-header { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+    .apto-titulo { font-weight:700; font-size:1.05rem; }
+    .apto-anterior { font-size:.7rem; color:#6b7280; }
+    .acoes { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .acao-btn { flex:1; min-width:120px; padding:8px 10px; border-radius:10px; border:1.5px solid #e5e7eb;
+      background:#fff; font-size:.85rem; font-weight:600; color:#374151; cursor:pointer; display:flex;
+      align-items:center; justify-content:center; gap:6px; transition: all 0.15s; }
+    .acao-btn .data { font-size:.7rem; opacity:0.7; }
+    .acao-btn.feito.escrita { background:#dbeafe; border-color:#2563eb; color:#1e40af; }
+    .acao-btn.feito.entregue { background:#d1fae5; border-color:#16a34a; color:#065f46; }
+    .acao-btn.feito.desocupado { background:#f3f4f6; border-color:#9ca3af; color:#6b7280; }
+
+    .resumo { padding:12px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
+    .resumo .numero { font-size:1.6rem; font-weight:800; color:#16a34a; }
+    .resumo .label { font-size:.8rem; color:#6b7280; }
+
+    .voltar-btn { color:#fff; text-decoration:none; opacity:.85; font-size:.85rem; }
+    .voltar-btn:hover { opacity:1; color:#fff; }
   </style>
 </head>
 <body>
-  <div class="hero">
-    <h1><i class="fa-solid fa-envelope me-2"></i>Trabalho de Cartas</h1>
-    <div class="sub">Toque em "Entreguei" depois de deixar a carta no prédio.</div>
-  </div>
-
-  <div class="filtro">
-    <div class="d-flex gap-2 align-items-center">
-      <input type="search" class="form-control form-control-sm" id="busca" placeholder="Buscar logradouro ou nome...">
-      <div class="form-check form-switch m-0">
-        <input class="form-check-input" type="checkbox" id="esconderIrmao">
-        <label class="form-check-label small" for="esconderIrmao">Esconder onde irmão mora</label>
-      </div>
-    </div>
-  </div>
-
   <div id="loader" class="text-center py-5">
     <div class="spinner-border text-success"></div>
   </div>
 
-  <div id="lista"></div>
+  <div id="appPredios" class="d-none">
+    <div class="hero">
+      <h1><i class="fa-solid fa-envelope me-2"></i>Trabalho de Cartas</h1>
+      <div class="sub">Toque num prédio pra ver os apartamentos.</div>
+    </div>
+    <div class="filtro">
+      <input type="search" class="form-control form-control-sm" id="busca" placeholder="Buscar logradouro ou nome...">
+    </div>
+    <div id="listaPredios"></div>
+  </div>
+
+  <div id="appAptos" class="d-none">
+    <div class="hero">
+      <h1 id="heroNome"><i class="fa-solid fa-building me-2"></i>—</h1>
+      <div class="sub" id="heroEnd">—</div>
+      <div id="heroAviso"></div>
+    </div>
+    <div class="resumo d-flex gap-3" id="resumoBox"></div>
+    <div id="listaAptos"></div>
+  </div>
 
   <script>
+    var modoPredio = false;
+    var chavePredio = '';
     var dados = [];
+    var infoPredio = null;
 
-    window.onload = function() { carregar(); };
-
-    document.getElementById('busca').addEventListener('input', render);
-    document.getElementById('esconderIrmao').addEventListener('change', render);
-
-    function carregar() {
-      google.script.run
-        .withSuccessHandler(function(r){
-          dados = r || [];
-          document.getElementById('loader').classList.add('d-none');
-          render();
-        })
-        .withFailureHandler(function(e){
-          document.getElementById('loader').innerHTML =
-            '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
-        })
-        .listarPrediosPublico();
-    }
+    window.onload = function() {
+      google.script.url.getLocation(function(loc){
+        chavePredio = (loc && loc.parameter && loc.parameter.p) || '';
+        modoPredio = !!chavePredio;
+        if (modoPredio) carregarAptos();
+        else carregarPredios();
+      });
+    };
 
     function escapeHtml(s) {
       return String(s||'').replace(/[&<>"']/g, function(c){
@@ -75,65 +101,189 @@
       });
     }
 
-    function render() {
-      var termo = document.getElementById('busca').value.trim().toLowerCase();
-      var esc = document.getElementById('esconderIrmao').checked;
+    // ============ VISÃO GERAL (sem ?p=) ============
+    function carregarPredios() {
+      document.getElementById('appPredios').classList.remove('d-none');
+      google.script.run
+        .withSuccessHandler(function(r){
+          dados = (r || []).filter(function(p){ return !p.naoEhPredio; });
+          document.getElementById('loader').classList.add('d-none');
+          renderPredios();
+          document.getElementById('busca').addEventListener('input', renderPredios);
+        })
+        .withFailureHandler(falha)
+        .listarPrediosPublico();
+    }
+
+    function falha(e) {
+      document.getElementById('loader').innerHTML =
+        '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+    }
+
+    function renderPredios() {
+      var termo = (document.getElementById('busca').value || '').trim().toLowerCase();
       var lista = dados.filter(function(p){
-        if (esc && p.irmaoMora) return false;
         if (!termo) return true;
         return (p.logradouro + ' ' + p.nome + ' ' + p.numero).toLowerCase().indexOf(termo) > -1;
       });
-      var box = document.getElementById('lista');
+      var box = document.getElementById('listaPredios');
       if (lista.length === 0) {
         box.innerHTML = '<div class="vazio"><i class="fa-solid fa-inbox fa-2x mb-2"></i><br>Nenhum prédio</div>';
         return;
       }
       box.innerHTML = lista.map(function(p){
         var badges = [];
-        if (p.irmaoMora) badges.push('<span class="badge-irmao"><i class="fa-solid fa-house-user"></i> Irmão mora</span>');
-        if (p.ultimaCartaStr) badges.push('<span class="badge-feito"><i class="fa-solid fa-check"></i> Entregue ' + escapeHtml(p.ultimaCartaStr) + '</span>');
-        var jaFeito = !!p.ultimaCartaStr;
-        return '<div class="predio-card">' +
+        if (p.acessoInterfone === 'portaria')
+          badges.push('<span class="badge-portaria"><i class="fa-solid fa-building-shield"></i> Portaria eletrônica</span>');
+        if (p.ultimaCartaStr)
+          badges.push('<span class="badge-feito"><i class="fa-solid fa-check"></i> ' + escapeHtml(p.ultimaCartaStr) + '</span>');
+        return '<div class="predio-card" data-chave="' + escapeHtml(p.chave) + '" style="cursor:pointer">' +
                  '<div class="info">' +
                    '<div class="nome">' + escapeHtml(p.nome) + '</div>' +
                    '<div class="end">' + escapeHtml(p.logradouro) + ', ' + escapeHtml(p.numero) +
                    ' &middot; ' + p.qtdEnderecos + ' apto(s)</div>' +
                    (badges.length ? '<div class="badges">' + badges.join('') + '</div>' : '') +
                  '</div>' +
-                 '<button class="botao-feito ' + (jaFeito ? 'refazer' : '') + '" data-chave="' + escapeHtml(p.chave) + '">' +
-                   (jaFeito ? '<i class="fa-solid fa-rotate"></i>' : '<i class="fa-solid fa-check"></i> Entreguei') +
-                 '</button>' +
+                 '<i class="fa-solid fa-chevron-right text-muted align-self-center"></i>' +
                '</div>';
       }).join('');
 
-      // Delegação no container — evita escape de aspas em chave
       if (!box._bound) {
         box._bound = true;
         box.addEventListener('click', function(ev){
-          var btn = ev.target.closest('.botao-feito');
-          if (!btn) return;
-          var chave = btn.getAttribute('data-chave');
-          if (chave) marcar(btn, chave);
+          var card = ev.target.closest('.predio-card');
+          if (!card) return;
+          var ch = card.getAttribute('data-chave');
+          if (ch) window.location.search = '?v=cartas&p=' + encodeURIComponent(ch);
         });
       }
     }
 
-    function marcar(btn, chave) {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    // ============ VISÃO POR PRÉDIO (com ?p=CHAVE) ============
+    function carregarAptos() {
+      document.getElementById('appAptos').classList.remove('d-none');
       google.script.run
         .withSuccessHandler(function(r){
-          if (!r || !r.ok) { alert('Erro: ' + (r && r.erro || '?')); btn.disabled = false; return; }
-          // Atualiza local
-          var p = dados.find(function(x){ return x.chave === chave; });
-          if (p) p.ultimaCartaStr = new Date().toLocaleDateString('pt-BR');
-          render();
+          if (!r || !r.ok) { falha({ message: (r && r.erro) || 'Prédio não encontrado' }); return; }
+          infoPredio = r.predio;
+          dados = r.aptos || [];
+          document.getElementById('loader').classList.add('d-none');
+          renderHero();
+          renderAptos();
+        })
+        .withFailureHandler(falha)
+        .listarAptosDoPredio(chavePredio);
+    }
+
+    function renderHero() {
+      document.getElementById('heroNome').innerHTML =
+        '<i class="fa-solid fa-building me-2"></i>' + escapeHtml(infoPredio.nome);
+      document.getElementById('heroEnd').innerText =
+        infoPredio.logradouro + ', ' + infoPredio.numero + ' · ' + dados.length + ' apto(s)';
+
+      var avisos = [];
+      if (infoPredio.acessoInterfone === 'portaria') {
+        avisos.push('<span class="badge-aviso" style="background:#fbbf24;color:#7c2d12">' +
+          '<i class="fa-solid fa-building-shield"></i> Portaria eletrônica — cartas só pelo correio</span>');
+      }
+      document.getElementById('heroAviso').innerHTML = avisos.join('');
+    }
+
+    function renderAptos() {
+      var nEscritas = 0, nEntregues = 0, nDesocupados = 0;
+      dados.forEach(function(a){
+        if (a.cartaEscritaStr) nEscritas++;
+        if (a.cartaEntregueStr) nEntregues++;
+        if (a.desocupado) nDesocupados++;
+      });
+      var ativos = dados.length - nDesocupados;
+      document.getElementById('resumoBox').innerHTML =
+        '<div><div class="numero">' + nEscritas + '</div><div class="label">Escritas</div></div>' +
+        '<div><div class="numero">' + nEntregues + '</div><div class="label">Entregues</div></div>' +
+        '<div><div class="numero">' + ativos + '</div><div class="label">Ativos</div></div>';
+
+      var box = document.getElementById('listaAptos');
+      if (dados.length === 0) {
+        box.innerHTML = '<div class="vazio">Nenhum apto encontrado</div>';
+        return;
+      }
+      box.innerHTML = dados.map(function(a){
+        var titulo = a.complemento || (a.tipo || 'Endereço');
+        var antes = '';
+        if (a.ultimoTipo && a.ultimoDataStr) {
+          var iconePorTipo = { naoAtendeu: '🚪', semConversa: '📞', conversou: '✓', interfone: '📞' };
+          antes = '<div class="apto-anterior">' +
+                  '<i class="fa-regular fa-clock"></i> ' +
+                  (iconePorTipo[a.ultimoTipo] || '·') + ' ' + escapeHtml(a.ultimoDataStr) +
+                  '</div>';
+        }
+        var escClass = a.cartaEscritaStr ? 'feito escrita' : '';
+        var entClass = a.cartaEntregueStr ? 'feito entregue' : '';
+        var desClass = a.desocupado ? 'feito desocupado' : '';
+        var escData = a.cartaEscritaStr ? '<div class="data">' + escapeHtml(a.cartaEscritaStr) + '</div>' : '';
+        var entData = a.cartaEntregueStr ? '<div class="data">' + escapeHtml(a.cartaEntregueStr) + '</div>' : '';
+
+        return '<div class="apto-card ' + (a.desocupado ? 'desocupado' : '') + '" data-row="' + a.row + '">' +
+                 '<div class="apto-header">' +
+                   '<div class="apto-titulo">' + escapeHtml(titulo) + '</div>' +
+                   antes +
+                 '</div>' +
+                 '<div class="acoes">' +
+                   '<button class="acao-btn ' + escClass + '" data-acao="cartaEscrita">' +
+                     '<i class="fa-solid fa-pen-to-square"></i> Escrita' + escData +
+                   '</button>' +
+                   '<button class="acao-btn ' + entClass + '" data-acao="cartaEntregue">' +
+                     '<i class="fa-solid fa-envelope-circle-check"></i> Entregue' + entData +
+                   '</button>' +
+                   '<button class="acao-btn ' + desClass + '" data-acao="desocupado">' +
+                     '<i class="fa-solid fa-door-closed"></i> Desocupado' +
+                   '</button>' +
+                 '</div>' +
+               '</div>';
+      }).join('');
+
+      if (!box._bound) {
+        box._bound = true;
+        box.addEventListener('click', function(ev){
+          var btn = ev.target.closest('.acao-btn');
+          if (!btn) return;
+          var card = btn.closest('.apto-card');
+          var row = parseInt(card.getAttribute('data-row'), 10);
+          var acao = btn.getAttribute('data-acao');
+          alternarAcao(row, acao, btn);
+        });
+      }
+    }
+
+    function alternarAcao(row, acao, btn) {
+      var apto = dados.find(function(x){ return x.row === row; });
+      if (!apto) return;
+      var hoje = new Date().toLocaleDateString('pt-BR');
+      var patch = {};
+      if (acao === 'cartaEscrita') {
+        var jaTem = !!apto.cartaEscritaStr;
+        apto.cartaEscritaStr = jaTem ? '' : hoje;
+        patch.cartaEscrita = jaTem ? false : true;
+      } else if (acao === 'cartaEntregue') {
+        var jaTemE = !!apto.cartaEntregueStr;
+        apto.cartaEntregueStr = jaTemE ? '' : hoje;
+        patch.cartaEntregue = jaTemE ? false : true;
+      } else if (acao === 'desocupado') {
+        apto.desocupado = !apto.desocupado;
+        patch.desocupado = apto.desocupado;
+      }
+      renderAptos();
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function(r){
+          btn.disabled = false;
+          if (!r || !r.ok) alert('Erro: ' + (r && r.erro || '?'));
         })
         .withFailureHandler(function(e){
-          alert('Erro: ' + (e && e.message ? e.message : e));
           btn.disabled = false;
+          alert('Erro: ' + (e && e.message ? e.message : e));
         })
-        .marcarCartaEntregue(chave);
+        .atualizarAptoStatus(row, patch);
     }
   </script>
 </body>

@@ -62,19 +62,33 @@ var COL = {
 
   // Aba "Predios" — overlay manual sobre os endereços brutos. Os campos
   // logradouro/numero/lat são derivados de "Dados Brutos" em runtime;
-  // aqui só guardamos o que o usuário define: nome do prédio, se
-  // irmão mora ali (filtro pra trabalho de cartas), última carta
-  // entregue, notas.
+  // aqui só guardamos o que o usuário define.
   PREDIOS: {
     ID_1IDX:           1,  // A
     CHAVE_1IDX:        2,  // B  "logradouro|numero" — junção com Dados Brutos
     NOME_1IDX:         3,  // C  nome do edifício (editável)
-    IRMAO_MORA_1IDX:   4,  // D  marca informativa (não esconde nada)
+    IRMAO_MORA_1IDX:   4,  // D  marca informativa
     ULTIMA_CARTA_1IDX: 5,  // E  data da última entrega de cartas
     NOTAS_1IDX:        6,  // F
     ATUALIZADO_1IDX:   7,  // G
+    NOME_IRMAO_1IDX:   8,  // H  nome do irmão que mora ali (referência)
+    ACESSO_INT_1IDX:   9,  // I  "individual" | "portaria" | "" (não informado)
+    NAO_EH_PREDIO_1IDX:10, // J  esconde da listagem padrão
     // 0-indexed
-    ID: 0, CHAVE: 1, NOME: 2, IRMAO_MORA: 3, ULTIMA_CARTA: 4, NOTAS: 5, ATUALIZADO: 6
+    ID: 0, CHAVE: 1, NOME: 2, IRMAO_MORA: 3, ULTIMA_CARTA: 4, NOTAS: 5,
+    ATUALIZADO: 6, NOME_IRMAO: 7, ACESSO_INT: 8, NAO_EH_PREDIO: 9
+  },
+
+  // Aba "PrediosAptos" — overlay per-apartamento dentro de um prédio.
+  // Status individual (carta escrita, carta entregue, desocupado).
+  PREDIOS_APTOS: {
+    ROW_1IDX:            1,  // A  linha do Dados Brutos
+    CARTA_ESCRITA_1IDX:  2,  // B  data
+    CARTA_ENTREGUE_1IDX: 3,  // C  data
+    DESOCUPADO_1IDX:     4,  // D  bool
+    ATUALIZADO_1IDX:     5,  // E
+    // 0-indexed
+    ROW: 0, CARTA_ESCRITA: 1, CARTA_ENTREGUE: 2, DESOCUPADO: 3, ATUALIZADO: 4
   },
 
   // Aba "Campanha" (objetivos estruturados)
@@ -153,9 +167,18 @@ var SHEET = {
   TERRITORIOS: "Territorios", // fallback "Territórios"
   DADOS:       "Dados Brutos",
   REGISTROS:   "Registros",
-  CAMPANHA:    "Campanha",
-  DESIGNACOES: "Designacoes",
-  PREDIOS:     "Predios"
+  CAMPANHA:       "Campanha",
+  DESIGNACOES:    "Designacoes",
+  PREDIOS:        "Predios",
+  PREDIOS_APTOS:  "PrediosAptos"
+};
+
+// Desfecho de visita por endereço (gravado em Registros, tipo=desfecho)
+// Hierarquia de "alcance": vazio → naoAtendeu → semConversa → conversou
+var DESFECHO = {
+  NAO_ATENDEU:  "naoAtendeu",   // chamei, ninguém respondeu
+  SEM_CONVERSA: "semConversa",  // atendeu, sem palestra (amarelo)
+  CONVERSOU:    "conversou"     // palestra real (verde)
 };
 
 // Modalidades de pregação pra classificar objetivos da campanha.
