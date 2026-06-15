@@ -81,6 +81,11 @@ window.mudarAba = function(aba) {
         setTimeout(() => { if(mapRegistro) mapRegistro.invalidateSize(); }, 200); 
     }
     
+    // Rota dos Prédios
+    if(aba === 'predios') {
+        window.carregarPredios();
+    }
+
     // Rota da Campanha
     if(aba === 'campanha') {
         window.carregarDadosCampanha();
@@ -2119,6 +2124,118 @@ window.confirmarAssociacao = function(layerQuadra) {
                '</div>';
       }).join('');
   }
+
+  // ======================================================
+  // PRÉDIOS — UI admin (lista + editar + compartilhar)
+  // ======================================================
+  var _predios = [];
+
+  window.carregarPredios = function() {
+    google.script.run
+      .withSuccessHandler(function(lista){
+        _predios = lista || [];
+        window.filtrarPredios();
+      })
+      .withFailureHandler(function(e){
+        document.getElementById('listaPredios').innerHTML =
+          '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+      })
+      .listarPredios();
+  };
+
+  window.filtrarPredios = function() {
+    var box = document.getElementById('listaPredios');
+    var termo = (document.getElementById('prediosBusca').value || '').trim().toLowerCase();
+    var soIrmao = document.getElementById('prediosSoIrmao').checked;
+    var filtro = _predios.filter(function(p){
+      if (soIrmao && !p.irmaoMora) return false;
+      if (!termo) return true;
+      return (p.logradouro + ' ' + p.nome + ' ' + p.numero).toLowerCase().indexOf(termo) > -1;
+    });
+    var resumo = _predios.length + ' prédio(s) detectado(s)';
+    if (filtro.length !== _predios.length) resumo += ' · ' + filtro.length + ' filtrado(s)';
+    document.getElementById('prediosResumo').innerText = resumo;
+
+    if (filtro.length === 0) {
+      box.innerHTML = '<div class="text-muted text-center py-4 small">Nenhum prédio</div>';
+      return;
+    }
+    box.innerHTML = filtro.map(function(p){
+      var badges = [];
+      if (p.irmaoMora) badges.push('<span class="badge bg-warning text-dark"><i class="fa-solid fa-house-user me-1"></i>Irmão mora</span>');
+      if (p.ultimaCartaStr) badges.push('<span class="badge bg-success"><i class="fa-solid fa-envelope-circle-check me-1"></i>Entregue ' + escapeHtml(p.ultimaCartaStr) + '</span>');
+      var qdrs = p.quadras.length > 0 ? ' · ' + p.quadras.join(', ') : '';
+      return '<div class="card mb-2 shadow-sm" onclick="window.abrirModalPredio(\'' + escapeAttr(p.chave) + '\')" style="cursor:pointer">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="d-flex justify-content-between align-items-start">' +
+                   '<div class="flex-grow-1">' +
+                     '<div class="fw-bold">' + escapeHtml(p.nome) + '</div>' +
+                     '<div class="small text-muted">' + escapeHtml(p.logradouro) + ', ' + escapeHtml(p.numero) +
+                       ' · ' + p.qtdEnderecos + ' apto(s)' + escapeHtml(qdrs) + '</div>' +
+                     (badges.length ? '<div class="mt-1 d-flex gap-1 flex-wrap">' + badges.join('') + '</div>' : '') +
+                   '</div>' +
+                   '<i class="fa-solid fa-chevron-right text-muted ms-2 align-self-center"></i>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+  };
+
+  function escapeAttr(s) {
+    return String(s||'').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  }
+
+  window.abrirModalPredio = function(chave) {
+    var p = _predios.find(function(x){ return x.chave === chave; });
+    if (!p) return;
+    document.getElementById('lblPredioTitulo').innerText = p.nome;
+    document.getElementById('predioEndereco').innerText = p.logradouro + ', ' + p.numero +
+      ' · ' + p.qtdEnderecos + ' apto(s)' + (p.quadras.length ? ' · ' + p.quadras.join(', ') : '');
+    document.getElementById('predioChave').value = chave;
+    document.getElementById('predioNome').value = p.nomeEditado ? p.nome : '';
+    document.getElementById('predioNome').placeholder = p.nome;
+    document.getElementById('predioIrmaoMora').checked = !!p.irmaoMora;
+    document.getElementById('predioNotas').value = p.notas || '';
+    document.getElementById('predioUltimaCarta').innerHTML = p.ultimaCartaStr
+      ? '<i class="fa-solid fa-envelope-circle-check text-success me-1"></i>Última carta entregue em <b>' + escapeHtml(p.ultimaCartaStr) + '</b>'
+      : '<i class="fa-regular fa-envelope-open me-1"></i>Nenhuma carta entregue ainda';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPredio')).show();
+  };
+
+  window.salvarPredio = function() {
+    var chave = document.getElementById('predioChave').value;
+    var nome = document.getElementById('predioNome').value.trim();
+    var patch = {
+      nome: nome,
+      irmaoMora: document.getElementById('predioIrmaoMora').checked,
+      notas: document.getElementById('predioNotas').value.trim()
+    };
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { alert('Erro: ' + (r && r.erro || '?')); return; }
+        bootstrap.Modal.getInstance(document.getElementById('modalPredio')).hide();
+        window.carregarPredios();
+      })
+      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .atualizarPredio(chave, patch);
+  };
+
+  window.compartilharLinkCartas = function() {
+    google.script.run
+      .withSuccessHandler(function(baseUrl){
+        var url = (baseUrl || window.location.href.split('?')[0]) + '?v=cartas';
+        var n = _predios.length;
+        var texto = '✉️ Trabalho de cartas\n\n' + n + ' prédio(s) pra escrever cartas:\n' + url;
+        if (navigator.share) {
+          navigator.share({ title: 'Trabalho de Cartas', text: texto })
+            .catch(function(){});
+        } else {
+          navigator.clipboard.writeText(texto).then(function(){ alert('Link copiado!'); });
+        }
+      })
+      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .getScriptUrl();
+  };
 
   function montarMsgCampanha(link) {
     var cfg = window.configCampanhaGlobal || {};

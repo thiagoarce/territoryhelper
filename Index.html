@@ -297,6 +297,66 @@
       </div>
     </div>
   </div>
+<div id="telaPredios" class="screen container-fluid py-3" style="background-color: #f8f9fa;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="fw-bold m-0 text-success"><i class="fa-solid fa-envelope me-2"></i>Prédios — Cartas</h4>
+      <button class="btn btn-sm btn-success" onclick="window.compartilharLinkCartas()">
+        <i class="fa-brands fa-whatsapp"></i> Compartilhar
+      </button>
+    </div>
+
+    <p class="small text-muted mb-2" id="prediosResumo">—</p>
+
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+      <input type="search" class="form-control form-control-sm flex-fill" id="prediosBusca"
+             placeholder="Buscar logradouro, nome..." oninput="window.filtrarPredios()">
+      <div class="form-check form-switch m-0 ms-1">
+        <input class="form-check-input" type="checkbox" id="prediosSoIrmao" onchange="window.filtrarPredios()">
+        <label class="form-check-label small" for="prediosSoIrmao">Só onde irmão mora</label>
+      </div>
+    </div>
+
+    <div id="listaPredios">
+      <div class="text-muted text-center py-4 small">Carregando...</div>
+    </div>
+  </div>
+
+  <!-- Modal editar prédio -->
+  <div class="modal fade" id="modalPredio" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-building me-2"></i><span id="lblPredioTitulo">Prédio</span></h5>
+          <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="predioChave">
+          <p class="small text-muted mb-3" id="predioEndereco">—</p>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Nome do edifício</label>
+            <input type="text" class="form-control" id="predioNome" placeholder="Ex: Edifício Solar">
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="predioIrmaoMora">
+            <label class="form-check-label" for="predioIrmaoMora">
+              <i class="fa-solid fa-house-user me-1"></i> Irmão mora aqui
+            </label>
+            <div class="form-text small">Marca informativa — não esconde o prédio do trabalho normal</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Notas</label>
+            <textarea class="form-control" id="predioNotas" rows="2"></textarea>
+          </div>
+          <div id="predioUltimaCarta" class="small text-muted"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-success" onclick="window.salvarPredio()"><i class="fa-solid fa-check"></i> Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <div id="telaCampanha" class="screen container-fluid py-3" style="background-color: #f8f9fa;">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="fw-bold m-0 text-success"><i class="fa-solid fa-chart-pie me-2"></i>Campanha</h4>
@@ -569,6 +629,8 @@
       <i class="fa-solid fa-draw-polygon"></i><br>Polígonos</div>
     <div class="nav-item" id="btnAbaRegistro" onclick="window.mudarAba('registro')" role="button" tabindex="0" aria-label="Registro de conclusões">
       <i class="fa-solid fa-clipboard-list"></i><br>Registro</div>
+    <div class="nav-item" id="btnAbaPredios" onclick="window.mudarAba('predios')" role="button" tabindex="0" aria-label="Trabalho de cartas em prédios">
+      <i class="fa-solid fa-envelope"></i><br>Prédios</div>
     <div class="nav-item" id="btnAbaCampanha" onclick="window.mudarAba('campanha')" role="button" tabindex="0" aria-label="Dashboard da campanha">
       <i class="fa-solid fa-chart-line"></i><br>Campanha</div>
   </nav>

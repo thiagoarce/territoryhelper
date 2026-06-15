@@ -22,6 +22,11 @@ function doGet(e) {
     return tmplC.evaluate().setTitle('Campanha — Progresso').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
   }
 
+  if (view === 'cartas') {
+    var tmplCt = HtmlService.createTemplateFromFile('Cartas');
+    return tmplCt.evaluate().setTitle('Trabalho de Cartas').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
+  }
+
   return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('Gestão de Territórios').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
 }
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
@@ -1724,4 +1729,220 @@ function _fecharDesignacoesCompletas_() {
       sh.getRange(k + 2, COL.DESIGNACOES.STATUS_1IDX).setValue('concluida');
     }
   }
+}
+
+// =================================================================
+// PRÉDIOS / TRABALHO DE CARTAS (aba "Predios")
+// Detecção automática: agrupa Dados Brutos por (logradouro + numero),
+// retorna grupos com ≥ 2 endereços. Overlay manual fica na aba Predios
+// (nome do edifício, marca "irmão mora", última carta entregue, notas).
+// =================================================================
+
+function ensureSheetPredios_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.PREDIOS);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.PREDIOS);
+  sh.appendRow([
+    'id', 'chave', 'nome', 'irmaoMora', 'ultimaCarta', 'notas', 'atualizado'
+  ]);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function _chavePredio_(logradouro, numero) {
+  return String(logradouro || '').trim().toLowerCase()
+       + '|'
+       + String(numero || '').trim().toLowerCase();
+}
+
+// Lê overlays da aba Predios indexado por chave
+function _mapaOverlaysPredios_() {
+  var sh = ensureSheetPredios_();
+  var ult = sh.getLastRow();
+  if (ult < 2) return {};
+  var dados = sh.getRange(2, 1, ult - 1, 7).getValues();
+  var mapa = {};
+  dados.forEach(function(r){
+    var chave = String(r[COL.PREDIOS.CHAVE] || '');
+    if (!chave) return;
+    mapa[chave] = {
+      id: String(r[COL.PREDIOS.ID] || ''),
+      nome: String(r[COL.PREDIOS.NOME] || ''),
+      irmaoMora: r[COL.PREDIOS.IRMAO_MORA] === true || String(r[COL.PREDIOS.IRMAO_MORA]).toUpperCase() === 'TRUE',
+      ultimaCarta: r[COL.PREDIOS.ULTIMA_CARTA] ? new Date(r[COL.PREDIOS.ULTIMA_CARTA]).getTime() : 0,
+      notas: String(r[COL.PREDIOS.NOTAS] || '')
+    };
+  });
+  return mapa;
+}
+
+// Lista prédios: agrupa Dados Brutos por (logradouro+numero) com
+// ≥ MIN_ENDERECOS endereços, junta com overlays manuais. Cada prédio
+// tem: chave, logradouro, numero, qtdEnderecos, lat/lng médios,
+// nome (do overlay), irmaoMora, ultimaCarta, quadras (lista única
+// de quadras que cobrem o prédio), enderecos[].
+function listarPredios() {
+  var MIN_ENDERECOS = 2;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (!sheetD || sheetD.getLastRow() < 2) return [];
+
+  var dados = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
+  var grupos = {};
+  dados.forEach(function(r, i){
+    var log = String(r[COL.DADOS.LOGRADOURO] || '').trim();
+    var num = String(r[COL.DADOS.NUMERO] || '').trim();
+    if (!log || !num) return;
+    var chave = _chavePredio_(log, num);
+    if (!grupos[chave]) {
+      grupos[chave] = {
+        chave: chave,
+        logradouro: log,
+        numero: num,
+        enderecos: [],
+        quadras: {},
+        latSum: 0, lngSum: 0, latCount: 0
+      };
+    }
+    var g = grupos[chave];
+    g.enderecos.push({
+      row: i + 2,
+      quadra: String(r[COL.DADOS.QUADRA] || ''),
+      complemento: String(r[COL.DADOS.COMPLEMENTO] || ''),
+      tipo: String(r[COL.DADOS.TIPO] || ''),
+      nome: String(r[COL.DADOS.NOME_EDIF] || ''),
+      lat: r[COL.DADOS.LAT], lng: r[COL.DADOS.LNG]
+    });
+    g.quadras[String(r[COL.DADOS.QUADRA] || '')] = true;
+    if (typeof r[COL.DADOS.LAT] === 'number' && typeof r[COL.DADOS.LNG] === 'number') {
+      g.latSum += r[COL.DADOS.LAT]; g.lngSum += r[COL.DADOS.LNG]; g.latCount++;
+    }
+  });
+
+  var overlays = _mapaOverlaysPredios_();
+
+  var resultado = [];
+  Object.keys(grupos).forEach(function(chave){
+    var g = grupos[chave];
+    if (g.enderecos.length < MIN_ENDERECOS) return;
+    var ov = overlays[chave] || {};
+    var nomeAuto = '';
+    // Pega o primeiro nome de edificação encontrado como default
+    for (var i = 0; i < g.enderecos.length; i++) {
+      if (g.enderecos[i].nome) { nomeAuto = g.enderecos[i].nome; break; }
+    }
+    resultado.push({
+      chave: chave,
+      logradouro: g.logradouro,
+      numero: g.numero,
+      qtdEnderecos: g.enderecos.length,
+      quadras: Object.keys(g.quadras).filter(Boolean),
+      lat: g.latCount > 0 ? g.latSum / g.latCount : null,
+      lng: g.latCount > 0 ? g.lngSum / g.latCount : null,
+      nome: ov.nome || nomeAuto || (g.logradouro + ', ' + g.numero),
+      nomeEditado: !!ov.nome,
+      irmaoMora: !!ov.irmaoMora,
+      ultimaCarta: ov.ultimaCarta || 0,
+      ultimaCartaStr: ov.ultimaCarta
+        ? Utilities.formatDate(new Date(ov.ultimaCarta), Session.getScriptTimeZone(), "dd/MM/yyyy")
+        : '',
+      notas: ov.notas || ''
+    });
+  });
+
+  // Ordena por logradouro depois número
+  resultado.sort(function(a, b){
+    var c = a.logradouro.localeCompare(b.logradouro);
+    return c !== 0 ? c : (parseInt(a.numero, 10) || 0) - (parseInt(b.numero, 10) || 0);
+  });
+
+  return resultado;
+}
+
+function _acharLinhaPredioPorChave_(sh, chave) {
+  var ult = sh.getLastRow();
+  if (ult < 2) return -1;
+  var col = sh.getRange(2, 2, ult - 1, 1).getValues(); // coluna B (chave)
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]) === String(chave)) return i + 2;
+  }
+  return -1;
+}
+
+// Cria ou atualiza o overlay manual de um prédio. patch pode conter:
+// nome (string), irmaoMora (bool), ultimaCarta (yyyy-MM-dd | true=hoje
+// | null), notas (string).
+function atualizarPredio(chave, patch) {
+  if (!chave) return { ok: false, erro: 'chave obrigatória' };
+  return withLock_(function(){
+    var sh = ensureSheetPredios_();
+    var linha = _acharLinhaPredioPorChave_(sh, chave);
+    if (linha < 0) {
+      // Cria linha nova com defaults
+      var id = 'pr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      sh.appendRow([id, chave, '', false, '', '', new Date()]);
+      linha = sh.getLastRow();
+    }
+    var mapa = {
+      nome:        COL.PREDIOS.NOME_1IDX,
+      irmaoMora:   COL.PREDIOS.IRMAO_MORA_1IDX,
+      ultimaCarta: COL.PREDIOS.ULTIMA_CARTA_1IDX,
+      notas:       COL.PREDIOS.NOTAS_1IDX
+    };
+    Object.keys(patch || {}).forEach(function(k){
+      if (!(k in mapa)) return;
+      var valor = patch[k];
+      if (k === 'irmaoMora') valor = valor === true;
+      else if (k === 'ultimaCarta') {
+        if (valor === true) valor = new Date();
+        else if (valor) valor = new Date(valor + 'T00:00:00');
+        else valor = '';
+      }
+      else valor = sanitizar_(valor);
+      sh.getRange(linha, mapa[k]).setValue(valor);
+    });
+    sh.getRange(linha, COL.PREDIOS.ATUALIZADO_1IDX).setValue(new Date());
+    _invalidar();
+    return { ok: true };
+  });
+}
+
+// Marca carta entregue (timestamp atual) — atalho usado pelo link
+// público de cartas.
+function marcarCartaEntregue(chave) {
+  return atualizarPredio(chave, { ultimaCarta: true });
+}
+
+// Versão pública (read-only) pra link compartilhado — não expõe notas
+// internas, só o que o irmão precisa pra escrever/entregar.
+function listarPrediosPublico() {
+  return listarPredios().map(function(p){
+    return {
+      chave: p.chave,
+      nome: p.nome,
+      logradouro: p.logradouro,
+      numero: p.numero,
+      qtdEnderecos: p.qtdEnderecos,
+      lat: p.lat, lng: p.lng,
+      ultimaCartaStr: p.ultimaCartaStr,
+      irmaoMora: p.irmaoMora
+    };
+  });
+}
+
+// Registra "deixei carta" num endereço específico (linha de Dados Brutos)
+// na aba Registros. Usado pelo painel do publicador.
+function registrarCartaEndereco(row) {
+  if (!row || row < 2) return { ok: false, erro: 'row inválida' };
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetReg = getSheetByName_(SHEET.REGISTROS);
+    if (!sheetReg) {
+      sheetReg = ss.insertSheet(SHEET.REGISTROS);
+      sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]);
+    }
+    sheetReg.appendRow(['endereco:' + row, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'carta', new Date()]);
+    return { ok: true };
+  });
 }

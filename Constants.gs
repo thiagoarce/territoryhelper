@@ -60,6 +60,23 @@ var COL = {
     ID: 0, IDS_QUADRAS: 1, PUBLICADOR: 2, CRIADA: 3, PRAZO: 4, STATUS: 5, NOTAS: 6
   },
 
+  // Aba "Predios" — overlay manual sobre os endereços brutos. Os campos
+  // logradouro/numero/lat são derivados de "Dados Brutos" em runtime;
+  // aqui só guardamos o que o usuário define: nome do prédio, se
+  // irmão mora ali (filtro pra trabalho de cartas), última carta
+  // entregue, notas.
+  PREDIOS: {
+    ID_1IDX:           1,  // A
+    CHAVE_1IDX:        2,  // B  "logradouro|numero" — junção com Dados Brutos
+    NOME_1IDX:         3,  // C  nome do edifício (editável)
+    IRMAO_MORA_1IDX:   4,  // D  marca informativa (não esconde nada)
+    ULTIMA_CARTA_1IDX: 5,  // E  data da última entrega de cartas
+    NOTAS_1IDX:        6,  // F
+    ATUALIZADO_1IDX:   7,  // G
+    // 0-indexed
+    ID: 0, CHAVE: 1, NOME: 2, IRMAO_MORA: 3, ULTIMA_CARTA: 4, NOTAS: 5, ATUALIZADO: 6
+  },
+
   // Aba "Campanha" (objetivos estruturados)
   CAMPANHA: {
     ID_1IDX:         1,  // A
@@ -130,7 +147,8 @@ var SHEET = {
   DADOS:       "Dados Brutos",
   REGISTROS:   "Registros",
   CAMPANHA:    "Campanha",
-  DESIGNACOES: "Designacoes"
+  DESIGNACOES: "Designacoes",
+  PREDIOS:     "Predios"
 };
 
 // Modalidades de pregação pra classificar objetivos da campanha.
