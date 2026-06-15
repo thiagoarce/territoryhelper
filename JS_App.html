@@ -1747,9 +1747,9 @@ window.confirmarAssociacao = function(layerQuadra) {
               r.innerHTML = d.ranking.map(function(t, i){
                 return '<div class="rank-row">' +
                          '<div class="rank-pos">' + (i+1) + '</div>' +
-                         '<div class="rank-nome">' + t.nome + '</div>' +
-                         '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + t.porcentagem + '%"></div></div>' +
-                         '<div class="rank-num"><b>' + t.completas + '</b>/' + t.total + ' (' + t.porcentagem + '%)</div>' +
+                         '<div class="rank-nome">' + _escHtml(t.nome) + '</div>' +
+                         '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + (Number(t.porcentagem) || 0) + '%"></div></div>' +
+                         '<div class="rank-num"><b>' + (Number(t.completas) || 0) + '</b>/' + (Number(t.total) || 0) + ' (' + (Number(t.porcentagem) || 0) + '%)</div>' +
                        '</div>';
               }).join('');
             }
