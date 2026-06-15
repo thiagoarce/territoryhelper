@@ -392,6 +392,12 @@ window.carregarEditorDados = function() {
              poly.bindTooltip(d.id, {permanent: true, direction: "center", className: "label-quadra"});
              poly.on('click', function(e) {
                  if(divisionMarkers.length > 0) return;
+                 // Modo renomear: cliques atribuem letras em ordem
+                 if (window._modoRenomearAtivo) {
+                   L.DomEvent.stopPropagation(e);
+                   window.toggleQuadraNaOrdemRenomear(this);
+                   return;
+                 }
                  if(facesSelecionadas.size > 0) { L.DomEvent.stopPropagation(e); window.confirmarAssociacao(this); return; }
                  if(isEditingTerritory) { window.toggleSelecaoQuadra(this); return; }
                  if(isSelectionMode) { window.toggleSelecaoQuadra(this); return; }
@@ -2294,15 +2300,28 @@ window.confirmarAssociacao = function(layerQuadra) {
   }
 
   // ======================================================
-  // RENOMEAR QUADRAS EM MASSA POR TERRITÓRIO
-  // Q-1, Q-2, Q-3 (do território "1") → 1A, 1B, 1C...
+  // RENOMEAR QUADRAS — modo interativo:
+  // user clica nas quadras NA ORDEM que vão receber A, B, C, D...
+  // Cada clique adiciona à lista (toca de novo pra remover).
   // ======================================================
+  var _renomearOrdem = [];           // ids na ordem
+  var _renomearTerritorio = '';
+  var _renomearPrefixo = '';
+  var _renomearTodasDoTerr = [];     // todos os ids do território
+  var _renomearStylesOriginais = new Map(); // poly → style original
+
   window.abrirRenomearQuadras = function() {
     var sel = document.getElementById('renomearTerritorio');
     sel.innerHTML = '<option value="">Carregando...</option>';
     document.getElementById('renomearPrefixo').value = '';
-    document.getElementById('renomearPreview').textContent = '—';
+    document.getElementById('renomearOrdemLista').textContent = '—';
+    document.getElementById('renomearRestantes').textContent = '';
     document.getElementById('btnAplicarRenomear').disabled = true;
+    _renomearOrdem = [];
+    _renomearTerritorio = '';
+    _renomearPrefixo = '';
+    _renomearTodasDoTerr = [];
+
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modalRenomear')).show();
 
     google.script.run
@@ -2320,38 +2339,151 @@ window.confirmarAssociacao = function(layerQuadra) {
       .listarTerritoriosComContagem();
   };
 
-  var _debounceRename;
-  window.atualizarPreviewRenomear = function() {
-    clearTimeout(_debounceRename);
-    _debounceRename = setTimeout(function(){
-      var terr = document.getElementById('renomearTerritorio').value;
-      var pref = document.getElementById('renomearPrefixo').value.trim();
-      var box = document.getElementById('renomearPreview');
-      var btn = document.getElementById('btnAplicarRenomear');
-      btn.disabled = true;
-      if (!terr || !pref) { box.textContent = '—'; return; }
-      box.textContent = 'Calculando...';
-      google.script.run
-        .withSuccessHandler(function(r){
-          if (!r || !r.ok) { box.innerHTML = '<span class="text-danger">' + escapeHtml((r && r.erro) || 'erro') + '</span>'; return; }
-          var linhas = Object.keys(r.mapa).map(function(antigo){
-            var novo = r.mapa[antigo];
-            var cor = antigo === novo ? 'text-muted' : 'text-success fw-bold';
-            return '<div class="' + cor + '">' + escapeHtml(antigo) + ' → ' + escapeHtml(novo) + '</div>';
+  // Chamado quando muda território ou prefixo no modal
+  window.iniciarRenomearOrdem = function() {
+    _renomearTerritorio = document.getElementById('renomearTerritorio').value;
+    _renomearPrefixo = document.getElementById('renomearPrefixo').value.trim();
+    _renomearOrdem = [];
+
+    // Restaura estilos antes de aplicar novo destaque
+    _renomearStylesOriginais.forEach(function(orig, poly){ poly.setStyle(orig); });
+    _renomearStylesOriginais.clear();
+
+    window._modoRenomearAtivo = !!(_renomearTerritorio && _renomearPrefixo);
+    if (!window._modoRenomearAtivo) {
+      _renomearTodasDoTerr = [];
+      atualizarUIRenomearOrdem();
+      return;
+    }
+
+    // Coleta ids do território + destaca no mapa
+    _renomearTodasDoTerr = [];
+    if (typeof layerGroupQuadras !== 'undefined' && layerGroupQuadras) {
+      layerGroupQuadras.eachLayer(function(poly){
+        var d = poly.metaData;
+        if (!d) return;
+        if (String(d.territory || '').trim() === _renomearTerritorio) {
+          _renomearTodasDoTerr.push(d.id);
+          // Salva estilo original e destaca em laranja claro
+          _renomearStylesOriginais.set(poly, {
+            color: '#666', weight: 1,
+            fillColor: d.color || '#3388ff', fillOpacity: 0.3
           });
-          box.innerHTML = linhas.join('');
-          btn.disabled = false;
-        })
-        .withFailureHandler(function(e){ box.innerHTML = '<span class="text-danger">' + escapeHtml(e && e.message || e) + '</span>'; })
-        .previewRenomearQuadras(terr, pref);
-    }, 300);
+          poly.setStyle({ color: '#f59e0b', weight: 2, fillColor: '#fbbf24', fillOpacity: 0.4 });
+        }
+      });
+    }
+    atualizarUIRenomearOrdem();
   };
 
-  window.aplicarRenomear = function() {
-    var terr = document.getElementById('renomearTerritorio').value;
-    var pref = document.getElementById('renomearPrefixo').value.trim();
-    if (!terr || !pref) return;
-    if (!confirm('Aplicar renomeação em "' + terr + '" com prefixo "' + pref + '"?\n\nEssa ação não pode ser desfeita automaticamente.')) return;
+  // Click em quadra dentro do modo — toggle na ordem
+  window.toggleQuadraNaOrdemRenomear = function(poly) {
+    var d = poly.metaData;
+    if (!d) return;
+    if (String(d.territory || '').trim() !== _renomearTerritorio) {
+      window.toast && window.toast('Quadra não pertence ao território selecionado', 'warn');
+      return;
+    }
+    var idx = _renomearOrdem.indexOf(d.id);
+    if (idx >= 0) {
+      _renomearOrdem.splice(idx, 1);
+    } else {
+      _renomearOrdem.push(d.id);
+    }
+    repintarPolyRenomear(poly, d);
+    // Repinta os demais (porque a letra que cada um vai receber pode ter mudado)
+    if (typeof layerGroupQuadras !== 'undefined' && layerGroupQuadras) {
+      layerGroupQuadras.eachLayer(function(p){
+        if (p === poly) return;
+        var dd = p.metaData;
+        if (!dd) return;
+        if (String(dd.territory || '').trim() === _renomearTerritorio) repintarPolyRenomear(p, dd);
+      });
+    }
+    atualizarUIRenomearOrdem();
+  };
+
+  function letraDeIndice(idx) {
+    var L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (idx < 26) return L[idx];
+    return L[Math.floor(idx/26) - 1] + L[idx % 26];
+  }
+
+  function repintarPolyRenomear(poly, d) {
+    var idx = _renomearOrdem.indexOf(d.id);
+    if (idx >= 0) {
+      var novoId = _renomearPrefixo + letraDeIndice(idx);
+      poly.setStyle({ color: '#16a34a', weight: 3, fillColor: '#22c55e', fillOpacity: 0.55 });
+      // Atualiza tooltip pra mostrar o id NOVO temporariamente
+      if (poly.getTooltip()) poly.unbindTooltip();
+      poly.bindTooltip(novoId, { permanent: true, direction: 'center', className: 'label-quadra' });
+    } else {
+      poly.setStyle({ color: '#f59e0b', weight: 2, fillColor: '#fbbf24', fillOpacity: 0.4 });
+      if (poly.getTooltip()) poly.unbindTooltip();
+      poly.bindTooltip(d.id, { permanent: true, direction: 'center', className: 'label-quadra' });
+    }
+  }
+
+  function atualizarUIRenomearOrdem() {
+    var lista = document.getElementById('renomearOrdemLista');
+    var restantes = document.getElementById('renomearRestantes');
+    var btn = document.getElementById('btnAplicarRenomear');
+    if (_renomearOrdem.length === 0) {
+      lista.innerHTML = '<span class="text-muted">Nenhuma escolhida ainda. Toque nas quadras laranjas no mapa.</span>';
+    } else {
+      lista.innerHTML = _renomearOrdem.map(function(id, idx){
+        var novo = _renomearPrefixo + letraDeIndice(idx);
+        return '<div><span class="text-success fw-bold">' + escapeHtml(novo) + '</span> ← ' + escapeHtml(id) + '</div>';
+      }).join('');
+    }
+    var pendentes = _renomearTodasDoTerr.filter(function(id){ return _renomearOrdem.indexOf(id) < 0; });
+    if (pendentes.length > 0) {
+      restantes.innerHTML = '<i class="fa-solid fa-circle-exclamation text-warning"></i> Falta ' + pendentes.length + ': <span style="font-family:monospace">' + pendentes.map(escapeHtml).join(', ') + '</span>';
+    } else if (_renomearTodasDoTerr.length > 0) {
+      restantes.innerHTML = '<i class="fa-solid fa-circle-check text-success"></i> Todas atribuídas!';
+    } else {
+      restantes.textContent = '';
+    }
+    // Só habilita confirmar quando TODAS estão na ordem
+    btn.disabled = !(_renomearTodasDoTerr.length > 0
+                     && _renomearOrdem.length === _renomearTodasDoTerr.length);
+  }
+
+  window.resetarOrdemRenomear = function() {
+    _renomearOrdem = [];
+    if (typeof layerGroupQuadras !== 'undefined' && layerGroupQuadras) {
+      layerGroupQuadras.eachLayer(function(poly){
+        var d = poly.metaData;
+        if (!d) return;
+        if (String(d.territory || '').trim() === _renomearTerritorio) repintarPolyRenomear(poly, d);
+      });
+    }
+    atualizarUIRenomearOrdem();
+  };
+
+  window.cancelarRenomearOrdem = function() {
+    window._modoRenomearAtivo = false;
+    // Restaura todos os estilos originais e tooltips
+    _renomearStylesOriginais.forEach(function(orig, poly){
+      poly.setStyle(orig);
+      var d = poly.metaData;
+      if (d) {
+        if (poly.getTooltip()) poly.unbindTooltip();
+        poly.bindTooltip(d.id, { permanent: true, direction: 'center', className: 'label-quadra' });
+      }
+    });
+    _renomearStylesOriginais.clear();
+    _renomearOrdem = [];
+    _renomearTodasDoTerr = [];
+    bootstrap.Modal.getInstance(document.getElementById('modalRenomear')).hide();
+  };
+
+  window.aplicarRenomearOrdem = function() {
+    if (!_renomearTerritorio || !_renomearPrefixo) return;
+    if (_renomearOrdem.length !== _renomearTodasDoTerr.length) {
+      alert('Atribua todas as quadras antes de confirmar.');
+      return;
+    }
     var btn = document.getElementById('btnAplicarRenomear');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Aplicando...';
@@ -2359,10 +2491,13 @@ window.confirmarAssociacao = function(layerQuadra) {
       .withSuccessHandler(function(r){
         if (!r || !r.ok) {
           alert('Erro: ' + (r && r.erro || 'desconhecido'));
-          btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Aplicar';
+          btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar';
           return;
         }
-        window.toast(r.renomeadas + ' quadras renomeadas.', 'success');
+        window.toast && window.toast(r.renomeadas + ' quadras renomeadas.', 'success');
+        window._modoRenomearAtivo = false;
+        _renomearStylesOriginais.clear();
+        _renomearOrdem = [];
         bootstrap.Modal.getInstance(document.getElementById('modalRenomear')).hide();
         window.invalidarCacheMapa && window.invalidarCacheMapa();
         window.carregarEditorDados && window.carregarEditorDados();
@@ -2370,9 +2505,9 @@ window.confirmarAssociacao = function(layerQuadra) {
       })
       .withFailureHandler(function(e){
         alert('Erro: ' + (e && e.message || e));
-        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Aplicar';
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar';
       })
-      .renomearQuadrasDoTerritorio(terr, pref);
+      .renomearQuadrasDoTerritorio(_renomearTerritorio, _renomearPrefixo, _renomearOrdem);
   };
 
   // ======================================================

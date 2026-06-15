@@ -2338,12 +2338,42 @@ function previewRenomearQuadras(nomeTerr, prefixo) {
   return { ok: true, mapa: mapa, total: quadras.length };
 }
 
-function renomearQuadrasDoTerritorio(nomeTerr, prefixo) {
+// ordemIds opcional: lista de ids do território na ORDEM em que o
+// usuário quer que recebam A, B, C, D... Se ausente, ordena
+// automaticamente (compat).
+function renomearQuadrasDoTerritorio(nomeTerr, prefixo, ordemIds) {
   if (!nomeTerr || !prefixo) return { ok: false, erro: 'parâmetros obrigatórios' };
   return withLock_(function(){
-    var prev = previewRenomearQuadras(nomeTerr, prefixo);
-    if (!prev.ok) return prev;
-    var mapa = prev.mapa;
+    var mapa;
+    if (Array.isArray(ordemIds) && ordemIds.length > 0) {
+      // Modo manual: ordem fornecida pelo usuário
+      var letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      mapa = {};
+      ordemIds.forEach(function(id, idx){
+        var letra;
+        if (idx < 26) letra = letras[idx];
+        else letra = letras[Math.floor(idx/26) - 1] + letras[idx % 26];
+        mapa[String(id).trim()] = prefixo + letra;
+      });
+      // Garante que TODAS as quadras do território estão na lista
+      var ssCheck = SpreadsheetApp.getActiveSpreadsheet();
+      var sQCheck = ssCheck.getSheetByName(SHEET.QUADRAS);
+      var dQCheck = sQCheck.getDataRange().getValues();
+      var faltam = [];
+      for (var ic = 1; ic < dQCheck.length; ic++) {
+        var terrC = String(dQCheck[ic][COL.QUADRAS.TERRITORIO] || '').trim();
+        if (terrC !== nomeTerr) continue;
+        var idC = String(dQCheck[ic][COL.QUADRAS.ID] || '').trim();
+        if (idC && !(idC in mapa)) faltam.push(idC);
+      }
+      if (faltam.length > 0) {
+        return { ok: false, erro: 'Faltam quadras na ordem: ' + faltam.join(', ') };
+      }
+    } else {
+      var prev = previewRenomearQuadras(nomeTerr, prefixo);
+      if (!prev.ok) return prev;
+      mapa = prev.mapa;
+    }
 
     // Detecta conflitos: algum dos NOVOS ids já existe em outro
     // território? Não pode sobrescrever quadra que não é nossa.
