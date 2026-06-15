@@ -712,7 +712,17 @@ function desfazerConclusaoQuadra(id) {
         if (tipo === 'desfeito') return;
         historico.push({ linha: i + 2, data: r[1], tipo: tipo, ts: r[3] });
       });
-      historico.sort(function(a, b){ return new Date(b.ts) - new Date(a.ts); });
+      // Ordena por timestamp desc; quando ts vier vazio/inválido (linhas
+      // legadas de versões antigas), usa o número da linha como fallback
+      // determinístico (linhas mais novas têm índice maior).
+      historico.sort(function(a, b){
+        var ta = a.ts ? new Date(a.ts).getTime() : NaN;
+        var tb = b.ts ? new Date(b.ts).getTime() : NaN;
+        if (isNaN(ta) && isNaN(tb)) return b.linha - a.linha;
+        if (isNaN(ta)) return 1;
+        if (isNaN(tb)) return -1;
+        return tb - ta;
+      });
     }
 
     if (historico.length === 0) return { ok: false, erro: "Sem histórico de conclusão pra desfazer" };
@@ -867,7 +877,7 @@ function getDadosIniciaisMaster() {
 
 function limparCacheServidor() {
   var cache = CacheService.getScriptCache();
-  cache.remove('DADOS_MAPA_CACHE');
+  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1']);
 }
 
 // Marca toda escrita: invalida o cache para que a próxima leitura puxe fresco
@@ -1607,7 +1617,7 @@ function _linhaParaDesignacao_(linha) {
     publicador: String(linha[COL.DESIGNACOES.PUBLICADOR] || ''),
     criada:     linha[COL.DESIGNACOES.CRIADA] ? new Date(linha[COL.DESIGNACOES.CRIADA]).getTime() : 0,
     prazo:      linha[COL.DESIGNACOES.PRAZO] ? new Date(linha[COL.DESIGNACOES.PRAZO]).getTime() : 0,
-    status:     String(linha[COL.DESIGNACOES.STATUS] || 'aberta'),
+    status:     String(linha[COL.DESIGNACOES.STATUS] || STATUS_DESIGNACAO.ABERTA),
     notas:      String(linha[COL.DESIGNACOES.NOTAS] || '')
   };
 }
@@ -1619,23 +1629,36 @@ function criarDesignacao(payload) {
   var publicador = sanitizar_(payload.publicador || '');
   if (!publicador) return { ok: false, erro: 'Nome do publicador é obrigatório' };
 
+  // Valida prazo: se vier preenchido, precisa ser yyyy-MM-dd válido.
+  // Sem isso, "abc" geraria new Date(Invalid) → NaN persistido → UI mente.
+  var prazoDate;
+  if (payload.prazo) {
+    var v = validarData_(payload.prazo);
+    if (!v.ok) return { ok: false, erro: 'Prazo inválido: ' + v.msg };
+    prazoDate = new Date(payload.prazo + 'T00:00:00');
+  } else {
+    prazoDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  }
+
   return withLock_(function(){
     var sh = ensureSheetDesignacoes_();
+    // Aviso (não-bloqueante) se alguma quadra já está em designação aberta
+    var jaDesignadas = getQuadrasDesignadas();
+    var conflito = payload.ids
+      .map(function(s){ return String(s).trim(); })
+      .filter(function(qId){ return qId && jaDesignadas[qId]; });
     var id = _gerarIdDesignacao_();
-    var prazoDate = payload.prazo
-      ? new Date(payload.prazo + 'T00:00:00')
-      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     sh.appendRow([
       id,
       payload.ids.map(function(s){ return String(s).trim(); }).filter(Boolean).join(','),
       publicador,
       new Date(),
       prazoDate,
-      'aberta',
+      STATUS_DESIGNACAO.ABERTA,
       sanitizar_(payload.notas || '')
     ]);
     _invalidar();
-    return { ok: true, id: id };
+    return { ok: true, id: id, conflitos: conflito };
   });
 }
 
@@ -1650,7 +1673,7 @@ function listarDesignacoes() {
   dados.forEach(function(linha){
     var d = _linhaParaDesignacao_(linha);
     if (!d.id) return;
-    if (d.status === 'aberta') {
+    if (d.status === STATUS_DESIGNACAO.ABERTA) {
       if (d.prazo && d.prazo < agora) vencidas.push(d);
       else abertas.push(d);
     } else {
@@ -1696,7 +1719,7 @@ function cancelarDesignacao(id) {
     var sh = ensureSheetDesignacoes_();
     var linha = _acharLinhaDesignacao_(sh, id);
     if (linha < 0) return { ok: false, erro: 'Designação não encontrada' };
-    sh.getRange(linha, COL.DESIGNACOES.STATUS_1IDX).setValue('cancelada');
+    sh.getRange(linha, COL.DESIGNACOES.STATUS_1IDX).setValue(STATUS_DESIGNACAO.CANCELADA);
     _invalidar();
     return { ok: true };
   });
@@ -1721,12 +1744,15 @@ function _fecharDesignacoesCompletas_() {
   var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
   for (var k = 0; k < dados.length; k++) {
     var d = _linhaParaDesignacao_(dados[k]);
-    if (d.status !== 'aberta') continue;
+    if (d.status !== STATUS_DESIGNACAO.ABERTA) continue;
+    // Trata quadras ausentes (removidas da aba Quadras) como concluídas
+    // pra não deixar designações zumbis abertas pra sempre.
     var todasConcluidas = d.idsQuadras.length > 0 && d.idsQuadras.every(function(qId){
-      return statusPorId[qId] === STATUS.CONCLUIDO;
+      var st = statusPorId[qId];
+      return st === undefined || st === STATUS.CONCLUIDO;
     });
     if (todasConcluidas) {
-      sh.getRange(k + 2, COL.DESIGNACOES.STATUS_1IDX).setValue('concluida');
+      sh.getRange(k + 2, COL.DESIGNACOES.STATUS_1IDX).setValue(STATUS_DESIGNACAO.CONCLUIDA);
     }
   }
 }
@@ -1783,6 +1809,14 @@ function _mapaOverlaysPredios_() {
 // nome (do overlay), irmaoMora, ultimaCarta, quadras (lista única
 // de quadras que cobrem o prédio), enderecos[].
 function listarPredios() {
+  // Cache de 5 minutos pra evitar varrer Dados Brutos a cada toque na
+  // aba Prédios. Cache é invalidado por _invalidar() em qualquer write
+  // que afete o que vem aqui (atualizarPredio, marcarCartaEntregue, etc).
+  var cache = CacheService.getScriptCache();
+  var cachedJson = cache.get('PREDIOS_LISTA_V1');
+  if (cachedJson) {
+    try { return JSON.parse(cachedJson); } catch (e) {}
+  }
   var MIN_ENDERECOS = 2;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetD = ss.getSheetByName(SHEET.DADOS);
@@ -1857,6 +1891,8 @@ function listarPredios() {
     return c !== 0 ? c : (parseInt(a.numero, 10) || 0) - (parseInt(b.numero, 10) || 0);
   });
 
+  // Cache de 5min — invalidado por _invalidar() nos writes
+  try { cache.put('PREDIOS_LISTA_V1', JSON.stringify(resultado), 300); } catch (e) {}
   return resultado;
 }
 
@@ -1909,8 +1945,14 @@ function atualizarPredio(chave, patch) {
 }
 
 // Marca carta entregue (timestamp atual) — atalho usado pelo link
-// público de cartas.
+// público de cartas. Valida que a chave corresponde a um prédio detectado
+// em Dados Brutos pra evitar que um cliente malicioso polua a aba
+// Predios chamando com chaves aleatórias.
 function marcarCartaEntregue(chave) {
+  if (!chave) return { ok: false, erro: 'chave obrigatória' };
+  var lista = listarPredios();
+  var existe = lista.some(function(p){ return p.chave === chave; });
+  if (!existe) return { ok: false, erro: 'Prédio não encontrado' };
   return atualizarPredio(chave, { ultimaCarta: true });
 }
 
@@ -1934,15 +1976,22 @@ function listarPrediosPublico() {
 // Registra "deixei carta" num endereço específico (linha de Dados Brutos)
 // na aba Registros. Usado pelo painel do publicador.
 function registrarCartaEndereco(row) {
-  if (!row || row < 2) return { ok: false, erro: 'row inválida' };
+  var rowNum = parseInt(row, 10);
+  if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
   return withLock_(function(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetD = getSheetByName_(SHEET.DADOS);
+    // Limite superior pra evitar registro de lixo via row absurdo
+    if (sheetD && rowNum > sheetD.getLastRow()) {
+      return { ok: false, erro: 'row fora do range' };
+    }
     var sheetReg = getSheetByName_(SHEET.REGISTROS);
     if (!sheetReg) {
       sheetReg = ss.insertSheet(SHEET.REGISTROS);
       sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]);
     }
-    sheetReg.appendRow(['endereco:' + row, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'carta', new Date()]);
+    sheetReg.appendRow(['endereco:' + rowNum, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'carta', new Date()]);
+    _invalidar();
     return { ok: true };
   });
 }
