@@ -2282,3 +2282,158 @@ function registrarDesfechoEndereco(row, tipo) {
     return { ok: true };
   });
 }
+
+// =================================================================
+// RENOMEAÇÃO EM MASSA DE QUADRAS POR TERRITÓRIO
+// Atualiza ID em cascata: Quadras, Dados Brutos.QUADRA,
+// Territorios.IDS_QUADRAS (CSV), Designacoes.IDS_QUADRAS (CSV) e
+// Registros (eventos por quadra). Tudo numa transação.
+// =================================================================
+
+// Preview do que VAI mudar — sem aplicar. Devolve mapa idAntigo→idNovo
+// pra o admin confirmar.
+function previewRenomearQuadras(nomeTerr, prefixo) {
+  if (!nomeTerr || !prefixo) return { ok: false, erro: 'parâmetros obrigatórios' };
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
+  if (!sheetQ) return { ok: false, erro: 'aba Quadras não encontrada' };
+  var dataQ = sheetQ.getDataRange().getValues();
+  var quadras = [];
+  for (var i = 1; i < dataQ.length; i++) {
+    var terr = String(dataQ[i][COL.QUADRAS.TERRITORIO] || '').trim();
+    if (terr !== nomeTerr) continue;
+    var idAtual = String(dataQ[i][COL.QUADRAS.ID] || '').trim();
+    if (idAtual) quadras.push(idAtual);
+  }
+  if (quadras.length === 0) return { ok: false, erro: 'Sem quadras nesse território' };
+  // Ordena por id natural (Q-1, Q-2, Q-10 numérico)
+  quadras.sort(function(a, b){ return a.localeCompare(b, 'pt-BR', { numeric: true }); });
+  var letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var mapa = {};
+  quadras.forEach(function(id, idx){
+    var letra;
+    if (idx < 26) letra = letras[idx];
+    else letra = letras[Math.floor(idx/26) - 1] + letras[idx % 26]; // AA, AB...
+    mapa[id] = prefixo + letra;
+  });
+  return { ok: true, mapa: mapa, total: quadras.length };
+}
+
+function renomearQuadrasDoTerritorio(nomeTerr, prefixo) {
+  if (!nomeTerr || !prefixo) return { ok: false, erro: 'parâmetros obrigatórios' };
+  return withLock_(function(){
+    var prev = previewRenomearQuadras(nomeTerr, prefixo);
+    if (!prev.ok) return prev;
+    var mapa = prev.mapa;
+
+    // Detecta conflitos: algum dos NOVOS ids já existe em outro
+    // território? Não pode sobrescrever quadra que não é nossa.
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
+    var dataQ = sheetQ.getDataRange().getValues();
+    var idsFora = {};
+    for (var i = 1; i < dataQ.length; i++) {
+      var terr = String(dataQ[i][COL.QUADRAS.TERRITORIO] || '').trim();
+      var idA = String(dataQ[i][COL.QUADRAS.ID] || '').trim();
+      if (idA && terr !== nomeTerr) idsFora[idA] = true;
+    }
+    var conflitos = [];
+    Object.keys(mapa).forEach(function(antigo){
+      var novo = mapa[antigo];
+      if (novo !== antigo && idsFora[novo]) conflitos.push(novo);
+    });
+    if (conflitos.length > 0) {
+      return { ok: false, erro: 'IDs já em uso em outros territórios: ' + conflitos.join(', ') };
+    }
+
+    // 1. Atualiza Quadras.ID (com 1 batch — mais rápido)
+    var updatesQ = [];
+    for (var i2 = 1; i2 < dataQ.length; i2++) {
+      var idAtual = String(dataQ[i2][COL.QUADRAS.ID] || '').trim();
+      if (mapa[idAtual] && mapa[idAtual] !== idAtual) {
+        updatesQ.push({ linha: i2 + 1, novo: mapa[idAtual] });
+      }
+    }
+    updatesQ.forEach(function(u){
+      sheetQ.getRange(u.linha, COL.QUADRAS.ID_1IDX).setValue(u.novo);
+    });
+
+    // 2. Dados Brutos — coluna QUADRA
+    var sheetD = ss.getSheetByName(SHEET.DADOS);
+    if (sheetD && sheetD.getLastRow() > 1) {
+      var range = sheetD.getRange(2, COL.DADOS.QUADRA_1IDX, sheetD.getLastRow() - 1, 1);
+      var vals = range.getValues();
+      var alterado = false;
+      for (var d = 0; d < vals.length; d++) {
+        var id = String(vals[d][0] || '').trim();
+        if (mapa[id] && mapa[id] !== id) { vals[d][0] = mapa[id]; alterado = true; }
+      }
+      if (alterado) range.setValues(vals);
+    }
+
+    // 3. Territorios.IDS_QUADRAS (CSV)
+    var sheetT = ss.getSheetByName(SHEET.TERRITORIOS)
+              || ss.getSheetByName('Territórios');
+    if (sheetT && sheetT.getLastRow() > 1) {
+      var dataT = sheetT.getDataRange().getValues();
+      for (var t = 1; t < dataT.length; t++) {
+        var csv = String(dataT[t][COL.TERRITORIOS.IDS_QUADRAS] || '');
+        if (!csv) continue;
+        var ids = csv.split(',').map(function(s){ return s.trim(); });
+        var novo = ids.map(function(id){ return mapa[id] || id; });
+        if (novo.join(',') !== ids.join(',')) {
+          sheetT.getRange(t + 1, COL.TERRITORIOS.IDS_QUADRAS_1IDX).setValue(novo.join(','));
+        }
+      }
+    }
+
+    // 4. Designacoes.IDS_QUADRAS (CSV)
+    var sheetDes = ss.getSheetByName(SHEET.DESIGNACOES);
+    if (sheetDes && sheetDes.getLastRow() > 1) {
+      var dataDes = sheetDes.getRange(2, 1, sheetDes.getLastRow() - 1, 7).getValues();
+      for (var ds = 0; ds < dataDes.length; ds++) {
+        var csvD = String(dataDes[ds][COL.DESIGNACOES.IDS_QUADRAS] || '');
+        if (!csvD) continue;
+        var idsD = csvD.split(',').map(function(s){ return s.trim(); });
+        var novoD = idsD.map(function(id){ return mapa[id] || id; });
+        if (novoD.join(',') !== idsD.join(',')) {
+          sheetDes.getRange(ds + 2, COL.DESIGNACOES.IDS_QUADRAS_1IDX).setValue(novoD.join(','));
+        }
+      }
+    }
+
+    // 5. Registros — coluna ID (eventos por quadra, ignora 'endereco:*')
+    var sheetReg = ss.getSheetByName(SHEET.REGISTROS);
+    if (sheetReg && sheetReg.getLastRow() > 1) {
+      var rangeR = sheetReg.getRange(2, 1, sheetReg.getLastRow() - 1, 1);
+      var valsR = rangeR.getValues();
+      var alteradoR = false;
+      for (var r = 0; r < valsR.length; r++) {
+        var id2 = String(valsR[r][0] || '').trim();
+        if (mapa[id2]) { valsR[r][0] = mapa[id2]; alteradoR = true; }
+      }
+      if (alteradoR) rangeR.setValues(valsR);
+    }
+
+    _invalidar();
+    return { ok: true, renomeadas: Object.keys(mapa).length, mapa: mapa };
+  });
+}
+
+// Lista nomes de territórios com qtd de quadras, pra popular o select
+// no modal de renomeação.
+function listarTerritoriosComContagem() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
+  if (!sheetQ) return [];
+  var dataQ = sheetQ.getDataRange().getValues();
+  var mapa = {};
+  for (var i = 1; i < dataQ.length; i++) {
+    var terr = String(dataQ[i][COL.QUADRAS.TERRITORIO] || '').trim();
+    if (!terr) continue;
+    mapa[terr] = (mapa[terr] || 0) + 1;
+  }
+  return Object.keys(mapa)
+    .sort(function(a, b){ return a.localeCompare(b, 'pt-BR', { numeric: true }); })
+    .map(function(n){ return { nome: n, qtd: mapa[n] }; });
+}

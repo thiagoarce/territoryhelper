@@ -1304,26 +1304,21 @@ window.designarSelecaoRegistro = function() {
       }
   };
 
-// Quando há faces selecionadas, "abaixa" os polígonos das quadras
-// (reduz opacidade + desabilita interatividade) para os pontos ficarem
-// fáceis de clicar sem o polígono atrás capturar o clique.
+// Quando há faces selecionadas, reduz a opacidade do polígono pra
+// destacar os pontos — MAS mantém pointerEvents ativos. O markerPane
+// fica acima do overlayPane no Leaflet por padrão, então os pontos
+// capturam o clique primeiro; clicar em área livre vai pro polígono
+// (que dispara confirmarAssociacao). Desabilitar pointerEvents aqui
+// quebrava EXATAMENTE o fluxo de vincular.
 window.atualizarModoVinculo = function() {
     if (!layerGroupQuadras) return;
     var ativo = facesSelecionadas.size > 0;
     layerGroupQuadras.eachLayer(function(layer) {
         if (ativo) {
             layer.setStyle({ fillOpacity: 0.05, opacity: 0.3 });
-            if (layer.getElement) {
-                var el = layer.getElement();
-                if (el) el.style.pointerEvents = 'none';
-            }
         } else {
             var d = layer.metaData;
             layer.setStyle({ fillColor: (d && d.color) || '#3388ff', fillOpacity: 0.3, color: '#666', opacity: 1 });
-            if (layer.getElement) {
-                var el = layer.getElement();
-                if (el) el.style.pointerEvents = '';
-            }
         }
     });
     // Tooltips das quadras (labels) — esconde durante o modo
@@ -2297,6 +2292,88 @@ window.confirmarAssociacao = function(layerQuadra) {
                '</div>';
       }).join('');
   }
+
+  // ======================================================
+  // RENOMEAR QUADRAS EM MASSA POR TERRITÓRIO
+  // Q-1, Q-2, Q-3 (do território "1") → 1A, 1B, 1C...
+  // ======================================================
+  window.abrirRenomearQuadras = function() {
+    var sel = document.getElementById('renomearTerritorio');
+    sel.innerHTML = '<option value="">Carregando...</option>';
+    document.getElementById('renomearPrefixo').value = '';
+    document.getElementById('renomearPreview').textContent = '—';
+    document.getElementById('btnAplicarRenomear').disabled = true;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalRenomear')).show();
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+        var opts = '<option value="">— escolha o território —</option>';
+        (lista || []).forEach(function(t){
+          opts += '<option value="' + escapeHtml(t.nome) + '">'
+                + escapeHtml(t.nome) + ' (' + t.qtd + ' quadras)</option>';
+        });
+        sel.innerHTML = opts;
+      })
+      .withFailureHandler(function(e){
+        sel.innerHTML = '<option value="">Erro: ' + (e && e.message ? e.message : e) + '</option>';
+      })
+      .listarTerritoriosComContagem();
+  };
+
+  var _debounceRename;
+  window.atualizarPreviewRenomear = function() {
+    clearTimeout(_debounceRename);
+    _debounceRename = setTimeout(function(){
+      var terr = document.getElementById('renomearTerritorio').value;
+      var pref = document.getElementById('renomearPrefixo').value.trim();
+      var box = document.getElementById('renomearPreview');
+      var btn = document.getElementById('btnAplicarRenomear');
+      btn.disabled = true;
+      if (!terr || !pref) { box.textContent = '—'; return; }
+      box.textContent = 'Calculando...';
+      google.script.run
+        .withSuccessHandler(function(r){
+          if (!r || !r.ok) { box.innerHTML = '<span class="text-danger">' + escapeHtml((r && r.erro) || 'erro') + '</span>'; return; }
+          var linhas = Object.keys(r.mapa).map(function(antigo){
+            var novo = r.mapa[antigo];
+            var cor = antigo === novo ? 'text-muted' : 'text-success fw-bold';
+            return '<div class="' + cor + '">' + escapeHtml(antigo) + ' → ' + escapeHtml(novo) + '</div>';
+          });
+          box.innerHTML = linhas.join('');
+          btn.disabled = false;
+        })
+        .withFailureHandler(function(e){ box.innerHTML = '<span class="text-danger">' + escapeHtml(e && e.message || e) + '</span>'; })
+        .previewRenomearQuadras(terr, pref);
+    }, 300);
+  };
+
+  window.aplicarRenomear = function() {
+    var terr = document.getElementById('renomearTerritorio').value;
+    var pref = document.getElementById('renomearPrefixo').value.trim();
+    if (!terr || !pref) return;
+    if (!confirm('Aplicar renomeação em "' + terr + '" com prefixo "' + pref + '"?\n\nEssa ação não pode ser desfeita automaticamente.')) return;
+    var btn = document.getElementById('btnAplicarRenomear');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Aplicando...';
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) {
+          alert('Erro: ' + (r && r.erro || 'desconhecido'));
+          btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Aplicar';
+          return;
+        }
+        window.toast(r.renomeadas + ' quadras renomeadas.', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('modalRenomear')).hide();
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+        window.carregarEditorDados && window.carregarEditorDados();
+        window.forcarSincronizacao && window.forcarSincronizacao();
+      })
+      .withFailureHandler(function(e){
+        alert('Erro: ' + (e && e.message || e));
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Aplicar';
+      })
+      .renomearQuadrasDoTerritorio(terr, pref);
+  };
 
   // ======================================================
   // DESIGNAÇÕES — gerenciar Território Pessoal ativo
