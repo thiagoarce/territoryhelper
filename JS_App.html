@@ -1287,24 +1287,36 @@ window.designarSelecaoRegistro = function() {
       // Limpa camadas anteriores para não duplicar
       layerGroupFacesRes.clearLayers();
       layerGroupFacesCom.clearLayers();
-      
+
       var showRes = document.getElementById('toggleFacesRes').checked;
       var showCom = document.getElementById('toggleFacesCom').checked;
-      
+      // Filtros novos por vínculo com quadra. Default = ambos true,
+      // mantendo compat com comportamento antigo.
+      var vincEl = document.getElementById('toggleFacesVinc');
+      var naoVincEl = document.getElementById('toggleFacesNaoVinc');
+      var showVinc = !vincEl || vincEl.checked;
+      var showNaoVinc = !naoVincEl || naoVincEl.checked;
+
       if (!dadosFacesGlobal) return;
 
-      // Renderiza Residenciais (Azul)
+      function passaFiltroVinc(f) {
+        return f.isAssigned ? showVinc : showNaoVinc;
+      }
+
+      // Residenciais (Azul)
       if (showRes && dadosFacesGlobal.residencial) {
           dadosFacesGlobal.residencial.forEach(function(f) {
-              var m = window.criarMarkerFace(f, '#0d6efd'); // Azul
+              if (!passaFiltroVinc(f)) return;
+              var m = window.criarMarkerFace(f, '#0d6efd');
               layerGroupFacesRes.addLayer(m);
           });
       }
 
-      // Renderiza Comerciais (Laranja)
+      // Comerciais (Laranja)
       if (showCom && dadosFacesGlobal.comercial) {
           dadosFacesGlobal.comercial.forEach(function(f) {
-              var m = window.criarMarkerFace(f, '#fd7e14'); // Laranja
+              if (!passaFiltroVinc(f)) return;
+              var m = window.criarMarkerFace(f, '#fd7e14');
               layerGroupFacesCom.addLayer(m);
           });
       }
