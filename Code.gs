@@ -674,6 +674,60 @@ function salvarConclusaoQuadras(payload) {
   });
 }
 
+// Desfaz a conclusão MAIS RECENTE de uma quadra. Restaura o estado
+// imediatamente anterior:
+//   - se havia uma conclusão antiga no histórico → volta data para ela
+//   - se essa era a primeira conclusão → status volta pra Pendente
+// Registra a operação na aba Registros como tipo "desfeito" pra
+// preservar trilha de auditoria.
+function desfazerConclusaoQuadra(id) {
+  if (!id) throw new Error("ID obrigatório");
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetQ = getSheetByName_(SHEET.QUADRAS);
+    var sheetReg = getSheetByName_(SHEET.REGISTROS);
+    if (!sheetQ) throw new Error("Aba Quadras não encontrada.");
+
+    var linhaQ = acharLinhaQuadra_(sheetQ, id);
+    if (linhaQ < 0) return { ok: false, erro: "Quadra não encontrada" };
+
+    // Histórico: filtra por id, ignora linhas já marcadas como "desfeito".
+    // O registro do topo (mais recente) é a conclusão atual; o de baixo
+    // dele é o estado pra onde queremos voltar.
+    var historico = [];
+    if (sheetReg && sheetReg.getLastRow() > 1) {
+      var dadosReg = sheetReg.getRange(2, 1, sheetReg.getLastRow() - 1, 4).getValues();
+      dadosReg.forEach(function(r, i){
+        if (String(r[0]) !== String(id)) return;
+        var tipo = String(r[2] || '');
+        if (tipo === 'desfeito') return;
+        historico.push({ linha: i + 2, data: r[1], tipo: tipo, ts: r[3] });
+      });
+      historico.sort(function(a, b){ return new Date(b.ts) - new Date(a.ts); });
+    }
+
+    if (historico.length === 0) return { ok: false, erro: "Sem histórico de conclusão pra desfazer" };
+
+    var anterior = historico[1]; // pode ser undefined se só houve 1
+    var novaData = anterior ? anterior.data : "";
+    var novoStatus = anterior ? STATUS.CONCLUIDO : STATUS.PENDENTE;
+
+    sheetQ.getRange(linhaQ, COL.QUADRAS.STATUS_1IDX).setValue(novoStatus);
+    sheetQ.getRange(linhaQ, COL.QUADRAS.DATA_CONC_1IDX).setValue(novaData);
+
+    if (sheetReg) {
+      sheetReg.appendRow([id, novaData || '', 'desfeito', new Date()]);
+    }
+
+    _invalidar();
+    return {
+      ok: true,
+      novoStatus: novoStatus,
+      novaData: novaData ? Utilities.formatDate(new Date(novaData), Session.getScriptTimeZone(), "yyyy-MM-dd") : ""
+    };
+  });
+}
+
 function verificarStatusTerritorio(nome, dataRef) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetT = ss.getSheetByName("Territorios") || ss.getSheetByName("Territórios");
