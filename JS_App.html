@@ -1769,8 +1769,10 @@ window.confirmarAssociacao = function(layerQuadra) {
                 '<div class="fw-bold text-success mb-1"><i class="fa-solid ' + m.icone + ' me-1"></i>' + m.label + '</div>';
       grupos[m.key].forEach(function(o){
         var icones = [];
-        if (o.link) icones.push('<a href="' + escapeHtml(o.link) + '" target="_blank" class="text-decoration-none text-primary me-2" title="Abrir link"><i class="fa-solid fa-link"></i></a>');
-        if (o.anexoUrl) icones.push('<a href="' + escapeHtml(o.anexoUrl) + '" target="_blank" class="text-decoration-none text-primary me-2" title="' + escapeHtml(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>');
+        var hrefLink = safeUrl(o.link);
+        var hrefAnexo = safeUrl(o.anexoUrl);
+        if (hrefLink) icones.push('<a href="' + escapeHtml(hrefLink) + '" target="_blank" rel="noopener" class="text-decoration-none text-primary me-2" title="Abrir link"><i class="fa-solid fa-link"></i></a>');
+        if (hrefAnexo) icones.push('<a href="' + escapeHtml(hrefAnexo) + '" target="_blank" rel="noopener" class="text-decoration-none text-primary me-2" title="' + escapeHtml(o.anexoNome || 'Anexo') + '"><i class="fa-solid fa-paperclip"></i></a>');
         var olho = o.publico
           ? '<button class="btn btn-sm btn-link p-0 ms-1" onclick="window.alternarPublicoObjetivo(\'' + o.id + '\', false)" title="Visível — clique pra esconder"><i class="fa-regular fa-eye text-success"></i></button>'
           : '<button class="btn btn-sm btn-link p-0 ms-1" onclick="window.alternarPublicoObjetivo(\'' + o.id + '\', true)" title="Escondido — clique pra mostrar"><i class="fa-regular fa-eye-slash text-muted"></i></button>';
@@ -1793,6 +1795,14 @@ window.confirmarAssociacao = function(layerQuadra) {
     return String(s || '').replace(/[&<>"']/g, function(c){
       return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
     });
+  }
+  // Bloqueia esquemas perigosos em URLs vindas do usuário. Defesa em
+  // profundidade — o backend já filtra, mas se dado antigo (pré-fix)
+  // ainda existir na planilha, evita XSS via href="javascript:..."
+  function safeUrl(s) {
+    var u = String(s || '').trim();
+    if (!u) return '';
+    return (/^https?:\/\//i.test(u) || /^mailto:/i.test(u)) ? u : '';
   }
 
   window.filtrarObjetivos = function(tipo) {
@@ -1889,6 +1899,9 @@ window.confirmarAssociacao = function(layerQuadra) {
           })
           .withFailureHandler(onErro)
           .uploadAnexoCampanha({ base64: base64, nome: arquivo.name, mime: arquivo.type });
+      };
+      reader.onerror = function(){
+        alert('Não foi possível ler o arquivo selecionado. Tente outro.');
       };
       reader.readAsDataURL(arquivo);
     } else {

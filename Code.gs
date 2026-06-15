@@ -1349,6 +1349,16 @@ function _gerarIdObjetivo_() {
   return 'obj_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// Só aceita esquemas seguros pra URL persistida em objetivo (link e
+// anexoUrl). Bloqueia javascript:, data:, vbscript:, file:. Vazio é
+// permitido (campo opcional).
+function _sanitizarUrl_(url) {
+  var s = String(url || '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s) && !/^mailto:/i.test(s)) return '';
+  return s;
+}
+
 function _linhaParaObjetivo_(linha) {
   return {
     id:         String(linha[COL.CAMPANHA.ID] || ''),
@@ -1401,13 +1411,14 @@ function criarObjetivoCampanha(obj) {
       sanitizar_(obj.modalidade || ''),
       sanitizar_(obj.titulo || ''),
       sanitizar_(obj.descricao || ''),
-      sanitizar_(obj.link || ''),
+      _sanitizarUrl_(obj.link),
       sanitizar_(obj.anexoNome || ''),
-      sanitizar_(obj.anexoUrl || ''),
+      _sanitizarUrl_(obj.anexoUrl),
       obj.publico === true,
       new Date(),
       Number(obj.ordem) || 0
     ]);
+    _invalidar();
     return { ok: true, id: id };
   });
 }
@@ -1435,9 +1446,11 @@ function atualizarObjetivoCampanha(id, patch) {
       var valor = patch[k];
       if (k === 'publico') valor = valor === true;
       else if (k === 'ordem') valor = Number(valor) || 0;
+      else if (k === 'link' || k === 'anexoUrl') valor = _sanitizarUrl_(valor);
       else valor = sanitizar_(valor);
       sh.getRange(linha, mapa[k]).setValue(valor);
     });
+    _invalidar();
     return { ok: true };
   });
 }
@@ -1448,6 +1461,7 @@ function removerObjetivoCampanha(id) {
     var linha = _acharLinhaObjetivo_(sh, id);
     if (linha < 0) return { ok: false, erro: 'Objetivo não encontrado' };
     sh.deleteRow(linha);
+    _invalidar();
     return { ok: true };
   });
 }
