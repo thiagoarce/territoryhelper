@@ -242,7 +242,7 @@
       color: white;
     }
 
-    /* Botão "deixei carta" — só pra apartamentos / prédios */
+    /* Botão "deixei carta" */
     .btn-carta {
       width: 34px; height: 34px; border-radius: 50%;
       border: 2px solid #ddd; color: #94a3b8;
@@ -252,6 +252,37 @@
     }
     .btn-carta.feito {
       background-color: #d97706; border-color: #d97706; color: #fff;
+    }
+
+    /* Desfechos (Pacote F): 3 botões mutex lado a lado */
+    .desfechos { display: flex; gap: 4px; flex-shrink: 0; }
+    .btn-desf {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 1.5px solid #e5e7eb; background: #fff;
+      color: #cbd5e1; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; transition: all 0.15s;
+      padding: 0;
+    }
+    .btn-desf:hover { border-color: #94a3b8; }
+    .btn-desf.cinza.ativo  { background:#6b7280; border-color:#6b7280; color:#fff; }
+    .btn-desf.amarelo.ativo { background:#f59e0b; border-color:#f59e0b; color:#fff; }
+    .btn-desf.verde.ativo   { background:#16a34a; border-color:#16a34a; color:#fff; }
+
+    /* Cobertura no topo */
+    .box-cobertura {
+      background:#fff; padding:14px 16px; margin:10px 12px;
+      border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,.06);
+    }
+    .barra-cobertura {
+      height:8px; background:#e5e7eb; border-radius:999px; overflow:hidden;
+    }
+    .barra-cobertura > div { height:100%; transition: width 0.3s; }
+
+    /* Badge "antes" — discreta, sem peso emocional */
+    .badge-antes {
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      background:#f3f4f6; color:#6b7280; font-size:.7em;
     }
 
     /* Botões Flutuantes */
@@ -323,6 +354,7 @@
   </div>
 
   <div id="app-content" class="container mt-0 px-0 d-none">
+    <div class="box-cobertura" id="boxCobertura"></div>
     <div class="px-2 py-2 bg-white shadow-sm sticky-top" style="top:0; z-index:500; border-bottom:1px solid #e5e7eb">
       <div class="input-group input-group-sm mb-2">
         <span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
@@ -558,6 +590,7 @@
       document.getElementById('app-content').classList.remove('d-none');
       iniciarMapa();
       renderizarLista();
+      if (window.atualizarCobertura) window.atualizarCobertura();
     }
 
     function iniciarMapa() {
@@ -828,15 +861,21 @@ function criarItemHtml(item, isInsideGroup) {
         var vis = getVisualPorTipo(item.tipo);
         var rowCls = item.naoVisitar ? "nao-visitar-row" : "";
         var badgeNV = item.naoVisitar ? '<span class="nao-visitar-badge">NÃO VISITAR</span>' : '';
-        
-        // --- NOVA LÓGICA DE SELEÇÃO ---
-        var salvoNoDevice = localStorage.getItem("v_" + item.row) === "true";
-        var isRecente = verificarSeRecente(item.ultimaVisita);
-        
-        // Marca se o usuário marcou AGORA ou se já foi feito a menos de 15 dias
-        var checked = salvoNoDevice || isRecente;
-        // ------------------------------
 
+        // Desfecho do publicador (Pacote F): 'naoAtendeu' | 'semConversa'
+        // | 'conversou' | null. Persiste local; backend é fire-and-forget.
+        var desfecho = localStorage.getItem("desf_" + item.row) || '';
+
+        // Compatibilidade com o checkmark antigo: se "v_" existe, isso
+        // significa que conversou (em versões anteriores só tinha "v_").
+        if (!desfecho && localStorage.getItem("v_" + item.row) === "true") {
+          desfecho = 'conversou';
+        }
+
+        // "isRecente" só conta como conversou se a coluna ULT_VISITA está
+        // populada — pode ter sido marcado por outro publicador.
+        var isRecente = verificarSeRecente(item.ultimaVisita);
+        var checked = !!desfecho || isRecente;
         var opacidade = checked ? "opacity:0.5" : "";
 
         var title, sub;
@@ -853,13 +892,28 @@ function criarItemHtml(item, isInsideGroup) {
             }
         }
 
-        // HTML da Data (Mostra sempre que existir)
-        var htmlData = item.ultimaVisita ?
-            `<span class="ms-2 badge bg-light text-secondary border fw-normal" style="font-size:0.7em"><i class="fa-solid fa-clock-rotate-left"></i> ${item.ultimaVisita}</span>` : '';
+        // Badge "antes": último desfecho registrado por ALGUÉM. Só mostra
+        // se essa sessão ainda não marcou nada — memória do território
+        // pro publicador chegar informado.
+        var iconePorTipo = { naoAtendeu: '🚪', semConversa: '📞', conversou: '✓', interfone: '📞' };
+        var htmlAntes = '';
+        if (!desfecho && item.ultimoTipo && item.ultimoDataStr) {
+          htmlAntes = `<span class="ms-2 badge-antes" title="Última atividade aqui">
+                       <i class="fa-regular fa-clock"></i> ${iconePorTipo[item.ultimoTipo] || '·'} ${item.ultimoDataStr}
+                     </span>`;
+        } else if (item.ultimaVisita && !desfecho) {
+          htmlAntes = `<span class="ms-2 badge bg-light text-secondary border fw-normal" style="font-size:0.7em"><i class="fa-solid fa-clock-rotate-left"></i> ${item.ultimaVisita}</span>`;
+        }
 
-        // Carta entregue: persistido localmente por endereço pra dar
-        // feedback visual sem precisar de roundtrip.
         var cartaEntregue = localStorage.getItem("carta_" + item.row) === "true";
+
+        // Botões de desfecho (mutex): 🚪 cinza, 📞 amarelo, ✓ verde
+        function btnDesf(tipo, icone, classe) {
+          var ativo = desfecho === tipo ? ' ativo' : '';
+          return `<button class="btn-desf ${classe}${ativo}" data-tipo="${tipo}" data-row="${item.row}" title="${tipo}">
+                    <i class="${icone}"></i>
+                  </button>`;
+        }
 
         return `
         <div class="address-item ${rowCls}" style="${opacidade}" data-row="${item.row}" data-obj='${JSON.stringify(item)}'>
@@ -870,7 +924,7 @@ function criarItemHtml(item, isInsideGroup) {
             <div class="flex-grow-1" onclick="abrirEdicao(${item.row})" style="cursor:pointer">
                 <div class="fw-bold text-dark">
                     ${title} ${badgeNV}
-                    ${htmlData}
+                    ${htmlAntes}
                 </div>
                 <div class="small text-muted">${sub}</div>
                 ${item.nota ? `<div class="small text-primary mt-1"><i class="fa-solid fa-note-sticky"></i> ${item.nota}</div>` : ''}
@@ -880,8 +934,10 @@ function criarItemHtml(item, isInsideGroup) {
                 <i class="fa-regular fa-envelope"></i>
             </div>
 
-            <div class="check-visita ${checked ? 'checked' : ''}" onclick="toggleVisita(${item.row}, this)">
-                <i class="fa-solid fa-check"></i>
+            <div class="desfechos">
+              ${btnDesf('naoAtendeu', 'fa-solid fa-door-closed', 'cinza')}
+              ${btnDesf('semConversa', 'fa-solid fa-comment-slash', 'amarelo')}
+              ${btnDesf('conversou', 'fa-solid fa-check', 'verde')}
             </div>
         </div>`;
     }
@@ -900,6 +956,72 @@ function criarItemHtml(item, isInsideGroup) {
         .withFailureHandler(function(){})
         .registrarCartaEndereco(row);
     };
+
+    // Pacote F: marca um desfecho mutex (naoAtendeu / semConversa /
+    // conversou). Botão ativo = clique de novo desmarca. Cobertura
+    // recalcula sem roundtrip.
+    window.marcarDesfecho = function(row, tipo) {
+      var chave = "desf_" + row;
+      var atual = localStorage.getItem(chave) || '';
+      var novo = atual === tipo ? '' : tipo;
+      if (novo) localStorage.setItem(chave, novo);
+      else localStorage.removeItem(chave);
+      atualizarBotoesDesfecho(row, novo);
+      atualizarCobertura();
+      if (!novo) return; // desfazer é só local
+      google.script.run
+        .withSuccessHandler(function(){})
+        .withFailureHandler(function(){})
+        .registrarDesfechoEndereco(row, tipo);
+    };
+
+    function atualizarBotoesDesfecho(row, desfecho) {
+      document.querySelectorAll('.address-item[data-row="' + row + '"] .btn-desf').forEach(function(b){
+        b.classList.toggle('ativo', b.getAttribute('data-tipo') === desfecho);
+      });
+      var item = document.querySelector('.address-item[data-row="' + row + '"]');
+      if (item) item.style.opacity = desfecho ? 0.5 : 1;
+    }
+
+    // Delegação global de clique nos botões de desfecho
+    document.addEventListener('click', function(ev){
+      var btn = ev.target.closest('.btn-desf');
+      if (!btn) return;
+      ev.stopPropagation();
+      window.marcarDesfecho(Number(btn.getAttribute('data-row')), btn.getAttribute('data-tipo'));
+    });
+
+    // Indicador de cobertura no topo (Pacote F)
+    function atualizarCobertura() {
+      var box = document.getElementById('boxCobertura');
+      if (!box) return;
+      var total = 0, alcancados = 0, naoAtend = 0, sem = 0, conv = 0, cartas = 0;
+      (dadosGerais || []).forEach(function(q){
+        (q.itens || []).forEach(function(it){
+          if (it.naoVisitar) return; // não-visitar não conta no total
+          total++;
+          var d = localStorage.getItem("desf_" + it.row) || '';
+          if (!d && localStorage.getItem("v_" + it.row) === "true") d = 'conversou';
+          if (d) alcancados++;
+          if (d === 'naoAtendeu') naoAtend++;
+          else if (d === 'semConversa') sem++;
+          else if (d === 'conversou') conv++;
+          if (localStorage.getItem("carta_" + it.row) === "true") cartas++;
+        });
+      });
+      var pct = total > 0 ? Math.round((alcancados / total) * 100) : 0;
+      var corBarra = pct >= 70 ? '#16a34a' : pct >= 30 ? '#f59e0b' : '#9ca3af';
+      box.innerHTML =
+        '<div class="d-flex justify-content-between align-items-baseline mb-1">' +
+          '<span class="fw-bold">📊 ' + alcancados + ' de ' + total + ' endereços alcançados</span>' +
+          '<span class="fw-bold" style="color:' + corBarra + '">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="barra-cobertura"><div style="width:' + pct + '%;background:' + corBarra + '"></div></div>' +
+        '<div class="small text-muted mt-1">' +
+          conv + ' conversas · ' + sem + ' contatos · ' + naoAtend + ' não atenderam · ' + cartas + ' cartas' +
+        '</div>';
+    }
+    window.atualizarCobertura = atualizarCobertura;
 
     // ================= AÇÕES =================
     window.abrirEdicao = function(row) {

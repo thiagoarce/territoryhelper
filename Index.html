@@ -300,9 +300,6 @@
 <div id="telaPredios" class="screen container-fluid py-3" style="background-color: #f8f9fa;">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="fw-bold m-0 text-success"><i class="fa-solid fa-envelope me-2"></i>Prédios — Cartas</h4>
-      <button class="btn btn-sm btn-success" onclick="window.compartilharLinkCartas()">
-        <i class="fa-brands fa-whatsapp"></i> Compartilhar
-      </button>
     </div>
 
     <p class="small text-muted mb-2" id="prediosResumo">—</p>
@@ -312,7 +309,11 @@
              placeholder="Buscar logradouro, nome..." oninput="window.filtrarPredios()">
       <div class="form-check form-switch m-0 ms-1">
         <input class="form-check-input" type="checkbox" id="prediosSoIrmao" onchange="window.filtrarPredios()">
-        <label class="form-check-label small" for="prediosSoIrmao">Só onde irmão mora</label>
+        <label class="form-check-label small" for="prediosSoIrmao">Só com irmão</label>
+      </div>
+      <div class="form-check form-switch m-0 ms-1">
+        <input class="form-check-input" type="checkbox" id="prediosMostrarNaoPredios" onchange="window.filtrarPredios()">
+        <label class="form-check-label small" for="prediosMostrarNaoPredios">Mostrar "não é prédio"</label>
       </div>
     </div>
 
@@ -336,22 +337,52 @@
             <label class="form-label small fw-bold">Nome do edifício</label>
             <input type="text" class="form-control" id="predioNome" placeholder="Ex: Edifício Solar">
           </div>
-          <div class="form-check form-switch mb-3">
+
+          <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" id="predioIrmaoMora">
             <label class="form-check-label" for="predioIrmaoMora">
               <i class="fa-solid fa-house-user me-1"></i> Irmão mora aqui
             </label>
-            <div class="form-text small">Marca informativa — não esconde o prédio do trabalho normal</div>
           </div>
+          <div class="mb-3" id="boxNomeIrmao" style="display:none">
+            <input type="text" class="form-control form-control-sm" id="predioNomeIrmao" placeholder="Nome do irmão (referência)">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Acesso ao prédio</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="predioAcesso" id="acessoNi" value="">
+              <label class="btn btn-outline-secondary btn-sm" for="acessoNi">Não informado</label>
+              <input type="radio" class="btn-check" name="predioAcesso" id="acessoInd" value="individual">
+              <label class="btn btn-outline-success btn-sm" for="acessoInd"><i class="fa-solid fa-phone me-1"></i>Interfone p/ apto</label>
+              <input type="radio" class="btn-check" name="predioAcesso" id="acessoPort" value="portaria">
+              <label class="btn btn-outline-warning btn-sm" for="acessoPort"><i class="fa-solid fa-building-shield me-1"></i>Portaria eletrônica</label>
+            </div>
+            <div class="form-text small">Portaria eletrônica = sem acesso direto. Cartas só pelo correio.</div>
+          </div>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="predioNaoEhPredio">
+            <label class="form-check-label" for="predioNaoEhPredio">
+              <i class="fa-solid fa-circle-minus me-1"></i> Não é prédio
+            </label>
+            <div class="form-text small">Endereços agrupados que não formam um edifício real. Esconde da lista padrão.</div>
+          </div>
+
           <div class="mb-3">
             <label class="form-label small fw-bold">Notas</label>
             <textarea class="form-control" id="predioNotas" rows="2"></textarea>
           </div>
           <div id="predioUltimaCarta" class="small text-muted"></div>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button class="btn btn-success" onclick="window.salvarPredio()"><i class="fa-solid fa-check"></i> Salvar</button>
+        <div class="modal-footer d-flex justify-content-between">
+          <button class="btn btn-outline-primary btn-sm" onclick="window.compartilharPredioAtual()">
+            <i class="fa-brands fa-whatsapp"></i> Compartilhar
+          </button>
+          <div class="d-flex gap-2">
+            <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-success" onclick="window.salvarPredio()"><i class="fa-solid fa-check"></i> Salvar</button>
+          </div>
         </div>
       </div>
     </div>
