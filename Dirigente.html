@@ -307,13 +307,15 @@
         var ultima = q.ultimaData || 'Nunca';
 
         var btnAcao = '';
-        if (sv.recente) {
-          // Concluída há menos de 30 dias — pode reabrir se quiser refazer
-          btnAcao = '<button class="btn btn-outline-secondary" onclick="reabrirQuadra(\'' + q.id + '\')">' +
-                      '<i class="fa-solid fa-rotate-left"></i> Reabrir' +
+        var statusBaixo = (q.status || '').toLowerCase();
+        var jaConcluida = statusBaixo.indexOf('conclu') > -1;
+        if (jaConcluida) {
+          // Desfaz a última conclusão registrada — restaura data anterior
+          // se houver no histórico, senão volta pra Pendente.
+          btnAcao = '<button class="btn btn-outline-secondary" onclick="desfazerQuadra(\'' + q.id + '\')">' +
+                      '<i class="fa-solid fa-rotate-left"></i> Desfazer' +
                     '</button>';
         } else {
-          // Pendente ou já passou 1 mês — pode marcar como concluída
           btnAcao = '<button class="btn btn-success" onclick="abrirModalConcluir(\'' + q.id + '\')">' +
                       '<i class="fa-solid fa-check"></i> Marcar Concluída' +
                     '</button>';
@@ -454,9 +456,33 @@
       processarSalvamento([quadraEmConfirmacao], 'Concluído', data);
     }
 
-    function reabrirQuadra(id) {
-      if (!confirm('Reabrir quadra ' + id + ' (voltar para Pendente)?')) return;
-      processarSalvamento([id], 'Pendente', null);
+    function desfazerQuadra(id) {
+      if (!confirm('Desfazer a última conclusão de ' + id + '?\n\nO histórico de conclusão anterior (se existir) volta a valer.')) return;
+      var btns = document.querySelectorAll('.acoes .btn');
+      btns.forEach(function(b){ b.disabled = true; });
+      google.script.run
+        .withSuccessHandler(function(r){
+          btns.forEach(function(b){ b.disabled = false; });
+          if (!r || !r.ok) {
+            alert('Não deu pra desfazer: ' + ((r && r.erro) || 'erro desconhecido'));
+            return;
+          }
+          // Atualiza o estado local e re-renderiza
+          var q = dados.find(function(x){ return x.id === id; });
+          if (q) {
+            q.status = r.novoStatus;
+            q.ultimaData = r.novaData
+              ? r.novaData.split('-').reverse().join('/')
+              : 'Nunca';
+          }
+          iniciarMapa();
+          renderizarLista();
+        })
+        .withFailureHandler(function(e){
+          btns.forEach(function(b){ b.disabled = false; });
+          alert('Erro: ' + (e && e.message ? e.message : e));
+        })
+        .desfazerConclusaoQuadra(id);
     }
 
     function processarSalvamento(ids, status, data) {
