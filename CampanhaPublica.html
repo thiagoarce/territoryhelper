@@ -379,6 +379,18 @@
         .withSuccessHandler(function(r) {
           if (!r) { document.getElementById('loader').innerHTML = '<div style="opacity:.7">Sem dados disponíveis.</div>'; return; }
           dados = r;
+          if (r.ativa === false) {
+            // Tela "sem campanha ativa" — não confundir publicador
+            document.getElementById('loader').innerHTML =
+              '<div style="text-align:center;padding:40px 24px;max-width:480px;margin:0 auto">' +
+              '<div style="font-size:48px;margin-bottom:12px">🌱</div>' +
+              '<h2 style="font-size:1.4rem;margin-bottom:8px">Sem campanha ativa</h2>' +
+              '<p style="opacity:.7;font-size:.95rem">' +
+              'No momento não estamos numa campanha. O trabalho do território segue normal — ' +
+              'o cartão de quadras desinada vai chegar como sempre.</p>' +
+              '</div>';
+            return;
+          }
           document.getElementById('loader').classList.add('d-none');
           document.getElementById('app').classList.remove('d-none');
           renderizar();

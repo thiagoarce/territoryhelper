@@ -755,6 +755,16 @@ function renderizarLista() {
         }
 
         dadosGerais.forEach(function(quadra) {
+            // Pacote C: ordena endereços por ângulo em volta do centroide
+            // do polígono da quadra → sentido horário/anti-horário.
+            // Persistido em localStorage por quadra: 'rota_h_QID' (true/false).
+            var horarioFlag = localStorage.getItem('rota_h_' + quadra.id);
+            var sentidoHorario = horarioFlag === null ? true : (horarioFlag === 'true');
+            if (quadra.polyString && quadra.itens.length > 1) {
+              ordenarItensPorAngulo(quadra, sentidoHorario);
+            }
+
+            var iconRota = sentidoHorario ? 'fa-rotate-right' : 'fa-rotate-left';
             var html = `
             <div class="quadra-card">
                 <div class="quadra-header" onclick="toggleDisplay('body-${quadra.id}')">
@@ -767,10 +777,11 @@ function renderizarLista() {
                        <i class="fa-solid fa-hashtag"></i> Total: <b>${quadra.itens.length}</b> end.
                    </div>
                    <div>
+                       <button class="btn btn-sm btn-outline-secondary me-1" onclick="inverterSentidoRota('${quadra.id}')" title="Inverter sentido da rota"><i class="fa-solid ${iconRota}"></i></button>
                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="limparSessao('${quadra.id}')" title="Limpar marcados"><i class="fa-solid fa-eraser"></i></button>
                    </div>
                 </div>
-                
+
                 <div id="body-${quadra.id}" class="sortable-list" data-quadra="${quadra.id}">`;
             
             var grupos = agruparItens(quadra.itens);
@@ -955,6 +966,50 @@ function criarItemHtml(item, isInsideGroup) {
         .withSuccessHandler(function(){})
         .withFailureHandler(function(){})
         .registrarCartaEndereco(row);
+    };
+
+    // Pacote C — Rota dentro da quadra (sentido horário/anti-horário).
+    // Calcula ângulo de cada endereço em relação ao centroide do polígono
+    // da quadra e ordena. Endereços do mesmo logradouro+numero ficam
+    // agrupados (mesmo ponto, ordem estável). Não persiste a ordem no
+    // banco — só reordena a visualização.
+    window.ordenarItensPorAngulo = function(quadra, horario) {
+      if (!quadra.polyString || quadra.itens.length < 2) return;
+      var pts = quadra.polyString.split('|').map(function(p){
+        var c = p.trim().split(',');
+        return [parseFloat(c[0]), parseFloat(c[1])];
+      }).filter(function(pt){ return !isNaN(pt[0]) && !isNaN(pt[1]); });
+      if (pts.length < 3) return;
+      var clat = 0, clng = 0;
+      pts.forEach(function(p){ clat += p[0]; clng += p[1]; });
+      clat /= pts.length; clng /= pts.length;
+
+      // Endereços sem coordenada vão pro fim, mantendo ordem original
+      var comCoord = [], semCoord = [];
+      quadra.itens.forEach(function(it){
+        if (typeof it.lat === 'number' && typeof it.lng === 'number') {
+          // atan2 negativa pra sentido horário em mapas (lat cresce pra
+          // norte = topo; lng cresce pra leste = direita)
+          var ang = Math.atan2(it.lng - clng, it.lat - clat);
+          comCoord.push({ it: it, ang: ang });
+        } else {
+          semCoord.push(it);
+        }
+      });
+      comCoord.sort(function(a, b){
+        return horario ? a.ang - b.ang : b.ang - a.ang;
+      });
+      quadra.itens.length = 0;
+      comCoord.forEach(function(x){ quadra.itens.push(x.it); });
+      semCoord.forEach(function(x){ quadra.itens.push(x); });
+    };
+
+    window.inverterSentidoRota = function(quadraId) {
+      var chave = 'rota_h_' + quadraId;
+      var atual = localStorage.getItem(chave);
+      var horario = atual === null ? true : (atual === 'true');
+      localStorage.setItem(chave, horario ? 'false' : 'true');
+      renderizarLista();
     };
 
     // Pacote F: marca um desfecho mutex (naoAtendeu / semConversa /
