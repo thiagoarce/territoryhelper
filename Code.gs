@@ -1751,9 +1751,10 @@ function cancelarDesignacao(id) {
   });
 }
 
-// Chamado depois de salvarConclusaoQuadras pra fechar designações
-// cujas quadras já foram TODAS marcadas como Concluído. Roda fora do
-// caminho crítico — não bloqueia a UI principal.
+// Chamado depois de salvarConclusaoQuadras: pra cada designação aberta,
+// REMOVE da lista as quadras que viraram Concluído (libera o cadeado
+// no mapa). Se a designação ficar vazia, fecha como concluída.
+// Roda fora do caminho crítico — try/catch no caller.
 function _fecharDesignacoesCompletas_() {
   var sh = ensureSheetDesignacoes_();
   if (sh.getLastRow() < 2) return;
@@ -1771,14 +1772,22 @@ function _fecharDesignacoesCompletas_() {
   for (var k = 0; k < dados.length; k++) {
     var d = _linhaParaDesignacao_(dados[k]);
     if (d.status !== STATUS_DESIGNACAO.ABERTA) continue;
-    // Trata quadras ausentes (removidas da aba Quadras) como concluídas
-    // pra não deixar designações zumbis abertas pra sempre.
-    var todasConcluidas = d.idsQuadras.length > 0 && d.idsQuadras.every(function(qId){
+
+    // Filtra mantendo só quadras AINDA pendentes. Quadras removidas
+    // da aba Quadras (statusPorId undefined) também saem da lista.
+    var aindaPendentes = d.idsQuadras.filter(function(qId){
       var st = statusPorId[qId];
-      return st === undefined || st === STATUS.CONCLUIDO;
+      return st !== undefined && st !== STATUS.CONCLUIDO;
     });
-    if (todasConcluidas) {
+
+    if (aindaPendentes.length === 0) {
+      // Todas concluídas — fecha a designação inteira
       sh.getRange(k + 2, COL.DESIGNACOES.STATUS_1IDX).setValue(STATUS_DESIGNACAO.CONCLUIDA);
+    } else if (aindaPendentes.length < d.idsQuadras.length) {
+      // Reduziu a lista — alguma quadra concluiu, mas ainda há restantes.
+      // Atualiza a célula com a lista filtrada (CSV) pro cadeado sumir
+      // do mapa pra quadra que foi concluída.
+      sh.getRange(k + 2, COL.DESIGNACOES.IDS_QUADRAS_1IDX).setValue(aindaPendentes.join(','));
     }
   }
 }
