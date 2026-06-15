@@ -45,6 +45,21 @@ var COL = {
     LABEL_TYPE:  5
   },
 
+  // Aba "Designacoes" — território pessoal: quadra(s) travadas em nome
+  // de um publicador por um prazo. Fonte da verdade pra "essa quadra
+  // está alocada e não pode redesignar agora".
+  DESIGNACOES: {
+    ID_1IDX:           1,  // A
+    IDS_QUADRAS_1IDX:  2,  // B  CSV de ids
+    PUBLICADOR_1IDX:   3,  // C
+    CRIADA_1IDX:       4,  // D
+    PRAZO_1IDX:        5,  // E
+    STATUS_1IDX:       6,  // F  "aberta" | "concluida" | "cancelada"
+    NOTAS_1IDX:        7,  // G
+    // 0-indexed
+    ID: 0, IDS_QUADRAS: 1, PUBLICADOR: 2, CRIADA: 3, PRAZO: 4, STATUS: 5, NOTAS: 6
+  },
+
   // Aba "Campanha" (objetivos estruturados)
   CAMPANHA: {
     ID_1IDX:         1,  // A
@@ -114,7 +129,8 @@ var SHEET = {
   TERRITORIOS: "Territorios", // fallback "Territórios"
   DADOS:       "Dados Brutos",
   REGISTROS:   "Registros",
-  CAMPANHA:    "Campanha"
+  CAMPANHA:    "Campanha",
+  DESIGNACOES: "Designacoes"
 };
 
 // Modalidades de pregação pra classificar objetivos da campanha.

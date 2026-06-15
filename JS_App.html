@@ -1442,9 +1442,10 @@ window.confirmarAssociacao = function(layerQuadra) {
     if(!mapGeral) {
       mapGeral = L.map('mapGeral').setView([-7.115, -34.863], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGeral);
-      lgGeralTerritorios = L.featureGroup().addTo(mapGeral); 
-      lgGeralQuadras = L.featureGroup().addTo(mapGeral);     
-      lgGeralLabels = L.featureGroup().addTo(mapGeral); 
+      lgGeralTerritorios = L.featureGroup().addTo(mapGeral);
+      lgGeralQuadras = L.featureGroup().addTo(mapGeral);
+      lgGeralLabels = L.featureGroup().addTo(mapGeral);
+      lgGeralDesignacoes = L.featureGroup().addTo(mapGeral);
     }
     shareSelecionados.clear(); 
     if(typeof window.atualizarBarraShare === 'function') window.atualizarBarraShare();
@@ -1457,6 +1458,7 @@ window.confirmarAssociacao = function(layerQuadra) {
 
   window.renderizarMapaGeralExtraido = function(pacote) {
       lgGeralTerritorios.clearLayers(); lgGeralLabels.clearLayers(); lgGeralQuadras.clearLayers();
+      if (typeof lgGeralDesignacoes !== 'undefined' && lgGeralDesignacoes) lgGeralDesignacoes.clearLayers();
       if(pacote.territorios) {
           pacote.territorios.forEach(function(t) {
               var pts = window.stringParaLatLng(t.polyString);
@@ -1492,6 +1494,49 @@ window.confirmarAssociacao = function(layerQuadra) {
       }
       // Aplica coloração escolhida (se for por status)
       window.atualizarColoracaoGeral();
+      // Overlay de Território Pessoal (quadras designadas a alguém)
+      window.atualizarDesignacoesNoMapa();
+  };
+
+  // Overlay no mapa geral: pra cada quadra com designação pessoal aberta,
+  // desenha um ícone de cadeado no centro + tooltip com publicador e
+  // prazo. Quadras vencidas ficam em vermelho.
+  window.atualizarDesignacoesNoMapa = function() {
+    if (typeof lgGeralDesignacoes === 'undefined' || !lgGeralDesignacoes) return;
+    lgGeralDesignacoes.clearLayers();
+    google.script.run
+      .withSuccessHandler(function(mapa){
+        if (!mapa) return;
+        lgGeralQuadras.eachLayer(function(poly){
+          var d = poly.metaData;
+          if (!d || !mapa[d.id]) return;
+          var info = mapa[d.id];
+          var prazoStr = info.prazo ? new Date(info.prazo).toLocaleDateString('pt-BR') : '—';
+          var cor = info.vencida ? '#dc2626' : '#1d4ed8';
+          // Borda destacada na quadra designada
+          poly.setStyle({ color: cor, weight: 3 });
+          // Ícone de cadeado no centro
+          var c = poly.getBounds().getCenter();
+          var html = '<div style="background:' + cor + ';color:#fff;border-radius:50%;'
+                   + 'width:24px;height:24px;display:flex;align-items:center;'
+                   + 'justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,.3)">'
+                   + '<i class="fa-solid fa-lock" style="font-size:11px"></i></div>';
+          var icone = L.marker(c, {
+            icon: L.divIcon({ html: html, className: '', iconSize: [24,24], iconAnchor: [12,12] }),
+            interactive: true
+          });
+          icone.bindTooltip(
+            '<b>' + d.id + '</b><br>' +
+            (info.vencida ? '⚠️ Vencida<br>' : '') +
+            'Com: ' + (info.publicador || '?') + '<br>' +
+            'Até: ' + prazoStr,
+            { direction: 'top' }
+          );
+          lgGeralDesignacoes.addLayer(icone);
+        });
+      })
+      .withFailureHandler(function(){})
+      .getQuadrasDesignadas();
   };
 
   window.carregarDadosRegistro = function() {

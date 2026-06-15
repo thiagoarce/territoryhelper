@@ -669,6 +669,10 @@ function salvarConclusaoQuadras(payload) {
       sheetReg.appendRow([id, payload.data, payload.modo, new Date()]);
     }
   });
+  // Auto-fecha designações cujas quadras todas viraram Concluído.
+  // Try/catch porque é efeito colateral — falha aqui não deve quebrar
+  // o salvamento principal.
+  try { _fecharDesignacoesCompletas_(); } catch (e) { logErro_('fecharDesignacoes', e); }
   _invalidar();
   return { status: "SUCESSO" };
   });
@@ -1564,4 +1568,160 @@ function _pastaAnexosCampanha_() {
   var pasta = iter.hasNext() ? iter.next() : DriveApp.createFolder(nome);
   props.setProperty('PASTA_ANEXOS_CAMPANHA_ID', pasta.getId());
   return pasta;
+}
+
+// =================================================================
+// DESIGNAÇÕES PESSOAIS (aba "Designacoes")
+// Quando o dirigente envia link com quadras pro publicador, registra
+// uma designação aberta. Outras telas mostram que essas quadras estão
+// "em uso". Quando o dirigente marca alguma dessas quadras como
+// concluída, a designação fecha automaticamente se todas as quadras
+// dela foram concluídas.
+// =================================================================
+
+function ensureSheetDesignacoes_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.DESIGNACOES);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.DESIGNACOES);
+  sh.appendRow(['id', 'idsQuadras', 'publicador', 'criada', 'prazo', 'status', 'notas']);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function _gerarIdDesignacao_() {
+  return 'des_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function _linhaParaDesignacao_(linha) {
+  var ids = String(linha[COL.DESIGNACOES.IDS_QUADRAS] || '')
+    .split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  return {
+    id:         String(linha[COL.DESIGNACOES.ID] || ''),
+    idsQuadras: ids,
+    publicador: String(linha[COL.DESIGNACOES.PUBLICADOR] || ''),
+    criada:     linha[COL.DESIGNACOES.CRIADA] ? new Date(linha[COL.DESIGNACOES.CRIADA]).getTime() : 0,
+    prazo:      linha[COL.DESIGNACOES.PRAZO] ? new Date(linha[COL.DESIGNACOES.PRAZO]).getTime() : 0,
+    status:     String(linha[COL.DESIGNACOES.STATUS] || 'aberta'),
+    notas:      String(linha[COL.DESIGNACOES.NOTAS] || '')
+  };
+}
+
+function criarDesignacao(payload) {
+  if (!payload || !Array.isArray(payload.ids) || payload.ids.length === 0) {
+    return { ok: false, erro: 'Sem quadras pra designar' };
+  }
+  var publicador = sanitizar_(payload.publicador || '');
+  if (!publicador) return { ok: false, erro: 'Nome do publicador é obrigatório' };
+
+  return withLock_(function(){
+    var sh = ensureSheetDesignacoes_();
+    var id = _gerarIdDesignacao_();
+    var prazoDate = payload.prazo
+      ? new Date(payload.prazo + 'T00:00:00')
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    sh.appendRow([
+      id,
+      payload.ids.map(function(s){ return String(s).trim(); }).filter(Boolean).join(','),
+      publicador,
+      new Date(),
+      prazoDate,
+      'aberta',
+      sanitizar_(payload.notas || '')
+    ]);
+    _invalidar();
+    return { ok: true, id: id };
+  });
+}
+
+// Designações com status='aberta' e que ainda não venceram.
+// Vencidas são separadas no retorno pra UI poder destacar.
+function listarDesignacoes() {
+  var sh = ensureSheetDesignacoes_();
+  if (sh.getLastRow() < 2) return { abertas: [], vencidas: [], fechadas: [] };
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
+  var agora = Date.now();
+  var abertas = [], vencidas = [], fechadas = [];
+  dados.forEach(function(linha){
+    var d = _linhaParaDesignacao_(linha);
+    if (!d.id) return;
+    if (d.status === 'aberta') {
+      if (d.prazo && d.prazo < agora) vencidas.push(d);
+      else abertas.push(d);
+    } else {
+      fechadas.push(d);
+    }
+  });
+  return { abertas: abertas, vencidas: vencidas, fechadas: fechadas };
+}
+
+// Mapa { quadraId -> {designacaoId, publicador, prazo, vencida} } para
+// designações ainda abertas. Usado pelo painel admin pra desenhar borda
+// especial nas quadras travadas.
+function getQuadrasDesignadas() {
+  var info = listarDesignacoes();
+  var mapa = {};
+  function add(d, vencida){
+    d.idsQuadras.forEach(function(qId){
+      mapa[qId] = {
+        designacaoId: d.id,
+        publicador: d.publicador,
+        prazo: d.prazo,
+        vencida: vencida
+      };
+    });
+  }
+  info.abertas.forEach(function(d){ add(d, false); });
+  info.vencidas.forEach(function(d){ add(d, true); });
+  return mapa;
+}
+
+function _acharLinhaDesignacao_(sh, id) {
+  var ult = sh.getLastRow();
+  if (ult < 2) return -1;
+  var col = sh.getRange(2, 1, ult - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]) === String(id)) return i + 2;
+  }
+  return -1;
+}
+
+function cancelarDesignacao(id) {
+  return withLock_(function(){
+    var sh = ensureSheetDesignacoes_();
+    var linha = _acharLinhaDesignacao_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'Designação não encontrada' };
+    sh.getRange(linha, COL.DESIGNACOES.STATUS_1IDX).setValue('cancelada');
+    _invalidar();
+    return { ok: true };
+  });
+}
+
+// Chamado depois de salvarConclusaoQuadras pra fechar designações
+// cujas quadras já foram TODAS marcadas como Concluído. Roda fora do
+// caminho crítico — não bloqueia a UI principal.
+function _fecharDesignacoesCompletas_() {
+  var sh = ensureSheetDesignacoes_();
+  if (sh.getLastRow() < 2) return;
+  var sheetQ = getSheetByName_(SHEET.QUADRAS);
+  if (!sheetQ) return;
+
+  // Mapa de status atual das quadras
+  var dataQ = sheetQ.getDataRange().getValues();
+  var statusPorId = {};
+  for (var i = 1; i < dataQ.length; i++) {
+    statusPorId[String(dataQ[i][COL.QUADRAS.ID]).trim()] = String(dataQ[i][COL.QUADRAS.STATUS] || '');
+  }
+
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
+  for (var k = 0; k < dados.length; k++) {
+    var d = _linhaParaDesignacao_(dados[k]);
+    if (d.status !== 'aberta') continue;
+    var todasConcluidas = d.idsQuadras.length > 0 && d.idsQuadras.every(function(qId){
+      return statusPorId[qId] === STATUS.CONCLUIDO;
+    });
+    if (todasConcluidas) {
+      sh.getRange(k + 2, COL.DESIGNACOES.STATUS_1IDX).setValue('concluida');
+    }
+  }
 }
