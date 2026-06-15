@@ -493,16 +493,15 @@
              // se o backend estiver fora do ar.
              var TTL_MS = 24 * 60 * 60 * 1000;
              var cacheKey = 'publico_dados_v3_' + ids;
-             var cachedRaw = null;
              var cachedPayload = null;
-             var cachedAt = 0;
+             var cachedStr = '';
              try {
-               cachedRaw = localStorage.getItem(cacheKey);
-               if (cachedRaw) {
-                 var env = JSON.parse(cachedRaw);
+               var raw = localStorage.getItem(cacheKey);
+               if (raw) {
+                 var env = JSON.parse(raw);
                  if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
                    cachedPayload = env.d;
-                   cachedAt = env.t;
+                   cachedStr = JSON.stringify(env.d);
                  }
                }
              } catch(e) {}
@@ -522,15 +521,13 @@
                       if (!cachedPayload) alert("Nenhum dado encontrado.");
                       return;
                     }
-                    var envelope = { t: Date.now(), d: data };
-                    var novoStr = JSON.stringify(envelope);
-                    if (cachedRaw && JSON.stringify(cachedPayload) === JSON.stringify(data)) {
-                      // Mesmo conteúdo — só renova o timestamp pra estender TTL
-                      try { localStorage.setItem(cacheKey, novoStr); } catch(e) {}
-                      return;
-                    }
-                    try { localStorage.setItem(cacheKey, novoStr); } catch(e) {}
-                    aplicar(data);
+                    var novoStr = JSON.stringify(data);
+                    // Renova o timestamp do cache mesmo se conteúdo não mudou,
+                    // pra estender o TTL enquanto o publicador estiver ativo.
+                    try {
+                      localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: data }));
+                    } catch(e) {}
+                    if (novoStr !== cachedStr) aplicar(data);
                 })
                 .withFailureHandler(function(e) {
                     if (!cachedPayload) {
