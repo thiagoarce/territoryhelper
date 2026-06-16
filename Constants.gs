@@ -153,7 +153,12 @@ var COL = {
 
 var STATUS = {
   PENDENTE:  "Pendente",
-  CONCLUIDO: "Concluído"
+  CONCLUIDO: "Concluído",
+  // Áreas verdes / parques / quadras sem trabalho. NÃO conta na
+  // contagem da campanha, no ranking de territórios, no gradiente
+  // temporal do Registro. NÃO aparece pro publicador/dirigente.
+  // Pode ser revertida a qualquer momento pelo editor.
+  INATIVA:   "Inativa"
 };
 
 // Status do território pessoal (aba Designacoes)
