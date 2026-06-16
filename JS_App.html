@@ -2640,6 +2640,80 @@ window.confirmarAssociacao = function(layerQuadra) {
   };
 
   // ======================================================
+  // AUTO-VINCULAÇÃO de endereços a quadras (IBGE)
+  // ======================================================
+  window.abrirAutoVincular = function() {
+    document.getElementById('autoVincStatus').innerHTML = '';
+    document.getElementById('listaClustersIncertos').innerHTML =
+      '<div class="text-muted">Rode a auto-vinculação pra ver os pendentes.</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalAutoVincular')).show();
+  };
+
+  window.rodarAutoVincular = function() {
+    var btn = document.getElementById('btnRodarAutoVinc');
+    var status = document.getElementById('autoVincStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processando...';
+    status.innerHTML = '';
+    google.script.run
+      .withSuccessHandler(function(r){
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Rodar auto-vinculação';
+        if (!r || !r.ok) { status.innerHTML = '<span class="text-danger">Erro: ' + escapeHtml((r && r.erro) || '?') + '</span>'; return; }
+        status.innerHTML =
+          '<div class="alert alert-success py-2 mb-2">' +
+            '<i class="fa-solid fa-circle-check me-1"></i><b>' + r.vinculados + '</b> endereço(s) vinculado(s) automaticamente · ' +
+            '<b>' + r.totalClusters + '</b> cluster(s) total · ' +
+            '<b>' + (r.incertos || []).length + '</b> incerto(s)' +
+          '</div>';
+        renderClustersIncertos(r.incertos || []);
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Rodar auto-vinculação';
+        status.innerHTML = '<span class="text-danger">Erro: ' + escapeHtml(e && e.message || e) + '</span>';
+      })
+      .autoVincularEnderecos();
+  };
+
+  function renderClustersIncertos(lista) {
+    var box = document.getElementById('listaClustersIncertos');
+    if (lista.length === 0) {
+      box.innerHTML = '<div class="text-success small"><i class="fa-solid fa-check"></i> Sem clusters pendentes!</div>';
+      return;
+    }
+    box.innerHTML = lista.map(function(c){
+      var partes = c.chave.split('|');
+      return '<div class="card mb-2 border-warning" style="border-left:4px solid #f59e0b">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="d-flex justify-content-between align-items-start">' +
+                   '<div>' +
+                     '<div class="fw-bold">Setor ' + escapeHtml(partes[0]) + ' · Quadra IBGE ' + escapeHtml(partes[1]) + '</div>' +
+                     '<div class="text-muted small">' + c.totalEnderecos + ' endereço(s) · ' + escapeHtml(c.motivo) + '</div>' +
+                     '<div class="text-muted small">Linhas exemplo: ' + (c.exemploRows || []).join(', ') + '</div>' +
+                   '</div>' +
+                   '<button class="btn btn-sm btn-outline-danger" onclick="window.confirmarExcluirCluster(\'' + escapeHtml(partes[0]) + '\', \'' + escapeHtml(partes[1]) + '\', ' + c.totalEnderecos + ')" title="Apagar todos os endereços desse cluster"><i class="fa-regular fa-trash-can"></i></button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+  }
+
+  window.confirmarExcluirCluster = function(setor, qibge, total) {
+    if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast(r.deletadas + ' endereço(s) apagados', 'success');
+        window.rodarAutoVincular(); // recarrega lista
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .excluirClusterEnderecos(setor, qibge);
+  };
+
+  // ======================================================
   // TERRITÓRIO COMERCIAL ESPECIAL — criação interativa
   // User clica nas faces comerciais (laranjas) pra adicionar ao TCE.
   // Faces residenciais ficam inertes no clique enquanto modo ativo.
