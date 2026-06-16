@@ -2709,29 +2709,29 @@ window.confirmarAssociacao = function(layerQuadra) {
     }
     box.innerHTML = lista.map(function(c){
       var partes = c.chave.split('|');
-      var setor = partes[0], qibge = partes[1], face = partes[2] || '';
-      var faceLabel = face ? ('Face ' + escapeHtml(face)) : '<em class="text-muted">sem face</em>';
+      var setor = partes[0], qibge = partes[1];
+      var classeBorda = c.inconsistente ? 'border-danger' : 'border-warning';
+      var corBorda = c.inconsistente ? '#dc2626' : '#f59e0b';
       var sugestao = '';
       if (c.melhorMatch && c.melhorMatch.id) {
         var pct = c.melhorMatch.pct;
-        var corPct = pct >= 50 ? 'text-warning' : 'text-muted';
-        sugestao = '<div class="small ' + corPct + ' mt-1">' +
-                     '<i class="fa-solid fa-bullseye"></i> Melhor candidata: <b>' + escapeHtml(c.melhorMatch.id) + '</b> ' +
-                     '(' + c.melhorMatch.qtd + '/' + c.melhorMatch.total + ' pontos = ' + pct + '%)' +
-                   '</div>';
+        var corPct = c.inconsistente ? 'text-danger' : (pct >= 50 ? 'text-warning' : 'text-muted');
+        var detalhe = c.inconsistente
+          ? 'Sugestão (maioria): <b>' + escapeHtml(c.melhorMatch.id) + '</b> tem ' + c.melhorMatch.qtd + '/' + c.melhorMatch.total + ' endereço(s)'
+          : 'Melhor candidata: <b>' + escapeHtml(c.melhorMatch.id) + '</b> (' + c.melhorMatch.qtd + '/' + c.melhorMatch.total + ' pontos = ' + pct + '%)';
+        sugestao = '<div class="small ' + corPct + ' mt-1"><i class="fa-solid fa-bullseye"></i> ' + detalhe + '</div>';
       }
-      // data-attrs evitam escapar setor/face em onclick inline (chars
-      // estranhos do IBGE causariam quebra de string)
-      var d = ' data-setor="' + escapeHtml(setor) + '" data-qibge="' + escapeHtml(qibge) + '" data-face="' + escapeHtml(face) + '" data-total="' + c.totalEnderecos + '"';
+      var d = ' data-setor="' + escapeHtml(setor) + '" data-qibge="' + escapeHtml(qibge) + '" data-total="' + c.totalEnderecos + '"';
       var btnVincular = c.melhorMatch && c.melhorMatch.id
-        ? '<button class="btn btn-sm btn-success btn-vinc-sugerida"' + d + ' data-quadra="' + escapeHtml(c.melhorMatch.id) + '"><i class="fa-solid fa-link me-1"></i>Vincular a ' + escapeHtml(c.melhorMatch.id) + '</button>'
+        ? '<button class="btn btn-sm btn-success btn-vinc-sugerida"' + d + ' data-quadra="' + escapeHtml(c.melhorMatch.id) + '"><i class="fa-solid fa-link me-1"></i>' +
+          (c.inconsistente ? 'Unificar a ' : 'Vincular a ') + escapeHtml(c.melhorMatch.id) + '</button>'
         : '<button class="btn btn-sm btn-outline-primary btn-vinc-custom"' + d + '><i class="fa-solid fa-link me-1"></i>Vincular…</button>';
-      return '<div class="card mb-2 border-warning" style="border-left:4px solid #f59e0b">' +
+      return '<div class="card mb-2 ' + classeBorda + '" style="border-left:4px solid ' + corBorda + '">' +
                '<div class="card-body py-2 px-3">' +
                  '<div class="d-flex justify-content-between align-items-start">' +
                    '<div class="flex-grow-1">' +
-                     '<div class="fw-bold">Setor ' + escapeHtml(setor) + ' · Quadra IBGE ' + escapeHtml(qibge) + ' · ' + faceLabel + '</div>' +
-                     '<div class="text-muted small">' + c.totalEnderecos + ' endereço(s) · ' + escapeHtml(c.motivo) + '</div>' +
+                     '<div class="fw-bold">Setor ' + escapeHtml(setor) + ' · Quadra IBGE ' + escapeHtml(qibge) + '</div>' +
+                     '<div class="' + (c.inconsistente ? 'text-danger' : 'text-muted') + ' small">' + c.totalEnderecos + ' endereço(s) · ' + escapeHtml(c.motivo) + '</div>' +
                      sugestao +
                      '<div class="text-muted small">Linhas exemplo: ' + (c.exemploRows || []).join(', ') + '</div>' +
                    '</div>' +
@@ -2752,19 +2752,18 @@ window.confirmarAssociacao = function(layerQuadra) {
         var cust = ev.target.closest('.btn-vinc-custom');
         var exc = ev.target.closest('.btn-excluir-cluster');
         if (sug) {
-          window.vincularClusterUI(sug.dataset.setor, sug.dataset.qibge, sug.dataset.quadra, parseInt(sug.dataset.total, 10), sug.dataset.face);
+          window.vincularClusterUI(sug.dataset.setor, sug.dataset.qibge, sug.dataset.quadra, parseInt(sug.dataset.total, 10));
         } else if (cust) {
-          window.vincularClusterCustomUI(cust.dataset.setor, cust.dataset.qibge, parseInt(cust.dataset.total, 10), cust.dataset.face);
+          window.vincularClusterCustomUI(cust.dataset.setor, cust.dataset.qibge, parseInt(cust.dataset.total, 10));
         } else if (exc) {
-          window.confirmarExcluirCluster(exc.dataset.setor, exc.dataset.qibge, parseInt(exc.dataset.total, 10), exc.dataset.face);
+          window.confirmarExcluirCluster(exc.dataset.setor, exc.dataset.qibge, parseInt(exc.dataset.total, 10));
         }
       });
     }
   }
 
-  window.vincularClusterUI = function(setor, qibge, quadraId, total, face) {
-    var faceTxt = face ? (' · Face ' + face) : '';
-    if (!confirm('Vincular ' + total + ' endereço(s) à quadra ' + quadraId + faceTxt + '?')) return;
+  window.vincularClusterUI = function(setor, qibge, quadraId, total) {
+    if (!confirm('Vincular ' + total + ' endereço(s) à quadra ' + quadraId + '?')) return;
     google.script.run
       .withSuccessHandler(function(r){
         if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
@@ -2773,21 +2772,19 @@ window.confirmarAssociacao = function(layerQuadra) {
         window.invalidarCacheMapa && window.invalidarCacheMapa();
       })
       .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
-      .vincularClusterAQuadra(setor, qibge, quadraId, face || '');
+      .vincularClusterAQuadra(setor, qibge, quadraId);
   };
 
-  window.vincularClusterCustomUI = function(setor, qibge, total, face) {
-    var faceTxt = face ? (' / face ' + face) : '';
-    var q = prompt('Vincular ' + total + ' endereço(s) do setor ' + setor + ' / quadra IBGE ' + qibge + faceTxt + ' a qual quadra do app?', '');
+  window.vincularClusterCustomUI = function(setor, qibge, total) {
+    var q = prompt('Vincular ' + total + ' endereço(s) do setor ' + setor + ' / quadra IBGE ' + qibge + ' a qual quadra do app?', '');
     if (!q) return;
     q = q.trim();
     if (!q) return;
-    window.vincularClusterUI(setor, qibge, q, total, face);
+    window.vincularClusterUI(setor, qibge, q, total);
   };
 
-  window.confirmarExcluirCluster = function(setor, qibge, total, face) {
-    var faceTxt = face ? (', face ' + face) : '';
-    if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + faceTxt + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
+  window.confirmarExcluirCluster = function(setor, qibge, total) {
+    if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
     google.script.run
       .withSuccessHandler(function(r){
         if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
@@ -2796,7 +2793,7 @@ window.confirmarAssociacao = function(layerQuadra) {
         window.invalidarCacheMapa && window.invalidarCacheMapa();
       })
       .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
-      .excluirClusterEnderecos(setor, qibge, face || '');
+      .excluirClusterEnderecos(setor, qibge);
   };
 
   // ======================================================
