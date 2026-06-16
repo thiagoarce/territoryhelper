@@ -69,7 +69,14 @@ window.mudarAba = function(aba) {
     var tela = document.getElementById(aba === 'poligonos' ? 'telaPoligonos' : 'tela' + aba.charAt(0).toUpperCase() + aba.slice(1)); 
     if(tela) tela.classList.add('active');
     
-    if(aba === 'geral') setTimeout(() => { if(mapGeral) mapGeral.invalidateSize(); }, 100);
+    if(aba === 'geral') {
+      setTimeout(() => { if(mapGeral) mapGeral.invalidateSize(); }, 100);
+      // Atualiza badge + alerta de designações (fire-and-forget)
+      google.script.run
+        .withSuccessHandler(function(r){ if (window._atualizarBadgesDesignacoesProxy) window._atualizarBadgesDesignacoesProxy(r); })
+        .withFailureHandler(function(){})
+        .getResumoDesignacoes();
+    }
     
     if(aba === 'poligonos') { 
         if(!mapPoligonos) window.iniciarMapaPoligonos(); 
@@ -771,12 +778,15 @@ window.carregarEditorDados = function() {
             showLoading(true, "Unindo quadras...");
             
             google.script.run
-              .withSuccessHandler(function() {
+              .withSuccessHandler(function(r) {
+                  showLoading(false);
+                  if (r && r.status === 'CONFLITO') {
+                    window.toast(r.erro || 'Conflito ao unir quadras', 'error', 6000);
+                    return;
+                  }
                   window.toast("Fusão concluída!", "success");
                   window.alternarModoSelecao(false);
-                  
-                  // FORÇA O RECARREGAMENTO TOTAL DOS DADOS
-                  (window.invalidarCacheMapa(), window.carregarEditorDados()); 
+                  (window.invalidarCacheMapa(), window.carregarEditorDados());
               })
               .withFailureHandler(function(e){
                   showLoading(false);
@@ -843,18 +853,44 @@ window.carregarEditorDados = function() {
 
   window.deletarQuadraAtual = function() {
     var id = currentEditLayer && currentEditLayer.metaData ? currentEditLayer.metaData.id : '';
-    window.confirmar({
-      titulo: 'Excluir quadra',
-      mensagem: 'A quadra ' + id + ' será removida permanentemente. Deseja continuar?',
-      perigo: true,
-      okLabel: 'Excluir'
-    }).then(function(ok){
-      if (!ok) return;
-      google.script.run
-        .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
-        .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
-        .excluirQuadra(id);
-    });
+    // Pega refs primeiro pro user saber o impacto antes de confirmar
+    google.script.run
+      .withSuccessHandler(function(refs){
+        var partes = ['A quadra <b>' + id + '</b> será removida.'];
+        if (refs && (refs.enderecos || refs.designacoesAbertas || refs.registros)) {
+          partes.push('<br><br>Isso afeta:');
+          if (refs.designacoesAbertas) partes.push('<br>• <b>' + refs.designacoesAbertas + '</b> designação(ões) aberta(s) — quadra sai delas');
+          if (refs.enderecos) partes.push('<br>• <b>' + refs.enderecos + '</b> endereço(s) ficam sem vínculo (pode revincular depois)');
+          if (refs.registros) partes.push('<br>• <b>' + refs.registros + '</b> registro(s) histórico(s) mantidos');
+        }
+        partes.push('<br><br>Deseja continuar?');
+        window.confirmar({
+          titulo: 'Excluir quadra ' + id,
+          mensagem: partes.join(''),
+          perigo: true,
+          okLabel: 'Excluir'
+        }).then(function(ok){
+          if (!ok) return;
+          google.script.run
+            .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
+            .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
+            .excluirQuadra(id);
+        });
+      })
+      .withFailureHandler(function(){
+        // Fallback: confirmação simples sem detalhes
+        window.confirmar({
+          titulo: 'Excluir quadra', mensagem: 'A quadra ' + id + ' será removida. Continuar?',
+          perigo: true, okLabel: 'Excluir'
+        }).then(function(ok){
+          if (!ok) return;
+          google.script.run
+            .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
+            .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
+            .excluirQuadra(id);
+        });
+      })
+      ._contarRefsQuadra_(id);
   };
   window.deletarTerritorioAtual = function() {
     var nome = editingTerritoryData && editingTerritoryData.data ? editingTerritoryData.data.name : '';
@@ -1154,13 +1190,18 @@ window.abrirHistoricoQuadra = function(id) {
           conteudo.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-inbox" style="font-size:2rem; opacity:.4"></i><div class="mt-2">Sem histórico ainda.</div></div>';
           return;
         }
+        // Reconhece tipos novos (Pacote F + desfeito + auto/manual) pra
+        // o histórico individual de quadra mostrar ícones consistentes.
         var iconePorTipo = function(tipo) {
           var t = (tipo || '').toLowerCase();
-          if (t.indexOf('conclu') > -1) return { ico: 'fa-circle-check', cor: 'text-success' };
-          if (t.indexOf('iniciado') > -1) return { ico: 'fa-circle-play', cor: 'text-primary' };
-          if (t.indexOf('design') > -1) return { ico: 'fa-user-tie', cor: 'text-info' };
-          if (t.indexOf('historico') > -1 || t.indexOf('apenas') > -1) return { ico: 'fa-clock-rotate-left', cor: 'text-muted' };
-          return { ico: 'fa-circle-dot', cor: 'text-secondary' };
+          if (t === 'desfeito')               return { ico: 'fa-rotate-left',      cor: 'text-warning', label: 'Desfeita' };
+          if (t === 'auto' || t === 'manual') return { ico: 'fa-circle-check',     cor: 'text-success', label: 'Concluída' };
+          if (t.indexOf('conclu') > -1)       return { ico: 'fa-circle-check',     cor: 'text-success', label: 'Concluída' };
+          if (t.indexOf('iniciado') > -1)     return { ico: 'fa-circle-play',      cor: 'text-primary', label: 'Iniciada' };
+          if (t.indexOf('design') > -1)       return { ico: 'fa-user-tie',         cor: 'text-info',    label: 'Designada' };
+          if (t === 'historico' || t === 'apenas_historico')
+                                              return { ico: 'fa-clock-rotate-left', cor: 'text-muted',   label: 'Histórico' };
+          return { ico: 'fa-circle-dot', cor: 'text-secondary', label: tipo || 'Evento' };
         };
         var html = '<div class="list-group list-group-flush">';
         eventos.forEach(function(ev) {
@@ -1169,8 +1210,8 @@ window.abrirHistoricoQuadra = function(id) {
           html += '<div class="list-group-item d-flex align-items-center gap-3">' +
                     '<i class="fa-solid ' + ic.ico + ' ' + ic.cor + '" style="font-size:1.3rem"></i>' +
                     '<div class="flex-grow-1">' +
-                      '<div class="fw-bold">' + (ev.tipo || 'Evento') + '</div>' +
-                      '<div class="small text-muted">' + dataExibida + ' • registrado em ' + ev.timestamp + '</div>' +
+                      '<div class="fw-bold">' + _escHtml(ic.label) + '</div>' +
+                      '<div class="small text-muted">' + _escHtml(dataExibida) + ' • registrado em ' + _escHtml(ev.timestamp) + '</div>' +
                     '</div>' +
                   '</div>';
         });
@@ -1678,6 +1719,30 @@ window.confirmarAssociacao = function(layerQuadra) {
   // IMPORTANTE: antes de aplicar estilos override, restauramos o estilo
   // base de cada poly. Sem isso, designação cancelada/concluída deixaria
   // a borda azul "fantasma" no mapa até o usuário trocar de aba.
+  // Atualiza badges e alerta de designações vencidas no header da Geral.
+  // Chamado junto com atualizarDesignacoesNoMapa pra aproveitar a leitura.
+  // Exposto pra ser chamado tanto de getResumoDesignacoes quanto da
+  // atualizarDesignacoesNoMapa (que já lê dados completos)
+  window._atualizarBadgesDesignacoesProxy = function(r){ _atualizarBadgesDesignacoes(r); };
+  function _atualizarBadgesDesignacoes(r) {
+    var abertas = r && r.abertas ? r.abertas.length : 0;
+    var vencidas = r && r.vencidas ? r.vencidas.length : 0;
+    var badge = document.getElementById('badgeDesignacoes');
+    if (badge) {
+      var total = abertas + vencidas;
+      badge.style.display = total > 0 ? '' : 'none';
+      badge.innerText = total;
+      badge.classList.toggle('bg-danger', vencidas > 0);
+      badge.classList.toggle('bg-primary', vencidas === 0 && abertas > 0);
+    }
+    var alerta = document.getElementById('alertaDesignacoesVencidas');
+    if (alerta) {
+      alerta.classList.toggle('d-none', vencidas === 0);
+      var qtd = document.getElementById('qtdDesignacoesVencidas');
+      if (qtd) qtd.innerText = vencidas;
+    }
+  }
+
   window.atualizarDesignacoesNoMapa = function() {
     if (typeof lgGeralDesignacoes === 'undefined' || !lgGeralDesignacoes) return;
     lgGeralDesignacoes.clearLayers();
@@ -2323,6 +2388,21 @@ window.confirmarAssociacao = function(layerQuadra) {
   var _renomearStylesOriginais = new Map(); // poly → style original
 
   window.abrirRenomearQuadras = function() {
+    // Reset modos que poderiam coexistir: seleção múltipla, faces
+    // selecionadas e edição de território devem sair antes do renomear
+    // assumir o click handler. Sem isso, click em quadra poderia rotear
+    // pro modo errado.
+    if (typeof isSelectionMode !== 'undefined' && isSelectionMode) {
+      window.alternarModoSelecao && window.alternarModoSelecao(false);
+    }
+    if (typeof facesSelecionadas !== 'undefined' && facesSelecionadas.size > 0) {
+      facesSelecionadas.clear();
+      window.atualizarModoVinculo && window.atualizarModoVinculo();
+    }
+    if (typeof isEditingTerritory !== 'undefined' && isEditingTerritory) {
+      window.cancelarEdicaoTerritorio && window.cancelarEdicaoTerritorio();
+    }
+
     var sel = document.getElementById('renomearTerritorio');
     sel.innerHTML = '<option value="">Carregando...</option>';
     document.getElementById('renomearPrefixo').value = '';
@@ -2531,58 +2611,143 @@ window.confirmarAssociacao = function(layerQuadra) {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modalDesignacoes')).show();
     google.script.run
       .withSuccessHandler(function(r){
-        var abertas = (r && r.abertas) || [];
-        var vencidas = (r && r.vencidas) || [];
-        if (abertas.length === 0 && vencidas.length === 0) {
-          box.innerHTML = '<div class="text-center text-muted small py-3">Sem designações ativas.<br><small>Crie ao compartilhar quadras com publicador.</small></div>';
-          return;
-        }
-        function card(d, vencida) {
-          var prazoStr = d.prazo ? new Date(d.prazo).toLocaleDateString('pt-BR') : '—';
-          var cor = vencida ? 'border-danger' : 'border-primary';
-          var badge = vencida
-            ? '<span class="badge bg-danger">Vencida</span>'
-            : '<span class="badge bg-primary">Aberta</span>';
-          return '<div class="card mb-2 shadow-sm ' + cor + '" style="border-left-width:4px">' +
-                   '<div class="card-body py-2 px-3">' +
-                     '<div class="d-flex justify-content-between align-items-start gap-2">' +
-                       '<div class="flex-grow-1">' +
-                         '<div class="fw-bold">' + escapeHtml(d.publicador) + ' ' + badge + '</div>' +
-                         '<div class="small text-muted">' + d.idsQuadras.length + ' quadra(s): ' + escapeHtml(d.idsQuadras.join(', ')) + '</div>' +
-                         '<div class="small text-muted"><i class="fa-regular fa-clock"></i> Prazo: ' + escapeHtml(prazoStr) + '</div>' +
-                       '</div>' +
-                       '<button class="btn btn-sm btn-outline-danger" onclick="window.cancelarDesignacaoUI(\'' + d.id + '\')" title="Cancelar designação"><i class="fa-solid fa-xmark"></i></button>' +
-                     '</div>' +
-                   '</div>' +
-                 '</div>';
-        }
-        var html = '';
-        if (vencidas.length > 0) {
-          html += '<div class="small fw-bold text-danger mb-1">Vencidas (' + vencidas.length + ')</div>';
-          html += vencidas.map(function(d){ return card(d, true); }).join('');
-        }
-        if (abertas.length > 0) {
-          html += '<div class="small fw-bold text-primary mb-1 mt-2">Em andamento (' + abertas.length + ')</div>';
-          html += abertas.map(function(d){ return card(d, false); }).join('');
-        }
-        box.innerHTML = html;
+        window._designacoesCorrentes = r || { abertas: [], vencidas: [], fechadas: [] };
+        renderListaDesignacoes();
       })
       .withFailureHandler(function(e){
-        box.innerHTML = '<div class="text-danger small">Erro: ' + (e && e.message ? e.message : e) + '</div>';
+        box.innerHTML = '<div class="text-danger small">Erro: ' + escapeHtml(e && e.message || e) + '</div>';
       })
       .listarDesignacoes();
   };
+
+  function renderListaDesignacoes() {
+    var r = window._designacoesCorrentes || {};
+    var abertas = r.abertas || [];
+    var vencidas = r.vencidas || [];
+    var box = document.getElementById('listaDesignacoes');
+    if (abertas.length === 0 && vencidas.length === 0) {
+      box.innerHTML = '<div class="text-center text-muted small py-3">Sem designações ativas.<br><small>Crie ao compartilhar quadras com publicador.</small></div>';
+      return;
+    }
+    function card(d, vencida) {
+      var msAtePrazo = d.prazo ? d.prazo - Date.now() : 0;
+      var diasFalta = Math.ceil(msAtePrazo / (1000*60*60*24));
+      var prazoStr = d.prazo ? new Date(d.prazo).toLocaleDateString('pt-BR') : '—';
+      var corBorda = vencida ? 'border-danger' : (diasFalta <= 3 ? 'border-warning' : 'border-primary');
+      var badge;
+      if (vencida) badge = '<span class="badge bg-danger">Vencida</span>';
+      else if (diasFalta <= 3) badge = '<span class="badge bg-warning text-dark">Vence em ' + diasFalta + 'd</span>';
+      else badge = '<span class="badge bg-primary">Aberta</span>';
+      return '<div class="card mb-2 shadow-sm ' + corBorda + ' designacao-card" data-id="' + escapeHtml(d.id) + '" style="border-left-width:4px; cursor:pointer">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="d-flex justify-content-between align-items-start gap-2">' +
+                   '<div class="flex-grow-1">' +
+                     '<div class="fw-bold">' + escapeHtml(d.publicador) + ' ' + badge + '</div>' +
+                     '<div class="small text-muted">' + d.idsQuadras.length + ' quadra(s): ' + escapeHtml(d.idsQuadras.join(', ')) + '</div>' +
+                     '<div class="small text-muted"><i class="fa-regular fa-clock"></i> Prazo: ' + escapeHtml(prazoStr) + '</div>' +
+                   '</div>' +
+                   '<button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); window.cancelarDesignacaoUI(\'' + escapeHtml(d.id) + '\')" title="Cancelar"><i class="fa-solid fa-xmark"></i></button>' +
+                 '</div>' +
+                 '<div class="d-flex gap-2 mt-2 flex-wrap designacao-acoes">' +
+                   '<button class="btn btn-sm btn-success" onclick="event.stopPropagation(); window.concluirDesignacaoUI(\'' + escapeHtml(d.id) + '\')">' +
+                     '<i class="fa-solid fa-check-double me-1"></i>Concluir todas' +
+                   '</button>' +
+                   '<button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); window.estenderPrazoUI(\'' + escapeHtml(d.id) + '\')">' +
+                     '<i class="fa-regular fa-calendar-plus me-1"></i>+30 dias' +
+                   '</button>' +
+                   '<button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); window.zoomDesignacao(\'' + escapeHtml(d.id) + '\')">' +
+                     '<i class="fa-solid fa-magnifying-glass-location me-1"></i>Ver no mapa' +
+                   '</button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }
+    var html = '';
+    if (vencidas.length > 0) {
+      html += '<div class="small fw-bold text-danger mb-1">Vencidas (' + vencidas.length + ')</div>';
+      html += vencidas.map(function(d){ return card(d, true); }).join('');
+    }
+    if (abertas.length > 0) {
+      html += '<div class="small fw-bold text-primary mb-1 mt-2">Em andamento (' + abertas.length + ')</div>';
+      html += abertas.map(function(d){ return card(d, false); }).join('');
+    }
+    box.innerHTML = html;
+  }
+
+  function _acharDesignacao(id) {
+    var r = window._designacoesCorrentes || {};
+    return (r.abertas || []).concat(r.vencidas || []).find(function(d){ return d.id === id; });
+  }
 
   window.cancelarDesignacaoUI = function(id) {
     if (!confirm('Cancelar essa designação? As quadras voltam a ficar livres pra outros publicadores.')) return;
     google.script.run
       .withSuccessHandler(function(r){
-        if (!r || !r.ok) { alert('Erro: ' + (r && r.erro || '?')); return; }
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
         window.abrirDesignacoes();
         if (window.atualizarDesignacoesNoMapa) window.atualizarDesignacoesNoMapa();
       })
-      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
       .cancelarDesignacao(id);
+  };
+
+  window.concluirDesignacaoUI = function(id) {
+    var d = _acharDesignacao(id);
+    if (!d) return;
+    if (!confirm('Marcar TODAS as ' + d.idsQuadras.length + ' quadra(s) de ' + d.publicador + ' como concluídas hoje?')) return;
+    var hoje = new Date().toISOString().split('T')[0];
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (r && r.status === 'CONFLITO') {
+          if (!confirm('Algumas quadras já têm conclusão futura: ' + (r.ids || []).join(', ') + '\nMarcar com data anterior mesmo assim?')) return;
+          // re-tenta no modo manual
+          google.script.run
+            .withSuccessHandler(function(){ window.toast && window.toast('Designação concluída', 'success'); window.abrirDesignacoes(); window.invalidarCacheMapa && window.invalidarCacheMapa(); })
+            .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+            .salvarConclusaoQuadras({ ids: d.idsQuadras, data: hoje, modo: 'manual' });
+          return;
+        }
+        window.toast && window.toast('Designação concluída', 'success');
+        window.abrirDesignacoes();
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .salvarConclusaoQuadras({ ids: d.idsQuadras, data: hoje, modo: 'auto' });
+  };
+
+  window.estenderPrazoUI = function(id) {
+    var d = _acharDesignacao(id);
+    if (!d) return;
+    var base = d.prazo ? new Date(d.prazo) : new Date();
+    if (base < new Date()) base = new Date(); // se vencida, parte de hoje
+    base.setDate(base.getDate() + 30);
+    var novoPrazo = base.toISOString().slice(0, 10);
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast('Prazo estendido até ' + base.toLocaleDateString('pt-BR'), 'success');
+        window.abrirDesignacoes();
+        window.atualizarDesignacoesNoMapa && window.atualizarDesignacoesNoMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .estenderPrazoDesignacao(id, novoPrazo);
+  };
+
+  window.zoomDesignacao = function(id) {
+    var d = _acharDesignacao(id);
+    if (!d || !d.idsQuadras.length) return;
+    bootstrap.Modal.getInstance(document.getElementById('modalDesignacoes')).hide();
+    // Foca o mapa Geral nas quadras designadas
+    if (typeof mapGeral !== 'undefined' && mapGeral && typeof lgGeralQuadras !== 'undefined') {
+      var bounds = null;
+      var idsSet = {}; d.idsQuadras.forEach(function(i){ idsSet[i] = true; });
+      lgGeralQuadras.eachLayer(function(poly){
+        if (poly.metaData && idsSet[poly.metaData.id]) {
+          bounds = bounds ? bounds.extend(poly.getBounds()) : poly.getBounds();
+        }
+      });
+      if (bounds) mapGeral.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+    }
   };
 
   // ======================================================

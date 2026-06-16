@@ -387,6 +387,38 @@ function salvarEdicaoQuadra(dados) {
   });
 }
 
+// Conta refs a esse id em outras abas, pra UI poder avisar antes de
+// excluir. Lê só — não modifica nada.
+function _contarRefsQuadra_(id) {
+  if (!id) return null;
+  var idTrim = String(id).trim();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var res = { enderecos: 0, designacoesAbertas: 0, registros: 0 };
+
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (sheetD && sheetD.getLastRow() > 1) {
+    var dataD = sheetD.getRange(2, COL.DADOS.QUADRA_1IDX, sheetD.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < dataD.length; i++) if (String(dataD[i][0] || '').trim() === idTrim) res.enderecos++;
+  }
+  var sheetDes = ss.getSheetByName(SHEET.DESIGNACOES);
+  if (sheetDes && sheetDes.getLastRow() > 1) {
+    var dataDes = sheetDes.getRange(2, 1, sheetDes.getLastRow() - 1, 7).getValues();
+    for (var d = 0; d < dataDes.length; d++) {
+      var status = String(dataDes[d][COL.DESIGNACOES.STATUS] || '');
+      if (status !== STATUS_DESIGNACAO.ABERTA) continue;
+      var ids = String(dataDes[d][COL.DESIGNACOES.IDS_QUADRAS] || '')
+        .split(',').map(function(s){ return s.trim(); });
+      if (ids.indexOf(idTrim) >= 0) res.designacoesAbertas++;
+    }
+  }
+  var sheetReg = ss.getSheetByName(SHEET.REGISTROS);
+  if (sheetReg && sheetReg.getLastRow() > 1) {
+    var dataReg = sheetReg.getRange(2, 1, sheetReg.getLastRow() - 1, 1).getValues();
+    for (var r = 0; r < dataReg.length; r++) if (String(dataReg[r][0] || '').trim() === idTrim) res.registros++;
+  }
+  return res;
+}
+
 function excluirQuadra(id) {
   return withLock_(function() {
     if (!id) throw new Error("ID ausente.");
@@ -395,6 +427,49 @@ function excluirQuadra(id) {
     var data = sheet.getDataRange().getValues();
     var row = acharLinhaQuadra_(data, id);
     if (row === -1) return "Não encontrada";
+
+    var idTrim = String(id).trim();
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Limpeza em cascata: tira o ID dos CSVs das outras abas pra não
+    // deixar refs órfãs (cadeado fantasma, território "fantasma", etc).
+    var sheetT = ss.getSheetByName(SHEET.TERRITORIOS)
+              || ss.getSheetByName('Territórios');
+    if (sheetT && sheetT.getLastRow() > 1) {
+      var dataT = sheetT.getDataRange().getValues();
+      for (var t = 1; t < dataT.length; t++) {
+        var csv = String(dataT[t][COL.TERRITORIOS.IDS_QUADRAS] || '');
+        if (!csv) continue;
+        var ids = csv.split(',').map(function(s){ return s.trim(); });
+        var novo = ids.filter(function(x){ return x && x !== idTrim; });
+        if (novo.length !== ids.length) {
+          sheetT.getRange(t + 1, COL.TERRITORIOS.IDS_QUADRAS_1IDX).setValue(novo.join(','));
+        }
+      }
+    }
+
+    var sheetDes = ss.getSheetByName(SHEET.DESIGNACOES);
+    if (sheetDes && sheetDes.getLastRow() > 1) {
+      var dataDes = sheetDes.getRange(2, 1, sheetDes.getLastRow() - 1, 7).getValues();
+      for (var d = 0; d < dataDes.length; d++) {
+        var csvD = String(dataDes[d][COL.DESIGNACOES.IDS_QUADRAS] || '');
+        if (!csvD) continue;
+        var idsD = csvD.split(',').map(function(s){ return s.trim(); });
+        var novoD = idsD.filter(function(x){ return x && x !== idTrim; });
+        if (novoD.length !== idsD.length) {
+          sheetDes.getRange(d + 2, COL.DESIGNACOES.IDS_QUADRAS_1IDX).setValue(novoD.join(','));
+          // Designação vazia (única quadra removida) → fecha como cancelada
+          if (novoD.length === 0) {
+            sheetDes.getRange(d + 2, COL.DESIGNACOES.STATUS_1IDX).setValue(STATUS_DESIGNACAO.CANCELADA);
+          }
+        }
+      }
+    }
+
+    // Endereços em Dados Brutos: NÃO renomear (não há pra onde). Deixa
+    // o ID antigo lá. Vai aparecer como "sem quadra" no editor — o
+    // user pode revincular. Comportamento intencional: não perdemos
+    // dado IBGE só porque a quadra foi removida.
     sheet.deleteRow(row);
     _invalidar();
     return "Excluída";
@@ -402,34 +477,71 @@ function excluirQuadra(id) {
 }
 
 function salvarJuncaoQuadras(dados) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Quadras");
-  const data = sheet.getDataRange().getValues();
-
-  // 1. Remove as linhas das quadras antigas
-  // Loop reverso para deletar sem bagunçar os índices
-  for (let i = data.length - 1; i >= 1; i--) {
-    let idRow = String(data[i][0]);
-    if (dados.idsRemover.includes(idRow)) {
-      sheet.deleteRow(i + 1);
-    }
+  if (!dados || !Array.isArray(dados.idsRemover) || dados.idsRemover.length === 0) {
+    throw new Error('idsRemover obrigatório');
   }
+  var vId = validarId_(dados.novoId); if (!vId.ok) throw new Error(vId.msg);
+  var vPoly = validarPolyString_(dados.polyString); if (!vPoly.ok) throw new Error(vPoly.msg);
 
-  // 2. Adiciona a nova quadra unificada
-  // Ordem: [ID, 0, "", "", PolyString, Cor, Territorio, Status, Data]
-  sheet.appendRow([
-    dados.novoId,
-    0,
-    "",
-    "",
-    dados.polyString,
-    dados.cor,
-    dados.territorio,
-    "Pendente",
-    ""
-  ]);
-  _invalidar();
-  return "Sucesso";
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = getSheetByName_(SHEET.QUADRAS);
+    if (!sheet) throw new Error('Aba Quadras não encontrada');
+
+    var data = sheet.getDataRange().getValues();
+    var novoIdLimpo = sanitizar_(dados.novoId);
+
+    // Detecta conflito: o novo ID já existe fora das que vão ser removidas?
+    for (var i = 1; i < data.length; i++) {
+      var id = String(data[i][COL.QUADRAS.ID]).trim();
+      if (id === novoIdLimpo && dados.idsRemover.indexOf(id) < 0) {
+        return { status: 'CONFLITO', erro: 'Já existe outra quadra com ID "' + novoIdLimpo + '"' };
+      }
+    }
+
+    // Preserva o "melhor" status entre as juntadas: se alguma estava
+    // Concluído, herda Concluído com a data mais recente. Senão Pendente.
+    var melhorStatus = STATUS.PENDENTE;
+    var melhorData = '';
+    for (var j = 1; j < data.length; j++) {
+      var idJ = String(data[j][COL.QUADRAS.ID]).trim();
+      if (dados.idsRemover.indexOf(idJ) < 0) continue;
+      var st = String(data[j][COL.QUADRAS.STATUS] || '');
+      var dt = data[j][COL.QUADRAS.DATA_CONC];
+      if (st === STATUS.CONCLUIDO) {
+        melhorStatus = STATUS.CONCLUIDO;
+        if (dt && (!melhorData || new Date(dt) > new Date(melhorData))) melhorData = dt;
+      }
+    }
+
+    // 1. Remove as linhas das quadras antigas (loop reverso)
+    for (var r = data.length - 1; r >= 1; r--) {
+      var idRow = String(data[r][COL.QUADRAS.ID]);
+      if (dados.idsRemover.indexOf(idRow) >= 0) sheet.deleteRow(r + 1);
+    }
+
+    // 2. Adiciona a nova quadra unificada
+    sheet.appendRow([
+      novoIdLimpo, 0, '', '',
+      dados.polyString,
+      validarCor_(dados.cor),
+      sanitizar_(dados.territorio || ''),
+      melhorStatus,
+      melhorData
+    ]);
+
+    // 3. Cascata: redireciona endereços, designações, registros e
+    // refs em Territorios pras quadras antigas pra apontarem pra nova.
+    var mapa = {};
+    dados.idsRemover.forEach(function(antigo){
+      var a = String(antigo).trim();
+      if (a && a !== novoIdLimpo) mapa[a] = novoIdLimpo;
+    });
+    _propagarRenomeacaoIds_(mapa);
+
+    _invalidar();
+    return { status: 'SUCESSO', id: novoIdLimpo };
+  });
 }
 
 function excluirTerritorio(nome) {
@@ -1749,6 +1861,25 @@ function getQuadrasDesignadas() {
   return mapa;
 }
 
+// Contagem rápida pra header da Visão Geral (badge + alerta).
+// Lê só os status sem montar payload completo.
+function getResumoDesignacoes() {
+  var sh = ensureSheetDesignacoes_();
+  if (sh.getLastRow() < 2) return { abertas: 0, vencidas: 0 };
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
+  var agora = Date.now();
+  var abertas = 0, vencidas = 0;
+  dados.forEach(function(r){
+    var st = String(r[COL.DESIGNACOES.STATUS] || '');
+    if (st !== STATUS_DESIGNACAO.ABERTA) return;
+    var prazo = r[COL.DESIGNACOES.PRAZO];
+    var prazoMs = prazo ? new Date(prazo).getTime() : 0;
+    if (prazoMs && prazoMs < agora) vencidas++;
+    else abertas++;
+  });
+  return { abertas: abertas, vencidas: vencidas };
+}
+
 function _acharLinhaDesignacao_(sh, id) {
   var ult = sh.getLastRow();
   if (ult < 2) return -1;
@@ -1757,6 +1888,23 @@ function _acharLinhaDesignacao_(sh, id) {
     if (String(col[i][0]) === String(id)) return i + 2;
   }
   return -1;
+}
+
+// Estende prazo de uma designação aberta (ou reativa vencida com prazo
+// novo). Usado pelo botão "+30 dias" no modal Designações.
+function estenderPrazoDesignacao(id, novoPrazoYmd) {
+  if (!id) return { ok: false, erro: 'id obrigatório' };
+  var v = validarData_(novoPrazoYmd);
+  if (!v.ok) return { ok: false, erro: v.msg };
+  return withLock_(function(){
+    var sh = ensureSheetDesignacoes_();
+    var linha = _acharLinhaDesignacao_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'Designação não encontrada' };
+    sh.getRange(linha, COL.DESIGNACOES.PRAZO_1IDX).setValue(new Date(novoPrazoYmd + 'T00:00:00'));
+    sh.getRange(linha, COL.DESIGNACOES.STATUS_1IDX).setValue(STATUS_DESIGNACAO.ABERTA);
+    _invalidar();
+    return { ok: true };
+  });
 }
 
 function cancelarDesignacao(id) {

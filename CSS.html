@@ -37,6 +37,27 @@
   body.tema-escuro .list-group-item { background: #2a2f33; color: #e8eef5; border-color: #3a4047; }
   body.tema-escuro .loading-overlay { background: rgba(20,22,25,0.92); }
 
+  /* Telas novas (Designações, Prédios, modais novos) — força fundo
+     escuro nas seções que ainda usam style="background-color: #f8f9fa"
+     inline e ajusta texto de cards filhos pra contraste OK */
+  body.tema-escuro #telaCampanha,
+  body.tema-escuro #telaPredios { background-color: #1a1d20 !important; }
+  body.tema-escuro #telaCampanha .card-body,
+  body.tema-escuro #telaPredios .card-body { color: #e8eef5; }
+  body.tema-escuro #telaCampanha .text-muted,
+  body.tema-escuro #telaPredios .text-muted { color: #95a4b3 !important; }
+  body.tema-escuro #listaPredios .card { background:#2a2f33; color:#e8eef5; border-color:#3a4047; }
+  body.tema-escuro #listaPredios .small.text-muted { color:#95a4b3 !important; }
+  body.tema-escuro #listaDesignacoes .card { background:#2a2f33; color:#e8eef5; }
+  body.tema-escuro .form-text { color:#95a4b3 !important; }
+  body.tema-escuro .badge.bg-light { background-color:#3a4047 !important; color:#e8eef5 !important; }
+  body.tema-escuro .badge.bg-warning { background-color:#7a5d00 !important; color:#fff5d6 !important; }
+  body.tema-escuro #renomearOrdemLista,
+  body.tema-escuro #renomearPreview { color:#e8eef5; }
+  /* Modal Renomear no tema escuro */
+  body.tema-escuro #modalRenomear .card.bg-light { background-color:#1f242a !important; }
+  body.tema-escuro #modalRenomear .modal-header.bg-warning { background-color:#7a5d00 !important; color:#fff5d6; }
+
   .loading-overlay {
     position: fixed;
     top: 0;

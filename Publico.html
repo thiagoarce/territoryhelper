@@ -242,28 +242,30 @@
       color: white;
     }
 
-    /* Botão "deixei carta" */
+    /* Botão "deixei carta" — 44x44 (HIG mobile) */
     .btn-carta {
-      width: 34px; height: 34px; border-radius: 50%;
+      width: 44px; height: 44px; border-radius: 50%;
       border: 2px solid #ddd; color: #94a3b8;
       display: flex; align-items: center; justify-content: center;
       transition: all 0.2s; cursor: pointer; flex-shrink: 0;
-      margin-right: 6px; font-size: 0.85rem;
+      margin-right: 4px; font-size: 1rem;
     }
     .btn-carta.feito {
       background-color: #d97706; border-color: #d97706; color: #fff;
     }
 
-    /* Desfechos (Pacote F): 3 botões mutex lado a lado */
+    /* Desfechos (Pacote F): 3 botões mutex 44x44, área de toque
+       confortável em mobile. Caminho mais crítico do publicador. */
     .desfechos { display: flex; gap: 4px; flex-shrink: 0; }
     .btn-desf {
-      width: 30px; height: 30px; border-radius: 50%;
+      width: 44px; height: 44px; border-radius: 50%;
       border: 1.5px solid #e5e7eb; background: #fff;
       color: #cbd5e1; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      font-size: 0.75rem; transition: all 0.15s;
+      font-size: 1rem; transition: all 0.15s;
       padding: 0;
     }
+    .btn-desf:active { transform: scale(0.92); }
     .btn-desf:hover { border-color: #94a3b8; }
     .btn-desf.cinza.ativo  { background:#6b7280; border-color:#6b7280; color:#fff; }
     .btn-desf.amarelo.ativo { background:#f59e0b; border-color:#f59e0b; color:#fff; }
@@ -1237,14 +1239,19 @@ function toggleVisita(row, el) {
     function mudarStatusQuadra(qId, status) {
         var icon = status === 'Iniciado' ? '▶️' : '✅';
         if(!confirm(icon + " Marcar quadra " + qId + " como " + status.toUpperCase() + "?")) return;
-        
-        // Feedback visual imediato
-        alert("Status atualizado para: " + status);
-        
-        google.script.run.withSuccessHandler(() => {
-            // Recarrega para atualizar dados se necessário (ex: data de conclusão)
-            if(status === 'Concluído') carregarDados(); 
-        }).definirStatusQuadra(qId, status);
+        // Feedback só depois do save bem-sucedido — antes era um alert
+        // que mentia (vinha ANTES do roundtrip).
+        google.script.run
+          .withSuccessHandler(function(){
+            if (window.toast) window.toast("Status atualizado: " + status, "success");
+            else alert("Status atualizado: " + status);
+            if(status === 'Concluído') carregarDados();
+          })
+          .withFailureHandler(function(e){
+            if (window.toast) window.toast("Erro: " + (e && e.message ? e.message : e), "error");
+            else alert("Erro ao atualizar status. Tente de novo.");
+          })
+          .definirStatusQuadra(qId, status);
     }
 
     // ===== BUSCA + FILTROS =====
@@ -1317,7 +1324,17 @@ function toggleVisita(row, el) {
     function concluirQuadra(qId) {
         if(!confirm("Concluir Quadra?")) return;
         var hoje = new Date().toISOString().split('T')[0];
-        google.script.run.withSuccessHandler(() => { alert("Registrado!"); carregarDados(); }).salvarConclusaoQuadras({ ids: [qId], data: hoje, modo: 'auto' });
+        google.script.run
+          .withSuccessHandler(function(){
+            if (window.toast) window.toast("Registrado!", "success");
+            else alert("Registrado!");
+            carregarDados();
+          })
+          .withFailureHandler(function(e){
+            if (window.toast) window.toast("Erro ao registrar: " + (e && e.message ? e.message : e), "error");
+            else alert("Erro ao registrar. Verifique a conexão e tente de novo.");
+          })
+          .salvarConclusaoQuadras({ ids: [qId], data: hoje, modo: 'auto' });
     }
   </script>
 </body>
