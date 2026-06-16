@@ -52,6 +52,58 @@
       </span>
       <button class="btn btn-sm btn-warning fw-bold" onclick="window.abrirDesignacoes()">Ver</button>
     </div>
+
+    <!-- Tela de início com 3 cartões — atalhos pras ações mais comuns.
+         Pode ser ocultada com "Não mostrar mais" (localStorage). -->
+    <div id="telaInicio" class="d-none mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="m-0 fw-bold text-muted small">PRINCIPAIS AÇÕES</h6>
+        <button class="btn btn-sm btn-link p-0 text-muted small" onclick="window.fecharTelaInicio()" title="Não mostrar mais essa tela">
+          <i class="fa-solid fa-xmark"></i> fechar
+        </button>
+      </div>
+      <div class="row g-2">
+        <div class="col-md-4 col-12">
+          <div class="card shadow-sm border-0 h-100" style="cursor:pointer; border-left:4px solid #1d4ed8 !important" onclick="window.abrirDesignacoes()">
+            <div class="card-body py-3">
+              <div class="d-flex align-items-center gap-3">
+                <i class="fa-solid fa-lock text-primary" style="font-size:2rem"></i>
+                <div>
+                  <div class="fw-bold">Quem está com o quê?</div>
+                  <small class="text-muted">Ver designações ativas</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 col-12">
+          <div class="card shadow-sm border-0 h-100" style="cursor:pointer; border-left:4px solid #16a34a !important" onclick="window.dicaDesignar()">
+            <div class="card-body py-3">
+              <div class="d-flex align-items-center gap-3">
+                <i class="fa-solid fa-share-nodes text-success" style="font-size:2rem"></i>
+                <div>
+                  <div class="fw-bold">Designar quadras</div>
+                  <small class="text-muted">Clique nas quadras pra selecionar e compartilhar</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 col-12">
+          <div class="card shadow-sm border-0 h-100" style="cursor:pointer; border-left:4px solid #f59e0b !important" onclick="window.mudarAba('predios')">
+            <div class="card-body py-3">
+              <div class="d-flex align-items-center gap-3">
+                <i class="fa-solid fa-envelope text-warning" style="font-size:2rem"></i>
+                <div>
+                  <div class="fw-bold">Trabalho de cartas</div>
+                  <small class="text-muted">Prédios e apartamentos</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="filter-bar mb-2 d-flex gap-3 justify-content-between bg-white p-2 border rounded shadow-sm flex-wrap">
       <div class="d-flex gap-3">
         <div class="form-check form-switch">
@@ -64,6 +116,7 @@
       <select id="coloracaoGeral" class="form-select form-select-sm w-auto" onchange="window.atualizarColoracaoGeral()">
         <option value="territorio" selected>Cor por território</option>
         <option value="status">Cor por status</option>
+        <option value="densidade">Densidade de prédios</option>
       </select>
     </div>
     <div class="input-group input-group-sm mb-2">
@@ -111,6 +164,9 @@
       </div>
       <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.abrirRenomearQuadras()" title="Renomear quadras de um território em massa (Q-1, Q-2... → 1A, 1B...)">
         <i class="fa-solid fa-font-awesome"></i> Renomear
+      </button>
+      <button class="btn btn-sm btn-outline-primary ms-1" onclick="window.abrirAutoVincular()" title="Auto-vincular endereços por setor + quadra IBGE">
+        <i class="fa-solid fa-link"></i> Auto-vincular
       </button>
       <small class="text-muted ms-2" style="font-size:.7rem;flex-basis:100%; text-align:center">
         <i class="fa-solid fa-circle-info"></i> Selecione os pontos (endereços) e depois clique na quadra para vincular
@@ -306,6 +362,32 @@
           <div class="d-grid gap-2">
             <button class="btn btn-primary" onclick="window.resolverConflito('substituir')">Substituir</button><button class="btn btn-outline-secondary" onclick="window.resolverConflito('apenas_historico')">Apenas Histórico</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Auto-vincular endereços a quadras (IBGE) -->
+  <div class="modal fade" id="modalAutoVincular" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-link me-2"></i>Auto-vincular endereços</h5>
+          <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted">Agrupa endereços por <b>setor + quadra IBGE</b> e propaga vínculos manuais já feitos pra todos os endereços do mesmo grupo. Clusters sem vínculo OU com vínculos divergentes ficam pra revisão manual.</p>
+          <div id="autoVincStatus" class="small mb-2"></div>
+          <button class="btn btn-primary w-100 mb-3" id="btnRodarAutoVinc" onclick="window.rodarAutoVincular()">
+            <i class="fa-solid fa-play me-1"></i> Rodar auto-vinculação
+          </button>
+          <h6 class="small fw-bold mt-3 mb-2">Clusters pendentes (incertos)</h6>
+          <div id="listaClustersIncertos" class="small">
+            <div class="text-muted">Rode a auto-vinculação pra ver os pendentes.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
         </div>
       </div>
     </div>

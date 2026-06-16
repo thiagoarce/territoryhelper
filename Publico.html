@@ -287,12 +287,61 @@
       background:#f3f4f6; color:#6b7280; font-size:.7em;
     }
 
+    /* ===== Modo Simples ===== */
+    #appSimples .cabecalho { background:#1976d2; color:#fff; border-radius:14px; padding:16px; margin-bottom:16px; }
+    #appSimples .progresso { font-size:1.1rem; font-weight:700; }
+    #appSimples .quadra { font-size:.85rem; opacity:.85; }
+    #appSimples .card-end {
+      background:#fff; border-radius:16px; padding:24px 20px; margin-bottom:20px;
+      box-shadow:0 4px 12px rgba(0,0,0,.08); text-align:center;
+    }
+    #appSimples .endereco-titulo { font-size:1.6rem; font-weight:800; color:#111; margin-bottom:6px; line-height:1.2; }
+    #appSimples .endereco-sub { font-size:1rem; color:#6b7280; margin-bottom:14px; }
+    #appSimples .nota-pessoal { background:#fef3c7; color:#92400e; padding:8px 12px; border-radius:8px; font-size:.9rem; margin-bottom:14px; }
+    #appSimples .acoes-simples { display:flex; flex-direction:column; gap:10px; margin-top:18px; }
+    #appSimples .botao-acao {
+      width:100%; padding:18px; border-radius:14px; border:2px solid #e5e7eb; background:#fff;
+      font-size:1.1rem; font-weight:700; color:#111; cursor:pointer; display:flex;
+      align-items:center; gap:14px; transition: all 0.15s;
+    }
+    #appSimples .botao-acao:active { transform:scale(.97); }
+    #appSimples .botao-acao i { font-size:1.6rem; width:32px; text-align:center; }
+    #appSimples .botao-acao.ativo.naoAtendeu { background:#6b7280; color:#fff; border-color:#6b7280; }
+    #appSimples .botao-acao.ativo.semConversa { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+    #appSimples .botao-acao.ativo.conversou { background:#16a34a; color:#fff; border-color:#16a34a; }
+    #appSimples .botao-acao.carta.ativo { background:#d97706; color:#fff; border-color:#d97706; }
+    #appSimples .navegacao { display:flex; gap:10px; margin-top:20px; }
+    #appSimples .navegacao button {
+      flex:1; padding:14px; border-radius:12px; border:1.5px solid #1976d2;
+      background:#fff; color:#1976d2; font-weight:700; cursor:pointer;
+    }
+    #appSimples .navegacao button.proximo { background:#1976d2; color:#fff; }
+    #appSimples .navegacao button:active { transform:scale(.97); }
+    #appSimples .navegacao button:disabled { opacity:.4; cursor:not-allowed; }
+    body.tema-escuro #appSimples .card-end { background:#2a2f33; }
+    body.tema-escuro #appSimples .endereco-titulo { color:#e8eef5; }
+    body.tema-escuro #appSimples .endereco-sub { color:#95a4b3; }
+    body.tema-escuro #appSimples .botao-acao { background:#1a1d20; color:#e8eef5; border-color:#3a4047; }
+
     /* Endereço em Território Comercial Especial — esmaecido mas
        legível. O publicador residencial pode pregar se houver boa
        oportunidade. */
     .address-item.em-tce { opacity: 0.55; background: #fef9c3; }
     .aviso-tce { font-size: .72rem; color: #92400e; background: #fef3c7;
       border-left: 3px solid #f59e0b; padding: 5px 8px; border-radius: 4px; }
+
+    /* ===== Tema escuro — mesma chave th_tema do Index ===== */
+    body.tema-escuro { background-color:#1a1d20; color:#e8eef5; }
+    body.tema-escuro .bg-white,
+    body.tema-escuro .quadra-card,
+    body.tema-escuro .box-cobertura,
+    body.tema-escuro .address-item { background-color:#2a2f33 !important; color:#e8eef5; }
+    body.tema-escuro .text-muted, body.tema-escuro .small.text-muted { color:#95a4b3 !important; }
+    body.tema-escuro .text-dark { color:#e8eef5 !important; }
+    body.tema-escuro .form-control, body.tema-escuro .form-select {
+      background-color:#1a1d20; color:#e8eef5; border-color:#3a4047; }
+    body.tema-escuro .input-group-text { background-color:#1a1d20; color:#e8eef5; border-color:#3a4047; }
+    body.tema-escuro .btn-desf { background:#1a1d20; border-color:#3a4047; color:#6c7884; }
 
     /* Botões Flutuantes */
     .btn-float-add {
@@ -362,7 +411,22 @@
     <span><span class="legenda-bola" style="background:#9ca3af"></span> Disponível</span>
   </div>
 
+  <!-- Modo SIMPLES: um endereço grande por vez. Pra publicadores com
+       dificuldade em listas. Toggle salva em localStorage 'modo_pub'. -->
+  <div id="appSimples" class="d-none" style="padding:14px 14px 80px"></div>
+
+  <!-- Switch flutuante pra alternar modo Simples/Avançado -->
+  <div id="switchModo" class="d-none position-fixed" style="bottom:16px; left:16px; z-index:1000;">
+    <button class="btn btn-sm shadow-lg" id="btnModoToggle" onclick="alternarModoPublicador()" style="background:#1976d2; color:#fff; border-radius:999px; padding:8px 14px; font-weight:600">
+      <i class="fa-solid fa-list" id="iconModo"></i> <span id="lblModo">Modo simples</span>
+    </button>
+  </div>
+
   <div id="app-content" class="container mt-0 px-0 d-none">
+    <!-- Status da fila de sincronização (offline-first). Escondido
+         quando fila está vazia. Aparece com qtd pendente + status. -->
+    <div id="statusSync" class="d-none mx-2 my-1 px-3 py-2 small"
+         style="background:#fff7ed; border-left:4px solid #f59e0b; border-radius:6px; color:#92400e;"></div>
     <div class="box-cobertura" id="boxCobertura"></div>
     <div class="px-2 py-2 bg-white shadow-sm sticky-top" style="top:0; z-index:500; border-bottom:1px solid #e5e7eb">
       <div class="input-group input-group-sm mb-2">
@@ -484,6 +548,12 @@
   </div>
 
   <script>
+    // Aplica tema escuro salvo (compartilhado com Index via localStorage)
+    try {
+      var temaSalvo = localStorage.getItem('th_tema');
+      if (temaSalvo === 'escuro') document.body.classList.add('tema-escuro');
+    } catch(e) {}
+
     var dadosGerais = [];
     var contextoPolys = [];
     var infoTCE = null; // se ?te=ID, recebe { id, nome, publicador, total, polyString }
@@ -653,13 +723,142 @@
         appContent.parentNode.insertBefore(banner, appContent);
       }
       document.getElementById('loader').classList.add('d-none');
-      document.getElementById('mapa-container').classList.remove('d-none');
-      document.getElementById('legenda').classList.remove('d-none');
-      document.getElementById('app-content').classList.remove('d-none');
-      iniciarMapa();
-      renderizarLista();
-      if (window.atualizarCobertura) window.atualizarCobertura();
+      // Mostra switch de modo (sempre)
+      document.getElementById('switchModo').classList.remove('d-none');
+      var modoSalvo = 'avancado';
+      try { modoSalvo = localStorage.getItem('modo_pub') || 'avancado'; } catch(e) {}
+      aplicarModo(modoSalvo);
     }
+
+    function aplicarModo(modo) {
+      try { localStorage.setItem('modo_pub', modo); } catch(e) {}
+      var simples = document.getElementById('appSimples');
+      var avc = document.getElementById('app-content');
+      var mapa = document.getElementById('mapa-container');
+      var leg = document.getElementById('legenda');
+      var lbl = document.getElementById('lblModo');
+      var ico = document.getElementById('iconModo');
+      if (modo === 'simples') {
+        simples.classList.remove('d-none');
+        avc.classList.add('d-none');
+        mapa.classList.add('d-none');
+        leg.classList.add('d-none');
+        if (lbl) lbl.textContent = 'Modo avançado';
+        if (ico) ico.className = 'fa-solid fa-table';
+        if (typeof _indiceSimples === 'undefined' || _indiceSimples == null) _indiceSimples = 0;
+        renderizarSimples();
+      } else {
+        simples.classList.add('d-none');
+        avc.classList.remove('d-none');
+        mapa.classList.remove('d-none');
+        leg.classList.remove('d-none');
+        if (lbl) lbl.textContent = 'Modo simples';
+        if (ico) ico.className = 'fa-solid fa-list';
+        iniciarMapa();
+        renderizarLista();
+        if (window.atualizarCobertura) window.atualizarCobertura();
+      }
+    }
+
+    window.alternarModoPublicador = function() {
+      var atual;
+      try { atual = localStorage.getItem('modo_pub') || 'avancado'; } catch(e) { atual = 'avancado'; }
+      aplicarModo(atual === 'simples' ? 'avancado' : 'simples');
+    };
+
+    // ====== MODO SIMPLES: 1 endereço por vez, botões enormes ======
+    var _indiceSimples = 0;
+
+    function _todosOsEnderecosSimples() {
+      var lista = [];
+      (dadosGerais || []).forEach(function(q){
+        (q.itens || []).forEach(function(it){
+          if (it.naoVisitar) return; // pula "não visitar"
+          lista.push({ quadra: q.id, item: it });
+        });
+      });
+      return lista;
+    }
+
+    function renderizarSimples() {
+      var lista = _todosOsEnderecosSimples();
+      var box = document.getElementById('appSimples');
+      if (lista.length === 0) {
+        box.innerHTML = '<div class="text-center text-muted py-5">Sem endereços.</div>';
+        return;
+      }
+      if (_indiceSimples >= lista.length) _indiceSimples = lista.length - 1;
+      if (_indiceSimples < 0) _indiceSimples = 0;
+      var atual = lista[_indiceSimples];
+      var it = atual.item;
+      var desfecho = localStorage.getItem('desf_' + it.row) || '';
+      var carta = localStorage.getItem('carta_' + it.row) === 'true';
+
+      // Conta progresso: quantos já têm marcação
+      var feitos = lista.filter(function(x){
+        return localStorage.getItem('desf_' + x.item.row);
+      }).length;
+
+      var titulo = it.nome
+        ? it.nome
+        : (it.complemento ? it.complemento : (it.logradouro + ', ' + it.numero));
+      var sub = it.nome
+        ? (it.logradouro + ', ' + it.numero + (it.complemento ? ' — ' + it.complemento : ''))
+        : (it.complemento ? (it.logradouro + ', ' + it.numero) : it.tipo);
+
+      box.innerHTML =
+        '<div class="cabecalho">' +
+          '<div class="progresso">' + (_indiceSimples + 1) + ' de ' + lista.length + '</div>' +
+          '<div class="quadra">Quadra ' + escapeHtmlPub(atual.quadra) + ' · ' + feitos + ' já feitos</div>' +
+        '</div>' +
+        '<div class="card-end">' +
+          '<div class="endereco-titulo">' + escapeHtmlPub(titulo) + '</div>' +
+          '<div class="endereco-sub">' + escapeHtmlPub(sub) + '</div>' +
+          (it.nota ? '<div class="nota-pessoal"><i class="fa-solid fa-note-sticky me-1"></i>' + escapeHtmlPub(it.nota) + '</div>' : '') +
+          '<div class="acoes-simples">' +
+            botaoSimples('naoAtendeu', 'fa-door-closed', 'Não atendeu', desfecho === 'naoAtendeu', it.row) +
+            botaoSimples('semConversa', 'fa-comment-slash', 'Falou, sem palestra', desfecho === 'semConversa', it.row) +
+            botaoSimples('conversou', 'fa-check', 'Conversou', desfecho === 'conversou', it.row) +
+            '<button class="botao-acao carta ' + (carta ? 'ativo' : '') + '" onclick="window.simplesCarta(' + it.row + ')">' +
+              '<i class="fa-regular fa-envelope"></i> <span>Deixei carta</span>' +
+            '</button>' +
+          '</div>' +
+          '<div class="navegacao">' +
+            '<button onclick="simplesAnterior()"' + (_indiceSimples === 0 ? ' disabled' : '') + '>' +
+              '<i class="fa-solid fa-chevron-left me-1"></i> Anterior' +
+            '</button>' +
+            '<button class="proximo" onclick="simplesProximo()"' + (_indiceSimples >= lista.length - 1 ? ' disabled' : '') + '>' +
+              'Próximo <i class="fa-solid fa-chevron-right ms-1"></i>' +
+            '</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function botaoSimples(tipo, icone, label, ativo, row) {
+      return '<button class="botao-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' +
+               '<i class="fa-solid ' + icone + '"></i> <span>' + label + '</span>' +
+             '</button>';
+    }
+    function escapeHtmlPub(s){ return String(s||'').replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
+
+    window.simplesMarcar = function(row, tipo) {
+      window.marcarDesfecho && window.marcarDesfecho(row, tipo);
+      renderizarSimples();
+    };
+    window.simplesCarta = function(row) {
+      var chave = 'carta_' + row;
+      var jaFeito = localStorage.getItem(chave) === 'true';
+      localStorage.setItem(chave, !jaFeito ? 'true' : 'false');
+      if (!jaFeito) enfileirarSync && enfileirarSync('carta', { row: row });
+      renderizarSimples();
+    };
+    window.simplesAnterior = function() {
+      if (_indiceSimples > 0) { _indiceSimples--; renderizarSimples(); }
+    };
+    window.simplesProximo = function() {
+      var total = _todosOsEnderecosSimples().length;
+      if (_indiceSimples < total - 1) { _indiceSimples++; renderizarSimples(); }
+    };
 
     function iniciarMapa() {
         if (map) { renderizarMapa(); return; }
@@ -1047,11 +1246,8 @@ function criarItemHtml(item, isInsideGroup) {
       var novoEstado = !jaFeito;
       localStorage.setItem(chave, novoEstado ? "true" : "false");
       el.classList.toggle('feito', novoEstado);
-      if (!novoEstado) return; // desfazer é só local
-      google.script.run
-        .withSuccessHandler(function(){})
-        .withFailureHandler(function(){})
-        .registrarCartaEndereco(row);
+      if (!novoEstado) return;
+      enfileirarSync('carta', { row: row });
     };
 
     // Pacote C — Rota dentro da quadra (sentido horário/anti-horário).
@@ -1101,6 +1297,70 @@ function criarItemHtml(item, isInsideGroup) {
     // Pacote F: marca um desfecho mutex (naoAtendeu / semConversa /
     // conversou). Botão ativo = clique de novo desmarca. Cobertura
     // recalcula sem roundtrip.
+    // Fila offline-first: marca local sempre, registra no backend
+    // assincronamente. Se a chamada falhar (sem rede, timeout), a
+    // ação fica salva em localStorage 'syncQueue' e é tentada de novo
+    // quando o usuário volta a ter conexão (event 'online' do navegador).
+    function enfileirarSync(tipo, payload) {
+      var q;
+      try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { q = []; }
+      q.push({ tipo: tipo, payload: payload, ts: Date.now() });
+      try { localStorage.setItem('syncQueue', JSON.stringify(q)); } catch(e) {}
+      processarFilaSync();
+      atualizarStatusSync();
+    }
+    function _executarSync(item, onSuccess, onFail) {
+      try {
+        if (item.tipo === 'desfecho') {
+          google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail)
+            .registrarDesfechoEndereco(item.payload.row, item.payload.tipo);
+        } else if (item.tipo === 'carta') {
+          google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail)
+            .registrarCartaEndereco(item.payload.row);
+        } else { onSuccess(); /* tipo desconhecido — descarta */ }
+      } catch (e) { onFail(e); }
+    }
+    var _sincronizando = false;
+    function processarFilaSync() {
+      if (_sincronizando) return;
+      var q;
+      try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { return; }
+      if (q.length === 0) return;
+      if (!navigator.onLine) { atualizarStatusSync(); return; }
+      _sincronizando = true;
+      var item = q[0];
+      _executarSync(item, function(){
+        // Sucesso: tira da fila
+        try {
+          var atual = JSON.parse(localStorage.getItem('syncQueue') || '[]');
+          atual.shift();
+          localStorage.setItem('syncQueue', JSON.stringify(atual));
+        } catch(e) {}
+        _sincronizando = false;
+        atualizarStatusSync();
+        setTimeout(processarFilaSync, 50);
+      }, function(){
+        // Falha: mantém na fila pra próxima tentativa
+        _sincronizando = false;
+        atualizarStatusSync();
+      });
+    }
+    function atualizarStatusSync() {
+      var q;
+      try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { q = []; }
+      var el = document.getElementById('statusSync');
+      if (!el) return;
+      if (q.length === 0) { el.classList.add('d-none'); return; }
+      el.classList.remove('d-none');
+      el.innerHTML = (!navigator.onLine ? '<i class="fa-solid fa-cloud-arrow-up me-1"></i>' : '<i class="fa-solid fa-rotate me-1 fa-spin"></i>') +
+                     q.length + ' marcação(ões) pendente(s) ' +
+                     (!navigator.onLine ? '(sem rede)' : '(sincronizando…)');
+    }
+    window.addEventListener('online', processarFilaSync);
+    window.addEventListener('offline', atualizarStatusSync);
+    // Tenta sincronizar ao abrir a página
+    setTimeout(processarFilaSync, 1500);
+
     window.marcarDesfecho = function(row, tipo) {
       if (window._tceReadonly) return; // TCE concluído — só leitura
       var chave = "desf_" + row;
@@ -1110,11 +1370,8 @@ function criarItemHtml(item, isInsideGroup) {
       else localStorage.removeItem(chave);
       atualizarBotoesDesfecho(row, novo);
       atualizarCobertura();
-      if (!novo) return; // desfazer é só local
-      google.script.run
-        .withSuccessHandler(function(){})
-        .withFailureHandler(function(){})
-        .registrarDesfechoEndereco(row, tipo);
+      if (!novo) return;
+      enfileirarSync('desfecho', { row: row, tipo: tipo });
     };
 
     function atualizarBotoesDesfecho(row, desfecho) {

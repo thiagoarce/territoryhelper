@@ -2906,3 +2906,149 @@ function reutilizarTerritorioComercial(idAntigo, payload) {
   };
   return criarTerritorioComercial(novo);
 }
+
+// =================================================================
+// DENSIDADE DE PRÉDIOS POR QUADRA
+// Pra UI mostrar quadras com mais/menos prédios — não conta endereços
+// individuais (aptos mascaram), conta agrupamentos por logradouro+numero.
+// Útil pro servo e dirigente saberem onde tem mais trabalho concentrado.
+// =================================================================
+function getDensidadePredios() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (!sheetD || sheetD.getLastRow() < 2) return {};
+
+  // Agrupa por (quadra, logradouro+numero) e conta os que têm ≥2 endereços
+  var data = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
+  var contagem = {}; // { quadraId: { chavePredio: qtd } }
+  data.forEach(function(r){
+    var q = String(r[COL.DADOS.QUADRA] || '').trim();
+    var log = String(r[COL.DADOS.LOGRADOURO] || '').trim();
+    var num = String(r[COL.DADOS.NUMERO] || '').trim();
+    if (!q || !log || !num) return;
+    var chave = log.toLowerCase() + '|' + num.toLowerCase();
+    if (!contagem[q]) contagem[q] = {};
+    contagem[q][chave] = (contagem[q][chave] || 0) + 1;
+  });
+  var resultado = {};
+  Object.keys(contagem).forEach(function(q){
+    var qtd = 0;
+    Object.keys(contagem[q]).forEach(function(c){
+      if (contagem[q][c] >= 2) qtd++; // prédio = ≥2 endereços no mesmo número
+    });
+    resultado[q] = qtd;
+  });
+  return resultado;
+}
+
+// =================================================================
+// AUTO-VINCULAÇÃO DE ENDEREÇOS A QUADRAS
+// Usa colunas IBGE (Dados Brutos col B = setor, col C = quadra IBGE)
+// pra agrupar endereços em "clusters". Pra cada cluster:
+//   - Se ALGUM endereço já está vinculado a UMA quadra do app (e só uma)
+//     → vincula TODOS os outros endereços do mesmo cluster a essa quadra
+//     (alta confiança — herda do vínculo manual feito antes)
+//   - Caso contrário (sem vínculo OU vínculos divergentes): deixa como
+//     está e devolve como "incerto" pra UI mostrar
+// =================================================================
+function autoVincularEnderecos() {
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetD = ss.getSheetByName(SHEET.DADOS);
+    if (!sheetD || sheetD.getLastRow() < 2) return { ok: false, erro: 'Dados Brutos vazia' };
+
+    var ult = sheetD.getLastRow();
+    var lastCol = sheetD.getLastColumn();
+    var dados = sheetD.getRange(2, 1, ult - 1, lastCol).getValues();
+
+    // 1. Agrupa por (setor + quadraIBGE)
+    var clusters = {}; // chave -> { rows: [], vinculos: Set }
+    dados.forEach(function(r, i){
+      var setor = String(r[COL.DADOS.SETOR_1IDX - 1] || '').trim();
+      var qIBGE = String(r[COL.DADOS.QUADRA_IBGE] || '').trim();
+      if (!setor || !qIBGE) return;
+      var chave = setor + '|' + qIBGE;
+      if (!clusters[chave]) clusters[chave] = { rows: [], vinculos: {} };
+      clusters[chave].rows.push({ idx: i, row: i + 2 });
+      var qApp = String(r[COL.DADOS.QUADRA] || '').trim();
+      if (qApp) clusters[chave].vinculos[qApp] = true;
+    });
+
+    // 2. Pra cada cluster decide: se há SÓ um vínculo conhecido,
+    //    propaga pros não-vinculados. Senão deixa pra revisão manual.
+    var vinculadosAuto = 0;
+    var clustersIncertos = [];
+    Object.keys(clusters).forEach(function(chave){
+      var c = clusters[chave];
+      var vinculos = Object.keys(c.vinculos);
+      if (vinculos.length === 1) {
+        var quadraAlvo = vinculos[0];
+        c.rows.forEach(function(rowInfo){
+          var atual = String(dados[rowInfo.idx][COL.DADOS.QUADRA] || '').trim();
+          if (!atual) {
+            dados[rowInfo.idx][COL.DADOS.QUADRA] = quadraAlvo;
+            vinculadosAuto++;
+          }
+        });
+      } else if (vinculos.length === 0) {
+        clustersIncertos.push({
+          chave: chave,
+          totalEnderecos: c.rows.length,
+          motivo: 'Nenhum endereço vinculado ainda',
+          exemploRows: c.rows.slice(0, 3).map(function(r){ return r.row; })
+        });
+      } else {
+        clustersIncertos.push({
+          chave: chave,
+          totalEnderecos: c.rows.length,
+          motivo: 'Vínculos divergentes: ' + vinculos.join(', '),
+          exemploRows: c.rows.slice(0, 3).map(function(r){ return r.row; })
+        });
+      }
+    });
+
+    // 3. Persiste alterações (se houver) — grava col A inteira de uma vez
+    if (vinculadosAuto > 0) {
+      var colA = dados.map(function(r){ return [r[COL.DADOS.QUADRA]]; });
+      sheetD.getRange(2, 1, ult - 1, 1).setValues(colA);
+    }
+    _invalidar();
+    return {
+      ok: true,
+      vinculados: vinculadosAuto,
+      incertos: clustersIncertos,
+      totalClusters: Object.keys(clusters).length
+    };
+  });
+}
+
+// =================================================================
+// EXCLUIR CLUSTER de endereços (deletar grupo inteiro de Dados Brutos)
+// Útil pra remover endereços que NÃO pertencem ao território
+// (ex: ruas de outro bairro que vieram no CSV do IBGE).
+// =================================================================
+function excluirClusterEnderecos(setor, quadraIBGE) {
+  if (!setor || !quadraIBGE) return { ok: false, erro: 'setor e quadraIBGE obrigatórios' };
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetD = ss.getSheetByName(SHEET.DADOS);
+    if (!sheetD || sheetD.getLastRow() < 2) return { ok: false, erro: 'Dados Brutos vazia' };
+
+    var data = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
+    var setorAlvo = String(setor).trim();
+    var qibgeAlvo = String(quadraIBGE).trim();
+
+    // Loop reverso pra deletar sem bagunçar índices
+    var deletadas = 0;
+    for (var i = data.length - 1; i >= 0; i--) {
+      var s = String(data[i][COL.DADOS.SETOR_1IDX - 1] || '').trim();
+      var q = String(data[i][COL.DADOS.QUADRA_IBGE] || '').trim();
+      if (s === setorAlvo && q === qibgeAlvo) {
+        sheetD.deleteRow(i + 2);
+        deletadas++;
+      }
+    }
+    _invalidar();
+    return { ok: true, deletadas: deletadas };
+  });
+}

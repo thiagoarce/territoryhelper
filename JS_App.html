@@ -119,6 +119,30 @@ window.mudarAba = function(aba) {
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
   // Limpa toda a seleção de quadras no mapa Geral, restaurando o
   // estilo padrão de cada poly + escondendo a barra de compartilhar.
+  // Tela de início — mostra cartões grandes na primeira visita,
+  // pode ser oculta com X. Persiste a escolha em localStorage.
+  function _mostrarTelaInicio() {
+    var oculta;
+    try { oculta = localStorage.getItem('telaInicio_oculta'); } catch(e) { oculta = null; }
+    if (oculta === 'true') return;
+    var el = document.getElementById('telaInicio');
+    if (el) el.classList.remove('d-none');
+  }
+  window.fecharTelaInicio = function() {
+    try { localStorage.setItem('telaInicio_oculta', 'true'); } catch(e) {}
+    var el = document.getElementById('telaInicio');
+    if (el) el.classList.add('d-none');
+  };
+  window.dicaDesignar = function() {
+    if (window.toast) window.toast('Clique nas quadras no mapa pra selecioná-las, depois use os botões "Publicador" ou "Dirigente"', 'info', 6000);
+  };
+  // Aplica ao carregar — chama após o DOM estar pronto
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _mostrarTelaInicio);
+  } else {
+    setTimeout(_mostrarTelaInicio, 0);
+  }
+
   window.cancelarSelecaoGeral = function() {
     if (typeof lgGeralQuadras === 'undefined' || !lgGeralQuadras) return;
     lgGeralQuadras.eachLayer(function(l){
@@ -305,15 +329,37 @@ window.mudarAba = function(aba) {
     var modo = (document.getElementById('coloracaoGeral') || {}).value || 'territorio';
     var hoje = new Date();
 
+    // Modo densidade exige uma chamada extra ao backend — cacheia
+    if (modo === 'densidade' && !window._densidadeCache) {
+      google.script.run
+        .withSuccessHandler(function(m){
+          window._densidadeCache = m || {};
+          window.atualizarColoracaoGeral();
+        })
+        .withFailureHandler(function(){})
+        .getDensidadePredios();
+      return;
+    }
+
     lgGeralQuadras.eachLayer(function(l) {
       if (!l.metaData) return;
       var d = l.metaData;
-      // Inativa (área verde) tem visual próprio fixo — não recolorir
       if (String(d.status || '') === 'Inativa') {
         l.setStyle({ color:'#94a3b8', fillColor:'#cbd5e1', fillOpacity:0.25, weight:1 });
         return;
       }
       var cor;
+      if (modo === 'densidade') {
+        var qtd = (window._densidadeCache || {})[d.id] || 0;
+        // Escala: 0 = cinza, 1-2 = amarelo claro, 3-5 = laranja, 6-9 = laranja escuro, 10+ = vermelho
+        if (qtd === 0)      cor = '#e5e7eb';
+        else if (qtd <= 2)  cor = '#fde68a';
+        else if (qtd <= 5)  cor = '#fbbf24';
+        else if (qtd <= 9)  cor = '#f97316';
+        else                cor = '#dc2626';
+        l.setStyle({ color: '#666', weight: 1, fillColor: cor, fillOpacity: 0.65 });
+        return;
+      }
       if (modo === 'status') {
         if (d.dataConclusao) {
           var p = d.dataConclusao.split('-');
@@ -2615,6 +2661,80 @@ window.confirmarAssociacao = function(layerQuadra) {
       })
       .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
       .cancelarTerritorioComercial(id);
+  };
+
+  // ======================================================
+  // AUTO-VINCULAÇÃO de endereços a quadras (IBGE)
+  // ======================================================
+  window.abrirAutoVincular = function() {
+    document.getElementById('autoVincStatus').innerHTML = '';
+    document.getElementById('listaClustersIncertos').innerHTML =
+      '<div class="text-muted">Rode a auto-vinculação pra ver os pendentes.</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalAutoVincular')).show();
+  };
+
+  window.rodarAutoVincular = function() {
+    var btn = document.getElementById('btnRodarAutoVinc');
+    var status = document.getElementById('autoVincStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processando...';
+    status.innerHTML = '';
+    google.script.run
+      .withSuccessHandler(function(r){
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Rodar auto-vinculação';
+        if (!r || !r.ok) { status.innerHTML = '<span class="text-danger">Erro: ' + escapeHtml((r && r.erro) || '?') + '</span>'; return; }
+        status.innerHTML =
+          '<div class="alert alert-success py-2 mb-2">' +
+            '<i class="fa-solid fa-circle-check me-1"></i><b>' + r.vinculados + '</b> endereço(s) vinculado(s) automaticamente · ' +
+            '<b>' + r.totalClusters + '</b> cluster(s) total · ' +
+            '<b>' + (r.incertos || []).length + '</b> incerto(s)' +
+          '</div>';
+        renderClustersIncertos(r.incertos || []);
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Rodar auto-vinculação';
+        status.innerHTML = '<span class="text-danger">Erro: ' + escapeHtml(e && e.message || e) + '</span>';
+      })
+      .autoVincularEnderecos();
+  };
+
+  function renderClustersIncertos(lista) {
+    var box = document.getElementById('listaClustersIncertos');
+    if (lista.length === 0) {
+      box.innerHTML = '<div class="text-success small"><i class="fa-solid fa-check"></i> Sem clusters pendentes!</div>';
+      return;
+    }
+    box.innerHTML = lista.map(function(c){
+      var partes = c.chave.split('|');
+      return '<div class="card mb-2 border-warning" style="border-left:4px solid #f59e0b">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="d-flex justify-content-between align-items-start">' +
+                   '<div>' +
+                     '<div class="fw-bold">Setor ' + escapeHtml(partes[0]) + ' · Quadra IBGE ' + escapeHtml(partes[1]) + '</div>' +
+                     '<div class="text-muted small">' + c.totalEnderecos + ' endereço(s) · ' + escapeHtml(c.motivo) + '</div>' +
+                     '<div class="text-muted small">Linhas exemplo: ' + (c.exemploRows || []).join(', ') + '</div>' +
+                   '</div>' +
+                   '<button class="btn btn-sm btn-outline-danger" onclick="window.confirmarExcluirCluster(\'' + escapeHtml(partes[0]) + '\', \'' + escapeHtml(partes[1]) + '\', ' + c.totalEnderecos + ')" title="Apagar todos os endereços desse cluster"><i class="fa-regular fa-trash-can"></i></button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+  }
+
+  window.confirmarExcluirCluster = function(setor, qibge, total) {
+    if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast(r.deletadas + ' endereço(s) apagados', 'success');
+        window.rodarAutoVincular(); // recarrega lista
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .excluirClusterEnderecos(setor, qibge);
   };
 
   // ======================================================
