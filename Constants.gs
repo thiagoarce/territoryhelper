@@ -173,6 +173,16 @@ var COL = {
   }
 };
 
+// Versão do app — substituída pelo workflow no momento do clasp push.
+// Em dev local fica como "__VERSION__" e a UI mostra "dev".
+var APP_VERSION = '__VERSION__';
+
+function getVersaoApp() {
+  var v = String(APP_VERSION || '');
+  if (v.indexOf('__') === 0 || !v) return 'dev';
+  return v.substring(0, 7);
+}
+
 var STATUS = {
   PENDENTE:  "Pendente",
   CONCLUIDO: "Concluído",
