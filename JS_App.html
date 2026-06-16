@@ -119,6 +119,30 @@ window.mudarAba = function(aba) {
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
   // Limpa toda a seleção de quadras no mapa Geral, restaurando o
   // estilo padrão de cada poly + escondendo a barra de compartilhar.
+  // Tela de início — mostra cartões grandes na primeira visita,
+  // pode ser oculta com X. Persiste a escolha em localStorage.
+  function _mostrarTelaInicio() {
+    var oculta;
+    try { oculta = localStorage.getItem('telaInicio_oculta'); } catch(e) { oculta = null; }
+    if (oculta === 'true') return;
+    var el = document.getElementById('telaInicio');
+    if (el) el.classList.remove('d-none');
+  }
+  window.fecharTelaInicio = function() {
+    try { localStorage.setItem('telaInicio_oculta', 'true'); } catch(e) {}
+    var el = document.getElementById('telaInicio');
+    if (el) el.classList.add('d-none');
+  };
+  window.dicaDesignar = function() {
+    if (window.toast) window.toast('Clique nas quadras no mapa pra selecioná-las, depois use os botões "Publicador" ou "Dirigente"', 'info', 6000);
+  };
+  // Aplica ao carregar — chama após o DOM estar pronto
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _mostrarTelaInicio);
+  } else {
+    setTimeout(_mostrarTelaInicio, 0);
+  }
+
   window.cancelarSelecaoGeral = function() {
     if (typeof lgGeralQuadras === 'undefined' || !lgGeralQuadras) return;
     lgGeralQuadras.eachLayer(function(l){
