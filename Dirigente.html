@@ -208,16 +208,25 @@
         var pts = parsePoly(q.polyString);
         if (pts.length < 3) return;
 
-        // Vermelho = concluída recente (não pode revisitar agora)
-        // Cinza = disponível (pode ser designada) — opacidade alta o
-        // suficiente pra dar contorno claro do território no mapa.
-        var estilo = q.concluidaRecente
-          ? { color:'#b91c1c', weight:1.5, fillColor:'#dc2626', fillOpacity:0.30 }
-          : { color:'#4b5563', weight:1.5, fillColor:'#9ca3af', fillOpacity:0.32 };
+        // 3 visuais no contexto:
+        // - Inativa (área verde / parque): verde-claro com hachura sutil,
+        //   tooltip "Área verde"
+        // - Concluída recente (não pode revisitar agora): vermelho
+        // - Disponível: cinza marcado o suficiente pra mostrar contorno
+        var estilo, tooltip;
+        if (q.status === 'Inativa') {
+          estilo = { color:'#16a34a', weight:1, fillColor:'#86efac', fillOpacity:0.25, dashArray:'4,4' };
+          tooltip = q.id + ' — área verde';
+        } else if (q.concluidaRecente) {
+          estilo = { color:'#b91c1c', weight:1.5, fillColor:'#dc2626', fillOpacity:0.30 };
+          tooltip = q.id + ' — feita ' + q.ultimaData;
+        } else {
+          estilo = { color:'#4b5563', weight:1.5, fillColor:'#9ca3af', fillOpacity:0.32 };
+          tooltip = q.id;
+        }
 
         var poly = L.polygon(pts, estilo);
-        poly.bindTooltip(q.id + (q.concluidaRecente ? ' — feita ' + q.ultimaData : ''),
-                         { sticky: true });
+        poly.bindTooltip(tooltip, { sticky: true });
         layerContexto.addLayer(poly);
       });
 
@@ -369,16 +378,29 @@
                   '</small>' +
                 '</div>';
         contexto.forEach(function(q){
+          var inativa = q.status === 'Inativa';
           var bloqueada = q.concluidaRecente;
-          var corBadge = bloqueada ? 'bg-danger' : 'bg-secondary';
-          var rotulo = bloqueada ? 'Concluída ' + q.ultimaData : 'Disponível';
-          html += '<div class="card mx-3 mb-2 shadow-sm" style="opacity:' + (bloqueada ? '0.85' : '0.7') + '">' +
+          var corBadge, rotulo, etiqueta;
+          if (inativa) {
+            corBadge = 'bg-success';
+            rotulo = 'Área verde / parque';
+            etiqueta = 'Sem trabalho';
+          } else if (bloqueada) {
+            corBadge = 'bg-danger';
+            rotulo = 'Concluída ' + q.ultimaData;
+            etiqueta = 'Não pode';
+          } else {
+            corBadge = 'bg-secondary';
+            rotulo = 'Disponível';
+            etiqueta = 'Pode designar';
+          }
+          html += '<div class="card mx-3 mb-2 shadow-sm" style="opacity:' + (inativa ? '0.6' : (bloqueada ? '0.85' : '0.7')) + '">' +
                     '<div class="card-body py-2 d-flex justify-content-between align-items-center">' +
                       '<div>' +
                         '<div class="fw-bold">Quadra ' + q.id + '</div>' +
                         '<small class="text-muted">' + rotulo + '</small>' +
                       '</div>' +
-                      '<span class="badge ' + corBadge + '">' + (bloqueada ? 'Não pode' : 'Pode designar') + '</span>' +
+                      '<span class="badge ' + corBadge + '">' + etiqueta + '</span>' +
                     '</div>' +
                   '</div>';
         });
