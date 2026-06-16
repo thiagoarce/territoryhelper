@@ -2793,13 +2793,14 @@ function getEnderecosEmTCE() {
 }
 
 // Devolve dados pra renderizar o TCE no link público (?v=publico&te=ID)
+// Aceita TCE concluído/cancelado — devolve com flag pro frontend
+// mostrar em modo read-only ("Concluído em DD/MM").
 function getDadosTCE(id) {
   if (!id) return { ok: false, erro: 'id obrigatório' };
   var sh = ensureSheetTerritoriosEsp_();
   var linha = _acharLinhaTCE_(sh, id);
   if (linha < 0) return { ok: false, erro: 'Território comercial não encontrado' };
   var t = _linhaParaTCE_(sh.getRange(linha, 1, 1, 11).getValues()[0]);
-  if (t.status !== STATUS_TCE.ABERTO) return { ok: false, erro: 'Território comercial fechado' };
 
   // Busca endereços nas rows
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2827,12 +2828,18 @@ function getDadosTCE(id) {
     });
   });
 
+  var dataConcStr = t.dataConc
+    ? Utilities.formatDate(new Date(t.dataConc), 'GMT-3', 'dd/MM/yyyy') : '';
+
   return {
     ok: true,
     tce: {
       id: t.id, nome: t.nome, tipo: t.tipo,
       polyString: t.polyString, publicador: t.publicador,
-      prazo: t.prazo, status: t.status, total: enderecos.length
+      prazo: t.prazo, status: t.status, total: enderecos.length,
+      dataConcStr: dataConcStr,
+      // Frontend usa pra renderizar em modo read-only
+      readonly: t.status !== STATUS_TCE.ABERTO
     },
     enderecos: enderecos
   };
@@ -2859,4 +2866,43 @@ function cancelarTerritorioComercial(id) {
     _invalidar();
     return { ok: true };
   });
+}
+
+// Reabre um TCE concluído/cancelado: volta o status pra "aberto",
+// limpa data de conclusão. Endereços continuam os mesmos, publicador
+// e prazo são preservados (se quiser zerar, edita depois).
+function reabrirTerritorioComercial(id) {
+  return withLock_(function(){
+    var sh = ensureSheetTerritoriosEsp_();
+    var linha = _acharLinhaTCE_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'TCE não encontrado' };
+    sh.getRange(linha, COL.TERRITORIOS_ESP.STATUS_1IDX).setValue(STATUS_TCE.ABERTO);
+    sh.getRange(linha, COL.TERRITORIOS_ESP.DATA_CONC_1IDX).setValue('');
+    _invalidar();
+    return { ok: true };
+  });
+}
+
+// Reutiliza um TCE antigo criando um NOVO com os mesmos endereços e
+// polígono. Útil pra começar ciclo novo sem perder histórico do antigo.
+// payload pode sobrescrever publicador/prazo/nome.
+function reutilizarTerritorioComercial(idAntigo, payload) {
+  if (!idAntigo) return { ok: false, erro: 'id obrigatório' };
+  var sh = ensureSheetTerritoriosEsp_();
+  var linha = _acharLinhaTCE_(sh, idAntigo);
+  if (linha < 0) return { ok: false, erro: 'TCE não encontrado' };
+  var t = _linhaParaTCE_(sh.getRange(linha, 1, 1, 11).getValues()[0]);
+  if (t.rows.length === 0) return { ok: false, erro: 'TCE sem endereços' };
+
+  // Monta payload da criação a partir do antigo + overrides
+  var novo = {
+    nome: (payload && payload.nome) || t.nome,
+    tipo: t.tipo,
+    rows: t.rows,
+    polyString: t.polyString,
+    publicador: (payload && typeof payload.publicador === 'string') ? payload.publicador : '',
+    prazo: (payload && payload.prazo) || '',
+    notas: (payload && payload.notas) || ''
+  };
+  return criarTerritorioComercial(novo);
 }
