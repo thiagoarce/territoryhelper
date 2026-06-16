@@ -76,6 +76,18 @@ window.mudarAba = function(aba) {
         .withSuccessHandler(function(r){ if (window._atualizarBadgesDesignacoesProxy) window._atualizarBadgesDesignacoesProxy(r); })
         .withFailureHandler(function(){})
         .getResumoDesignacoes();
+      // Badge de TCEs abertos
+      google.script.run
+        .withSuccessHandler(function(lista){
+          var qtd = (lista || []).length;
+          var badge = document.getElementById('badgeTCEs');
+          if (badge) {
+            badge.style.display = qtd > 0 ? '' : 'none';
+            badge.innerText = qtd;
+          }
+        })
+        .withFailureHandler(function(){})
+        .listarTerritoriosComerciais(true);
     }
     
     if(aba === 'poligonos') { 
@@ -2438,6 +2450,94 @@ window.confirmarAssociacao = function(layerQuadra) {
                '</div>';
       }).join('');
   }
+
+  // ======================================================
+  // TERRITÓRIO COMERCIAL ESPECIAL — listar/compartilhar/concluir
+  // ======================================================
+  window.abrirTCEs = function() {
+    var box = document.getElementById('listaTCEs');
+    box.innerHTML = '<div class="text-center text-muted small py-3">Carregando...</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalTCEs')).show();
+    google.script.run
+      .withSuccessHandler(function(lista){
+        window._tcesAtivos = lista || [];
+        renderListaTCEs();
+      })
+      .withFailureHandler(function(e){
+        box.innerHTML = '<div class="text-danger small">Erro: ' + escapeHtml(e && e.message || e) + '</div>';
+      })
+      .listarTerritoriosComerciais(true);
+  };
+
+  function renderListaTCEs() {
+    var lista = window._tcesAtivos || [];
+    var box = document.getElementById('listaTCEs');
+    if (lista.length === 0) {
+      box.innerHTML = '<div class="text-center text-muted small py-3">Nenhum TCE ativo.<br><small>Crie na aba Polígonos → botão TCE</small></div>';
+      return;
+    }
+    box.innerHTML = lista.map(function(t){
+      var prazoStr = t.prazo ? new Date(t.prazo).toLocaleDateString('pt-BR') : '—';
+      var subt = t.publicador ? ('com <b>' + escapeHtml(t.publicador) + '</b>') : '<em>sem publicador</em>';
+      return '<div class="card mb-2 shadow-sm border-warning" style="border-left-width:4px">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="d-flex justify-content-between align-items-start gap-2">' +
+                   '<div class="flex-grow-1">' +
+                     '<div class="fw-bold">' + escapeHtml(t.nome) + '</div>' +
+                     '<div class="small text-muted">' + t.rows.length + ' endereço(s) · ' + subt + '</div>' +
+                     '<div class="small text-muted"><i class="fa-regular fa-clock"></i> Prazo: ' + escapeHtml(prazoStr) + '</div>' +
+                   '</div>' +
+                 '</div>' +
+                 '<div class="d-flex gap-1 mt-2 flex-wrap">' +
+                   '<button class="btn btn-sm btn-success" onclick="window.compartilharTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-brands fa-whatsapp me-1"></i>Compartilhar</button>' +
+                   '<button class="btn btn-sm btn-outline-success" onclick="window.concluirTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-check me-1"></i>Concluir</button>' +
+                   '<button class="btn btn-sm btn-outline-danger" onclick="window.cancelarTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-xmark me-1"></i>Cancelar</button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+  }
+
+  window.compartilharTCE = function(id) {
+    var t = (window._tcesAtivos || []).find(function(x){ return x.id === id; });
+    if (!t) return;
+    google.script.run
+      .withSuccessHandler(function(baseUrl){
+        var url = (baseUrl || window.location.href.split('?')[0]) + '?v=publico&te=' + encodeURIComponent(id);
+        var texto = '🏪 Território Comercial — ' + t.nome + '\n\n' +
+                    t.rows.length + ' endereço(s)\n' + url;
+        if (navigator.share) navigator.share({ title: t.nome, text: texto }).catch(function(){});
+        else navigator.clipboard.writeText(texto).then(function(){ window.toast && window.toast('Link copiado!', 'success'); });
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .getScriptUrl();
+  };
+
+  window.concluirTCE = function(id) {
+    if (!confirm('Marcar esse Território Comercial como concluído? Os endereços voltam a aparecer normais no território residencial.')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast('TCE concluído', 'success');
+        window.abrirTCEs();
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .concluirTerritorioComercial(id);
+  };
+
+  window.cancelarTCE = function(id) {
+    if (!confirm('Cancelar esse TCE? Os endereços voltam ao território residencial sem registro de conclusão.')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast('TCE cancelado', 'success');
+        window.abrirTCEs();
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .cancelarTerritorioComercial(id);
+  };
 
   // ======================================================
   // TERRITÓRIO COMERCIAL ESPECIAL — criação interativa

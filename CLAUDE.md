@@ -41,6 +41,7 @@ ou leitura. Schemas em `Constants.gs`.
 | `Designacoes` | território pessoal — quadras travadas em nome de publicador {id, ids_quadras, publicador, criada, prazo, status, notas} | ensureSheetDesignacoes_ |
 | `Predios` | overlay manual sobre Dados Brutos {chave="logradouro|numero", nome, irmaoMora, nomeIrmao, acessoInterfone, naoEhPredio, notas, ultimaCarta} | ensureSheetPredios_ |
 | `PrediosAptos` | overlay per-apto {row→DadosBrutos, cartaEscrita, cartaEntregue, desocupado, naoEscrever} | ensureSheetPrediosAptos_ |
+| `TerritoriosEspeciais` | TCE (Territórios Comerciais Especiais) que atravessam quadras: {id, nome, tipo, rows (CSV), polyString (convex hull), publicador, prazo, status} | ensureSheetTerritoriosEsp_ |
 
 **Migração de schema**: as `ensureSheet*_` checam `getLastColumn()` e completam
 cabeçalho com colunas novas (idempotente, sem perda de dados).
@@ -236,17 +237,51 @@ Desenvolva em feature branches e merge para `main` quando os testes passarem.
 - **HTML tags**: cuidado com `<small>` fechado com `</div>` (já houve
   regressão dessa). Validar HTML manualmente nos modais novos.
 
+## Territórios Comerciais Especiais (TCE) — implementado
+
+Aba `TerritoriosEspeciais` agrupa endereços comerciais que atravessam
+fronteiras de quadras. Modelo:
+
+- `id`, `nome`, `tipo` ("comercial"), `rows` (CSV de rows de Dados
+  Brutos), `polyString` (convex hull dos pontos, calculado no front
+  com Turf.js), `publicador`, `prazo`, `status` (`aberto|concluido|
+  cancelado`), `criado`, `dataConc`, `notas`. `STATUS_TCE` em
+  Constants.gs.
+
+Funções (Code.gs):
+- `criarTerritorioComercial(payload)` — withLock_ + valida data
+- `listarTerritoriosComerciais(somenteAbertos?)`
+- `getEnderecosEmTCE()` → mapa `{ row → {tceId, nome, publicador} }`
+  usado pra esmaecer endereços no painel residencial
+- `getDadosTCE(id)` — payload do link `?v=publico&te=ID`
+- `concluirTerritorioComercial` / `cancelarTerritorioComercial`
+
+UI admin (aba Polígonos):
+- Botão "TCE" amarelo na toolbar dispara `iniciarCriacaoTCE`
+- Filtros forçam Com on/Dom off; user clica em pontos COMERCIAIS
+- Marker selecionado fica verde maior; barra amarela mostra contagem
+- Modal pede nome/publicador/prazo/notas; salva com convex hull
+
+Header da Geral:
+- Botão "🏪 TCEs" com badge de qtd aberta
+- Modal lista cards com Compartilhar/Concluir/Cancelar
+
+Painel residencial (Publico.html):
+- Endereço em TCE recebe `.em-tce` (opacity 0.55, fundo amarelo) +
+  bloco `.aviso-tce`: "🏪 Em território comercial (Fulano), mas
+  pregue se tiver uma boa oportunidade."
+
+Link público dedicado (`?v=publico&te=ID`):
+- `carregarTCE()` monta UMA pseudo-quadra com os endereços do TCE
+  pra reusar toda a infra de marcação de desfecho/carta/etc.
+- Mesma persistência localStorage (`desf_ROW`, `carta_ROW`) — row
+  é o mesmo de Dados Brutos
+
 ## Decisões de produto / escopo
 
-- **Comercial é minimal**: o filtro "Com" em Polígonos só sinaliza
-  pontos comerciais no editor. Não há fluxo dedicado de trabalho
-  comercial (sem horário próprio, sem objetivo específico, sem
-  separação no indicador de cobertura do publicador).
-  - **Próxima feature pedida**: criar "Território Comercial Especial"
-    que pega endereços comerciais de QUALQUER quadra e gera um
-    território separado, atravessando fronteiras de quadras. Modelo
-    de dados ainda não definido — talvez aba `TerritoriosEspeciais`
-    com {nome, ids_enderecos_csv (rows de Dados Brutos), publicador}.
+- **Comercial isolado** (1-3 pontos numa quadra residencial) continua
+  no fluxo normal. É decisão do servo criar TCE — só faz sentido pra
+  blocos concentrados (avenidas comerciais, centros). O app não força.
 
 ## Próximos passos sugeridos (não obrigatórios)
 

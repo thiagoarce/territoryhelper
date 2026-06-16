@@ -32,6 +32,10 @@
           <i class="fa-solid fa-lock"></i> Designações
           <span id="badgeDesignacoes" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display:none; font-size:.65rem">0</span>
         </button>
+        <button class="btn btn-outline-warning btn-sm position-relative" onclick="window.abrirTCEs()" title="Territórios comerciais ativos">
+          <i class="fa-solid fa-store"></i> TCEs
+          <span id="badgeTCEs" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark" style="display:none; font-size:.65rem">0</span>
+        </button>
         <button class="btn btn-outline-dark btn-sm" onclick="window.alternarTema()" title="Alternar tema escuro">
           <i class="fa-solid fa-moon" id="iconeTema"></i>
         </button>
@@ -387,6 +391,24 @@
           <button class="btn btn-sm btn-warning" id="btnAplicarRenomear" onclick="window.aplicarRenomearOrdem()" disabled>
             <i class="fa-solid fa-check"></i> Confirmar
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Territórios Comerciais Especiais -->
+  <div class="modal fade" id="modalTCEs" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-warning">
+          <h5 class="modal-title"><i class="fa-solid fa-store me-2"></i>Territórios Comerciais</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted mb-2">Territórios que atravessam quadras, agrupando endereços comerciais.</p>
+          <div id="listaTCEs">
+            <div class="text-center text-muted small py-3">Carregando...</div>
+          </div>
         </div>
       </div>
     </div>
