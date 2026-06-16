@@ -612,6 +612,7 @@
             return;
           }
           infoTCE = r.tce;
+          window._tceReadonly = !!(r.tce && r.tce.readonly);
           // Monta dadosGerais com 1 "quadra virtual" contendo os endereços
           // do TCE. ID começa com TCE_ pra distinguir em logs.
           var itens = (r.enderecos || []).map(function(e){
@@ -640,6 +641,17 @@
     }
 
     function mostrarApp() {
+      // Banner read-only se TCE concluído/cancelado: usuário consegue
+      // visualizar histórico mas botões de marcar ficam inertes.
+      if (window._tceReadonly && infoTCE) {
+        var banner = document.createElement('div');
+        banner.style.cssText = 'background:#fef3c7; border-left:4px solid #f59e0b; color:#92400e; padding:10px 14px; margin:8px 12px; border-radius:8px; font-size:.9rem;';
+        banner.innerHTML = '<i class="fa-solid fa-lock"></i> Território comercial <b>' + (infoTCE.status === 'concluido' ? 'concluído' : 'fechado') + '</b>' +
+                           (infoTCE.dataConcStr ? ' em ' + infoTCE.dataConcStr : '') +
+                           '. Marcações desabilitadas — só visualização.';
+        var appContent = document.getElementById('app-content');
+        appContent.parentNode.insertBefore(banner, appContent);
+      }
       document.getElementById('loader').classList.add('d-none');
       document.getElementById('mapa-container').classList.remove('d-none');
       document.getElementById('legenda').classList.remove('d-none');
@@ -1029,6 +1041,7 @@ function criarItemHtml(item, isInsideGroup) {
     // Marca "deixei carta aqui" — feedback otimista, persiste local
     // + registra no backend. Reversível com novo toque.
     window.toggleCarta = function(row, el) {
+      if (window._tceReadonly) return; // TCE concluído — só leitura
       var chave = "carta_" + row;
       var jaFeito = localStorage.getItem(chave) === "true";
       var novoEstado = !jaFeito;
@@ -1089,6 +1102,7 @@ function criarItemHtml(item, isInsideGroup) {
     // conversou). Botão ativo = clique de novo desmarca. Cobertura
     // recalcula sem roundtrip.
     window.marcarDesfecho = function(row, tipo) {
+      if (window._tceReadonly) return; // TCE concluído — só leitura
       var chave = "desf_" + row;
       var atual = localStorage.getItem(chave) || '';
       var novo = atual === tipo ? '' : tipo;

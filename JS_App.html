@@ -2492,42 +2492,89 @@ window.confirmarAssociacao = function(layerQuadra) {
     google.script.run
       .withSuccessHandler(function(lista){
         window._tcesAtivos = lista || [];
-        renderListaTCEs();
+        window.renderListaTCEsUI();
       })
       .withFailureHandler(function(e){
         box.innerHTML = '<div class="text-danger small">Erro: ' + escapeHtml(e && e.message || e) + '</div>';
       })
-      .listarTerritoriosComerciais(true);
+      .listarTerritoriosComerciais(false); // todos — frontend filtra
   };
 
-  function renderListaTCEs() {
-    var lista = window._tcesAtivos || [];
+  window.renderListaTCEsUI = function() {
+    var todos = window._tcesAtivos || [];
     var box = document.getElementById('listaTCEs');
+    var mostrarConcluidos = (document.getElementById('toggleTCEsConcluidos') || {}).checked;
+    var abertos = todos.filter(function(t){ return t.status === 'aberto'; });
+    var concluidos = todos.filter(function(t){ return t.status === 'concluido'; });
+
+    var lista = mostrarConcluidos ? concluidos : abertos;
     if (lista.length === 0) {
-      box.innerHTML = '<div class="text-center text-muted small py-3">Nenhum TCE ativo.<br><small>Crie na aba Polígonos → botão TCE</small></div>';
+      box.innerHTML = '<div class="text-center text-muted small py-3">' +
+        (mostrarConcluidos ? 'Nenhum TCE concluído.' : 'Nenhum TCE ativo.<br><small>Crie na aba Polígonos → botão TCE</small>') +
+      '</div>';
       return;
     }
     box.innerHTML = lista.map(function(t){
       var prazoStr = t.prazo ? new Date(t.prazo).toLocaleDateString('pt-BR') : '—';
       var subt = t.publicador ? ('com <b>' + escapeHtml(t.publicador) + '</b>') : '<em>sem publicador</em>';
-      return '<div class="card mb-2 shadow-sm border-warning" style="border-left-width:4px">' +
+      var borda = t.status === 'concluido' ? 'border-secondary' : 'border-warning';
+      var dataConcStr = t.dataConc ? new Date(t.dataConc).toLocaleDateString('pt-BR') : '';
+      var rodape = t.status === 'concluido'
+        ? '<div class="d-flex gap-1 mt-2 flex-wrap">' +
+            '<button class="btn btn-sm btn-outline-warning" onclick="window.reabrirTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-rotate-left me-1"></i>Reabrir</button>' +
+            '<button class="btn btn-sm btn-success" onclick="window.reutilizarTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-recycle me-1"></i>Reutilizar</button>' +
+          '</div>'
+        : '<div class="d-flex gap-1 mt-2 flex-wrap">' +
+            '<button class="btn btn-sm btn-success" onclick="window.compartilharTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-brands fa-whatsapp me-1"></i>Compartilhar</button>' +
+            '<button class="btn btn-sm btn-outline-success" onclick="window.concluirTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-check me-1"></i>Concluir</button>' +
+            '<button class="btn btn-sm btn-outline-danger" onclick="window.cancelarTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-xmark me-1"></i>Cancelar</button>' +
+          '</div>';
+      return '<div class="card mb-2 shadow-sm ' + borda + '" style="border-left-width:4px">' +
                '<div class="card-body py-2 px-3">' +
-                 '<div class="d-flex justify-content-between align-items-start gap-2">' +
-                   '<div class="flex-grow-1">' +
-                     '<div class="fw-bold">' + escapeHtml(t.nome) + '</div>' +
-                     '<div class="small text-muted">' + t.rows.length + ' endereço(s) · ' + subt + '</div>' +
-                     '<div class="small text-muted"><i class="fa-regular fa-clock"></i> Prazo: ' + escapeHtml(prazoStr) + '</div>' +
-                   '</div>' +
-                 '</div>' +
-                 '<div class="d-flex gap-1 mt-2 flex-wrap">' +
-                   '<button class="btn btn-sm btn-success" onclick="window.compartilharTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-brands fa-whatsapp me-1"></i>Compartilhar</button>' +
-                   '<button class="btn btn-sm btn-outline-success" onclick="window.concluirTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-check me-1"></i>Concluir</button>' +
-                   '<button class="btn btn-sm btn-outline-danger" onclick="window.cancelarTCE(\'' + escapeHtml(t.id) + '\')"><i class="fa-solid fa-xmark me-1"></i>Cancelar</button>' +
-                 '</div>' +
+                 '<div class="fw-bold">' + escapeHtml(t.nome) + '</div>' +
+                 '<div class="small text-muted">' + t.rows.length + ' endereço(s) · ' + subt + '</div>' +
+                 (t.status === 'concluido'
+                   ? '<div class="small text-success"><i class="fa-solid fa-check-circle me-1"></i>Concluído em ' + escapeHtml(dataConcStr) + '</div>'
+                   : '<div class="small text-muted"><i class="fa-regular fa-clock"></i> Prazo: ' + escapeHtml(prazoStr) + '</div>'
+                 ) +
+                 rodape +
                '</div>' +
              '</div>';
     }).join('');
-  }
+  };
+
+  // (mantida pra compat — chama o novo render)
+  function renderListaTCEs() { window.renderListaTCEsUI(); }
+
+  window.reabrirTCE = function(id) {
+    if (!confirm('Reabrir esse TCE? Os endereços voltam a ficar esmaecidos no painel residencial.')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast('TCE reaberto', 'success');
+        window.abrirTCEs();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .reabrirTerritorioComercial(id);
+  };
+
+  window.reutilizarTCE = function(id) {
+    var t = (window._tcesAtivos || []).find(function(x){ return x.id === id; });
+    if (!t) return;
+    var nome = prompt('Nome do novo TCE (mesmos endereços):', t.nome);
+    if (nome === null) return;
+    nome = (nome || '').trim();
+    if (!nome) { window.toast && window.toast('Nome obrigatório', 'warn'); return; }
+    var publicador = prompt('Publicador do novo ciclo (opcional):', '') || '';
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast('Novo TCE criado a partir do antigo', 'success');
+        window.abrirTCEs();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .reutilizarTerritorioComercial(id, { nome: nome.trim(), publicador: publicador.trim() });
+  };
 
   window.compartilharTCE = function(id) {
     var t = (window._tcesAtivos || []).find(function(x){ return x.id === id; });
