@@ -3016,20 +3016,22 @@ function autoVincularEnderecos() {
     dados.forEach(function(r, i){
       var setor = String(r[COL.DADOS.SETOR_1IDX - 1] || '').trim();
       var qIBGE = String(r[COL.DADOS.QUADRA_IBGE] || '').trim();
-      var face  = String(r[COL.DADOS.FACE_IBGE] || '').trim();
       if (!setor || !qIBGE) return;
       var lat = parseFloat(r[COL.DADOS.LAT]);
       var lng = parseFloat(r[COL.DADOS.LNG]);
-      // (setor + quadraIBGE + FACE) é a unidade confiável do IBGE.
-      // Cada face = lado de quarteirão contínuo, sempre dentro de
-      // UMA quadra do app. Agrupar só por quadra-IBGE forçaria
-      // escolha errada quando a quadra-IBGE é dividida no app.
-      var chave = setor + '|' + qIBGE + '|' + face;
-      if (!clusters[chave]) clusters[chave] = { rows: [], pontos: [], vinculos: {}, setor: setor, qIBGE: qIBGE, face: face };
+      // (setor + quadraIBGE) é a unidade INDIVISÍVEL do IBGE — todas
+      // as faces dessa quadra ficam dentro de UMA quadra do app.
+      // Vínculos divergentes dentro dum cluster são INCONSISTÊNCIA
+      // da planilha (alguém vinculou metade pra Q-8 e metade pra Q-9).
+      var chave = setor + '|' + qIBGE;
+      if (!clusters[chave]) clusters[chave] = { rows: [], pontos: [], vinculos: {}, setor: setor, qIBGE: qIBGE };
       clusters[chave].rows.push(i);
       if (!isNaN(lat) && !isNaN(lng)) clusters[chave].pontos.push([lat, lng]);
       var qApp = String(r[COL.DADOS.QUADRA] || '').trim();
-      if (qApp) clusters[chave].vinculos[qApp] = true;
+      if (qApp) {
+        if (!clusters[chave].vinculos[qApp]) clusters[chave].vinculos[qApp] = 0;
+        clusters[chave].vinculos[qApp]++;
+      }
     });
 
     // 3. Pra cada cluster: testa point-in-polygon contra cada quadra,
@@ -3040,8 +3042,10 @@ function autoVincularEnderecos() {
     var clustersIncertos = [];
     Object.keys(clusters).forEach(function(chave){
       var c = clusters[chave];
-      // Se já tem vínculo único, mantém comportamento antigo (herda)
+      // c.vinculos é mapa { quadraApp: qtd_endereços }
       var vinculos = Object.keys(c.vinculos);
+
+      // Caso 1: vínculo único — propaga pros endereços sem vínculo
       if (vinculos.length === 1) {
         var quadraAlvo = vinculos[0];
         c.rows.forEach(function(idx){
@@ -3085,12 +3089,25 @@ function autoVincularEnderecos() {
 
       // Decisão
       if (vinculos.length > 1) {
-        // Vínculos divergentes — não toca, reporta
+        // INCONSISTÊNCIA: a mesma quadra-IBGE está vinculada a mais
+        // de uma quadra do app. IBGE garante que isso é erro. Reporta
+        // com contagem por quadra pra user decidir qual é a certa.
+        var detalhe = vinculos.map(function(q){ return q + ': ' + c.vinculos[q]; }).join(', ');
+        // Quadra mais provável: maior contagem entre as já vinculadas
+        var maiorQtd = 0, sugestao = '';
+        vinculos.forEach(function(q){
+          if (c.vinculos[q] > maiorQtd) { maiorQtd = c.vinculos[q]; sugestao = q; }
+        });
         clustersIncertos.push({
           chave: chave, totalEnderecos: c.rows.length,
-          motivo: 'Vínculos divergentes: ' + vinculos.join(', '),
+          motivo: '⚠ Inconsistência — ' + detalhe,
           exemploRows: c.rows.slice(0, 3).map(function(i){ return i + 2; }),
-          melhorMatch: melhorId ? { id: melhorId, pct: Math.round(pct * 100), qtd: melhorQtd, total: c.pontos.length } : null
+          inconsistente: true,
+          vinculosCont: c.vinculos,
+          // Sugestão é a maioria; geometria como segundo critério
+          melhorMatch: (sugestao || melhorId)
+            ? { id: sugestao || melhorId, pct: Math.round(pct * 100), qtd: melhorQtd || 0, total: c.rows.length }
+            : null
         });
       } else if (pct >= THRESHOLD && melhorId) {
         // Alta confiança — vincula todos os endereços do cluster
@@ -3128,11 +3145,10 @@ function autoVincularEnderecos() {
   });
 }
 
-// Vincula manualmente um cluster (setor + quadraIBGE + face) inteiro
-// a uma quadra do app. Se face for vazio/null, vincula o cluster
-// inteiro da quadra-IBGE (todas as faces). Sobrescreve vínculo
-// existente — intencional, é correção manual.
-function vincularClusterAQuadra(setor, quadraIBGE, quadraId, face) {
+// Vincula manualmente um cluster (setor + quadraIBGE) inteiro a
+// uma quadra do app. Sobrescreve vínculo existente — intencional,
+// é correção manual de inconsistência ou primeira atribuição.
+function vincularClusterAQuadra(setor, quadraIBGE, quadraId) {
   if (!setor || !quadraIBGE || !quadraId) return { ok: false, erro: 'parâmetros obrigatórios' };
   return withLock_(function(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -3145,17 +3161,12 @@ function vincularClusterAQuadra(setor, quadraIBGE, quadraId, face) {
     var qLimpo = sanitizar_(quadraId);
     var setorAlvo = String(setor).trim();
     var qibgeAlvo = String(quadraIBGE).trim();
-    var faceAlvo = face ? String(face).trim() : null;
 
     var atualizadas = 0;
     dados.forEach(function(r){
       var s = String(r[COL.DADOS.SETOR_1IDX - 1] || '').trim();
       var q = String(r[COL.DADOS.QUADRA_IBGE] || '').trim();
       if (s !== setorAlvo || q !== qibgeAlvo) return;
-      if (faceAlvo !== null && faceAlvo !== '') {
-        var f = String(r[COL.DADOS.FACE_IBGE] || '').trim();
-        if (f !== faceAlvo) return;
-      }
       r[COL.DADOS.QUADRA] = qLimpo;
       atualizadas++;
     });
@@ -3173,7 +3184,7 @@ function vincularClusterAQuadra(setor, quadraIBGE, quadraId, face) {
 // Útil pra remover endereços que NÃO pertencem ao território
 // (ex: ruas de outro bairro que vieram no CSV do IBGE).
 // =================================================================
-function excluirClusterEnderecos(setor, quadraIBGE, face) {
+function excluirClusterEnderecos(setor, quadraIBGE) {
   if (!setor || !quadraIBGE) return { ok: false, erro: 'setor e quadraIBGE obrigatórios' };
   return withLock_(function(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -3183,7 +3194,6 @@ function excluirClusterEnderecos(setor, quadraIBGE, face) {
     var data = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
     var setorAlvo = String(setor).trim();
     var qibgeAlvo = String(quadraIBGE).trim();
-    var faceAlvo = face ? String(face).trim() : null;
 
     // Loop reverso pra deletar sem bagunçar índices
     var deletadas = 0;
@@ -3191,10 +3201,6 @@ function excluirClusterEnderecos(setor, quadraIBGE, face) {
       var s = String(data[i][COL.DADOS.SETOR_1IDX - 1] || '').trim();
       var q = String(data[i][COL.DADOS.QUADRA_IBGE] || '').trim();
       if (s !== setorAlvo || q !== qibgeAlvo) continue;
-      if (faceAlvo !== null && faceAlvo !== '') {
-        var f = String(data[i][COL.DADOS.FACE_IBGE] || '').trim();
-        if (f !== faceAlvo) continue;
-      }
       sheetD.deleteRow(i + 2);
       deletadas++;
     }
