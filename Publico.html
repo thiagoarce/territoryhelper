@@ -376,6 +376,10 @@
   </div>
 
   <div id="app-content" class="container mt-0 px-0 d-none">
+    <!-- Status da fila de sincronização (offline-first). Escondido
+         quando fila está vazia. Aparece com qtd pendente + status. -->
+    <div id="statusSync" class="d-none mx-2 my-1 px-3 py-2 small"
+         style="background:#fff7ed; border-left:4px solid #f59e0b; border-radius:6px; color:#92400e;"></div>
     <div class="box-cobertura" id="boxCobertura"></div>
     <div class="px-2 py-2 bg-white shadow-sm sticky-top" style="top:0; z-index:500; border-bottom:1px solid #e5e7eb">
       <div class="input-group input-group-sm mb-2">
@@ -1066,11 +1070,8 @@ function criarItemHtml(item, isInsideGroup) {
       var novoEstado = !jaFeito;
       localStorage.setItem(chave, novoEstado ? "true" : "false");
       el.classList.toggle('feito', novoEstado);
-      if (!novoEstado) return; // desfazer é só local
-      google.script.run
-        .withSuccessHandler(function(){})
-        .withFailureHandler(function(){})
-        .registrarCartaEndereco(row);
+      if (!novoEstado) return;
+      enfileirarSync('carta', { row: row });
     };
 
     // Pacote C — Rota dentro da quadra (sentido horário/anti-horário).
@@ -1120,6 +1121,70 @@ function criarItemHtml(item, isInsideGroup) {
     // Pacote F: marca um desfecho mutex (naoAtendeu / semConversa /
     // conversou). Botão ativo = clique de novo desmarca. Cobertura
     // recalcula sem roundtrip.
+    // Fila offline-first: marca local sempre, registra no backend
+    // assincronamente. Se a chamada falhar (sem rede, timeout), a
+    // ação fica salva em localStorage 'syncQueue' e é tentada de novo
+    // quando o usuário volta a ter conexão (event 'online' do navegador).
+    function enfileirarSync(tipo, payload) {
+      var q;
+      try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { q = []; }
+      q.push({ tipo: tipo, payload: payload, ts: Date.now() });
+      try { localStorage.setItem('syncQueue', JSON.stringify(q)); } catch(e) {}
+      processarFilaSync();
+      atualizarStatusSync();
+    }
+    function _executarSync(item, onSuccess, onFail) {
+      try {
+        if (item.tipo === 'desfecho') {
+          google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail)
+            .registrarDesfechoEndereco(item.payload.row, item.payload.tipo);
+        } else if (item.tipo === 'carta') {
+          google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail)
+            .registrarCartaEndereco(item.payload.row);
+        } else { onSuccess(); /* tipo desconhecido — descarta */ }
+      } catch (e) { onFail(e); }
+    }
+    var _sincronizando = false;
+    function processarFilaSync() {
+      if (_sincronizando) return;
+      var q;
+      try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { return; }
+      if (q.length === 0) return;
+      if (!navigator.onLine) { atualizarStatusSync(); return; }
+      _sincronizando = true;
+      var item = q[0];
+      _executarSync(item, function(){
+        // Sucesso: tira da fila
+        try {
+          var atual = JSON.parse(localStorage.getItem('syncQueue') || '[]');
+          atual.shift();
+          localStorage.setItem('syncQueue', JSON.stringify(atual));
+        } catch(e) {}
+        _sincronizando = false;
+        atualizarStatusSync();
+        setTimeout(processarFilaSync, 50);
+      }, function(){
+        // Falha: mantém na fila pra próxima tentativa
+        _sincronizando = false;
+        atualizarStatusSync();
+      });
+    }
+    function atualizarStatusSync() {
+      var q;
+      try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { q = []; }
+      var el = document.getElementById('statusSync');
+      if (!el) return;
+      if (q.length === 0) { el.classList.add('d-none'); return; }
+      el.classList.remove('d-none');
+      el.innerHTML = (!navigator.onLine ? '<i class="fa-solid fa-cloud-arrow-up me-1"></i>' : '<i class="fa-solid fa-rotate me-1 fa-spin"></i>') +
+                     q.length + ' marcação(ões) pendente(s) ' +
+                     (!navigator.onLine ? '(sem rede)' : '(sincronizando…)');
+    }
+    window.addEventListener('online', processarFilaSync);
+    window.addEventListener('offline', atualizarStatusSync);
+    // Tenta sincronizar ao abrir a página
+    setTimeout(processarFilaSync, 1500);
+
     window.marcarDesfecho = function(row, tipo) {
       if (window._tceReadonly) return; // TCE concluído — só leitura
       var chave = "desf_" + row;
@@ -1129,11 +1194,8 @@ function criarItemHtml(item, isInsideGroup) {
       else localStorage.removeItem(chave);
       atualizarBotoesDesfecho(row, novo);
       atualizarCobertura();
-      if (!novo) return; // desfazer é só local
-      google.script.run
-        .withSuccessHandler(function(){})
-        .withFailureHandler(function(){})
-        .registrarDesfechoEndereco(row, tipo);
+      if (!novo) return;
+      enfileirarSync('desfecho', { row: row, tipo: tipo });
     };
 
     function atualizarBotoesDesfecho(row, desfecho) {
