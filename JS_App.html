@@ -2709,8 +2709,8 @@ window.confirmarAssociacao = function(layerQuadra) {
     }
     box.innerHTML = lista.map(function(c){
       var partes = c.chave.split('|');
-      var setor = partes[0], qibge = partes[1];
-      // Mostra "melhor candidata" da geometria + botão pra vincular direto
+      var setor = partes[0], qibge = partes[1], face = partes[2] || '';
+      var faceLabel = face ? ('Face ' + escapeHtml(face)) : '<em class="text-muted">sem face</em>';
       var sugestao = '';
       if (c.melhorMatch && c.melhorMatch.id) {
         var pct = c.melhorMatch.pct;
@@ -2720,14 +2720,17 @@ window.confirmarAssociacao = function(layerQuadra) {
                      '(' + c.melhorMatch.qtd + '/' + c.melhorMatch.total + ' pontos = ' + pct + '%)' +
                    '</div>';
       }
+      // data-attrs evitam escapar setor/face em onclick inline (chars
+      // estranhos do IBGE causariam quebra de string)
+      var d = ' data-setor="' + escapeHtml(setor) + '" data-qibge="' + escapeHtml(qibge) + '" data-face="' + escapeHtml(face) + '" data-total="' + c.totalEnderecos + '"';
       var btnVincular = c.melhorMatch && c.melhorMatch.id
-        ? '<button class="btn btn-sm btn-success" onclick="window.vincularClusterUI(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', \'' + escapeHtml(c.melhorMatch.id) + '\', ' + c.totalEnderecos + ')" title="Vincular cluster inteiro a essa quadra"><i class="fa-solid fa-link me-1"></i>Vincular a ' + escapeHtml(c.melhorMatch.id) + '</button>'
-        : '<button class="btn btn-sm btn-outline-primary" onclick="window.vincularClusterCustomUI(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', ' + c.totalEnderecos + ')" title="Vincular manualmente"><i class="fa-solid fa-link me-1"></i>Vincular…</button>';
+        ? '<button class="btn btn-sm btn-success btn-vinc-sugerida"' + d + ' data-quadra="' + escapeHtml(c.melhorMatch.id) + '"><i class="fa-solid fa-link me-1"></i>Vincular a ' + escapeHtml(c.melhorMatch.id) + '</button>'
+        : '<button class="btn btn-sm btn-outline-primary btn-vinc-custom"' + d + '><i class="fa-solid fa-link me-1"></i>Vincular…</button>';
       return '<div class="card mb-2 border-warning" style="border-left:4px solid #f59e0b">' +
                '<div class="card-body py-2 px-3">' +
                  '<div class="d-flex justify-content-between align-items-start">' +
                    '<div class="flex-grow-1">' +
-                     '<div class="fw-bold">Setor ' + escapeHtml(setor) + ' · Quadra IBGE ' + escapeHtml(qibge) + '</div>' +
+                     '<div class="fw-bold">Setor ' + escapeHtml(setor) + ' · Quadra IBGE ' + escapeHtml(qibge) + ' · ' + faceLabel + '</div>' +
                      '<div class="text-muted small">' + c.totalEnderecos + ' endereço(s) · ' + escapeHtml(c.motivo) + '</div>' +
                      sugestao +
                      '<div class="text-muted small">Linhas exemplo: ' + (c.exemploRows || []).join(', ') + '</div>' +
@@ -2735,16 +2738,33 @@ window.confirmarAssociacao = function(layerQuadra) {
                  '</div>' +
                  '<div class="d-flex gap-2 mt-2">' +
                    btnVincular +
-                   '<button class="btn btn-sm btn-outline-secondary" onclick="window.vincularClusterCustomUI(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', ' + c.totalEnderecos + ')" title="Vincular a outra quadra"><i class="fa-solid fa-pen"></i></button>' +
-                   '<button class="btn btn-sm btn-outline-danger ms-auto" onclick="window.confirmarExcluirCluster(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', ' + c.totalEnderecos + ')" title="Apagar cluster"><i class="fa-regular fa-trash-can"></i></button>' +
+                   '<button class="btn btn-sm btn-outline-secondary btn-vinc-custom"' + d + ' title="Vincular a outra quadra"><i class="fa-solid fa-pen"></i></button>' +
+                   '<button class="btn btn-sm btn-outline-danger ms-auto btn-excluir-cluster"' + d + ' title="Apagar cluster"><i class="fa-regular fa-trash-can"></i></button>' +
                  '</div>' +
                '</div>' +
              '</div>';
     }).join('');
+
+    if (!box._bound) {
+      box._bound = true;
+      box.addEventListener('click', function(ev){
+        var sug = ev.target.closest('.btn-vinc-sugerida');
+        var cust = ev.target.closest('.btn-vinc-custom');
+        var exc = ev.target.closest('.btn-excluir-cluster');
+        if (sug) {
+          window.vincularClusterUI(sug.dataset.setor, sug.dataset.qibge, sug.dataset.quadra, parseInt(sug.dataset.total, 10), sug.dataset.face);
+        } else if (cust) {
+          window.vincularClusterCustomUI(cust.dataset.setor, cust.dataset.qibge, parseInt(cust.dataset.total, 10), cust.dataset.face);
+        } else if (exc) {
+          window.confirmarExcluirCluster(exc.dataset.setor, exc.dataset.qibge, parseInt(exc.dataset.total, 10), exc.dataset.face);
+        }
+      });
+    }
   }
 
-  window.vincularClusterUI = function(setor, qibge, quadraId, total) {
-    if (!confirm('Vincular ' + total + ' endereço(s) à quadra ' + quadraId + '?')) return;
+  window.vincularClusterUI = function(setor, qibge, quadraId, total, face) {
+    var faceTxt = face ? (' · Face ' + face) : '';
+    if (!confirm('Vincular ' + total + ' endereço(s) à quadra ' + quadraId + faceTxt + '?')) return;
     google.script.run
       .withSuccessHandler(function(r){
         if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
@@ -2753,28 +2773,30 @@ window.confirmarAssociacao = function(layerQuadra) {
         window.invalidarCacheMapa && window.invalidarCacheMapa();
       })
       .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
-      .vincularClusterAQuadra(setor, qibge, quadraId);
+      .vincularClusterAQuadra(setor, qibge, quadraId, face || '');
   };
 
-  window.vincularClusterCustomUI = function(setor, qibge, total) {
-    var q = prompt('Vincular ' + total + ' endereço(s) do setor ' + setor + ' / quadra IBGE ' + qibge + ' a qual quadra do app?', '');
+  window.vincularClusterCustomUI = function(setor, qibge, total, face) {
+    var faceTxt = face ? (' / face ' + face) : '';
+    var q = prompt('Vincular ' + total + ' endereço(s) do setor ' + setor + ' / quadra IBGE ' + qibge + faceTxt + ' a qual quadra do app?', '');
     if (!q) return;
     q = q.trim();
     if (!q) return;
-    window.vincularClusterUI(setor, qibge, q, total);
+    window.vincularClusterUI(setor, qibge, q, total, face);
   };
 
-  window.confirmarExcluirCluster = function(setor, qibge, total) {
-    if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
+  window.confirmarExcluirCluster = function(setor, qibge, total, face) {
+    var faceTxt = face ? (', face ' + face) : '';
+    if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + faceTxt + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
     google.script.run
       .withSuccessHandler(function(r){
         if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
         window.toast && window.toast(r.deletadas + ' endereço(s) apagados', 'success');
-        window.rodarAutoVincular(); // recarrega lista
+        window.rodarAutoVincular();
         window.invalidarCacheMapa && window.invalidarCacheMapa();
       })
       .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
-      .excluirClusterEnderecos(setor, qibge);
+      .excluirClusterEnderecos(setor, qibge, face || '');
   };
 
   // ======================================================
