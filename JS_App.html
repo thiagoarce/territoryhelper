@@ -117,6 +117,21 @@ window.mudarAba = function(aba) {
  
 
   window.atualizarBarraShare = function() { var bar = document.getElementById('barraCompartilhar'); var cnt = document.getElementById('countShare'); if(cnt) cnt.innerText = shareSelecionados.size; if(bar) { if(shareSelecionados.size > 0) bar.classList.remove('d-none'); else bar.classList.add('d-none'); } };
+  // Limpa toda a seleção de quadras no mapa Geral, restaurando o
+  // estilo padrão de cada poly + escondendo a barra de compartilhar.
+  window.cancelarSelecaoGeral = function() {
+    if (typeof lgGeralQuadras === 'undefined' || !lgGeralQuadras) return;
+    lgGeralQuadras.eachLayer(function(l){
+      if (l.metaData && shareSelecionados.has(l.metaData.id)) {
+        l.setStyle({ color: '#666', weight: 1 });
+      }
+    });
+    shareSelecionados.clear();
+    window.atualizarBarraShare();
+    // Re-aplica coloração padrão + restaura cadeados de designações
+    if (window.atualizarColoracaoGeral) window.atualizarColoracaoGeral();
+    if (window.atualizarDesignacoesNoMapa) window.atualizarDesignacoesNoMapa();
+  };
   window._abrirModalLinkPublico = function(view, labelHeader) {
     if(shareSelecionados.size === 0) return;
     var ids = Array.from(shareSelecionados);
@@ -1780,9 +1795,9 @@ window.confirmarAssociacao = function(layerQuadra) {
                    else { shareSelecionados.add(id); this.setStyle({color: 'blue', weight: 4}); }
                    window.atualizarBarraShare();
                 });
-                var c = poly.getBounds().getCenter();
-                var linkMaps = 'http://maps.google.com/?q=' + c.lat + ',' + c.lng;
-                poly.bindPopup('<div class="text-center" style="min-width:100px"><b>'+d.id+'</b><br><a href="'+linkMaps+'" target="_blank" class="btn btn-sm btn-success w-100 mb-1 text-white text-decoration-none">Rota</a></div>');
+                // Popup com nome + rota removido — atrapalhava o fluxo
+                // de seleção múltipla. Pra abrir rota, clica no nome da
+                // quadra dentro do modal de edição (aba Polígonos).
                 lgGeralQuadras.addLayer(poly);
              }
           });
