@@ -305,15 +305,37 @@ window.mudarAba = function(aba) {
     var modo = (document.getElementById('coloracaoGeral') || {}).value || 'territorio';
     var hoje = new Date();
 
+    // Modo densidade exige uma chamada extra ao backend — cacheia
+    if (modo === 'densidade' && !window._densidadeCache) {
+      google.script.run
+        .withSuccessHandler(function(m){
+          window._densidadeCache = m || {};
+          window.atualizarColoracaoGeral();
+        })
+        .withFailureHandler(function(){})
+        .getDensidadePredios();
+      return;
+    }
+
     lgGeralQuadras.eachLayer(function(l) {
       if (!l.metaData) return;
       var d = l.metaData;
-      // Inativa (área verde) tem visual próprio fixo — não recolorir
       if (String(d.status || '') === 'Inativa') {
         l.setStyle({ color:'#94a3b8', fillColor:'#cbd5e1', fillOpacity:0.25, weight:1 });
         return;
       }
       var cor;
+      if (modo === 'densidade') {
+        var qtd = (window._densidadeCache || {})[d.id] || 0;
+        // Escala: 0 = cinza, 1-2 = amarelo claro, 3-5 = laranja, 6-9 = laranja escuro, 10+ = vermelho
+        if (qtd === 0)      cor = '#e5e7eb';
+        else if (qtd <= 2)  cor = '#fde68a';
+        else if (qtd <= 5)  cor = '#fbbf24';
+        else if (qtd <= 9)  cor = '#f97316';
+        else                cor = '#dc2626';
+        l.setStyle({ color: '#666', weight: 1, fillColor: cor, fillOpacity: 0.65 });
+        return;
+      }
       if (modo === 'status') {
         if (d.dataConclusao) {
           var p = d.dataConclusao.split('-');

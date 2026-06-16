@@ -2906,3 +2906,37 @@ function reutilizarTerritorioComercial(idAntigo, payload) {
   };
   return criarTerritorioComercial(novo);
 }
+
+// =================================================================
+// DENSIDADE DE PRÉDIOS POR QUADRA
+// Pra UI mostrar quadras com mais/menos prédios — não conta endereços
+// individuais (aptos mascaram), conta agrupamentos por logradouro+numero.
+// Útil pro servo e dirigente saberem onde tem mais trabalho concentrado.
+// =================================================================
+function getDensidadePredios() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (!sheetD || sheetD.getLastRow() < 2) return {};
+
+  // Agrupa por (quadra, logradouro+numero) e conta os que têm ≥2 endereços
+  var data = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
+  var contagem = {}; // { quadraId: { chavePredio: qtd } }
+  data.forEach(function(r){
+    var q = String(r[COL.DADOS.QUADRA] || '').trim();
+    var log = String(r[COL.DADOS.LOGRADOURO] || '').trim();
+    var num = String(r[COL.DADOS.NUMERO] || '').trim();
+    if (!q || !log || !num) return;
+    var chave = log.toLowerCase() + '|' + num.toLowerCase();
+    if (!contagem[q]) contagem[q] = {};
+    contagem[q][chave] = (contagem[q][chave] || 0) + 1;
+  });
+  var resultado = {};
+  Object.keys(contagem).forEach(function(q){
+    var qtd = 0;
+    Object.keys(contagem[q]).forEach(function(c){
+      if (contagem[q][c] >= 2) qtd++; // prédio = ≥2 endereços no mesmo número
+    });
+    resultado[q] = qtd;
+  });
+  return resultado;
+}
