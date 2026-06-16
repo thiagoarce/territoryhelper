@@ -56,6 +56,23 @@ jobs:
       - name: Push para Apps Script
         run: clasp push --force
 
+      # Atualiza o deployment /exec — usa o ID guardado no secret
+      # CLASP_DEPLOYMENT_ID. Se ausente, só faz push (igual antes).
+      # Configurar uma vez: Deploy → Manage deployments → copia o
+      # deployment ID do web app → coloca no GitHub Secrets.
+      - name: Atualizar /exec (versionar deployment)
+        env:
+          CLASP_DEPLOYMENT_ID: ${{ secrets.CLASP_DEPLOYMENT_ID }}
+        run: |
+          if [ -z "$CLASP_DEPLOYMENT_ID" ]; then
+            echo "ℹ️ CLASP_DEPLOYMENT_ID não configurado — pulando atualização /exec"
+            echo "ℹ️ Crie secret CLASP_DEPLOYMENT_ID pra automatizar (ver docs/clasp-setup.md)"
+            exit 0
+          fi
+          DESC="auto $(date -u +%Y-%m-%d_%H:%M)"
+          clasp deploy --deploymentId "$CLASP_DEPLOYMENT_ID" --description "$DESC"
+          echo "✅ /exec atualizado em $DESC"
+
       - name: Confirmar
         run: |
           echo "✅ Deploy concluído em $(date -u)"

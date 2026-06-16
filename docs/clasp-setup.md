@@ -81,8 +81,31 @@ dispara sozinho.
   clasp push --dry-run # simula o push sem aplicar
   ```
 
+## Bônus — atualizar a URL `/exec` automaticamente
+
+Por padrão, `clasp push` envia o código mas **não atualiza o deployment público `/exec`** — quem usa o link continua vendo a versão antiga até você abrir "Manage deployments" e clicar "New version".
+
+Pra automatizar isso, defina o secret `CLASP_DEPLOYMENT_ID`.
+
+### Como pegar o Deployment ID
+
+1. Editor Apps Script → **Deploy → Manage deployments**
+2. Clica no deployment ativo (o que aparece como "Web app")
+3. Embaixo aparece **Deployment ID** — copia (string longa).
+
+### Configurar no GitHub
+
+1. **Settings → Secrets and variables → Actions → New repository secret**
+2. Nome: `CLASP_DEPLOYMENT_ID`
+3. Valor: cola o ID
+4. Salva
+
+A partir do próximo push em `main`, o workflow vai atualizar o deployment automaticamente com descrição `auto YYYY-MM-DD_HH:MM`. A URL `/exec` continua a mesma — só a versão muda.
+
+Sem esse secret, o workflow só faz `clasp push` (igual antes — você ainda atualiza `/exec` manualmente).
+
 ## Reverter (se quiser parar de usar)
 
-1. Delete o secret `CLASP_CREDENTIALS` no GitHub.
+1. Delete os secrets `CLASP_CREDENTIALS` e `CLASP_DEPLOYMENT_ID` no GitHub.
 2. Delete `.github/workflows/deploy-apps-script.yml`.
 3. Continue usando a extensão gas-github + branch `apps-script` normalmente.
