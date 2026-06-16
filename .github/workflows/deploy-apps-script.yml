@@ -53,6 +53,12 @@ jobs:
             || clasp login --status 2>/dev/null \
             || (echo "❌ Token expirado — rode 'clasp login' local e atualize o secret" && exit 1)
 
+      - name: Injetar versão (SHA curto) no Constants.gs
+        run: |
+          SHA="${GITHUB_SHA:0:7}"
+          sed -i "s/__VERSION__/${SHA}/" Constants.gs
+          echo "📌 Versão injetada: ${SHA}"
+
       - name: Push para Apps Script
         run: clasp push --force
 

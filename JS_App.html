@@ -2709,20 +2709,60 @@ window.confirmarAssociacao = function(layerQuadra) {
     }
     box.innerHTML = lista.map(function(c){
       var partes = c.chave.split('|');
+      var setor = partes[0], qibge = partes[1];
+      // Mostra "melhor candidata" da geometria + botão pra vincular direto
+      var sugestao = '';
+      if (c.melhorMatch && c.melhorMatch.id) {
+        var pct = c.melhorMatch.pct;
+        var corPct = pct >= 50 ? 'text-warning' : 'text-muted';
+        sugestao = '<div class="small ' + corPct + ' mt-1">' +
+                     '<i class="fa-solid fa-bullseye"></i> Melhor candidata: <b>' + escapeHtml(c.melhorMatch.id) + '</b> ' +
+                     '(' + c.melhorMatch.qtd + '/' + c.melhorMatch.total + ' pontos = ' + pct + '%)' +
+                   '</div>';
+      }
+      var btnVincular = c.melhorMatch && c.melhorMatch.id
+        ? '<button class="btn btn-sm btn-success" onclick="window.vincularClusterUI(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', \'' + escapeHtml(c.melhorMatch.id) + '\', ' + c.totalEnderecos + ')" title="Vincular cluster inteiro a essa quadra"><i class="fa-solid fa-link me-1"></i>Vincular a ' + escapeHtml(c.melhorMatch.id) + '</button>'
+        : '<button class="btn btn-sm btn-outline-primary" onclick="window.vincularClusterCustomUI(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', ' + c.totalEnderecos + ')" title="Vincular manualmente"><i class="fa-solid fa-link me-1"></i>Vincular…</button>';
       return '<div class="card mb-2 border-warning" style="border-left:4px solid #f59e0b">' +
                '<div class="card-body py-2 px-3">' +
                  '<div class="d-flex justify-content-between align-items-start">' +
-                   '<div>' +
-                     '<div class="fw-bold">Setor ' + escapeHtml(partes[0]) + ' · Quadra IBGE ' + escapeHtml(partes[1]) + '</div>' +
+                   '<div class="flex-grow-1">' +
+                     '<div class="fw-bold">Setor ' + escapeHtml(setor) + ' · Quadra IBGE ' + escapeHtml(qibge) + '</div>' +
                      '<div class="text-muted small">' + c.totalEnderecos + ' endereço(s) · ' + escapeHtml(c.motivo) + '</div>' +
+                     sugestao +
                      '<div class="text-muted small">Linhas exemplo: ' + (c.exemploRows || []).join(', ') + '</div>' +
                    '</div>' +
-                   '<button class="btn btn-sm btn-outline-danger" onclick="window.confirmarExcluirCluster(\'' + escapeHtml(partes[0]) + '\', \'' + escapeHtml(partes[1]) + '\', ' + c.totalEnderecos + ')" title="Apagar todos os endereços desse cluster"><i class="fa-regular fa-trash-can"></i></button>' +
+                 '</div>' +
+                 '<div class="d-flex gap-2 mt-2">' +
+                   btnVincular +
+                   '<button class="btn btn-sm btn-outline-secondary" onclick="window.vincularClusterCustomUI(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', ' + c.totalEnderecos + ')" title="Vincular a outra quadra"><i class="fa-solid fa-pen"></i></button>' +
+                   '<button class="btn btn-sm btn-outline-danger ms-auto" onclick="window.confirmarExcluirCluster(\'' + escapeHtml(setor) + '\', \'' + escapeHtml(qibge) + '\', ' + c.totalEnderecos + ')" title="Apagar cluster"><i class="fa-regular fa-trash-can"></i></button>' +
                  '</div>' +
                '</div>' +
              '</div>';
     }).join('');
   }
+
+  window.vincularClusterUI = function(setor, qibge, quadraId, total) {
+    if (!confirm('Vincular ' + total + ' endereço(s) à quadra ' + quadraId + '?')) return;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        window.toast && window.toast(r.atualizadas + ' endereço(s) vinculados a ' + quadraId, 'success');
+        window.rodarAutoVincular();
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .vincularClusterAQuadra(setor, qibge, quadraId);
+  };
+
+  window.vincularClusterCustomUI = function(setor, qibge, total) {
+    var q = prompt('Vincular ' + total + ' endereço(s) do setor ' + setor + ' / quadra IBGE ' + qibge + ' a qual quadra do app?', '');
+    if (!q) return;
+    q = q.trim();
+    if (!q) return;
+    window.vincularClusterUI(setor, qibge, q, total);
+  };
 
   window.confirmarExcluirCluster = function(setor, qibge, total) {
     if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;

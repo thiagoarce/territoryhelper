@@ -2942,72 +2942,173 @@ function getDensidadePredios() {
 }
 
 // =================================================================
-// AUTO-VINCULAÇÃO DE ENDEREÇOS A QUADRAS
-// Usa colunas IBGE (Dados Brutos col B = setor, col C = quadra IBGE)
-// pra agrupar endereços em "clusters". Pra cada cluster:
-//   - Se ALGUM endereço já está vinculado a UMA quadra do app (e só uma)
-//     → vincula TODOS os outros endereços do mesmo cluster a essa quadra
-//     (alta confiança — herda do vínculo manual feito antes)
-//   - Caso contrário (sem vínculo OU vínculos divergentes): deixa como
-//     está e devolve como "incerto" pra UI mostrar
+// AUTO-VINCULAÇÃO DE ENDEREÇOS A QUADRAS — algoritmo geométrico
+// (point-in-polygon)
+//
+// Pra cada cluster (setor IBGE + quadra IBGE) conta quantos endereços
+// estão GEOMETRICAMENTE dentro de cada polígono de quadra do app.
+// O cluster é vinculado à quadra com maior porcentagem de pontos
+// dentro, desde que ≥60% do cluster esteja contido (alta confiança).
+// Funciona MESMO sem nenhum vínculo manual prévio.
 // =================================================================
+
+// Ray-casting clássico. polygon = [[lat,lng], [lat,lng], ...]. point [lat,lng].
+function _pontoNoPoligono_(point, polygon) {
+  var x = point[0], y = point[1];
+  var inside = false;
+  for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    var xi = polygon[i][0], yi = polygon[i][1];
+    var xj = polygon[j][0], yj = polygon[j][1];
+    var intersect = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Bounding box do polígono — pra short-circuit antes do ray-cast
+function _bboxPoligono_(polygon) {
+  var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  polygon.forEach(function(p){
+    if (p[0] < minLat) minLat = p[0];
+    if (p[0] > maxLat) maxLat = p[0];
+    if (p[1] < minLng) minLng = p[1];
+    if (p[1] > maxLng) maxLng = p[1];
+  });
+  return { minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng };
+}
+
+function _parsePolyStr_(s) {
+  if (!s) return null;
+  var pts = String(s).split('|').map(function(p){
+    var c = p.trim().split(',');
+    return [parseFloat(c[0]), parseFloat(c[1])];
+  }).filter(function(p){ return !isNaN(p[0]) && !isNaN(p[1]); });
+  return pts.length >= 3 ? pts : null;
+}
+
 function autoVincularEnderecos() {
   return withLock_(function(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheetD = ss.getSheetByName(SHEET.DADOS);
+    var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
     if (!sheetD || sheetD.getLastRow() < 2) return { ok: false, erro: 'Dados Brutos vazia' };
+    if (!sheetQ || sheetQ.getLastRow() < 2) return { ok: false, erro: 'Aba Quadras vazia' };
 
     var ult = sheetD.getLastRow();
     var lastCol = sheetD.getLastColumn();
     var dados = sheetD.getRange(2, 1, ult - 1, lastCol).getValues();
 
-    // 1. Agrupa por (setor + quadraIBGE)
-    var clusters = {}; // chave -> { rows: [], vinculos: Set }
+    // 1. Carrega quadras do app com polígonos
+    var dataQ = sheetQ.getRange(2, 1, sheetQ.getLastRow() - 1, sheetQ.getLastColumn()).getValues();
+    var quadrasApp = [];
+    dataQ.forEach(function(r){
+      var id = String(r[COL.QUADRAS.ID] || '').trim();
+      var st = String(r[COL.QUADRAS.STATUS] || '');
+      if (!id || st === 'Inativa') return; // ignora inativa
+      var poly = _parsePolyStr_(r[COL.QUADRAS.POLYSTRING]);
+      if (!poly) return;
+      quadrasApp.push({ id: id, polygon: poly, bbox: _bboxPoligono_(poly) });
+    });
+
+    // 2. Agrupa endereços por (setor + quadraIBGE), guardando lat/lng
+    var clusters = {};
     dados.forEach(function(r, i){
       var setor = String(r[COL.DADOS.SETOR_1IDX - 1] || '').trim();
       var qIBGE = String(r[COL.DADOS.QUADRA_IBGE] || '').trim();
       if (!setor || !qIBGE) return;
+      var lat = parseFloat(r[COL.DADOS.LAT]);
+      var lng = parseFloat(r[COL.DADOS.LNG]);
       var chave = setor + '|' + qIBGE;
-      if (!clusters[chave]) clusters[chave] = { rows: [], vinculos: {} };
-      clusters[chave].rows.push({ idx: i, row: i + 2 });
+      if (!clusters[chave]) clusters[chave] = { rows: [], pontos: [], vinculos: {} };
+      clusters[chave].rows.push(i);
+      if (!isNaN(lat) && !isNaN(lng)) clusters[chave].pontos.push([lat, lng]);
       var qApp = String(r[COL.DADOS.QUADRA] || '').trim();
       if (qApp) clusters[chave].vinculos[qApp] = true;
     });
 
-    // 2. Pra cada cluster decide: se há SÓ um vínculo conhecido,
-    //    propaga pros não-vinculados. Senão deixa pra revisão manual.
+    // 3. Pra cada cluster: testa point-in-polygon contra cada quadra,
+    //    e escolhe a quadra com MAIS pontos contidos. Se ≥60% dos pontos
+    //    do cluster estão dentro → match com alta confiança.
+    var THRESHOLD = 0.6; // 60%
     var vinculadosAuto = 0;
     var clustersIncertos = [];
     Object.keys(clusters).forEach(function(chave){
       var c = clusters[chave];
+      // Se já tem vínculo único, mantém comportamento antigo (herda)
       var vinculos = Object.keys(c.vinculos);
       if (vinculos.length === 1) {
         var quadraAlvo = vinculos[0];
-        c.rows.forEach(function(rowInfo){
-          var atual = String(dados[rowInfo.idx][COL.DADOS.QUADRA] || '').trim();
-          if (!atual) {
-            dados[rowInfo.idx][COL.DADOS.QUADRA] = quadraAlvo;
+        c.rows.forEach(function(idx){
+          if (!String(dados[idx][COL.DADOS.QUADRA] || '').trim()) {
+            dados[idx][COL.DADOS.QUADRA] = quadraAlvo;
             vinculadosAuto++;
           }
         });
-      } else if (vinculos.length === 0) {
+        return;
+      }
+
+      // Sem pontos georreferenciados, não dá pra usar geometria
+      if (c.pontos.length === 0) {
         clustersIncertos.push({
-          chave: chave,
-          totalEnderecos: c.rows.length,
-          motivo: 'Nenhum endereço vinculado ainda',
-          exemploRows: c.rows.slice(0, 3).map(function(r){ return r.row; })
+          chave: chave, totalEnderecos: c.rows.length,
+          motivo: 'Sem coordenadas pra usar geometria',
+          exemploRows: c.rows.slice(0, 3).map(function(i){ return i + 2; }),
+          melhorMatch: null
+        });
+        return;
+      }
+
+      // Conta pontos dentro de cada quadra
+      var contagens = {};
+      c.pontos.forEach(function(pt){
+        quadrasApp.forEach(function(q){
+          var b = q.bbox;
+          if (pt[0] < b.minLat || pt[0] > b.maxLat || pt[1] < b.minLng || pt[1] > b.maxLng) return;
+          if (_pontoNoPoligono_(pt, q.polygon)) {
+            contagens[q.id] = (contagens[q.id] || 0) + 1;
+          }
+        });
+      });
+
+      // Pega a quadra com mais matches
+      var melhorId = '', melhorQtd = 0;
+      Object.keys(contagens).forEach(function(id){
+        if (contagens[id] > melhorQtd) { melhorId = id; melhorQtd = contagens[id]; }
+      });
+      var pct = c.pontos.length > 0 ? melhorQtd / c.pontos.length : 0;
+
+      // Decisão
+      if (vinculos.length > 1) {
+        // Vínculos divergentes — não toca, reporta
+        clustersIncertos.push({
+          chave: chave, totalEnderecos: c.rows.length,
+          motivo: 'Vínculos divergentes: ' + vinculos.join(', '),
+          exemploRows: c.rows.slice(0, 3).map(function(i){ return i + 2; }),
+          melhorMatch: melhorId ? { id: melhorId, pct: Math.round(pct * 100), qtd: melhorQtd, total: c.pontos.length } : null
+        });
+      } else if (pct >= THRESHOLD && melhorId) {
+        // Alta confiança — vincula todos os endereços do cluster
+        c.rows.forEach(function(idx){
+          if (!String(dados[idx][COL.DADOS.QUADRA] || '').trim()) {
+            dados[idx][COL.DADOS.QUADRA] = melhorId;
+            vinculadosAuto++;
+          }
         });
       } else {
+        // Baixa confiança — relata pra revisão
         clustersIncertos.push({
-          chave: chave,
-          totalEnderecos: c.rows.length,
-          motivo: 'Vínculos divergentes: ' + vinculos.join(', '),
-          exemploRows: c.rows.slice(0, 3).map(function(r){ return r.row; })
+          chave: chave, totalEnderecos: c.rows.length,
+          motivo: melhorId
+            ? 'Confiança baixa (' + Math.round(pct * 100) + '%) — melhor candidata: ' + melhorId
+            : 'Nenhuma quadra contém os pontos',
+          exemploRows: c.rows.slice(0, 3).map(function(i){ return i + 2; }),
+          melhorMatch: melhorId ? { id: melhorId, pct: Math.round(pct * 100), qtd: melhorQtd, total: c.pontos.length } : null
         });
       }
     });
 
-    // 3. Persiste alterações (se houver) — grava col A inteira de uma vez
+    // 4. Persiste em batch
     if (vinculadosAuto > 0) {
       var colA = dados.map(function(r){ return [r[COL.DADOS.QUADRA]]; });
       sheetD.getRange(2, 1, ult - 1, 1).setValues(colA);
@@ -3019,6 +3120,41 @@ function autoVincularEnderecos() {
       incertos: clustersIncertos,
       totalClusters: Object.keys(clusters).length
     };
+  });
+}
+
+// Vincula manualmente um cluster inteiro a uma quadra do app.
+// Usado pra resolver os "incertos" da auto-vinculação com 1 clique.
+// Sobrescreve vínculo existente (intencional — é correção manual).
+function vincularClusterAQuadra(setor, quadraIBGE, quadraId) {
+  if (!setor || !quadraIBGE || !quadraId) return { ok: false, erro: 'parâmetros obrigatórios' };
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetD = ss.getSheetByName(SHEET.DADOS);
+    if (!sheetD || sheetD.getLastRow() < 2) return { ok: false, erro: 'Dados Brutos vazia' };
+
+    var ult = sheetD.getLastRow();
+    var lastCol = sheetD.getLastColumn();
+    var dados = sheetD.getRange(2, 1, ult - 1, lastCol).getValues();
+    var qLimpo = sanitizar_(quadraId);
+    var setorAlvo = String(setor).trim();
+    var qibgeAlvo = String(quadraIBGE).trim();
+
+    var atualizadas = 0;
+    dados.forEach(function(r){
+      var s = String(r[COL.DADOS.SETOR_1IDX - 1] || '').trim();
+      var q = String(r[COL.DADOS.QUADRA_IBGE] || '').trim();
+      if (s === setorAlvo && q === qibgeAlvo) {
+        r[COL.DADOS.QUADRA] = qLimpo;
+        atualizadas++;
+      }
+    });
+    if (atualizadas > 0) {
+      var colA = dados.map(function(r){ return [r[COL.DADOS.QUADRA]]; });
+      sheetD.getRange(2, 1, ult - 1, 1).setValues(colA);
+    }
+    _invalidar();
+    return { ok: true, atualizadas: atualizadas };
   });
 }
 
