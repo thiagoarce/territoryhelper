@@ -1861,6 +1861,25 @@ function getQuadrasDesignadas() {
   return mapa;
 }
 
+// Contagem rápida pra header da Visão Geral (badge + alerta).
+// Lê só os status sem montar payload completo.
+function getResumoDesignacoes() {
+  var sh = ensureSheetDesignacoes_();
+  if (sh.getLastRow() < 2) return { abertas: 0, vencidas: 0 };
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
+  var agora = Date.now();
+  var abertas = 0, vencidas = 0;
+  dados.forEach(function(r){
+    var st = String(r[COL.DESIGNACOES.STATUS] || '');
+    if (st !== STATUS_DESIGNACAO.ABERTA) return;
+    var prazo = r[COL.DESIGNACOES.PRAZO];
+    var prazoMs = prazo ? new Date(prazo).getTime() : 0;
+    if (prazoMs && prazoMs < agora) vencidas++;
+    else abertas++;
+  });
+  return { abertas: abertas, vencidas: vencidas };
+}
+
 function _acharLinhaDesignacao_(sh, id) {
   var ult = sh.getLastRow();
   if (ult < 2) return -1;
@@ -1869,6 +1888,23 @@ function _acharLinhaDesignacao_(sh, id) {
     if (String(col[i][0]) === String(id)) return i + 2;
   }
   return -1;
+}
+
+// Estende prazo de uma designação aberta (ou reativa vencida com prazo
+// novo). Usado pelo botão "+30 dias" no modal Designações.
+function estenderPrazoDesignacao(id, novoPrazoYmd) {
+  if (!id) return { ok: false, erro: 'id obrigatório' };
+  var v = validarData_(novoPrazoYmd);
+  if (!v.ok) return { ok: false, erro: v.msg };
+  return withLock_(function(){
+    var sh = ensureSheetDesignacoes_();
+    var linha = _acharLinhaDesignacao_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'Designação não encontrada' };
+    sh.getRange(linha, COL.DESIGNACOES.PRAZO_1IDX).setValue(new Date(novoPrazoYmd + 'T00:00:00'));
+    sh.getRange(linha, COL.DESIGNACOES.STATUS_1IDX).setValue(STATUS_DESIGNACAO.ABERTA);
+    _invalidar();
+    return { ok: true };
+  });
 }
 
 function cancelarDesignacao(id) {

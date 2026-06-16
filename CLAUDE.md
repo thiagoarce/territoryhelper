@@ -236,10 +236,26 @@ Desenvolva em feature branches e merge para `main` quando os testes passarem.
 - **HTML tags**: cuidado com `<small>` fechado com `</div>` (já houve
   regressão dessa). Validar HTML manualmente nos modais novos.
 
+## Decisões de produto / escopo
+
+- **Comercial é minimal**: o filtro "Com" em Polígonos só sinaliza
+  pontos comerciais no editor. Não há fluxo dedicado de trabalho
+  comercial (sem horário próprio, sem objetivo específico, sem
+  separação no indicador de cobertura do publicador).
+  - **Próxima feature pedida**: criar "Território Comercial Especial"
+    que pega endereços comerciais de QUALQUER quadra e gera um
+    território separado, atravessando fronteiras de quadras. Modelo
+    de dados ainda não definido — talvez aba `TerritoriosEspeciais`
+    com {nome, ids_enderecos_csv (rows de Dados Brutos), publicador}.
+
 ## Próximos passos sugeridos (não obrigatórios)
 
-- Extrair JS_App.html em módulos (~2500 linhas)
-- Painel "minhas designações pendentes" pro publicador
+- **Offline-fila no publicador**: hoje `marcarDesfecho` é fire-and-
+  forget. Sem rede, toques se perdem sem aviso. Implementar fila em
+  localStorage com retry quando voltar online + indicador visual de
+  "pending sync" no card do endereço
+- **Territórios Comerciais Especiais** (ver Decisões de produto)
+- Extrair JS_App.html em módulos (~2700 linhas)
 - Notificação automática por email quando designar
 - Cleanup automático de aba `Registros` antiga (>12 meses)
 - Relatório/dashboard mostrando qualidade de cobertura por quadra
