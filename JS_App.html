@@ -293,6 +293,11 @@ window.mudarAba = function(aba) {
     lgGeralQuadras.eachLayer(function(l) {
       if (!l.metaData) return;
       var d = l.metaData;
+      // Inativa (área verde) tem visual próprio fixo — não recolorir
+      if (String(d.status || '') === 'Inativa') {
+        l.setStyle({ color:'#94a3b8', fillColor:'#cbd5e1', fillOpacity:0.25, weight:1 });
+        return;
+      }
       var cor;
       if (modo === 'status') {
         if (d.dataConclusao) {
@@ -1076,6 +1081,14 @@ window.iniciarMapaRegistro = function(qs, ops) {
               fillOpacity: op
           });
           poly.metaData = q; // necessário pro overlay de designações
+
+          // Inativa (área verde): nada de tooltip, click handler, long-press
+          // ou ícone de status. Polígono fica visível em cinza-claro mas
+          // não é interativo nem mostra label/data — não polui o registro.
+          if (isInativaQ) {
+            layerGroupRegistro.addLayer(poly);
+            return;
+          }
 
           if (!isOpt) {
               var dataFormatada = q.dataConclusao ? window.formatarDataBR(q.dataConclusao) : "Nunca feita";
@@ -1909,6 +1922,9 @@ window.confirmarAssociacao = function(layerQuadra) {
 
       if(pacote.quadras) {
         pacote.quadras.forEach(function(d) {
+          // Quadras Inativas (área verde / parque) ficam de fora da
+          // campanha — não contam, não aparecem no mapa motivacional.
+          if (String(d.status || '') === 'Inativa') return;
           let pts = window.stringParaLatLng(d.polyString);
           if(pts.length < 3) return;
 
