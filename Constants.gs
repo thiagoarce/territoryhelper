@@ -79,6 +79,28 @@ var COL = {
     ATUALIZADO: 6, NOME_IRMAO: 7, ACESSO_INT: 8, NAO_EH_PREDIO: 9
   },
 
+  // Aba "TerritoriosEspeciais" — Territórios Comerciais Especiais (TCE).
+  // Atravessam fronteiras de quadras: agrupam endereços comerciais
+  // avulsos de QUALQUER quadra em um território próprio com seu próprio
+  // ciclo de designação/conclusão. Polígono auto via convex hull dos
+  // pontos (calculado no front com Turf, persistido aqui).
+  TERRITORIOS_ESP: {
+    ID_1IDX:         1,  // A
+    NOME_1IDX:       2,  // B
+    TIPO_1IDX:       3,  // C  "comercial" (futuro: rural, telefone...)
+    ROWS_1IDX:       4,  // D  CSV de rows de Dados Brutos
+    POLYSTRING_1IDX: 5,  // E  convex hull dos pontos
+    PUBLICADOR_1IDX: 6,  // F
+    PRAZO_1IDX:      7,  // G
+    STATUS_1IDX:     8,  // H  "aberto" | "concluido" | "cancelado"
+    CRIADO_1IDX:     9,  // I
+    DATA_CONC_1IDX: 10,  // J
+    NOTAS_1IDX:     11,  // K
+    // 0-indexed
+    ID: 0, NOME: 1, TIPO: 2, ROWS: 3, POLYSTRING: 4, PUBLICADOR: 5,
+    PRAZO: 6, STATUS: 7, CRIADO: 8, DATA_CONC: 9, NOTAS: 10
+  },
+
   // Aba "PrediosAptos" — overlay per-apartamento dentro de um prédio.
   PREDIOS_APTOS: {
     ROW_1IDX:            1,  // A  linha do Dados Brutos
@@ -168,6 +190,13 @@ var STATUS_DESIGNACAO = {
   CANCELADA:  "cancelada"
 };
 
+// Status do Território Comercial Especial (aba TerritoriosEspeciais)
+var STATUS_TCE = {
+  ABERTO:    "aberto",
+  CONCLUIDO: "concluido",
+  CANCELADO: "cancelado"
+};
+
 var SHEET = {
   QUADRAS:     "Quadras",
   TERRITORIOS: "Territorios", // fallback "Territórios"
@@ -176,7 +205,8 @@ var SHEET = {
   CAMPANHA:       "Campanha",
   DESIGNACOES:    "Designacoes",
   PREDIOS:        "Predios",
-  PREDIOS_APTOS:  "PrediosAptos"
+  PREDIOS_APTOS:  "PrediosAptos",
+  TERRITORIOS_ESP: "TerritoriosEspeciais"
 };
 
 // Desfecho de visita por endereço (gravado em Registros, tipo=desfecho)

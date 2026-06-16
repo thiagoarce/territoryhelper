@@ -8,6 +8,7 @@ function doGet(e) {
   if (view === 'publico') {
     var tmplP = HtmlService.createTemplateFromFile('Publico');
     tmplP.ids = e.parameter.ids || "";
+    tmplP.te  = e.parameter.te  || "";
     return tmplP.evaluate().setTitle('Território Digital').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
   }
 
@@ -667,6 +668,8 @@ function getDadosPublicos(idsString) {
   // pro publicador novo ver memória do território). Lê Registros 1 vez.
   try {
     var ultimos = _ultimoDesfechoPorRow_();
+    var emTCE = {};
+    try { emTCE = getEnderecosEmTCE(); } catch (e) {}
     var tz = "GMT-3";
     resultado.forEach(function(q){
       (q.itens || []).forEach(function(it){
@@ -674,6 +677,14 @@ function getDadosPublicos(idsString) {
         if (u && u.dataMs) {
           it.ultimoTipo = u.tipo;
           it.ultimoDataStr = Utilities.formatDate(new Date(u.dataMs), tz, 'dd/MM/yy');
+        }
+        // Endereço já está num Território Comercial Especial?
+        // Frontend esmaece + mostra badge com aviso.
+        if (emTCE[it.row]) {
+          it.emTCE = {
+            nome: emTCE[it.row].nome,
+            publicador: emTCE[it.row].publicador
+          };
         }
       });
     });
@@ -2667,4 +2678,185 @@ function listarTerritoriosComContagem() {
   return Object.keys(mapa)
     .sort(function(a, b){ return a.localeCompare(b, 'pt-BR', { numeric: true }); })
     .map(function(n){ return { nome: n, qtd: mapa[n] }; });
+}
+
+// =================================================================
+// TERRITÓRIOS COMERCIAIS ESPECIAIS (TCE)
+// Atravessam fronteiras de quadras: agrupam endereços comerciais
+// avulsos. Não estão na hierarquia Quadras → Territórios.
+// =================================================================
+
+function ensureSheetTerritoriosEsp_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.TERRITORIOS_ESP);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.TERRITORIOS_ESP);
+  sh.appendRow([
+    'id', 'nome', 'tipo', 'rows', 'polyString',
+    'publicador', 'prazo', 'status', 'criado', 'dataConc', 'notas'
+  ]);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function _gerarIdTCE_() {
+  return 'tce_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+}
+
+function _linhaParaTCE_(r) {
+  var rows = String(r[COL.TERRITORIOS_ESP.ROWS] || '')
+    .split(',').map(function(s){ return parseInt(s.trim(), 10); })
+    .filter(function(n){ return !isNaN(n) && n > 0; });
+  return {
+    id:         String(r[COL.TERRITORIOS_ESP.ID] || ''),
+    nome:       String(r[COL.TERRITORIOS_ESP.NOME] || ''),
+    tipo:       String(r[COL.TERRITORIOS_ESP.TIPO] || 'comercial'),
+    rows:       rows,
+    polyString: String(r[COL.TERRITORIOS_ESP.POLYSTRING] || ''),
+    publicador: String(r[COL.TERRITORIOS_ESP.PUBLICADOR] || ''),
+    prazo:      r[COL.TERRITORIOS_ESP.PRAZO] ? new Date(r[COL.TERRITORIOS_ESP.PRAZO]).getTime() : 0,
+    status:     String(r[COL.TERRITORIOS_ESP.STATUS] || STATUS_TCE.ABERTO),
+    criado:     r[COL.TERRITORIOS_ESP.CRIADO] ? new Date(r[COL.TERRITORIOS_ESP.CRIADO]).getTime() : 0,
+    dataConc:   r[COL.TERRITORIOS_ESP.DATA_CONC] ? new Date(r[COL.TERRITORIOS_ESP.DATA_CONC]).getTime() : 0,
+    notas:      String(r[COL.TERRITORIOS_ESP.NOTAS] || '')
+  };
+}
+
+// Cria um TCE. payload = { nome, tipo, rows[], polyString, publicador?,
+// prazo?, notas? }. polyString é o convex hull computado no front.
+function criarTerritorioComercial(payload) {
+  if (!payload || !payload.nome) return { ok: false, erro: 'Nome obrigatório' };
+  if (!Array.isArray(payload.rows) || payload.rows.length === 0) {
+    return { ok: false, erro: 'Selecione ao menos 1 endereço' };
+  }
+  var prazoDate = null;
+  if (payload.prazo) {
+    var v = validarData_(payload.prazo);
+    if (!v.ok) return { ok: false, erro: 'Prazo inválido: ' + v.msg };
+    prazoDate = new Date(payload.prazo + 'T00:00:00');
+  }
+  return withLock_(function(){
+    var sh = ensureSheetTerritoriosEsp_();
+    var id = _gerarIdTCE_();
+    var rowsStr = payload.rows.map(function(r){ return parseInt(r, 10); })
+      .filter(function(n){ return n > 0; }).join(',');
+    sh.appendRow([
+      id,
+      sanitizar_(payload.nome),
+      sanitizar_(payload.tipo || 'comercial'),
+      rowsStr,
+      String(payload.polyString || ''),
+      sanitizar_(payload.publicador || ''),
+      prazoDate || '',
+      STATUS_TCE.ABERTO,
+      new Date(),
+      '',
+      sanitizar_(payload.notas || '')
+    ]);
+    _invalidar();
+    return { ok: true, id: id };
+  });
+}
+
+function _acharLinhaTCE_(sh, id) {
+  var ult = sh.getLastRow();
+  if (ult < 2) return -1;
+  var col = sh.getRange(2, 1, ult - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) if (String(col[i][0]) === String(id)) return i + 2;
+  return -1;
+}
+
+// Lista TCEs (com filtro opcional só dos abertos)
+function listarTerritoriosComerciais(somenteAbertos) {
+  var sh = ensureSheetTerritoriosEsp_();
+  if (sh.getLastRow() < 2) return [];
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 11).getValues();
+  return dados.map(_linhaParaTCE_).filter(function(t){
+    if (!t.id) return false;
+    if (somenteAbertos && t.status !== STATUS_TCE.ABERTO) return false;
+    return true;
+  });
+}
+
+// Mapa { row → {tceId, nome, publicador, prazo} } pra UI consultar se
+// um endereço está em algum TCE aberto. Usado pra esmaecer + badge
+// no painel do publicador residencial.
+function getEnderecosEmTCE() {
+  var tces = listarTerritoriosComerciais(true);
+  var mapa = {};
+  tces.forEach(function(t){
+    t.rows.forEach(function(row){
+      mapa[row] = { tceId: t.id, nome: t.nome, publicador: t.publicador, prazo: t.prazo };
+    });
+  });
+  return mapa;
+}
+
+// Devolve dados pra renderizar o TCE no link público (?v=publico&te=ID)
+function getDadosTCE(id) {
+  if (!id) return { ok: false, erro: 'id obrigatório' };
+  var sh = ensureSheetTerritoriosEsp_();
+  var linha = _acharLinhaTCE_(sh, id);
+  if (linha < 0) return { ok: false, erro: 'Território comercial não encontrado' };
+  var t = _linhaParaTCE_(sh.getRange(linha, 1, 1, 11).getValues()[0]);
+  if (t.status !== STATUS_TCE.ABERTO) return { ok: false, erro: 'Território comercial fechado' };
+
+  // Busca endereços nas rows
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (!sheetD) return { ok: false, erro: 'Dados Brutos não encontrada' };
+  var lastCol = sheetD.getLastColumn();
+  var ultimos = _ultimoDesfechoPorRow_();
+  var enderecos = [];
+  t.rows.forEach(function(row){
+    if (row < 2 || row > sheetD.getLastRow()) return;
+    var r = sheetD.getRange(row, 1, 1, lastCol).getValues()[0];
+    var u = ultimos[row];
+    enderecos.push({
+      row: row,
+      logradouro: String(r[COL.DADOS.LOGRADOURO] || ''),
+      numero: String(r[COL.DADOS.NUMERO] || ''),
+      complemento: String(r[COL.DADOS.COMPLEMENTO] || ''),
+      lat: r[COL.DADOS.LAT], lng: r[COL.DADOS.LNG],
+      tipo: String(r[COL.DADOS.TIPO] || ''),
+      nome: String(r[COL.DADOS.NOME_EDIF] || ''),
+      nota: String(r[COL.DADOS.NOTA] || ''),
+      ultimoTipo: u ? u.tipo : '',
+      ultimoDataStr: u && u.dataMs
+        ? Utilities.formatDate(new Date(u.dataMs), 'GMT-3', 'dd/MM/yy') : ''
+    });
+  });
+
+  return {
+    ok: true,
+    tce: {
+      id: t.id, nome: t.nome, tipo: t.tipo,
+      polyString: t.polyString, publicador: t.publicador,
+      prazo: t.prazo, status: t.status, total: enderecos.length
+    },
+    enderecos: enderecos
+  };
+}
+
+function concluirTerritorioComercial(id) {
+  return withLock_(function(){
+    var sh = ensureSheetTerritoriosEsp_();
+    var linha = _acharLinhaTCE_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'TCE não encontrado' };
+    sh.getRange(linha, COL.TERRITORIOS_ESP.STATUS_1IDX).setValue(STATUS_TCE.CONCLUIDO);
+    sh.getRange(linha, COL.TERRITORIOS_ESP.DATA_CONC_1IDX).setValue(new Date());
+    _invalidar();
+    return { ok: true };
+  });
+}
+
+function cancelarTerritorioComercial(id) {
+  return withLock_(function(){
+    var sh = ensureSheetTerritoriosEsp_();
+    var linha = _acharLinhaTCE_(sh, id);
+    if (linha < 0) return { ok: false, erro: 'TCE não encontrado' };
+    sh.getRange(linha, COL.TERRITORIOS_ESP.STATUS_1IDX).setValue(STATUS_TCE.CANCELADO);
+    _invalidar();
+    return { ok: true };
+  });
 }
