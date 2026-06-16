@@ -1237,14 +1237,19 @@ function toggleVisita(row, el) {
     function mudarStatusQuadra(qId, status) {
         var icon = status === 'Iniciado' ? '▶️' : '✅';
         if(!confirm(icon + " Marcar quadra " + qId + " como " + status.toUpperCase() + "?")) return;
-        
-        // Feedback visual imediato
-        alert("Status atualizado para: " + status);
-        
-        google.script.run.withSuccessHandler(() => {
-            // Recarrega para atualizar dados se necessário (ex: data de conclusão)
-            if(status === 'Concluído') carregarDados(); 
-        }).definirStatusQuadra(qId, status);
+        // Feedback só depois do save bem-sucedido — antes era um alert
+        // que mentia (vinha ANTES do roundtrip).
+        google.script.run
+          .withSuccessHandler(function(){
+            if (window.toast) window.toast("Status atualizado: " + status, "success");
+            else alert("Status atualizado: " + status);
+            if(status === 'Concluído') carregarDados();
+          })
+          .withFailureHandler(function(e){
+            if (window.toast) window.toast("Erro: " + (e && e.message ? e.message : e), "error");
+            else alert("Erro ao atualizar status. Tente de novo.");
+          })
+          .definirStatusQuadra(qId, status);
     }
 
     // ===== BUSCA + FILTROS =====
@@ -1317,7 +1322,17 @@ function toggleVisita(row, el) {
     function concluirQuadra(qId) {
         if(!confirm("Concluir Quadra?")) return;
         var hoje = new Date().toISOString().split('T')[0];
-        google.script.run.withSuccessHandler(() => { alert("Registrado!"); carregarDados(); }).salvarConclusaoQuadras({ ids: [qId], data: hoje, modo: 'auto' });
+        google.script.run
+          .withSuccessHandler(function(){
+            if (window.toast) window.toast("Registrado!", "success");
+            else alert("Registrado!");
+            carregarDados();
+          })
+          .withFailureHandler(function(e){
+            if (window.toast) window.toast("Erro ao registrar: " + (e && e.message ? e.message : e), "error");
+            else alert("Erro ao registrar. Verifique a conexão e tente de novo.");
+          })
+          .salvarConclusaoQuadras({ ids: [qId], data: hoje, modo: 'auto' });
     }
   </script>
 </body>

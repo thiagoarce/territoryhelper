@@ -771,12 +771,15 @@ window.carregarEditorDados = function() {
             showLoading(true, "Unindo quadras...");
             
             google.script.run
-              .withSuccessHandler(function() {
+              .withSuccessHandler(function(r) {
+                  showLoading(false);
+                  if (r && r.status === 'CONFLITO') {
+                    window.toast(r.erro || 'Conflito ao unir quadras', 'error', 6000);
+                    return;
+                  }
                   window.toast("Fusão concluída!", "success");
                   window.alternarModoSelecao(false);
-                  
-                  // FORÇA O RECARREGAMENTO TOTAL DOS DADOS
-                  (window.invalidarCacheMapa(), window.carregarEditorDados()); 
+                  (window.invalidarCacheMapa(), window.carregarEditorDados());
               })
               .withFailureHandler(function(e){
                   showLoading(false);
@@ -843,18 +846,44 @@ window.carregarEditorDados = function() {
 
   window.deletarQuadraAtual = function() {
     var id = currentEditLayer && currentEditLayer.metaData ? currentEditLayer.metaData.id : '';
-    window.confirmar({
-      titulo: 'Excluir quadra',
-      mensagem: 'A quadra ' + id + ' será removida permanentemente. Deseja continuar?',
-      perigo: true,
-      okLabel: 'Excluir'
-    }).then(function(ok){
-      if (!ok) return;
-      google.script.run
-        .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
-        .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
-        .excluirQuadra(id);
-    });
+    // Pega refs primeiro pro user saber o impacto antes de confirmar
+    google.script.run
+      .withSuccessHandler(function(refs){
+        var partes = ['A quadra <b>' + id + '</b> será removida.'];
+        if (refs && (refs.enderecos || refs.designacoesAbertas || refs.registros)) {
+          partes.push('<br><br>Isso afeta:');
+          if (refs.designacoesAbertas) partes.push('<br>• <b>' + refs.designacoesAbertas + '</b> designação(ões) aberta(s) — quadra sai delas');
+          if (refs.enderecos) partes.push('<br>• <b>' + refs.enderecos + '</b> endereço(s) ficam sem vínculo (pode revincular depois)');
+          if (refs.registros) partes.push('<br>• <b>' + refs.registros + '</b> registro(s) histórico(s) mantidos');
+        }
+        partes.push('<br><br>Deseja continuar?');
+        window.confirmar({
+          titulo: 'Excluir quadra ' + id,
+          mensagem: partes.join(''),
+          perigo: true,
+          okLabel: 'Excluir'
+        }).then(function(ok){
+          if (!ok) return;
+          google.script.run
+            .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
+            .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
+            .excluirQuadra(id);
+        });
+      })
+      .withFailureHandler(function(){
+        // Fallback: confirmação simples sem detalhes
+        window.confirmar({
+          titulo: 'Excluir quadra', mensagem: 'A quadra ' + id + ' será removida. Continuar?',
+          perigo: true, okLabel: 'Excluir'
+        }).then(function(ok){
+          if (!ok) return;
+          google.script.run
+            .withSuccessHandler(function(){ modalEdicao.hide(); window.invalidarCacheMapa(); window.carregarEditorDados(); window.toast('Quadra excluída', 'success'); })
+            .withFailureHandler(function(e){ window.toast('Erro ao excluir: ' + (e && e.message ? e.message : e), 'error', 6000); })
+            .excluirQuadra(id);
+        });
+      })
+      ._contarRefsQuadra_(id);
   };
   window.deletarTerritorioAtual = function() {
     var nome = editingTerritoryData && editingTerritoryData.data ? editingTerritoryData.data.name : '';
@@ -1154,13 +1183,18 @@ window.abrirHistoricoQuadra = function(id) {
           conteudo.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-inbox" style="font-size:2rem; opacity:.4"></i><div class="mt-2">Sem histórico ainda.</div></div>';
           return;
         }
+        // Reconhece tipos novos (Pacote F + desfeito + auto/manual) pra
+        // o histórico individual de quadra mostrar ícones consistentes.
         var iconePorTipo = function(tipo) {
           var t = (tipo || '').toLowerCase();
-          if (t.indexOf('conclu') > -1) return { ico: 'fa-circle-check', cor: 'text-success' };
-          if (t.indexOf('iniciado') > -1) return { ico: 'fa-circle-play', cor: 'text-primary' };
-          if (t.indexOf('design') > -1) return { ico: 'fa-user-tie', cor: 'text-info' };
-          if (t.indexOf('historico') > -1 || t.indexOf('apenas') > -1) return { ico: 'fa-clock-rotate-left', cor: 'text-muted' };
-          return { ico: 'fa-circle-dot', cor: 'text-secondary' };
+          if (t === 'desfeito')               return { ico: 'fa-rotate-left',      cor: 'text-warning', label: 'Desfeita' };
+          if (t === 'auto' || t === 'manual') return { ico: 'fa-circle-check',     cor: 'text-success', label: 'Concluída' };
+          if (t.indexOf('conclu') > -1)       return { ico: 'fa-circle-check',     cor: 'text-success', label: 'Concluída' };
+          if (t.indexOf('iniciado') > -1)     return { ico: 'fa-circle-play',      cor: 'text-primary', label: 'Iniciada' };
+          if (t.indexOf('design') > -1)       return { ico: 'fa-user-tie',         cor: 'text-info',    label: 'Designada' };
+          if (t === 'historico' || t === 'apenas_historico')
+                                              return { ico: 'fa-clock-rotate-left', cor: 'text-muted',   label: 'Histórico' };
+          return { ico: 'fa-circle-dot', cor: 'text-secondary', label: tipo || 'Evento' };
         };
         var html = '<div class="list-group list-group-flush">';
         eventos.forEach(function(ev) {
@@ -1169,8 +1203,8 @@ window.abrirHistoricoQuadra = function(id) {
           html += '<div class="list-group-item d-flex align-items-center gap-3">' +
                     '<i class="fa-solid ' + ic.ico + ' ' + ic.cor + '" style="font-size:1.3rem"></i>' +
                     '<div class="flex-grow-1">' +
-                      '<div class="fw-bold">' + (ev.tipo || 'Evento') + '</div>' +
-                      '<div class="small text-muted">' + dataExibida + ' • registrado em ' + ev.timestamp + '</div>' +
+                      '<div class="fw-bold">' + _escHtml(ic.label) + '</div>' +
+                      '<div class="small text-muted">' + _escHtml(dataExibida) + ' • registrado em ' + _escHtml(ev.timestamp) + '</div>' +
                     '</div>' +
                   '</div>';
         });
@@ -2323,6 +2357,21 @@ window.confirmarAssociacao = function(layerQuadra) {
   var _renomearStylesOriginais = new Map(); // poly → style original
 
   window.abrirRenomearQuadras = function() {
+    // Reset modos que poderiam coexistir: seleção múltipla, faces
+    // selecionadas e edição de território devem sair antes do renomear
+    // assumir o click handler. Sem isso, click em quadra poderia rotear
+    // pro modo errado.
+    if (typeof isSelectionMode !== 'undefined' && isSelectionMode) {
+      window.alternarModoSelecao && window.alternarModoSelecao(false);
+    }
+    if (typeof facesSelecionadas !== 'undefined' && facesSelecionadas.size > 0) {
+      facesSelecionadas.clear();
+      window.atualizarModoVinculo && window.atualizarModoVinculo();
+    }
+    if (typeof isEditingTerritory !== 'undefined' && isEditingTerritory) {
+      window.cancelarEdicaoTerritorio && window.cancelarEdicaoTerritorio();
+    }
+
     var sel = document.getElementById('renomearTerritorio');
     sel.innerHTML = '<option value="">Carregando...</option>';
     document.getElementById('renomearPrefixo').value = '';
