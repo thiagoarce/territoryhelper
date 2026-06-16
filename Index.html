@@ -129,6 +129,22 @@
       <div class="d-flex gap-2 w-100" id="barraBotoesPadrao">
         <button id="btnSalvarTerritorio" class="btn btn-sm btn-success flex-fill disabled" onclick="window.abrirModalSalvarTerritorio()">Território</button>
         <button id="btnJuntarQuadras" class="btn btn-sm btn-primary flex-fill disabled" onclick="window.iniciarFusaoQuadras()">Juntar</button>
+        <button class="btn btn-sm btn-warning flex-fill" onclick="window.iniciarCriacaoTCE()" title="Criar Território Comercial Especial — selecione endereços de qualquer quadra">
+          <i class="fa-solid fa-store"></i> TCE
+        </button>
+      </div>
+      <!-- Barra ativa só quando criando TCE -->
+      <div id="barraTCE" class="d-none w-100 mt-2">
+        <div class="alert alert-warning py-2 px-2 mb-1 small">
+          <i class="fa-solid fa-store me-1"></i>
+          <b id="lblTCESelecionados">0</b> endereço(s) — toque nos pontos comerciais (laranjas)
+          <div class="d-flex gap-1 mt-1">
+            <button class="btn btn-sm btn-success flex-fill" id="btnConfirmarTCE" onclick="window.abrirModalCriarTCE()" disabled>
+              <i class="fa-solid fa-check"></i> Continuar
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="window.cancelarCriacaoTCE()">Cancelar</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="map-wrapper position-relative">
@@ -285,6 +301,43 @@
           <div class="d-grid gap-2">
             <button class="btn btn-primary" onclick="window.resolverConflito('substituir')">Substituir</button><button class="btn btn-outline-secondary" onclick="window.resolverConflito('apenas_historico')">Apenas Histórico</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Criar Território Comercial Especial -->
+  <div class="modal fade" id="modalCriarTCE" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning">
+          <h5 class="modal-title"><i class="fa-solid fa-store me-2"></i>Novo Território Comercial</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted mb-2">Você vai criar um TCE com <b id="tceQtd">0</b> endereço(s). Esses endereços ficam esmaecidos no território residencial — o publicador residencial vê um aviso.</p>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Nome do território comercial</label>
+            <input type="text" class="form-control" id="tceNome" placeholder="Ex: Av. Epitácio Pessoa">
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-7">
+              <label class="form-label small fw-bold">Publicador (opcional)</label>
+              <input type="text" class="form-control form-control-sm" id="tcePublicador" placeholder="Nome">
+            </div>
+            <div class="col-5">
+              <label class="form-label small fw-bold">Prazo</label>
+              <input type="date" class="form-control form-control-sm" id="tcePrazo">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold">Notas (opcional)</label>
+            <textarea class="form-control form-control-sm" id="tceNotas" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-warning" onclick="window.salvarTCE()"><i class="fa-solid fa-check"></i> Criar</button>
         </div>
       </div>
     </div>

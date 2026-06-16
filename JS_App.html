@@ -1472,6 +1472,12 @@ window.criarMarkerFace = function(f, corBase) {
       m.on('click', function(e) {
           L.DomEvent.stopPropagation(e);
 
+          // Modo criar TCE: handler dedicado
+          if (window._modoCriarTCEAtivo) {
+            window.toggleEnderecoNoTCE(f, this);
+            return;
+          }
+
           if(facesSelecionadas.has(f.key)) {
               facesSelecionadas.delete(f.key);
               this.setStyle({
@@ -2432,6 +2438,122 @@ window.confirmarAssociacao = function(layerQuadra) {
                '</div>';
       }).join('');
   }
+
+  // ======================================================
+  // TERRITÓRIO COMERCIAL ESPECIAL — criação interativa
+  // User clica nas faces comerciais (laranjas) pra adicionar ao TCE.
+  // Faces residenciais ficam inertes no clique enquanto modo ativo.
+  // ======================================================
+  var _tceRowsSelecionadas = new Set();   // rows de Dados Brutos
+  var _tceFacesSelecionadas = new Set();  // chaves de face pra render
+
+  window.iniciarCriacaoTCE = function() {
+    // Reseta outros modos
+    if (typeof isSelectionMode !== 'undefined' && isSelectionMode) {
+      window.alternarModoSelecao && window.alternarModoSelecao(false);
+    }
+    if (typeof facesSelecionadas !== 'undefined' && facesSelecionadas.size > 0) {
+      facesSelecionadas.clear();
+      window.atualizarModoVinculo && window.atualizarModoVinculo();
+    }
+    _tceRowsSelecionadas.clear();
+    _tceFacesSelecionadas.clear();
+    window._modoCriarTCEAtivo = true;
+    document.getElementById('barraTCE').classList.remove('d-none');
+    document.getElementById('barraBotoesPadrao').classList.add('d-none');
+    document.getElementById('lblTCESelecionados').innerText = '0';
+    document.getElementById('btnConfirmarTCE').disabled = true;
+    // Força filtros pra mostrar só comerciais sem vínculo + com vínculo
+    var tDom = document.getElementById('toggleFacesRes');
+    var tCom = document.getElementById('toggleFacesCom');
+    if (tDom) tDom.checked = false;
+    if (tCom) tCom.checked = true;
+    window.renderizarFaces && window.renderizarFaces();
+    window.toast && window.toast('Toque nos pontos COMERCIAIS pra adicionar ao território', 'info');
+  };
+
+  window.cancelarCriacaoTCE = function() {
+    window._modoCriarTCEAtivo = false;
+    _tceRowsSelecionadas.clear();
+    _tceFacesSelecionadas.clear();
+    document.getElementById('barraTCE').classList.add('d-none');
+    document.getElementById('barraBotoesPadrao').classList.remove('d-none');
+    window.renderizarFaces && window.renderizarFaces();
+  };
+
+  // Chamado pelo marker click handler quando _modoCriarTCEAtivo
+  window.toggleEnderecoNoTCE = function(face, marker) {
+    // Só comerciais entram no TCE
+    var isCom = (dadosFacesGlobal.comercial || []).some(function(f){ return f.key === face.key; });
+    if (!isCom) {
+      window.toast && window.toast('Só endereços COMERCIAIS entram no TCE', 'warn');
+      return;
+    }
+    if (_tceFacesSelecionadas.has(face.key)) {
+      _tceFacesSelecionadas.delete(face.key);
+      (face.rows || []).forEach(function(r){ _tceRowsSelecionadas.delete(r); });
+      marker.setStyle({ fillColor: marker.corOriginal, color: marker.bordaOriginal, weight: marker.pesoBordaOriginal, radius: 8, fillOpacity: marker.opacidadeOriginal });
+    } else {
+      _tceFacesSelecionadas.add(face.key);
+      (face.rows || []).forEach(function(r){ _tceRowsSelecionadas.add(r); });
+      marker.setStyle({ fillColor: '#16a34a', color: '#fff', weight: 2, radius: 11, fillOpacity: 1 });
+    }
+    document.getElementById('lblTCESelecionados').innerText = _tceRowsSelecionadas.size;
+    document.getElementById('btnConfirmarTCE').disabled = _tceRowsSelecionadas.size === 0;
+  };
+
+  window.abrirModalCriarTCE = function() {
+    if (_tceRowsSelecionadas.size === 0) return;
+    document.getElementById('tceQtd').innerText = _tceRowsSelecionadas.size;
+    document.getElementById('tceNome').value = '';
+    document.getElementById('tcePublicador').value = '';
+    document.getElementById('tcePrazo').value = '';
+    document.getElementById('tceNotas').value = '';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalCriarTCE')).show();
+  };
+
+  window.salvarTCE = function() {
+    var nome = document.getElementById('tceNome').value.trim();
+    if (!nome) { window.toast && window.toast('Dá um nome ao território', 'warn'); return; }
+    var rows = Array.from(_tceRowsSelecionadas);
+    if (rows.length === 0) return;
+
+    // Calcula convex hull dos pontos via Turf
+    var pontos = [];
+    (dadosFacesGlobal.comercial || []).forEach(function(f){
+      if (_tceFacesSelecionadas.has(f.key)) pontos.push([f.lng, f.lat]);
+    });
+    var polyString = '';
+    if (typeof turf !== 'undefined' && pontos.length >= 3) {
+      try {
+        var fc = turf.featureCollection(pontos.map(function(p){ return turf.point(p); }));
+        var hull = turf.convex(fc);
+        if (hull && hull.geometry && hull.geometry.coordinates && hull.geometry.coordinates[0]) {
+          polyString = hull.geometry.coordinates[0].map(function(c){ return c[1] + ',' + c[0]; }).join(' | ');
+        }
+      } catch (e) { /* fallback: sem polígono */ }
+    }
+
+    var payload = {
+      nome: nome,
+      tipo: 'comercial',
+      rows: rows,
+      polyString: polyString,
+      publicador: document.getElementById('tcePublicador').value.trim(),
+      prazo: document.getElementById('tcePrazo').value || '',
+      notas: document.getElementById('tceNotas').value.trim()
+    };
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); return; }
+        bootstrap.Modal.getInstance(document.getElementById('modalCriarTCE')).hide();
+        window.cancelarCriacaoTCE();
+        window.toast && window.toast('TCE criado!', 'success');
+        window.invalidarCacheMapa && window.invalidarCacheMapa();
+      })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message || e), 'error'); })
+      .criarTerritorioComercial(payload);
+  };
 
   // ======================================================
   // RENOMEAR QUADRAS — modo interativo:
