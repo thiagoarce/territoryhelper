@@ -935,8 +935,47 @@ window.converterGeoJsonParaString = function(geometry) {
 };
 
   // UI Helpers
-  window.abrirModalEdicao=function(l){ currentEditLayer=l; document.getElementById('editId').value=l.metaData.id; document.getElementById('editOriginalId').value=l.metaData.id; document.getElementById('editTerritory').value=l.metaData.territory; document.getElementById('editColor').value=l.metaData.color; modalEdicao.show(); };
-  window.salvarQuadraAtual=function(){ var poly = window.latLngsToString(currentEditLayer.getLatLngs()); modalEdicao.hide(); showLoading(true); google.script.run.withSuccessHandler(() => { window.toast("Salvo!", "success"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarEdicaoQuadra({ idOriginal:document.getElementById('editOriginalId').value, idNovo:document.getElementById('editId').value, territory:document.getElementById('editTerritory').value, color:document.getElementById('editColor').value, polyString:poly }); };
+  window.abrirModalEdicao=function(l){
+    currentEditLayer=l;
+    document.getElementById('editId').value=l.metaData.id;
+    document.getElementById('editOriginalId').value=l.metaData.id;
+    document.getElementById('editTerritory').value=l.metaData.territory;
+    document.getElementById('editColor').value=l.metaData.color;
+    // Estado: "Inativa" se status atual = Inativa, senão "Pendente" (default ativa)
+    var st = String(l.metaData.status || 'Pendente');
+    var radioInat = document.getElementById('editStatusInativa');
+    var radioPend = document.getElementById('editStatusPendente');
+    if (radioInat && radioPend) {
+      radioInat.checked = (st === 'Inativa');
+      radioPend.checked = (st !== 'Inativa');
+    }
+    modalEdicao.show();
+  };
+  window.salvarQuadraAtual=function(){
+    var poly = window.latLngsToString(currentEditLayer.getLatLngs());
+    var radioInat = document.getElementById('editStatusInativa');
+    var statusEscolhido = radioInat && radioInat.checked ? 'Inativa' : null;
+    modalEdicao.hide();
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(){
+        window.toast("Salvo!", "success");
+        window.invalidarCacheMapa();
+        window.carregarEditorDados();
+      })
+      .withFailureHandler(function(e){
+        showLoading(false);
+        window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000);
+      })
+      .salvarEdicaoQuadra({
+        idOriginal: document.getElementById('editOriginalId').value,
+        idNovo: document.getElementById('editId').value,
+        territory: document.getElementById('editTerritory').value,
+        color: document.getElementById('editColor').value,
+        polyString: poly,
+        status: statusEscolhido // null = não muda o status atual (pendente/concluído)
+      });
+  };
   window.abrirModalSalvarTerritorio=function(){ document.getElementById('lblCountTerritorio').innerText=selectedQuadras.length; modalNovoTerritorio.show(); };
 
   window.confirmarSalvarTerritorio = function() {
@@ -1011,11 +1050,14 @@ window.iniciarMapaRegistro = function(qs, ops) {
       qs.forEach(function(q) {
           var pts = window.stringParaLatLng(q.polyString);
           if (pts.length < 3) return;
-          
+
+          var isInativaQ = String(q.status || '') === 'Inativa';
           var isOpt = ops.has(q.territory);
-          var cor = isOpt ? '#eeeeee' : q.color;
-          var op = isOpt ? 0.1 : 0.5;
-          
+          // Inativas: cinza-claro neutro. Optional: muito apagado.
+          // Pendente/Concluído: cor do território.
+          var cor = isInativaQ ? '#cbd5e1' : (isOpt ? '#eeeeee' : q.color);
+          var op = isInativaQ ? 0.25 : (isOpt ? 0.1 : 0.5);
+
           var poly = L.polygon(pts, {
               color: cor,
               weight: 1,
@@ -1040,6 +1082,12 @@ window.iniciarMapaRegistro = function(qs, ops) {
               poly.on('click', function() {
                   var id = q.id;
                   var jaSelecionada = registroSelecionados.has(id);
+                  // Quadras Inativas (área verde): clique não seleciona —
+                  // pra mudar status, vai pelo Editor (aba Polígonos).
+                  if (isInativaQ) {
+                    window.toast && window.toast('Quadra inativa — abra o Editor pra reativar', 'info', 4000);
+                    return;
+                  }
                   // Avisa se está prestes a marcar/selecionar uma quadra
                   // com designação aberta — evita o servo concluir/redesignar
                   // por engano em cima do trabalho do publicador.
@@ -1669,14 +1717,23 @@ window.confirmarAssociacao = function(layerQuadra) {
           pacote.quadras.forEach(function(d) {
              var pts = window.stringParaLatLng(d.polyString);
              if(pts.length >= 3) {
-                var poly = L.polygon(pts, {color: '#666', fillColor: d.color, weight: 1, fillOpacity: 0.6});
-                poly.metaData = d; // necessário para gerar link público/dirigente
+                // Quadras Inativas (área verde) — cinza-claro neutro, sem
+                // label/tooltip de número, não-interativas pra seleção.
+                var isInativa = String(d.status || '') === 'Inativa';
+                var corPoly = isInativa ? '#cbd5e1' : d.color;
+                var weightPoly = isInativa ? 1 : 1;
+                var fillOpPoly = isInativa ? 0.25 : 0.6;
+                var poly = L.polygon(pts, {color: isInativa ? '#94a3b8' : '#666', fillColor: corPoly, weight: weightPoly, fillOpacity: fillOpPoly});
+                poly.metaData = d;
                 poly.on('click', function(e) {
                    var id = d.id;
                    var jaSelecionada = shareSelecionados.has(id);
-                   // Avisa se está prestes a SELECIONAR uma quadra que já
-                   // tem designação pessoal aberta — evita redesignar
-                   // sobre o trabalho de outro publicador.
+                   // Inativa (área verde) — clique abre a edição em vez
+                   // de selecionar (não faz sentido designar parque)
+                   if (isInativa) {
+                     window.toast && window.toast('Quadra inativa — abra o editor pra reativar', 'info', 4000);
+                     return;
+                   }
                    if (!jaSelecionada) {
                      var ja = window._quadrasDesignadasCache || {};
                      if (ja[id]) {

@@ -372,6 +372,20 @@ function salvarEdicaoQuadra(dados) {
       sheet.getRange(row, COL.QUADRAS.COLOR_1IDX).setValue(cor);
       sheet.getRange(row, COL.QUADRAS.TERRITORIO_1IDX).setValue(sanitizar_(dados.territory));
 
+      // Status: editor pode marcar como Inativa (área verde/parque).
+      // null preserva o status atual (não força Pendente). Voltar de
+      // Inativa pra ativa usa o radio "Ativa" que envia "Pendente".
+      if (dados.status === STATUS.INATIVA) {
+        sheet.getRange(row, COL.QUADRAS.STATUS_1IDX).setValue(STATUS.INATIVA);
+        sheet.getRange(row, COL.QUADRAS.DATA_CONC_1IDX).setValue(''); // limpa data
+      } else if (dados.status === STATUS.PENDENTE) {
+        // Saiu de Inativa pra ativa — só restaura Pendente se estava Inativa
+        var stAtual = String(data[row - 1][COL.QUADRAS.STATUS] || '');
+        if (stAtual === STATUS.INATIVA) {
+          sheet.getRange(row, COL.QUADRAS.STATUS_1IDX).setValue(STATUS.PENDENTE);
+        }
+      }
+
       // Cascata: se o ID mudou, propaga pras outras abas pra não deixar
       // endereços/designações/registros órfãos referenciando o id antigo.
       if (idOriginal && idOriginal !== idNovo) {
@@ -579,13 +593,15 @@ function getDadosPublicos(idsString) {
 
   if (!sheet || !idsString) return [];
 
-  // 1. Prepara Mapa de Dados das Quadras (Polígono e Data)
+  // 1. Prepara Mapa de Dados das Quadras (Polígono e Data).
+  // Inativas (área verde) NÃO entram — mesmo se o servo passou o id
+  // no link, o publicador não vê elas.
   const mapQuadras = {};
   if (sheetQ) {
     const dataQ = sheetQ.getDataRange().getValues();
-    // Pula cabeçalho
     for (let i = 1; i < dataQ.length; i++) {
       let id = String(dataQ[i][0]).trim();
+      if (String(dataQ[i][7] || '') === STATUS.INATIVA) continue;
       mapQuadras[id] = {
         polyString: dataQ[i][4],       // Col E: Polígono
         ultimaData: dataQ[i][8]        // Col I: Data Conclusão
@@ -1053,6 +1069,9 @@ function getDadosCampanhaPublico() {
     data.forEach(function (r) {
       var id = String(r[0] || "").trim();
       if (!id) return;
+      // Quadras Inativas (área verde / parque) ficam de FORA da campanha:
+      // não contam, não aparecem no mapa motivacional.
+      if (String(r[7] || '') === STATUS.INATIVA) return;
       var poly = String(r[4] || "");
       var color = String(r[5] || "#3388ff");
       var territory = String(r[6] || "");
@@ -1352,6 +1371,8 @@ function getDadosDashboard() {
     dataQ.forEach(function(r) {
       var id = String(r[COL.QUADRAS.ID] || '').trim();
       if (!id) return;
+      // Quadras Inativas (área verde) ficam de fora do dashboard
+      if (String(r[COL.QUADRAS.STATUS] || '') === STATUS.INATIVA) return;
       totalQuadras++;
       var terr = String(r[COL.QUADRAS.TERRITORIO] || 'Sem território');
       if (!porTerritorio[terr]) porTerritorio[terr] = { total: 0, completas: 0 };

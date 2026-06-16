@@ -192,6 +192,18 @@
             <div class="mb-3"><label>ID</label><input type="text" class="form-control" id="editId"></div>
             <div class="mb-3"><label>Território</label><input type="text" class="form-control" id="editTerritory"></div>
             <div class="mb-3"><label>Cor</label><input type="color" class="form-control w-100" id="editColor"></div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Estado da quadra</label>
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="editStatus" id="editStatusPendente" value="Pendente">
+                <label class="btn btn-outline-secondary" for="editStatusPendente">Ativa</label>
+                <input type="radio" class="btn-check" name="editStatus" id="editStatusInativa" value="Inativa">
+                <label class="btn btn-outline-warning" for="editStatusInativa">
+                  <i class="fa-solid fa-tree me-1"></i>Inativa
+                </label>
+              </div>
+              <div class="form-text small">Marque como <b>Inativa</b> pra áreas verdes, parques ou quadras sem trabalho. Não conta na campanha nem no ranking, não aparece pro publicador.</div>
+            </div>
             <button type="button" class="btn btn-outline-primary w-100" id="btnToggleVertex" onclick="window.ativarEdicaoVertices()">Editar Vértices</button>
           </form>
         </div>
