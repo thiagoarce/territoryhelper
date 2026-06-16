@@ -294,6 +294,19 @@
     .aviso-tce { font-size: .72rem; color: #92400e; background: #fef3c7;
       border-left: 3px solid #f59e0b; padding: 5px 8px; border-radius: 4px; }
 
+    /* ===== Tema escuro — mesma chave th_tema do Index ===== */
+    body.tema-escuro { background-color:#1a1d20; color:#e8eef5; }
+    body.tema-escuro .bg-white,
+    body.tema-escuro .quadra-card,
+    body.tema-escuro .box-cobertura,
+    body.tema-escuro .address-item { background-color:#2a2f33 !important; color:#e8eef5; }
+    body.tema-escuro .text-muted, body.tema-escuro .small.text-muted { color:#95a4b3 !important; }
+    body.tema-escuro .text-dark { color:#e8eef5 !important; }
+    body.tema-escuro .form-control, body.tema-escuro .form-select {
+      background-color:#1a1d20; color:#e8eef5; border-color:#3a4047; }
+    body.tema-escuro .input-group-text { background-color:#1a1d20; color:#e8eef5; border-color:#3a4047; }
+    body.tema-escuro .btn-desf { background:#1a1d20; border-color:#3a4047; color:#6c7884; }
+
     /* Botões Flutuantes */
     .btn-float-add {
       position: fixed;
@@ -484,6 +497,12 @@
   </div>
 
   <script>
+    // Aplica tema escuro salvo (compartilhado com Index via localStorage)
+    try {
+      var temaSalvo = localStorage.getItem('th_tema');
+      if (temaSalvo === 'escuro') document.body.classList.add('tema-escuro');
+    } catch(e) {}
+
     var dadosGerais = [];
     var contextoPolys = [];
     var infoTCE = null; // se ?te=ID, recebe { id, nome, publicador, total, polyString }

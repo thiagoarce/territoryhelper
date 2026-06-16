@@ -46,10 +46,12 @@
     .apto-titulo { font-weight:700; font-size:1.05rem; }
     .apto-anterior { font-size:.7rem; color:#6b7280; }
     .acoes { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-    .acao-btn { flex:1; min-width:84px; padding:8px 10px; border-radius:10px; border:1.5px solid #e5e7eb;
+    .acao-btn { flex:1; min-width:84px; padding:12px 10px; border-radius:10px; border:1.5px solid #e5e7eb;
       background:#fff; font-size:.82rem; font-weight:600; color:#374151; cursor:pointer; display:flex;
-      align-items:center; justify-content:center; gap:5px; transition: all 0.15s; flex-direction:column;}
-    .acao-btn i { font-size:0.95rem; }
+      align-items:center; justify-content:center; gap:5px; transition: all 0.15s; flex-direction:column;
+      min-height:54px; } /* min-height pra atingir HIG mobile 44+px */
+    .acao-btn:active { transform: scale(0.96); }
+    .acao-btn i { font-size:1.05rem; }
     .acao-btn .data { font-size:.65rem; opacity:0.7; }
     /* Escrita = AZUL (carta pronta) */
     .acao-btn.feito.escrita { background:#dbeafe; border-color:#2563eb; color:#1e40af; }
@@ -59,6 +61,12 @@
     .acao-btn.feito.desocupado { background:#f3f4f6; border-color:#9ca3af; color:#6b7280; }
     /* Não escrever = VERMELHO */
     .acao-btn.feito.naoEscrever { background:#fee2e2; border-color:#dc2626; color:#991b1b; }
+    /* ===== Tema escuro — sincronizado com Index via localStorage ===== */
+    body.tema-escuro { background-color:#1a1d20; color:#e8eef5; }
+    body.tema-escuro .predio-card, body.tema-escuro .apto-card { background-color:#2a2f33; color:#e8eef5; }
+    body.tema-escuro .filtro { background-color:#2a2f33; border-color:#3a4047; }
+    body.tema-escuro .acao-btn { background:#1a1d20; border-color:#3a4047; color:#9ca3af; }
+    body.tema-escuro .end, body.tema-escuro .label, body.tema-escuro .vazio { color:#95a4b3 !important; }
 
     .resumo { padding:12px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
     .resumo .numero { font-size:1.6rem; font-weight:800; color:#16a34a; }
@@ -95,6 +103,7 @@
   </div>
 
   <script>
+    try { if (localStorage.getItem('th_tema') === 'escuro') document.body.classList.add('tema-escuro'); } catch(e) {}
     var modoPredio = false;
     var chavePredio = '';
     var dados = [];

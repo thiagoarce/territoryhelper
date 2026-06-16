@@ -252,3 +252,78 @@ Se achou um bug ou tem ideia de melhoria, anota e fala com quem mantém o app. P
 - [`CLAUDE.md`](../CLAUDE.md) — visão técnica completa
 - [`docs/clasp-setup.md`](clasp-setup.md) — como funciona o deploy automático
 - [`README.md`](../README.md) — visão geral do projeto
+
+---
+
+# Adendos
+
+## Quadras "Inativas" (área verde/parque)
+
+No editor (aba Polígonos → clica numa quadra), o modal agora tem o campo **Estado da quadra**: **Ativa / Inativa**.
+
+- **Inativa** = parques, áreas verdes, quadras sem trabalho real
+- Quadras inativas **não entram na contagem** da campanha, não aparecem no ranking, e o publicador NÃO vê endereços delas mesmo se for incluída no link
+- No mapa ficam em **cinza claro neutro** sem rótulo nem interação
+- Voltar a Ativa = mesmo lugar, troca o radio
+
+## Designações ativas (Território Pessoal)
+
+Botão **🔒 Designações** no topo da Visão Geral mostra todas. Badge vermelho = vencidas.
+
+Cada card abre menu rápido:
+- **Concluir todas** — marca as quadras do publicador como concluídas hoje
+- **+30 dias** — estende prazo
+- **Ver no mapa** — fitBounds nas quadras
+- **X** — cancela designação (libera as quadras)
+
+Avisos no header da Visão Geral: alerta amarelo se houver vencidas.
+
+## Território Comercial Especial (TCE)
+
+Aba Polígonos → botão **🏪 TCE** (amarelo).
+
+1. Modo ativa, filtra mapa pra mostrar só pontos comerciais
+2. Clica nos pontos comerciais na ordem que quiser
+3. Botão "Continuar" abre modal pedindo nome, publicador, prazo
+4. Polígono auto via convex hull dos pontos
+
+Lista geral em **🏪 TCEs** (header da Visão Geral). Switch "Concluídos" mostra histórico.
+
+Cada TCE concluído tem:
+- **Reabrir** (se foi por engano) — volta o mesmo TCE ao status ativo
+- **Reutilizar** — cria NOVO TCE com mesmos endereços, pra novo ciclo. Preserva o antigo como histórico
+
+Endereço em TCE aberto fica **esmaecido com aviso amarelo** no painel residencial: "🏪 Em território comercial (Fulano), mas pregue se tiver uma boa oportunidade." Publicador residencial decide se aborda.
+
+Link público específico do TCE: `?v=cartas&p=` (✗ errado) — `?v=publico&te=ID` (✓ correto).
+
+## Cobertura visual no publicador (Pacote F)
+
+Em cada endereço, 3 botões mutex grandes (44×44):
+- 🚪 **cinza** — chamei, não atendeu
+- 📞 **amarelo** — atendeu, sem palestra
+- ✓ **verde** — conversou
+
+Plus 1 independente:
+- ✉ **laranja** — carta entregue
+
+No topo: card mostra "X de Y endereços alcançados" com breakdown. Sem vermelho — não culpabiliza.
+
+Endereço com atividade prévia (de outro publicador) tem badge "antes" com ícone e data. **Memória do território** — chega informado.
+
+## Conclusão e desfazer
+
+Aba Registro → marca como concluída.
+
+Pra desfazer (admin) → toca na quadra concluída → botão **Desfazer**. Restaura a data anterior do histórico (não força Pendente se já tinha conclusão antes).
+
+## Renomear quadras em massa (interativo)
+
+Aba Polígonos → botão **🔤 Renomear**.
+
+1. Escolhe território + prefixo (ex: "1")
+2. Quadras do território ficam laranjas no mapa
+3. Clica nelas na ordem desejada → vão recebendo 1A, 1B, 1C…
+4. Tooltip muda em tempo real
+5. Confirmar só habilita quando todas estão atribuídas
+6. Atualiza em cascata: Quadras, Dados Brutos, Territórios, Designações, Registros
