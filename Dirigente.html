@@ -1062,11 +1062,13 @@
         if (layerQuadras) layerQuadras.bringToFront();
       }
 
-      // Garante que o mapa esteja enquadrado nas quadras designadas antes
-      // de capturar (corrige o problema de quadras ficarem fora do mapa)
+      // Enquadra apertado nas designadas. Padding pequeno + maxZoom alto
+      // = zoom mais próximo possível mantendo todas visíveis.
       if (layerQuadras && layerQuadras.getBounds().isValid()) {
         map.invalidateSize();
-        map.fitBounds(layerQuadras.getBounds(), { padding: [50, 50], animate: false });
+        map.fitBounds(layerQuadras.getBounds(), {
+          padding: [10, 10], maxZoom: 19, animate: false
+        });
       }
 
       // Aguarda TODOS os tiles do basemap carregarem antes de capturar.
