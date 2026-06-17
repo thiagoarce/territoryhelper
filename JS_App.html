@@ -2966,6 +2966,91 @@ window.confirmarAssociacao = function(layerQuadra) {
     }, 300);
   };
 
+  // Lista de ignorados — carrega sob demanda quando o collapse abre
+  window.carregarAuditIgnorados = function() {
+    var box = document.getElementById('auditListaIgnorados');
+    var collapse = document.getElementById('auditIgnoradosBox');
+    // Se está abrindo (vai expandir agora), carrega. Se está fechando, não precisa.
+    if (collapse.classList.contains('show')) return; // já aberto, vai fechar — ignora
+    box.innerHTML = '<div class="text-muted">Carregando...</div>';
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) {
+          box.innerHTML = '<div class="text-danger">Erro: ' + escapeHtml(r && r.erro || '?') + '</div>';
+          return;
+        }
+        renderAuditIgnorados(r.multi || [], r.vazia || []);
+      })
+      .withFailureHandler(function(e){
+        box.innerHTML = '<div class="text-danger">Erro: ' + escapeHtml(e && e.message || e) + '</div>';
+      })
+      .listarAuditoriaIgnoradas();
+  };
+
+  function renderAuditIgnorados(multi, vazia) {
+    var box = document.getElementById('auditListaIgnorados');
+    if (multi.length === 0 && vazia.length === 0) {
+      box.innerHTML = '<div class="text-muted"><i class="fa-solid fa-check"></i> Nenhuma quadra marcada como OK.</div>';
+      return;
+    }
+    window._auditPolys = window._auditPolys || {};
+    function cardHtml(q, tipo) {
+      window._auditPolys[q.id] = q.polyString;
+      var legenda = tipo === 'multi' ? 'múltiplos clusters' : 'sem endereços';
+      var avisoExclui = q.existe ? '' : ' <span class="badge bg-secondary">quadra removida</span>';
+      return '<div class="card mb-2 border-secondary">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="fw-bold">Quadra ' + escapeHtml(q.id) + ' <span class="text-muted small fw-normal">(' + legenda + ')</span>' + avisoExclui + '</div>' +
+                 '<div class="d-flex gap-2 mt-2">' +
+                   (q.existe ? '<button class="btn btn-sm btn-outline-info btn-audit-mapa" data-id="' + escapeHtml(q.id) + '"><i class="fa-solid fa-map-location-dot me-1"></i>Ver no mapa</button>' : '') +
+                   '<button class="btn btn-sm btn-warning btn-audit-reativar ms-auto" data-id="' + escapeHtml(q.id) + '" data-tipo="' + tipo + '"><i class="fa-solid fa-rotate-left me-1"></i>Reativar auditoria</button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }
+    var html = '';
+    if (multi.length) {
+      html += '<div class="small text-muted mb-1">Múltiplos clusters (' + multi.length + ')</div>';
+      html += multi.map(function(q){ return cardHtml(q, 'multi'); }).join('');
+    }
+    if (vazia.length) {
+      html += '<div class="small text-muted mb-1 mt-2">Vazias (' + vazia.length + ')</div>';
+      html += vazia.map(function(q){ return cardHtml(q, 'vazia'); }).join('');
+    }
+    box.innerHTML = html;
+    bindAuditIgnoradosButtons(box);
+  }
+
+  function bindAuditIgnoradosButtons(box) {
+    if (box._bound) return;
+    box._bound = true;
+    box.addEventListener('click', function(ev){
+      var mapa = ev.target.closest('.btn-audit-mapa');
+      var reativar = ev.target.closest('.btn-audit-reativar');
+      if (mapa) {
+        window.verQuadraNoMapa(mapa.dataset.id);
+      } else if (reativar) {
+        window.reativarAuditoria(reativar.dataset.id, reativar.dataset.tipo, reativar);
+      }
+    });
+  }
+
+  window.reativarAuditoria = function(id, tipo, btn) {
+    btn.disabled = true;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); btn.disabled = false; return; }
+        window.toast && window.toast('Auditoria de ' + id + ' reativada', 'success');
+        var card = btn.closest('.card');
+        if (card) { card.style.transition = 'opacity .3s'; card.style.opacity = '0'; setTimeout(function(){ card.remove(); }, 300); }
+      })
+      .withFailureHandler(function(e){
+        btn.disabled = false;
+        window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
+      })
+      .desmarcarAuditoriaOk(id, tipo);
+  };
+
   window.marcarAuditOk = function(id, tipo, btn) {
     btn.disabled = true;
     google.script.run

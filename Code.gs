@@ -3322,3 +3322,32 @@ function desmarcarAuditoriaOk(id, tipo) {
     return { ok: true };
   });
 }
+
+// Lista quadras marcadas como "OK auditado" — pra UI poder revisitar
+// e reativar caso o user mude de ideia. Devolve polyString pra cada
+// pra ser destacada no mapa.
+function listarAuditoriaIgnoradas() {
+  var props = PropertiesService.getScriptProperties();
+  function lerLista(key) {
+    return String(props.getProperty(key) || '').split(',')
+      .map(function(s){ return s.trim(); }).filter(Boolean);
+  }
+  var idsMulti = lerLista('AUDIT_OK_MULTI');
+  var idsVazia = lerLista('AUDIT_OK_VAZIA');
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
+  var polyById = {};
+  if (sheetQ && sheetQ.getLastRow() > 1) {
+    var dataQ = sheetQ.getDataRange().getValues();
+    for (var i = 1; i < dataQ.length; i++) {
+      polyById[String(dataQ[i][COL.QUADRAS.ID]).trim()] = String(dataQ[i][COL.QUADRAS.POLYSTRING] || '');
+    }
+  }
+  function mapear(ids) {
+    return ids.map(function(id){
+      return { id: id, polyString: polyById[id] || '', existe: polyById.hasOwnProperty(id) };
+    });
+  }
+  return { ok: true, multi: mapear(idsMulti), vazia: mapear(idsVazia) };
+}
