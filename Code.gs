@@ -627,7 +627,8 @@ function getDadosPublicos(idsString) {
       .map((r, i) => ({
         row: i + 2,
         quadra: String(r[0]),
-        face: String(r[2]),       // Col C
+        face: String(r[2]),       // Col C (legado — na verdade é QUADRA_IBGE)
+        faceIBGE: String(r[3]),   // Col D — FACE_IBGE de verdade (F1, F2, F3, F4)
         logradouro: String(r[5]), // Col F
         numero: String(r[6]),     // Col G
         complemento: String(r[8]),// Col I
