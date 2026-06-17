@@ -332,7 +332,10 @@
         poly._qInfo = q;
         poly._tipo = 'contexto';
         poly.bindTooltip(tooltip, { sticky: true });
-        poly.on('click', function(){ aoClicarNaQuadra(poly, 'contexto', q); });
+        poly.on('click', function(e){
+          L.DomEvent.stopPropagation(e);
+          aoClicarNaQuadra(poly, 'contexto', q);
+        });
         layerContexto.addLayer(poly);
       });
 
@@ -360,7 +363,10 @@
           (q.qtdPredios ? ' (' + q.qtdPredios + ' préd.)' : '') +
           (temNaoVisitar ? ' ⚠' : '');
         poly.bindTooltip(tipLabel, { permanent:true, direction:'center', className:'label-quadra' });
-        poly.on('click', function(){ aoClicarNaQuadra(poly, 'designada', q); });
+        poly.on('click', function(e){
+          L.DomEvent.stopPropagation(e);
+          aoClicarNaQuadra(poly, 'designada', q);
+        });
         layerQuadras.addLayer(poly);
       });
 
@@ -524,8 +530,13 @@
           html += '<div class="alert alert-success py-2 mb-2 small"><i class="fa-solid fa-check me-1"></i>Concluída em ' + escapeHtmlDir(ultima) + '</div>';
           html += '<button class="btn btn-outline-secondary w-100" onclick="desfazerQuadra(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-rotate-left me-1"></i>Desfazer conclusão</button>';
         } else {
+          var hojeYmd = new Date().toISOString().split('T')[0];
+          html += '<div class="d-flex gap-2 align-items-center mb-2">';
+          html += '<label class="small text-muted m-0 me-1">Data:</label>';
+          html += '<input type="date" class="form-control form-control-sm" id="sheetDataConc_' + escapeHtmlDir(q.id) + '" value="' + hojeYmd + '" style="max-width:160px">';
+          html += '</div>';
           html += '<div class="d-flex gap-2">';
-          html += '<button class="btn btn-success flex-fill" onclick="abrirModalConcluir(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-check me-1"></i>Marcar Concluída</button>';
+          html += '<button class="btn btn-success flex-fill" onclick="concluirQuadraDoSheet(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-check me-1"></i>Marcar Concluída</button>';
           html += '<button class="btn btn-outline-primary" onclick="abrirQuadraEmLinkSeparado(\'' + escapeHtmlDir(q.id) + '\')" title="Abrir esta quadra em link separado"><i class="fa-solid fa-up-right-from-square"></i></button>';
           html += '</div>';
         }
@@ -549,6 +560,14 @@
     window.fecharSheet = function() {
       document.getElementById('sheetQuadra').classList.add('fechado');
       quadraNoSheet = null;
+    };
+
+    // Concluir direto pelo bottom sheet (sem segundo modal).
+    window.concluirQuadraDoSheet = function(id) {
+      var inp = document.getElementById('sheetDataConc_' + id);
+      var data = inp ? inp.value : '';
+      if (!data) { alert('Escolha a data.'); return; }
+      processarSalvamento([id], 'Concluído', data);
     };
 
     window.abrirQuadraEmLinkSeparado = function(id) {
@@ -891,7 +910,7 @@
       processarSalvamento([quadraEmConfirmacao], 'Concluído', data);
     }
 
-    function desfazerQuadra(id) {
+    window.desfazerQuadra = function(id) {
       if (!confirm('Desfazer a última conclusão de ' + id + '?\n\nO histórico de conclusão anterior (se existir) volta a valer.')) return;
       var btns = document.querySelectorAll('.acoes .btn');
       btns.forEach(function(b){ b.disabled = true; });
@@ -919,7 +938,7 @@
           alert('Erro: ' + (e && e.message ? e.message : e));
         })
         .desfazerConclusaoQuadra(id);
-    }
+    };
 
     function processarSalvamento(ids, status, data) {
       var btns = document.querySelectorAll('.acoes .btn');
