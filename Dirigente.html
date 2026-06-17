@@ -20,33 +20,53 @@
   <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.5.0/dist/dom-to-image-more.min.js"></script>
 
   <style>
-    body { background:#f0f2f5; padding-bottom:80px; }
-    #mapa-container { position:relative; height:38vh; width:100%; box-shadow:0 4px 6px rgba(0,0,0,0.1); }
-    #mapa { height:100%; width:100%; z-index:1; }
+    body { background:#f0f2f5; padding-bottom:0; margin:0; overflow:hidden; }
+    /* Mapa ocupa a tela toda menos header (e toolbar quando ativa) */
+    #mapa-container { position:relative; width:100%; box-shadow:0 4px 6px rgba(0,0,0,0.1);
+      height: calc(100vh - 88px); }
+    body.modo-compartilhar #mapa-container { height: calc(100vh - 144px); }
+    #mapa { height:100%; width:100%; z-index:1; cursor:pointer; }
     .label-quadra { background:transparent; border:none; box-shadow:none; font-weight:bold; color:#0d6efd; font-size:14px;
       text-shadow: 2px 0 #fff, -2px 0 #fff, 0 2px #fff, 0 -2px #fff, 1px 1px #fff, -1px -1px #fff, 1px -1px #fff, -1px 1px #fff; }
     .legenda-bola { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:middle; margin-right:4px; border:1px solid rgba(0,0,0,0.15); }
     /* Tema escuro sincronizado com Index */
     body.tema-escuro { background-color:#1a1d20; color:#e8eef5; }
-    body.tema-escuro .quadra-card, body.tema-escuro .card, body.tema-escuro .modal-content { background-color:#2a2f33; color:#e8eef5; }
+    body.tema-escuro .card, body.tema-escuro .modal-content, body.tema-escuro #sheetQuadra { background-color:#2a2f33; color:#e8eef5; }
     body.tema-escuro .text-muted, body.tema-escuro small.text-muted { color:#95a4b3 !important; }
     body.tema-escuro .form-control { background-color:#1a1d20; color:#e8eef5; border-color:#3a4047; }
-    .quadra-card { background:white; border-radius:14px; box-shadow:0 2px 6px rgba(0,0,0,0.08); margin:12px; overflow:hidden; }
-    .quadra-header { padding:14px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #f1f1f1; }
-    .quadra-header .quadra-id { font-size:1.3rem; font-weight:700; color:#0d6efd; }
-    .quadra-header .territorio { font-size:.85rem; color:#666; }
-    .status-pill { padding:3px 10px; border-radius:20px; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
-    .status-pendente { background:#e9ecef; color:#6c757d; }
-    .status-iniciado { background:#fff3cd; color:#856404; }
-    .status-concluido { background:#d4edda; color:#155724; }
-    .quadra-body { padding:12px 16px; }
-    .quadra-meta { display:flex; gap:18px; font-size:.85rem; color:#555; margin-bottom:10px; }
-    .quadra-meta b { color:#222; }
-    .acoes { display:flex; gap:8px; }
-    .acoes .btn { flex:1; font-weight:600; }
-    .header-top { background:#198754; color:white; padding:18px 16px; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
-    .header-top h4 { margin:0; font-weight:700; }
-    .header-top small { opacity:.85; }
+    body.tema-escuro #legenda-overlay { background:rgba(42,47,51,0.95); color:#e8eef5; }
+    .header-top { background:#198754; color:white; padding:12px 16px; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+    .header-top h4 { margin:0; font-weight:700; font-size:1.1rem; }
+    .header-top small { opacity:.85; font-size:.75rem; }
+    /* Toolbar do modo compartilhar */
+    #toolbarComp { background:#fff7ed; border-bottom:2px solid #f59e0b; padding:8px 16px; }
+    /* Legenda overlay dentro do mapa */
+    #legenda-overlay {
+      position:absolute; bottom:8px; left:8px; z-index:500;
+      background:rgba(255,255,255,0.95); padding:8px 12px;
+      border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.2);
+      font-size:.72rem; max-width:60%;
+    }
+    #legenda-overlay .leg-linha { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
+    #legenda-overlay .leg-linha:last-child { margin-bottom:0; }
+    /* Botões flutuantes do mapa (GPS, voltar pra quadras) */
+    .map-btn {
+      position:absolute; z-index:500; background:#fff; border:1px solid #ddd;
+      padding:8px 12px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.2);
+      min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center;
+    }
+    /* Bottom sheet: detalhes da quadra clicada */
+    #sheetQuadra {
+      position:fixed; bottom:0; left:0; right:0; background:#fff;
+      border-top:3px solid #198754; box-shadow:0 -4px 12px rgba(0,0,0,0.18);
+      z-index:1100; padding:14px 16px; border-radius:14px 14px 0 0;
+      max-height:60vh; overflow-y:auto;
+      transform: translateY(0); transition: transform .2s;
+    }
+    #sheetQuadra.fechado { transform: translateY(100%); }
+    #sheetQuadra h5 { margin:0; font-weight:700; }
+    /* Selecionada no modo compartilhar */
+    .leaflet-interactive.sel-comp { /* visual fica via setStyle */ }
   </style>
 </head>
 
@@ -60,24 +80,44 @@
 
   <div id="app" class="d-none">
     <div class="header-top">
-      <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
         <div>
           <h4><i class="fa-solid fa-user-tie me-2"></i>Painel do Dirigente</h4>
           <small>
             <span id="lblTotalQuadras">0</span> quadra(s) ·
-            <span id="lblTotalPredios">0</span> prédio(s)
+            <span id="lblTotalPredios">0</span> préd. ·
+            <span id="lblTotalEnderecos">0</span> end.
           </small>
         </div>
         <div class="d-flex gap-2 flex-wrap align-items-center">
           <div class="form-check form-switch m-0">
-            <input class="form-check-input" type="checkbox" id="toggleDensidade" onchange="aplicarDensidadeMapa()">
+            <input class="form-check-input" type="checkbox" id="toggleDensidade" onchange="aplicarDensidadeMapa(); atualizarLegenda();">
             <label class="form-check-label small text-light" for="toggleDensidade">Densidade</label>
           </div>
-          <button class="btn btn-light btn-sm fw-bold" onclick="abrirLinkPublicador()">
-            <i class="fa-solid fa-share-nodes"></i> Publicador
+          <button class="btn btn-light btn-sm" onclick="abrirEstacionar()" title="Lugares pra estacionar perto">
+            <i class="fa-solid fa-square-parking"></i>
           </button>
-          <button class="btn btn-warning btn-sm fw-bold text-dark" onclick="exportarMapaImagem()" title="Salva o mapa como imagem para enviar no WhatsApp">
-            <i class="fa-solid fa-image"></i> Exportar mapa
+          <button class="btn btn-light btn-sm fw-bold" id="btnModoComp" onclick="toggleModoCompartilhar()">
+            <i class="fa-solid fa-share-nodes"></i> Compartilhar
+          </button>
+          <button class="btn btn-warning btn-sm fw-bold text-dark" onclick="exportarMapaImagem()" title="Exportar mapa como PNG">
+            <i class="fa-solid fa-image"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar do modo compartilhar (mostra só quando ativo) -->
+    <div id="toolbarComp" class="d-none">
+      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <small class="text-dark">
+          <i class="fa-solid fa-hand-pointer me-1 text-warning"></i>
+          Toque nas quadras pra montar a designação · <b><span id="lblSelComp">0</span></b> selecionada(s)
+        </small>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="cancelarCompartilhar()">Cancelar</button>
+          <button class="btn btn-sm btn-success" id="btnFinalizarComp" onclick="finalizarCompartilhar()" disabled>
+            <i class="fa-solid fa-paper-plane me-1"></i>Enviar
           </button>
         </div>
       </div>
@@ -85,14 +125,36 @@
 
     <div id="mapa-container">
       <div id="mapa"></div>
-    </div>
-    <div id="legenda" class="px-3 py-2 d-flex flex-wrap gap-3 small" style="background:#f8f9fa; border-bottom:1px solid #e5e7eb">
-      <span><span class="legenda-bola" style="background:#1976d2"></span> Designada</span>
-      <span><span class="legenda-bola" style="background:#dc2626"></span> Concluída (não pode)</span>
-      <span><span class="legenda-bola" style="background:#9ca3af"></span> Disponível</span>
+      <div id="legenda-overlay"></div>
+      <button class="map-btn" style="top:8px; right:8px;" onclick="centralizarGPS()" title="Centralizar na minha localização">
+        <i class="fa-solid fa-crosshairs text-primary"></i>
+      </button>
     </div>
 
-    <div id="lista"></div>
+    <!-- Bottom sheet: aparece ao clicar numa quadra -->
+    <div id="sheetQuadra" class="fechado">
+      <div id="sheetContent"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Estacionar perto -->
+  <div class="modal fade" id="modalEstacionar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-square-parking me-2"></i>Estacionar perto</h5>
+          <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted">Abre o Google Maps centrado no território com os lugares próximos:</p>
+          <div id="estContent"></div>
+          <hr>
+          <button class="btn btn-outline-secondary w-100" onclick="compartilharRotaTerritorio()">
+            <i class="fa-solid fa-paper-plane me-1"></i> Compartilhar rota até o território
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="modal fade" id="modalLinkPub" tabindex="-1">
@@ -168,7 +230,16 @@
     var layerQuadras;
     var quadraEmConfirmacao = null;
     var modalConfirma;
-    var quadrasSelecionadas = new Set();
+    // Estado do modo Compartilhar (dirigente selecionando quadras pra mandar
+    // pro publicador). Quando ativo, click no mapa adiciona/remove ao invés
+    // de abrir o bottom sheet.
+    var modoCompartilhar = false;
+    var idsSelComp = new Set();
+    // GPS
+    var gpsMarker = null;
+    var gpsWatchId = null;
+    // Quadra atual no bottom sheet — pra fechar/reabrir corretamente
+    var quadraNoSheet = null;
 
     var IDS = "<?= ids ?>";
 
@@ -177,6 +248,8 @@
       document.getElementById('inputDataConclusao').valueAsDate = new Date();
       carregar();
     };
+
+    function escapeHtmlDir(s){ return String(s||'').replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
 
     function carregar() {
       if (!IDS) { alert("Link inválido — sem IDs."); return; }
@@ -190,14 +263,19 @@
           document.getElementById('loader').classList.add('d-none');
           document.getElementById('app').classList.remove('d-none');
           document.getElementById('lblTotalQuadras').innerText = dados.length;
-          // Total de prédios das quadras designadas (mais útil que
-          // endereços — aptos mascaram contagem real)
-          var totalPredios = 0;
-          dados.forEach(function(q){ totalPredios += (q.qtdPredios || 0); });
+          // Contadores: prédios + endereços totais das designadas
+          var totalPredios = 0, totalEnd = 0;
+          dados.forEach(function(q){
+            totalPredios += (q.qtdPredios || 0);
+            totalEnd += (q.itens ? q.itens.length : 0);
+          });
           var lblP = document.getElementById('lblTotalPredios');
           if (lblP) lblP.innerText = totalPredios;
+          var lblE = document.getElementById('lblTotalEnderecos');
+          if (lblE) lblE.innerText = totalEnd;
           iniciarMapa();
-          renderizarLista();
+          atualizarLegenda();
+          iniciarGeolocalizacao();
         })
         .withFailureHandler(function(e){ alert("Erro: " + (e && e.message ? e.message : e)); })
         .getDadosComContexto(IDS);
@@ -245,7 +323,11 @@
         }
 
         var poly = L.polygon(pts, estilo);
+        poly._estiloOriginal = Object.assign({}, estilo);
+        poly._qInfo = q;
+        poly._tipo = 'contexto';
         poly.bindTooltip(tooltip, { sticky: true });
+        poly.on('click', function(){ aoClicarNaQuadra(poly, 'contexto', q); });
         layerContexto.addLayer(poly);
       });
 
@@ -256,16 +338,24 @@
         var pts = parsePoly(q.polyString);
         if (pts.length < 3) return;
 
-        var poly = L.polygon(pts, {
-          color: '#0d47a1', weight: 2,
-          fillColor: '#1976d2', fillOpacity: 0.55
-        });
-        poly.qId = q.id; // pra aplicarDensidadeMapa reidentificar
-        poly.bindTooltip(q.id + (q.qtdPredios ? ' (' + q.qtdPredios + ' préd.)' : ''), { permanent:true, direction:'center', className:'label-quadra' });
-        poly.on('click', function() {
-          var el = document.getElementById('card-' + q.id);
-          if (el) el.scrollIntoView({ behavior:'smooth', block:'center' });
-        });
+        // Conclusão recente fica vermelha (não pode designar agora) mesmo
+        // estando na lista designada — alerta visual claro.
+        var statusBaixo = (q.status || '').toLowerCase();
+        var jaConcluida = statusBaixo.indexOf('conclu') > -1;
+        var temNaoVisitar = (q.itens || []).some(function(it){ return it.naoVisitar; });
+        var estilo = jaConcluida
+          ? { color:'#7f1d1d', weight:2, fillColor:'#dc2626', fillOpacity:0.55 }
+          : { color:'#0d47a1', weight:2, fillColor:'#1976d2', fillOpacity:0.55 };
+        var poly = L.polygon(pts, estilo);
+        poly.qId = q.id;
+        poly._estiloOriginal = Object.assign({}, estilo);
+        poly._qInfo = q;
+        poly._tipo = 'designada';
+        var tipLabel = q.id +
+          (q.qtdPredios ? ' (' + q.qtdPredios + ' préd.)' : '') +
+          (temNaoVisitar ? ' ⚠' : '');
+        poly.bindTooltip(tipLabel, { permanent:true, direction:'center', className:'label-quadra' });
+        poly.on('click', function(){ aoClicarNaQuadra(poly, 'designada', q); });
         layerQuadras.addLayer(poly);
       });
 
@@ -273,6 +363,8 @@
         map.fitBounds(layerQuadras.getBounds(), { padding:[20,20] });
         resolverLocalidade(layerQuadras.getBounds().getCenter());
       }
+      // Click fora dos polígonos fecha o bottom sheet (UX intuitiva)
+      map.on('click', function(){ if (!modoCompartilhar) fecharSheet(); });
       // Aplica visual de densidade se toggle estiver ligado
       window.aplicarDensidadeMapa && window.aplicarDensidadeMapa();
     }
@@ -289,16 +381,20 @@
     }
     window.aplicarDensidadeMapa = function() {
       var toggle = document.getElementById('toggleDensidade');
-      if (!toggle) return;
+      if (!toggle || !layerQuadras) return;
       var ativo = toggle.checked;
-      // Reaplica estilo padrão ou colore por densidade
+      // Não mexe no visual durante o modo Compartilhar (selecionadas ficam
+      // em laranja). E preserva o vermelho das concluídas quando densidade off.
+      if (modoCompartilhar) return;
       layerQuadras.eachLayer(function(poly){
         var q = dados.find(function(x){ return x.id === (poly.qId || ''); });
         if (!q) return;
         if (ativo) {
-          poly.setStyle({ color: '#0d47a1', weight: 2, fillColor: corPorDensidade(q.qtdPredios || 0), fillOpacity: 0.65 });
-        } else {
-          poly.setStyle({ color: '#0d47a1', weight: 2, fillColor: '#1976d2', fillOpacity: 0.55 });
+          var novo = { color: '#0d47a1', weight: 2, fillColor: corPorDensidade(q.qtdPredios || 0), fillOpacity: 0.65 };
+          poly.setStyle(novo);
+          poly._estiloOriginal = novo;
+        } else if (poly._estiloOriginal) {
+          poly.setStyle(poly._estiloOriginal);
         }
       });
     };
@@ -354,160 +450,260 @@
       return isNaN(d.getTime()) ? null : d;
     }
 
-    function renderizarLista() {
-      var c = document.getElementById('lista');
+    // ====== LEGENDA DINÂMICA (overlay no mapa) ======
+    function atualizarLegenda() {
+      var el = document.getElementById('legenda-overlay');
+      if (!el) return;
+      var temInativa = contexto.some(function(q){ return q.status === 'Inativa'; });
+      var temConcRec = contexto.some(function(q){ return q.concluidaRecente; });
+      var temDisp = contexto.some(function(q){ return !q.concluidaRecente && q.status !== 'Inativa'; });
+      var jaConcluidas = dados.filter(function(q){ return (q.status || '').toLowerCase().indexOf('conclu') > -1; }).length;
+      var dens = document.getElementById('toggleDensidade');
       var html = '';
-
-      // Cabeçalho com ações em lote sobre a seleção
-      html += '<div class="d-flex justify-content-between align-items-center px-3 py-2 mb-2 flex-wrap gap-2" style="background:#f1f3f5; border-bottom:1px solid #e5e7eb">' +
-                '<small class="text-muted"><span id="lblQuadrasSelecionadas">0</span> quadra(s) selecionada(s)</small>' +
-                '<div class="d-flex gap-2">' +
-                  '<button class="btn btn-sm btn-success" onclick="concluirSelecaoEmLote()" title="Marcar as selecionadas como concluídas">' +
-                    '<i class="fa-solid fa-check-double me-1"></i>Concluir' +
-                  '</button>' +
-                  '<button class="btn btn-sm btn-primary" onclick="enviarSelecaoParaPublicador()">' +
-                    '<i class="fa-solid fa-share-nodes me-1"></i>Enviar' +
-                  '</button>' +
-                '</div>' +
-              '</div>';
-
-      dados.forEach(function(q) {
-        var sv = statusVisual(q);
-        var totalEnderecos = q.itens ? q.itens.length : 0;
-        var territorio = q.territory || '—';
-        var ultima = q.ultimaData || 'Nunca';
-
-        var btnAcao = '';
-        var statusBaixo = (q.status || '').toLowerCase();
-        var jaConcluida = statusBaixo.indexOf('conclu') > -1;
-        if (jaConcluida) {
-          // Desfaz a última conclusão registrada — restaura data anterior
-          // se houver no histórico, senão volta pra Pendente.
-          btnAcao = '<button class="btn btn-outline-secondary" onclick="desfazerQuadra(\'' + q.id + '\')">' +
-                      '<i class="fa-solid fa-rotate-left"></i> Desfazer' +
-                    '</button>';
-        } else {
-          btnAcao = '<button class="btn btn-success" onclick="abrirModalConcluir(\'' + q.id + '\')">' +
-                      '<i class="fa-solid fa-check"></i> Marcar Concluída' +
-                    '</button>';
-        }
-
-        var checked = quadrasSelecionadas.has(q.id) ? 'checked' : '';
-
-        html += '<div class="quadra-card" id="card-' + q.id + '">' +
-                  '<div class="quadra-header">' +
-                    '<div class="d-flex align-items-center gap-2">' +
-                      '<input type="checkbox" class="form-check-input" ' + checked +
-                        ' onchange="window.toggleSelecaoQuadra(\'' + q.id + '\', this.checked)" style="cursor:pointer">' +
-                      '<div>' +
-                        '<div class="quadra-id">Quadra ' + q.id + '</div>' +
-                        '<div class="territorio">' + territorio + '</div>' +
-                      '</div>' +
-                    '</div>' +
-                    '<span class="status-pill ' + sv.cls + '">' + sv.label + '</span>' +
-                  '</div>' +
-                  '<div class="quadra-body">' +
-                    '<div class="quadra-meta">' +
-                      '<div><i class="fa-regular fa-calendar"></i> Última: <b>' + ultima + '</b></div>' +
-                      '<div><i class="fa-solid fa-hashtag"></i> <b>' + totalEnderecos + '</b> end.</div>' +
-                    '</div>' +
-                    '<div class="acoes">' + btnAcao + '</div>' +
-                  '</div>' +
+      if (dens && dens.checked) {
+        html += '<div class="leg-linha"><b>Densidade de prédios</b></div>';
+        html += '<div class="leg-linha"><span class="legenda-bola" style="background:#e5e7eb"></span>vazia · ' +
+                '<span class="legenda-bola" style="background:#fde68a"></span>1–2 · ' +
+                '<span class="legenda-bola" style="background:#fbbf24"></span>3–5 · ' +
+                '<span class="legenda-bola" style="background:#f97316"></span>6–9 · ' +
+                '<span class="legenda-bola" style="background:#dc2626"></span>10+</div>';
+      } else {
+        html += '<div class="leg-linha"><span class="legenda-bola" style="background:#1976d2"></span>Designada' +
+                (jaConcluidas ? ' · <span class="legenda-bola" style="background:#dc2626"></span>Designada concluída' : '') +
                 '</div>';
-      });
+        if (temConcRec) html += '<div class="leg-linha"><span class="legenda-bola" style="background:#dc2626; opacity:.6"></span>Concluída recente (não pode)</div>';
+        if (temDisp) html += '<div class="leg-linha"><span class="legenda-bola" style="background:#9ca3af"></span>Disponível pra designar</div>';
+        if (temInativa) html += '<div class="leg-linha"><span class="legenda-bola" style="background:#86efac; border-style:dashed"></span>Área verde / parque</div>';
+      }
+      el.innerHTML = html;
+    }
 
-      // Lista das outras quadras do território (contexto) — apenas
-      // informativo, sem ações. Mostra status atual pra dar ideia do
-      // que está disponível ou bloqueado no entorno.
-      if (contexto && contexto.length > 0) {
-        html += '<div class="px-3 pt-4 pb-2" style="border-top:1px solid #e5e7eb">' +
-                  '<small class="text-muted text-uppercase fw-bold" style="letter-spacing:.05em">' +
-                    'Outras quadras do território (' + contexto.length + ')' +
-                  '</small>' +
+    // ====== CLICK NA QUADRA (mapa) ======
+    function aoClicarNaQuadra(poly, tipo, q) {
+      if (modoCompartilhar) return toggleSelecaoCompartilhar(poly, tipo, q);
+      abrirSheetQuadra(poly, tipo, q);
+    }
+
+    // ====== BOTTOM SHEET com detalhes da quadra ======
+    function abrirSheetQuadra(poly, tipo, q) {
+      quadraNoSheet = { id: q.id, tipo: tipo };
+      var qtdEnd = q.itens ? q.itens.length : 0;
+      var qtdPred = q.qtdPredios || 0;
+      var temNaoVisitar = (q.itens || []).some(function(it){ return it.naoVisitar; });
+      var statusBaixo = (q.status || '').toLowerCase();
+      var jaConcluida = statusBaixo.indexOf('conclu') > -1;
+      var ultima = q.ultimaData || 'Nunca';
+      var territorio = q.territory || '';
+
+      var html = '';
+      html += '<div class="d-flex justify-content-between align-items-start mb-2 gap-2">';
+      html += '<div><h5>Quadra ' + escapeHtmlDir(q.id) + '</h5>';
+      if (territorio) html += '<small class="text-muted">' + escapeHtmlDir(territorio) + '</small>';
+      html += '</div>';
+      html += '<button class="btn btn-sm btn-light" onclick="fecharSheet()" aria-label="Fechar"><i class="fa-solid fa-xmark"></i></button>';
+      html += '</div>';
+
+      if (temNaoVisitar) {
+        html += '<div class="alert alert-warning py-2 mb-2 small">' +
+                  '<i class="fa-solid fa-triangle-exclamation me-1"></i>' +
+                  'Tem endereço(s) marcado(s) como <b>Não Visitar</b> nessa quadra.' +
                 '</div>';
-        contexto.forEach(function(q){
-          var inativa = q.status === 'Inativa';
-          var bloqueada = q.concluidaRecente;
-          var corBadge, rotulo, etiqueta;
-          if (inativa) {
-            corBadge = 'bg-success';
-            rotulo = 'Área verde / parque';
-            etiqueta = 'Sem trabalho';
-          } else if (bloqueada) {
-            corBadge = 'bg-danger';
-            rotulo = 'Concluída ' + q.ultimaData;
-            etiqueta = 'Não pode';
-          } else {
-            corBadge = 'bg-secondary';
-            rotulo = 'Disponível';
-            etiqueta = 'Pode designar';
-          }
-          html += '<div class="card mx-3 mb-2 shadow-sm" style="opacity:' + (inativa ? '0.6' : (bloqueada ? '0.85' : '0.7')) + '">' +
-                    '<div class="card-body py-2 d-flex justify-content-between align-items-center">' +
-                      '<div>' +
-                        '<div class="fw-bold">Quadra ' + q.id + '</div>' +
-                        '<small class="text-muted">' + rotulo + '</small>' +
-                      '</div>' +
-                      '<span class="badge ' + corBadge + '">' + etiqueta + '</span>' +
-                    '</div>' +
-                  '</div>';
-        });
       }
 
-      c.innerHTML = html;
-      atualizarLabelSelecionadas();
+      html += '<div class="d-flex flex-wrap gap-3 small text-muted mb-3">';
+      html += '<div><i class="fa-regular fa-calendar me-1"></i>Última: <b>' + escapeHtmlDir(ultima) + '</b></div>';
+      html += '<div><i class="fa-solid fa-hashtag me-1"></i><b>' + qtdEnd + '</b> end.</div>';
+      if (qtdPred) html += '<div><i class="fa-solid fa-building me-1"></i><b>' + qtdPred + '</b> préd.</div>';
+      html += '</div>';
+
+      if (tipo === 'designada') {
+        if (jaConcluida) {
+          html += '<div class="alert alert-success py-2 mb-2 small"><i class="fa-solid fa-check me-1"></i>Concluída em ' + escapeHtmlDir(ultima) + '</div>';
+          html += '<button class="btn btn-outline-secondary w-100" onclick="desfazerQuadra(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-rotate-left me-1"></i>Desfazer conclusão</button>';
+        } else {
+          html += '<div class="d-flex gap-2">';
+          html += '<button class="btn btn-success flex-fill" onclick="abrirModalConcluir(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-check me-1"></i>Marcar Concluída</button>';
+          html += '<button class="btn btn-outline-primary" onclick="abrirQuadraEmLinkSeparado(\'' + escapeHtmlDir(q.id) + '\')" title="Abrir esta quadra em link separado"><i class="fa-solid fa-up-right-from-square"></i></button>';
+          html += '</div>';
+        }
+      } else {
+        // Contexto: quadra fora das designadas
+        if (q.status === 'Inativa') {
+          html += '<div class="alert alert-success py-2 mb-2 small"><i class="fa-solid fa-tree me-1"></i>Área verde / parque — sem trabalho de campo.</div>';
+        } else if (q.concluidaRecente) {
+          html += '<div class="alert alert-danger py-2 mb-2 small"><i class="fa-solid fa-circle-xmark me-1"></i>Essa quadra já foi feita em <b>' + escapeHtmlDir(ultima) + '</b>. Não dá pra designar agora.</div>';
+          html += '<button class="btn btn-outline-warning w-100" onclick="abrirQuadraEmLinkSeparadoConfirma(\'' + escapeHtmlDir(q.id) + '\', \'' + escapeHtmlDir(ultima) + '\')"><i class="fa-solid fa-up-right-from-square me-1"></i>Abrir mesmo assim em link separado</button>';
+        } else {
+          html += '<div class="alert alert-info py-2 mb-2 small"><i class="fa-solid fa-circle-info me-1"></i>Disponível pra designar.</div>';
+          html += '<button class="btn btn-success w-100" onclick="abrirQuadraEmLinkSeparado(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-up-right-from-square me-1"></i>Abrir esta quadra em link separado</button>';
+        }
+      }
+
+      document.getElementById('sheetContent').innerHTML = html;
+      document.getElementById('sheetQuadra').classList.remove('fechado');
     }
 
-    function atualizarLabelSelecionadas() {
-      var el = document.getElementById('lblQuadrasSelecionadas');
-      if (el) el.innerText = quadrasSelecionadas.size;
-    }
-
-    window.toggleSelecaoQuadra = function(id, checked) {
-      if (checked) quadrasSelecionadas.add(id);
-      else quadrasSelecionadas.delete(id);
-      atualizarLabelSelecionadas();
+    window.fecharSheet = function() {
+      document.getElementById('sheetQuadra').classList.add('fechado');
+      quadraNoSheet = null;
     };
 
-    function concluirSelecaoEmLote() {
-      var ids = Array.from(quadrasSelecionadas);
-      if (ids.length === 0) { alert('Selecione ao menos uma quadra.'); return; }
-      if (!confirm('Marcar ' + ids.length + ' quadra(s) como concluída(s) hoje?')) return;
-      var hoje = new Date().toISOString().split('T')[0];
-      processarSalvamento(ids, 'Concluído', hoje);
-      quadrasSelecionadas.clear();
+    window.abrirQuadraEmLinkSeparado = function(id) {
+      google.script.run
+        .withSuccessHandler(function(url){
+          var baseUrl = url || window.location.href.split('?')[0];
+          window.open(baseUrl + '?v=dirigente&ids=' + encodeURIComponent(id), '_blank');
+        })
+        .withFailureHandler(function(){
+          window.open(window.location.href.split('?')[0] + '?v=dirigente&ids=' + encodeURIComponent(id), '_blank');
+        })
+        .getScriptUrl();
+    };
+    window.abrirQuadraEmLinkSeparadoConfirma = function(id, ultima) {
+      if (!confirm('Quadra ' + id + ' foi concluída em ' + ultima + '. Tem certeza que quer abrir?')) return;
+      window.abrirQuadraEmLinkSeparado(id);
+    };
+
+    // ====== MODO COMPARTILHAR ======
+    window.toggleModoCompartilhar = function() {
+      modoCompartilhar = !modoCompartilhar;
+      var btn = document.getElementById('btnModoComp');
+      var bar = document.getElementById('toolbarComp');
+      if (modoCompartilhar) {
+        bar.classList.remove('d-none');
+        btn.classList.remove('btn-light'); btn.classList.add('btn-warning', 'text-dark');
+        document.body.classList.add('modo-compartilhar');
+        fecharSheet();
+        // Pré-seleciona todas as designadas (caso comum: enviar tudo)
+        idsSelComp.clear();
+        layerQuadras.eachLayer(function(poly){
+          if (poly.qId) {
+            idsSelComp.add(poly.qId);
+            poly.setStyle({ color:'#92400e', weight:4, fillColor:'#fbbf24', fillOpacity:0.7 });
+          }
+        });
+        atualizarLblSelComp();
+      } else {
+        bar.classList.add('d-none');
+        btn.classList.add('btn-light'); btn.classList.remove('btn-warning', 'text-dark');
+        document.body.classList.remove('modo-compartilhar');
+        // Restaura visual
+        [layerQuadras, layerContexto].forEach(function(lyr){
+          if (!lyr) return;
+          lyr.eachLayer(function(poly){
+            if (poly._estiloOriginal) poly.setStyle(poly._estiloOriginal);
+          });
+        });
+        idsSelComp.clear();
+        if (window.aplicarDensidadeMapa) window.aplicarDensidadeMapa();
+      }
+    };
+    window.cancelarCompartilhar = window.toggleModoCompartilhar;
+
+    function toggleSelecaoCompartilhar(poly, tipo, q) {
+      if (q.status === 'Inativa') return; // Inativa não selecionável
+      if (idsSelComp.has(q.id)) {
+        idsSelComp.delete(q.id);
+        if (poly._estiloOriginal) poly.setStyle(poly._estiloOriginal);
+      } else {
+        if (tipo === 'contexto' && q.concluidaRecente) {
+          if (!confirm('Quadra ' + q.id + ' foi concluída em ' + q.ultimaData + '. Tem certeza que quer incluir na designação?')) return;
+        }
+        idsSelComp.add(q.id);
+        poly.setStyle({ color:'#92400e', weight:4, fillColor:'#fbbf24', fillOpacity:0.7 });
+      }
+      atualizarLblSelComp();
     }
 
-    function enviarSelecaoParaPublicador() {
-      var idsEnvio = quadrasSelecionadas.size > 0
-        ? Array.from(quadrasSelecionadas)
-        : dados.map(function(q){ return q.id; });
+    function atualizarLblSelComp() {
+      var el = document.getElementById('lblSelComp');
+      if (el) el.innerText = idsSelComp.size;
+      var btn = document.getElementById('btnFinalizarComp');
+      if (btn) btn.disabled = idsSelComp.size === 0;
+    }
 
-      if (idsEnvio.length === 0) return alert("Sem quadras para enviar.");
+    var _idsEnvioCorrente = [];
 
-      // Pré-popula campos: nome em branco; prazo default = hoje + 30 dias
+    window.finalizarCompartilhar = function() {
+      if (idsSelComp.size === 0) { alert('Toque em pelo menos uma quadra no mapa.'); return; }
+      _idsEnvioCorrente = Array.from(idsSelComp);
+      // Pré-popula: nome vazio, prazo = hoje + 30 dias
       var hoje30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       var ymd = hoje30.toISOString().slice(0, 10);
       var inpNome = document.getElementById('inputPubNome');
       var inpPrazo = document.getElementById('inputPubPrazo');
       if (inpNome) inpNome.value = '';
       if (inpPrazo) inpPrazo.value = ymd;
-
-      _idsEnvioCorrente = idsEnvio;
       google.script.run
         .withSuccessHandler(function(url){
            var baseUrl = url || window.location.href.split('?')[0];
-           var finalUrl = baseUrl + "?v=publico&ids=" + idsEnvio.join(",");
+           var finalUrl = baseUrl + "?v=publico&ids=" + _idsEnvioCorrente.join(",");
            document.getElementById('inputLinkPub').value = finalUrl;
-           document.getElementById('msgDesignacao').value = montarMensagemDesignacao(idsEnvio, finalUrl);
+           document.getElementById('msgDesignacao').value = montarMensagemDesignacao(_idsEnvioCorrente, finalUrl);
            var m = new bootstrap.Modal(document.getElementById('modalLinkPub'));
            m.show();
         })
         .withFailureHandler(function(e){ alert("Erro: " + (e && e.message ? e.message : e)); })
         .getScriptUrl();
-    }
+    };
 
-    var _idsEnvioCorrente = [];
+    // ====== GEOLOCATION ======
+    function iniciarGeolocalizacao() {
+      if (!navigator.geolocation || gpsWatchId != null) return;
+      gpsWatchId = navigator.geolocation.watchPosition(
+        function(pos){
+          var ll = [pos.coords.latitude, pos.coords.longitude];
+          if (gpsMarker) { gpsMarker.setLatLng(ll); return; }
+          gpsMarker = L.circleMarker(ll, {
+            radius:7, color:'#fff', weight:2, fillColor:'#2563eb', fillOpacity:1
+          }).bindTooltip('Você está aqui').addTo(map);
+        },
+        function(){ /* silencioso — geo opcional */ },
+        { enableHighAccuracy:true, maximumAge:30000, timeout:20000 }
+      );
+    }
+    window.centralizarGPS = function() {
+      iniciarGeolocalizacao();
+      if (gpsMarker) {
+        map.setView(gpsMarker.getLatLng(), 17);
+      } else {
+        alert('Aguardando localização do GPS... permita o acesso e tente de novo.');
+      }
+    };
+
+    // ====== ESTACIONAR PERTO ======
+    window.abrirEstacionar = function() {
+      if (!layerQuadras || !layerQuadras.getBounds().isValid()) { alert('Aguarde o mapa carregar.'); return; }
+      var c = layerQuadras.getBounds().getCenter();
+      var queries = [
+        { lbl: '🅿 Estacionamentos', q: 'estacionamento' },
+        { lbl: '🌳 Praças', q: 'praça' },
+        { lbl: '💊 Farmácias', q: 'farmácia' },
+        { lbl: '🥐 Padarias', q: 'padaria' },
+        { lbl: '⛽ Postos de gasolina', q: 'posto de gasolina' },
+        { lbl: '🏪 Mercados', q: 'mercado' }
+      ];
+      var html = '<div class="d-grid gap-2">';
+      queries.forEach(function(it){
+        var href = 'https://www.google.com/maps/search/' + encodeURIComponent(it.q) +
+                   '/@' + c.lat + ',' + c.lng + ',17z';
+        html += '<a class="btn btn-outline-primary text-start" href="' + href + '" target="_blank" rel="noopener">' + it.lbl + ' perto</a>';
+      });
+      html += '</div>';
+      document.getElementById('estContent').innerHTML = html;
+      new bootstrap.Modal(document.getElementById('modalEstacionar')).show();
+    };
+    window.compartilharRotaTerritorio = function() {
+      var c = layerQuadras.getBounds().getCenter();
+      var url = 'https://www.google.com/maps/dir/?api=1&destination=' + c.lat + ',' + c.lng;
+      var msg = 'Rota até o território: ' + url;
+      if (navigator.share) {
+        navigator.share({ title:'Rota até o território', text: msg, url: url }).catch(function(){});
+      } else {
+        navigator.clipboard.writeText(msg).then(function(){ alert('Link copiado!'); })
+          .catch(function(){ window.open(url, '_blank'); });
+      }
+    };
 
     // Quando o usuário copia ou abre WhatsApp, se tiver nome preenchido,
     // cria a designação pessoal antes de retornar o texto.
@@ -601,7 +797,8 @@
               : 'Nunca';
           }
           iniciarMapa();
-          renderizarLista();
+          atualizarLegenda();
+          fecharSheet();
         })
         .withFailureHandler(function(e){
           btns.forEach(function(b){ b.disabled = false; });
@@ -630,7 +827,8 @@
             }
           });
           iniciarMapa();
-          renderizarLista();
+          atualizarLegenda();
+          fecharSheet();
         })
         .withFailureHandler(function(e){
           alert('Erro: ' + (e && e.message ? e.message : e));
