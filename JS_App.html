@@ -2838,6 +2838,151 @@ window.confirmarAssociacao = function(layerQuadra) {
     if (window.lgClusterDestaque) window.lgClusterDestaque.clearLayers();
   };
 
+  // ======================================================
+  // AUDITORIA DE QUADRAS — múltiplos clusters IBGE + vazias
+  // ======================================================
+  window.abrirAuditoria = function() {
+    document.getElementById('auditoriaStatus').innerHTML = '';
+    document.getElementById('auditListaMulti').innerHTML = '<div class="text-muted">Rode pra ver os problemas.</div>';
+    document.getElementById('auditListaVazias').innerHTML = '<div class="text-muted">Rode pra ver os problemas.</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalAuditoria')).show();
+  };
+
+  window.rodarAuditoria = function() {
+    var btn = document.getElementById('btnRodarAuditoria');
+    var status = document.getElementById('auditoriaStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processando...';
+    status.innerHTML = '';
+    google.script.run
+      .withSuccessHandler(function(r){
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Rodar auditoria';
+        if (!r || !r.ok) {
+          status.innerHTML = '<span class="text-danger">Erro: ' + escapeHtml(r && r.erro || '?') + '</span>';
+          return;
+        }
+        status.innerHTML =
+          '<div class="alert alert-info py-2 mb-2 small">' +
+            '<b>' + r.totalQuadras + '</b> quadras ativas analisadas · ' +
+            '<b>' + r.multiplos.length + '</b> com múltiplos clusters · ' +
+            '<b>' + r.vazias.length + '</b> vazias · ' +
+            '<b>' + (r.okMultiCount + r.okVaziaCount) + '</b> marcadas como OK previamente' +
+          '</div>';
+        renderAuditMulti(r.multiplos);
+        renderAuditVazias(r.vazias);
+      })
+      .withFailureHandler(function(e){
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Rodar auditoria';
+        status.innerHTML = '<span class="text-danger">Erro: ' + escapeHtml(e && e.message || e) + '</span>';
+      })
+      .auditarQuadras();
+  };
+
+  function renderAuditMulti(lista) {
+    var box = document.getElementById('auditListaMulti');
+    if (lista.length === 0) {
+      box.innerHTML = '<div class="text-success"><i class="fa-solid fa-check"></i> Nenhuma quadra com múltiplos clusters.</div>';
+      return;
+    }
+    // Guarda polígonos pra "Ver no mapa"
+    window._auditPolys = window._auditPolys || {};
+    box.innerHTML = lista.map(function(q){
+      window._auditPolys[q.id] = q.polyString;
+      var clustersStr = q.clusters.map(function(c){
+        return c.setor + '/' + c.qibge + ' (' + c.qtd + ')';
+      }).join(' · ');
+      return '<div class="card mb-2 border-warning" style="border-left:4px solid #f59e0b">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="fw-bold">Quadra ' + escapeHtml(q.id) + '</div>' +
+                 '<div class="text-muted small">' + q.qtdEnderecos + ' endereço(s) em <b>' + q.clusters.length + '</b> clusters IBGE diferentes: ' + escapeHtml(clustersStr) + '</div>' +
+                 '<div class="d-flex gap-2 mt-2">' +
+                   '<button class="btn btn-sm btn-outline-info btn-audit-mapa" data-id="' + escapeHtml(q.id) + '" title="Ver no mapa"><i class="fa-solid fa-map-location-dot me-1"></i>Ver no mapa</button>' +
+                   '<button class="btn btn-sm btn-success btn-audit-ok ms-auto" data-id="' + escapeHtml(q.id) + '" data-tipo="multi"><i class="fa-solid fa-check me-1"></i>Tá certo, ignorar</button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+    bindAuditButtons(box);
+  }
+
+  function renderAuditVazias(lista) {
+    var box = document.getElementById('auditListaVazias');
+    if (lista.length === 0) {
+      box.innerHTML = '<div class="text-success"><i class="fa-solid fa-check"></i> Nenhuma quadra vazia.</div>';
+      return;
+    }
+    window._auditPolys = window._auditPolys || {};
+    box.innerHTML = lista.map(function(q){
+      window._auditPolys[q.id] = q.polyString;
+      return '<div class="card mb-2 border-info" style="border-left:4px solid #0dcaf0">' +
+               '<div class="card-body py-2 px-3">' +
+                 '<div class="fw-bold">Quadra ' + escapeHtml(q.id) + '</div>' +
+                 '<div class="text-muted small">Sem endereços vinculados</div>' +
+                 '<div class="d-flex gap-2 mt-2">' +
+                   '<button class="btn btn-sm btn-outline-info btn-audit-mapa" data-id="' + escapeHtml(q.id) + '" title="Ver no mapa"><i class="fa-solid fa-map-location-dot me-1"></i>Ver no mapa</button>' +
+                   '<button class="btn btn-sm btn-success btn-audit-ok ms-auto" data-id="' + escapeHtml(q.id) + '" data-tipo="vazia"><i class="fa-solid fa-check me-1"></i>Tá certo, ignorar</button>' +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+    bindAuditButtons(box);
+  }
+
+  function bindAuditButtons(box) {
+    if (box._bound) return;
+    box._bound = true;
+    box.addEventListener('click', function(ev){
+      var mapa = ev.target.closest('.btn-audit-mapa');
+      var ok = ev.target.closest('.btn-audit-ok');
+      if (mapa) {
+        window.verQuadraNoMapa(mapa.dataset.id);
+      } else if (ok) {
+        window.marcarAuditOk(ok.dataset.id, ok.dataset.tipo, ok);
+      }
+    });
+  }
+
+  // Destaca o polígono da quadra no mapa Polígonos (laranja, fitBounds)
+  window.verQuadraNoMapa = function(id) {
+    var polyStr = (window._auditPolys || {})[id];
+    if (!polyStr) { window.toast && window.toast('Polígono não encontrado', 'warn'); return; }
+    var modal = bootstrap.Modal.getInstance(document.getElementById('modalAuditoria'));
+    if (modal) modal.hide();
+    window.mudarAba && window.mudarAba('poligonos');
+    setTimeout(function(){
+      if (typeof mapPoligonos === 'undefined' || !mapPoligonos) return;
+      if (!window.lgClusterDestaque) window.lgClusterDestaque = L.featureGroup().addTo(mapPoligonos);
+      window.lgClusterDestaque.clearLayers();
+      var pts = polyStr.split('|').map(function(p){
+        var c = p.trim().split(','); return [parseFloat(c[0]), parseFloat(c[1])];
+      }).filter(function(p){ return !isNaN(p[0]) && !isNaN(p[1]); });
+      if (pts.length < 3) return;
+      var poly = L.polygon(pts, { color: '#dc2626', weight: 4, fillColor: '#fca5a5', fillOpacity: 0.4 });
+      poly.bindTooltip(id, { permanent: true, direction: 'center' });
+      window.lgClusterDestaque.addLayer(poly);
+      mapPoligonos.fitBounds(poly.getBounds(), { padding: [60, 60], maxZoom: 18 });
+    }, 300);
+  };
+
+  window.marcarAuditOk = function(id, tipo, btn) {
+    btn.disabled = true;
+    google.script.run
+      .withSuccessHandler(function(r){
+        if (!r || !r.ok) { window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error'); btn.disabled = false; return; }
+        window.toast && window.toast('Quadra ' + id + ' marcada como OK', 'success');
+        // Remove o card da lista (anima fade)
+        var card = btn.closest('.card');
+        if (card) { card.style.transition = 'opacity .3s'; card.style.opacity = '0'; setTimeout(function(){ card.remove(); }, 300); }
+      })
+      .withFailureHandler(function(e){
+        btn.disabled = false;
+        window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
+      })
+      .marcarAuditoriaOk(id, tipo);
+  };
+
   window.confirmarExcluirCluster = function(setor, qibge, total) {
     if (!confirm('Apagar ' + total + ' endereço(s) do setor ' + setor + ', quadra IBGE ' + qibge + '?\n\nIsso é destrutivo — só faça se esse cluster NÃO pertence ao território.')) return;
     google.script.run

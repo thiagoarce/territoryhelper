@@ -3219,3 +3219,106 @@ function excluirClusterEnderecos(setor, quadraIBGE) {
     return { ok: true, deletadas: deletadas };
   });
 }
+
+// =================================================================
+// AUDITORIA DE QUADRAS — busca inconsistências:
+// 1. Quadras com múltiplos clusters IBGE (setor+quadraIBGE) — viola
+//    a invariante "1 quadra IBGE = 1 quadra do app"
+// 2. Quadras vazias (sem nenhum endereço vinculado e não-inativas)
+//
+// Cada quadra pode ser marcada como "OK auditado" pra sumir da
+// próxima auditoria. Persistido em ScriptProperty AUDIT_OK_*.
+// =================================================================
+
+function auditarQuadras() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetQ = ss.getSheetByName(SHEET.QUADRAS);
+  var sheetD = ss.getSheetByName(SHEET.DADOS);
+  if (!sheetQ) return { ok: false, erro: 'Aba Quadras não encontrada' };
+
+  var dataQ = sheetQ.getDataRange().getValues();
+  var quadras = {};
+  var polyById = {};
+  for (var i = 1; i < dataQ.length; i++) {
+    var id = String(dataQ[i][COL.QUADRAS.ID]).trim();
+    var st = String(dataQ[i][COL.QUADRAS.STATUS] || '');
+    if (!id || st === STATUS.INATIVA) continue;
+    quadras[id] = { qtdEnderecos: 0, clustersIBGE: {} };
+    polyById[id] = String(dataQ[i][COL.QUADRAS.POLYSTRING] || '');
+  }
+
+  if (sheetD && sheetD.getLastRow() > 1) {
+    var dataD = sheetD.getRange(2, 1, sheetD.getLastRow() - 1, sheetD.getLastColumn()).getValues();
+    dataD.forEach(function(r){
+      var q = String(r[COL.DADOS.QUADRA] || '').trim();
+      if (!q || !quadras[q]) return;
+      quadras[q].qtdEnderecos++;
+      var setor = String(r[COL.DADOS.SETOR_1IDX - 1] || '').trim();
+      var qibge = String(r[COL.DADOS.QUADRA_IBGE] || '').trim();
+      if (setor && qibge) quadras[q].clustersIBGE[setor + '|' + qibge] = (quadras[q].clustersIBGE[setor + '|' + qibge] || 0) + 1;
+    });
+  }
+
+  // Reads OK flags
+  var props = PropertiesService.getScriptProperties();
+  function lerOk(key) {
+    var set = {};
+    String(props.getProperty(key) || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(id){ set[id] = true; });
+    return set;
+  }
+  var okMulti = lerOk('AUDIT_OK_MULTI');
+  var okVazia = lerOk('AUDIT_OK_VAZIA');
+
+  var multiplos = [], vazias = [];
+  Object.keys(quadras).forEach(function(id){
+    var q = quadras[id];
+    var clustersList = Object.keys(q.clustersIBGE);
+    if (clustersList.length >= 2 && !okMulti[id]) {
+      multiplos.push({
+        id: id,
+        clusters: clustersList.map(function(c){
+          var p = c.split('|');
+          return { setor: p[0], qibge: p[1], qtd: q.clustersIBGE[c] };
+        }),
+        qtdEnderecos: q.qtdEnderecos,
+        polyString: polyById[id] || ''
+      });
+    }
+    if (q.qtdEnderecos === 0 && !okVazia[id]) {
+      vazias.push({ id: id, polyString: polyById[id] || '' });
+    }
+  });
+
+  return {
+    ok: true,
+    multiplos: multiplos,
+    vazias: vazias,
+    totalQuadras: Object.keys(quadras).length,
+    okMultiCount: Object.keys(okMulti).length,
+    okVaziaCount: Object.keys(okVazia).length
+  };
+}
+
+function marcarAuditoriaOk(id, tipo) {
+  if (!id || !tipo) return { ok: false, erro: 'parâmetros obrigatórios' };
+  return withLock_(function(){
+    var props = PropertiesService.getScriptProperties();
+    var key = tipo === 'multi' ? 'AUDIT_OK_MULTI' : 'AUDIT_OK_VAZIA';
+    var lista = String(props.getProperty(key) || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    if (lista.indexOf(id) < 0) lista.push(id);
+    props.setProperty(key, lista.join(','));
+    return { ok: true };
+  });
+}
+
+function desmarcarAuditoriaOk(id, tipo) {
+  if (!id || !tipo) return { ok: false, erro: 'parâmetros obrigatórios' };
+  return withLock_(function(){
+    var props = PropertiesService.getScriptProperties();
+    var key = tipo === 'multi' ? 'AUDIT_OK_MULTI' : 'AUDIT_OK_VAZIA';
+    var lista = String(props.getProperty(key) || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    lista = lista.filter(function(x){ return x !== id; });
+    props.setProperty(key, lista.join(','));
+    return { ok: true };
+  });
+}
