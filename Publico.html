@@ -1825,6 +1825,7 @@ function criarItemHtml(item, isInsideGroup) {
       else localStorage.removeItem(chave);
       atualizarBotoesDesfecho(row, novo);
       atualizarCobertura();
+      if (typeof aplicarFiltros === 'function') aplicarFiltros();
       if (!novo) return;
       enfileirarSync('desfecho', { row: row, tipo: tipo });
     };
@@ -2105,7 +2106,12 @@ function toggleVisita(row, el) {
 
         var bateBusca = !q || texto.indexOf(q) > -1;
 
-        var feito = el.querySelector('.check-visita.checked') !== null;
+        // "Feito" = qualquer desfecho marcado (naoAtendeu / semConversa /
+        // conversou) — armazenado em localStorage como desf_<row>. Conta
+        // também o legado 'v_<row>' = true pra compat com marcações antigas.
+        var row = el.getAttribute('data-row');
+        var feito = !!localStorage.getItem('desf_' + row) ||
+                    localStorage.getItem('v_' + row) === 'true';
         var bateVisita = (filtroVisita === 'todos') ||
                          (filtroVisita === 'feitos' && feito) ||
                          (filtroVisita === 'pendentes' && !feito);
