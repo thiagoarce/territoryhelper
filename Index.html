@@ -168,6 +168,9 @@
       <button class="btn btn-sm btn-outline-primary ms-1" onclick="window.abrirAutoVincular()" title="Auto-vincular endereços por setor + quadra IBGE">
         <i class="fa-solid fa-link"></i> Auto-vincular
       </button>
+      <button class="btn btn-sm btn-outline-danger ms-1" onclick="window.abrirAuditoria()" title="Auditar quadras: múltiplos clusters IBGE ou vazias">
+        <i class="fa-solid fa-magnifying-glass-chart"></i> Auditar
+      </button>
       <small class="text-muted ms-2" style="font-size:.7rem;flex-basis:100%; text-align:center">
         <i class="fa-solid fa-circle-info"></i> Selecione os pontos (endereços) e depois clique na quadra para vincular
       </small>
@@ -362,6 +365,42 @@
           <div class="d-grid gap-2">
             <button class="btn btn-primary" onclick="window.resolverConflito('substituir')">Substituir</button><button class="btn btn-outline-secondary" onclick="window.resolverConflito('apenas_historico')">Apenas Histórico</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Auditoria de quadras -->
+  <div class="modal fade" id="modalAuditoria" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-magnifying-glass-chart me-2"></i>Auditoria de quadras</h5>
+          <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted">Identifica inconsistências comuns. Marque "OK" pra ignorar casos que você já validou — eles não aparecem mais nas próximas auditorias.</p>
+          <div id="auditoriaStatus" class="small mb-2"></div>
+          <button class="btn btn-danger w-100 mb-3" id="btnRodarAuditoria" onclick="window.rodarAuditoria()">
+            <i class="fa-solid fa-play me-1"></i> Rodar auditoria
+          </button>
+          <h6 class="small fw-bold mt-3 mb-2">
+            <i class="fa-solid fa-circle-exclamation text-warning me-1"></i>
+            Quadras com múltiplos clusters IBGE
+          </h6>
+          <div id="auditListaMulti" class="small mb-3">
+            <div class="text-muted">Rode pra ver os problemas.</div>
+          </div>
+          <h6 class="small fw-bold mt-3 mb-2">
+            <i class="fa-solid fa-circle-exclamation text-info me-1"></i>
+            Quadras sem nenhum endereço
+          </h6>
+          <div id="auditListaVazias" class="small">
+            <div class="text-muted">Rode pra ver os problemas.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
         </div>
       </div>
     </div>
