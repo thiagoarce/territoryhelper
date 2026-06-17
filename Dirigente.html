@@ -359,10 +359,13 @@
         poly._estiloOriginal = Object.assign({}, estilo);
         poly._qInfo = q;
         poly._tipo = 'designada';
-        var tipLabel = q.id +
-          (q.qtdPredios ? ' (' + q.qtdPredios + ' préd.)' : '') +
-          (temNaoVisitar ? ' ⚠' : '');
-        poly.bindTooltip(tipLabel, { permanent:true, direction:'center', className:'label-quadra' });
+        // Tooltip default: só o nome da quadra (+ ⚠ se tem "não visitar").
+        // A contagem de prédios aparece só quando o toggle Densidade tá
+        // ligado — controlado em aplicarDensidadeMapa.
+        var tipBase = q.id + (temNaoVisitar ? ' ⚠' : '');
+        poly._labelBase = tipBase;
+        poly._labelDensidade = q.id + (q.qtdPredios ? ' (' + q.qtdPredios + ' préd.)' : '') + (temNaoVisitar ? ' ⚠' : '');
+        poly.bindTooltip(tipBase, { permanent:true, direction:'center', className:'label-quadra' });
         poly.on('click', function(e){
           L.DomEvent.stopPropagation(e);
           aoClicarNaQuadra(poly, 'designada', q);
@@ -399,11 +402,11 @@
         var q = dados.find(function(x){ return x.id === (poly.qId || ''); });
         if (!q) return;
         if (ativo) {
-          // Aplica cor de densidade SEM mexer em _estiloOriginal (preserva
-          // pra restaurar quando desligar).
           poly.setStyle({ color: '#0d47a1', weight: 2, fillColor: corPorDensidade(q.qtdPredios || 0), fillOpacity: 0.65 });
-        } else if (poly._estiloOriginal) {
-          poly.setStyle(poly._estiloOriginal);
+          if (poly._labelDensidade) poly.setTooltipContent(poly._labelDensidade);
+        } else {
+          if (poly._estiloOriginal) poly.setStyle(poly._estiloOriginal);
+          if (poly._labelBase) poly.setTooltipContent(poly._labelBase);
         }
       });
     };
