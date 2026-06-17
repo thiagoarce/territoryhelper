@@ -1293,6 +1293,14 @@ function getDadosComContexto(idsString) {
     }
   }
 
+  // Enriquece com densidade de prédios por quadra (numero de prédios,
+  // não de endereços — aptos mascaram a contagem real). Frontend usa
+  // pra colorir quadras na visualização do dirigente.
+  var densidade = {};
+  try { densidade = getDensidadePredios(); } catch (e) {}
+  designadas.forEach(function(q){ q.qtdPredios = densidade[q.id] || 0; });
+  contexto.forEach(function(q){ q.qtdPredios = densidade[q.id] || 0; });
+
   return {
     designadas: designadas,
     contexto: contexto,
@@ -3063,7 +3071,8 @@ function autoVincularEnderecos() {
           chave: chave, totalEnderecos: c.rows.length,
           motivo: 'Sem coordenadas pra usar geometria',
           exemploRows: c.rows.slice(0, 3).map(function(i){ return i + 2; }),
-          melhorMatch: null
+          melhorMatch: null,
+          pontos: []
         });
         return;
       }
@@ -3107,7 +3116,8 @@ function autoVincularEnderecos() {
           // Sugestão é a maioria; geometria como segundo critério
           melhorMatch: (sugestao || melhorId)
             ? { id: sugestao || melhorId, pct: Math.round(pct * 100), qtd: melhorQtd || 0, total: c.rows.length }
-            : null
+            : null,
+          pontos: c.pontos.slice(0, 30)
         });
       } else if (pct >= THRESHOLD && melhorId) {
         // Alta confiança — vincula todos os endereços do cluster
@@ -3125,7 +3135,8 @@ function autoVincularEnderecos() {
             ? 'Confiança baixa (' + Math.round(pct * 100) + '%) — melhor candidata: ' + melhorId
             : 'Nenhuma quadra contém os pontos',
           exemploRows: c.rows.slice(0, 3).map(function(i){ return i + 2; }),
-          melhorMatch: melhorId ? { id: melhorId, pct: Math.round(pct * 100), qtd: melhorQtd, total: c.pontos.length } : null
+          melhorMatch: melhorId ? { id: melhorId, pct: Math.round(pct * 100), qtd: melhorQtd, total: c.pontos.length } : null,
+          pontos: c.pontos.slice(0, 30)
         });
       }
     });
