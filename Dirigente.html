@@ -146,12 +146,17 @@
           <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <p class="small text-muted">Abre o Google Maps centrado no território com os lugares próximos:</p>
+          <p class="small text-muted">Pontos próximos aparecem direto no mapa, com indicação da quadra mais próxima. Toque num ponto pra abrir rota no Google Maps.</p>
           <div id="estContent"></div>
           <hr>
-          <button class="btn btn-outline-secondary w-100" onclick="compartilharRotaTerritorio()">
-            <i class="fa-solid fa-paper-plane me-1"></i> Compartilhar rota até o território
-          </button>
+          <div class="d-grid gap-2">
+            <button class="btn btn-outline-danger" onclick="limparPOIs()">
+              <i class="fa-solid fa-eraser me-1"></i> Limpar pontos do mapa
+            </button>
+            <button class="btn btn-outline-secondary" onclick="compartilharRotaTerritorio()">
+              <i class="fa-solid fa-paper-plane me-1"></i> Compartilhar rota até o território
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -383,16 +388,14 @@
       var toggle = document.getElementById('toggleDensidade');
       if (!toggle || !layerQuadras) return;
       var ativo = toggle.checked;
-      // Não mexe no visual durante o modo Compartilhar (selecionadas ficam
-      // em laranja). E preserva o vermelho das concluídas quando densidade off.
       if (modoCompartilhar) return;
       layerQuadras.eachLayer(function(poly){
         var q = dados.find(function(x){ return x.id === (poly.qId || ''); });
         if (!q) return;
         if (ativo) {
-          var novo = { color: '#0d47a1', weight: 2, fillColor: corPorDensidade(q.qtdPredios || 0), fillOpacity: 0.65 };
-          poly.setStyle(novo);
-          poly._estiloOriginal = novo;
+          // Aplica cor de densidade SEM mexer em _estiloOriginal (preserva
+          // pra restaurar quando desligar).
+          poly.setStyle({ color: '#0d47a1', weight: 2, fillColor: corPorDensidade(q.qtdPredios || 0), fillOpacity: 0.65 });
         } else if (poly._estiloOriginal) {
           poly.setStyle(poly._estiloOriginal);
         }
@@ -671,25 +674,136 @@
       }
     };
 
-    // ====== ESTACIONAR PERTO ======
+    // ====== POIs PRÓXIMOS NO MAPA (via Overpass) ======
+    // Em vez de abrir o Google Maps externo, busca pontos perto do
+    // território e desenha no nosso mapa com tooltip indicando a quadra
+    // mais próxima — o dirigente vê de bate-pronto qual lugar serve qual
+    // quadra.
+    var layerPOIs = null;
+    var _poiBusca = null;
+
+    function _bboxOverpass() {
+      var b = layerQuadras.getBounds();
+      // Estende ~250m em cada direção
+      var pad = 0.0025;
+      var s = b.getSouth() - pad, w = b.getWest() - pad;
+      var n = b.getNorth() + pad, e = b.getEast() + pad;
+      return s + ',' + w + ',' + n + ',' + e;
+    }
+
+    // Distância em metros entre dois pontos (Haversine simplificado, ok pra distâncias curtas)
+    function _distM(lat1, lng1, lat2, lng2) {
+      var R = 6371000;
+      var dLat = (lat2 - lat1) * Math.PI / 180;
+      var dLng = (lng2 - lng1) * Math.PI / 180;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+      return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    // Centroide de uma quadra (média dos vértices — bom o bastante)
+    function _centroideQuadra(q) {
+      if (q._cent) return q._cent;
+      var pts = parsePoly(q.polyString || '');
+      if (pts.length < 3) return null;
+      var sLat = 0, sLng = 0;
+      pts.forEach(function(p){ sLat += p[0]; sLng += p[1]; });
+      q._cent = { lat: sLat/pts.length, lng: sLng/pts.length };
+      return q._cent;
+    }
+
+    function _quadraMaisProxima(lat, lng) {
+      var melhor = null, dMin = Infinity;
+      dados.forEach(function(q){
+        var c = _centroideQuadra(q);
+        if (!c) return;
+        var d = _distM(lat, lng, c.lat, c.lng);
+        if (d < dMin) { dMin = d; melhor = q.id; }
+      });
+      return { id: melhor, dist: dMin };
+    }
+
+    window.mostrarPOIs = function(cfg) {
+      // cfg = { label, cor, icone, tags: [{k,v}] }
+      if (!layerQuadras || !layerQuadras.getBounds().isValid()) {
+        alert('Aguarde o mapa carregar.'); return;
+      }
+      if (_poiBusca) return; // evita concorrência
+      _poiBusca = cfg.label;
+      var status = document.getElementById('poiStatus');
+      if (status) status.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Buscando ' + cfg.label.toLowerCase() + '...';
+
+      var bbox = _bboxOverpass();
+      var partes = [];
+      cfg.tags.forEach(function(t){
+        partes.push('node["' + t.k + '"="' + t.v + '"](' + bbox + ');');
+        partes.push('way["' + t.k + '"="' + t.v + '"](' + bbox + ');');
+      });
+      var ql = '[out:json][timeout:15];(' + partes.join('') + ');out center;';
+
+      fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST', body: 'data=' + encodeURIComponent(ql)
+      })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          _poiBusca = null;
+          if (status) status.innerHTML = '';
+          var els = (data && data.elements) || [];
+          if (els.length === 0) {
+            if (status) status.innerHTML = '<small class="text-muted">Nenhum ' + cfg.label.toLowerCase() + ' encontrado por perto.</small>';
+            return;
+          }
+          if (!layerPOIs) layerPOIs = L.featureGroup().addTo(map);
+          els.forEach(function(el){
+            var lat = el.lat || (el.center && el.center.lat);
+            var lng = el.lon || (el.center && el.center.lon);
+            if (lat == null || lng == null) return;
+            var prox = _quadraMaisProxima(lat, lng);
+            var nome = (el.tags && (el.tags.name || el.tags['name:pt'])) || cfg.label;
+            var tooltip = '<b>' + cfg.icone + ' ' + escapeHtmlDir(nome) + '</b>' +
+              (prox.id ? '<br>Mais perto de <b>' + escapeHtmlDir(prox.id) + '</b> (~' + prox.dist + ' m)' : '');
+            var marker = L.circleMarker([lat, lng], {
+              radius: 8, color: '#fff', weight: 2, fillColor: cfg.cor, fillOpacity: 0.95
+            }).bindTooltip(tooltip, { sticky: true })
+              .on('click', function(){
+                // Click no marker = rota até ele no Google Maps
+                window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng, '_blank');
+              });
+            layerPOIs.addLayer(marker);
+          });
+          // Fecha o modal pra ver o mapa
+          var m = bootstrap.Modal.getInstance(document.getElementById('modalEstacionar'));
+          if (m) m.hide();
+        })
+        .catch(function(){
+          _poiBusca = null;
+          if (status) status.innerHTML = '<small class="text-danger">Falha na busca. Tente de novo.</small>';
+        });
+    };
+
+    window.limparPOIs = function() {
+      if (layerPOIs) { layerPOIs.clearLayers(); }
+    };
+
     window.abrirEstacionar = function() {
       if (!layerQuadras || !layerQuadras.getBounds().isValid()) { alert('Aguarde o mapa carregar.'); return; }
-      var c = layerQuadras.getBounds().getCenter();
-      var queries = [
-        { lbl: '🅿 Estacionamentos', q: 'estacionamento' },
-        { lbl: '🌳 Praças', q: 'praça' },
-        { lbl: '💊 Farmácias', q: 'farmácia' },
-        { lbl: '🥐 Padarias', q: 'padaria' },
-        { lbl: '⛽ Postos de gasolina', q: 'posto de gasolina' },
-        { lbl: '🏪 Mercados', q: 'mercado' }
+      var categorias = [
+        { label: 'Estacionamentos', cor: '#1976d2', icone: '🅿', tags: [{k:'amenity',v:'parking'}] },
+        { label: 'Praças', cor: '#16a34a', icone: '🌳', tags: [{k:'leisure',v:'park'}, {k:'leisure',v:'playground'}] },
+        { label: 'Farmácias', cor: '#dc2626', icone: '💊', tags: [{k:'amenity',v:'pharmacy'}] },
+        { label: 'Padarias', cor: '#d97706', icone: '🥐', tags: [{k:'shop',v:'bakery'}] },
+        { label: 'Postos', cor: '#7c3aed', icone: '⛽', tags: [{k:'amenity',v:'fuel'}] },
+        { label: 'Mercados', cor: '#0891b2', icone: '🏪', tags: [{k:'shop',v:'supermarket'}, {k:'shop',v:'convenience'}] }
       ];
       var html = '<div class="d-grid gap-2">';
-      queries.forEach(function(it){
-        var href = 'https://www.google.com/maps/search/' + encodeURIComponent(it.q) +
-                   '/@' + c.lat + ',' + c.lng + ',17z';
-        html += '<a class="btn btn-outline-primary text-start" href="' + href + '" target="_blank" rel="noopener">' + it.lbl + ' perto</a>';
+      categorias.forEach(function(cat){
+        html += '<button class="btn btn-outline-primary text-start" onclick=\'window.mostrarPOIs(' + JSON.stringify(cat).replace(/'/g, "&#39;") + ')\'>' +
+                  cat.icone + ' ' + escapeHtmlDir(cat.label) + ' por perto' +
+                '</button>';
       });
       html += '</div>';
+      html += '<div id="poiStatus" class="small mt-2"></div>';
       document.getElementById('estContent').innerHTML = html;
       new bootstrap.Modal(document.getElementById('modalEstacionar')).show();
     };
