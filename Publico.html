@@ -1040,7 +1040,12 @@
       if (p.tipo === 'predio') {
         var titPredio = p.logradouro + ', ' + p.numero;
         var subPredio = p.aptos.length + ' apartamento(s)';
-        var mapsHref = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
+        // Pega lat/lng do primeiro apto com coordenada — todos do mesmo
+        // prédio compartilham (ou estão a poucos metros)
+        var aptoComCoord = p.aptos.find(function(a){ return a.lat && a.lng; });
+        var mapsHref = aptoComCoord
+          ? 'https://www.google.com/maps/dir/?api=1&destination=' + aptoComCoord.lat + ',' + aptoComCoord.lng
+          : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
         var aptosHtml = p.aptos.map(function(a){
           var d = localStorage.getItem('desf_' + a.row) || '';
           var c = localStorage.getItem('carta_' + a.row) === 'true';
