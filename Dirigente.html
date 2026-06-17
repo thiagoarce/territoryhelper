@@ -1044,6 +1044,24 @@
       var textoOriginal = btn ? btn.innerHTML : null;
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando...'; }
 
+      // Esconde temporariamente as camadas de CONTEXTO e POIs pra que
+      // o PNG exportado mostre só as quadras designadas (cartão limpo).
+      // Restaura depois do snapshot — sucesso ou falha.
+      var camadasOcultas = [];
+      [layerContexto, layerPOIs].forEach(function(lyr){
+        if (lyr && map && map.hasLayer(lyr)) {
+          camadasOcultas.push(lyr);
+          map.removeLayer(lyr);
+        }
+      });
+      function restaurarCamadas() {
+        camadasOcultas.forEach(function(lyr){
+          if (!map.hasLayer(lyr)) map.addLayer(lyr);
+        });
+        // layerQuadras tem que ir POR CIMA do contexto restaurado
+        if (layerQuadras) layerQuadras.bringToFront();
+      }
+
       // Garante que o mapa esteja enquadrado nas quadras designadas antes
       // de capturar (corrige o problema de quadras ficarem fora do mapa)
       if (layerQuadras && layerQuadras.getBounds().isValid()) {
@@ -1213,6 +1231,7 @@
 
       function restaurar() {
         if (btn && textoOriginal != null) { btn.disabled = false; btn.innerHTML = textoOriginal; }
+        restaurarCamadas();
       }
     }
 
