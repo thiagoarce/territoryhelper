@@ -1262,35 +1262,39 @@ function getDadosComContexto(idsString) {
     }
   }
 
-  // (2) Fallback geográfico: ninguém marcou território, mas a gente
-  // ainda quer dar contexto visual. Usa bounding box das designadas.
-  if (contexto.length === 0) {
-    var bbox = bboxDasDesignadas_(designadas);
-    if (bbox) {
-      // Expande 60% pra cada lado pra capturar quadras vizinhas.
-      // Mínimo absoluto (~110m) evita degenerar quando designamos uma
-      // única quadra (bbox quase pontual em graus).
-      var MIN_DELTA = 0.001;
-      var dlat = Math.max((bbox.maxLat - bbox.minLat) * 0.6, MIN_DELTA);
-      var dlng = Math.max((bbox.maxLng - bbox.minLng) * 0.6, MIN_DELTA);
-      bbox.minLat -= dlat; bbox.maxLat += dlat;
-      bbox.minLng -= dlng; bbox.maxLng += dlng;
+  // (2) Vizinhança geográfica: SEMPRE adiciona quadras próximas que
+  // ainda não estejam na lista (territorial). Dá referência visual de
+  // ruas e quadras de OUTROS territórios em volta — útil pro dirigente
+  // saber onde tá no bairro. Dedupe por ID, cap em COTA_FALLBACK.
+  var bbox = bboxDasDesignadas_(designadas);
+  if (bbox) {
+    // Expansão menor quando já temos contexto territorial (não enche
+    // demais a tela); maior quando não temos nada ainda.
+    var fator = contexto.length > 0 ? 0.35 : 0.6;
+    var MIN_DELTA = 0.001;
+    var dlat = Math.max((bbox.maxLat - bbox.minLat) * fator, MIN_DELTA);
+    var dlng = Math.max((bbox.maxLng - bbox.minLng) * fator, MIN_DELTA);
+    bbox.minLat -= dlat; bbox.maxLat += dlat;
+    bbox.minLng -= dlng; bbox.maxLng += dlng;
 
-      var candidatos = [];
-      for (var n = 1; n < dataQ.length; n++) {
-        var idN = String(dataQ[n][COL.QUADRAS.ID]).trim();
-        if (!idN || idsSet[idN]) continue;
-        var polyN = dataQ[n][COL.QUADRAS.POLYSTRING];
-        if (!polyN) continue;
-        var centro = centroPoly_(polyN);
-        if (!centro) continue;
-        if (centro.lat < bbox.minLat || centro.lat > bbox.maxLat) continue;
-        if (centro.lng < bbox.minLng || centro.lng > bbox.maxLng) continue;
-        var item2 = montarItem(dataQ[n]);
-        if (item2) candidatos.push(item2);
+    var jaTem = {};
+    contexto.forEach(function(q){ jaTem[q.id] = true; });
+
+    for (var n = 1; n < dataQ.length; n++) {
+      var idN = String(dataQ[n][COL.QUADRAS.ID]).trim();
+      if (!idN || idsSet[idN] || jaTem[idN]) continue;
+      var polyN = dataQ[n][COL.QUADRAS.POLYSTRING];
+      if (!polyN) continue;
+      var centro = centroPoly_(polyN);
+      if (!centro) continue;
+      if (centro.lat < bbox.minLat || centro.lat > bbox.maxLat) continue;
+      if (centro.lng < bbox.minLng || centro.lng > bbox.maxLng) continue;
+      var item2 = montarItem(dataQ[n]);
+      if (item2) {
+        contexto.push(item2);
+        jaTem[idN] = true;
+        if (contexto.length >= COTA_FALLBACK) break;
       }
-
-      contexto = candidatos.slice(0, COTA_FALLBACK);
     }
   }
 
@@ -2372,6 +2376,7 @@ function listarAptosDoPredio(chave) {
       row: i + 2,
       complemento: String(r[COL.DADOS.COMPLEMENTO] || ''),
       tipo: String(r[COL.DADOS.TIPO] || ''),
+      nome: String(r[COL.DADOS.NOME_EDIF] || ''),
       logradouro: log, numero: num
     });
   });
@@ -2404,11 +2409,11 @@ function listarAptosDoPredio(chave) {
 
   var nomeAuto = '';
   for (var i = 0; i < aptos.length; i++) {
-    if (aptos[i].complemento) { /* skip */ }
+    if (aptos[i].nome) { nomeAuto = aptos[i].nome; break; }
   }
   var predio = {
     chave: chave,
-    nome: overlay.nome || (aptos[0].logradouro + ', ' + aptos[0].numero),
+    nome: overlay.nome || nomeAuto || (aptos[0].logradouro + ', ' + aptos[0].numero),
     logradouro: aptos[0].logradouro,
     numero: aptos[0].numero,
     qtdEnderecos: aptos.length,
