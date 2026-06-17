@@ -381,9 +381,22 @@
         <div class="modal-body">
           <p class="small text-muted">Identifica inconsistências comuns. Marque "OK" pra ignorar casos que você já validou — eles não aparecem mais nas próximas auditorias.</p>
           <div id="auditoriaStatus" class="small mb-2"></div>
-          <button class="btn btn-danger w-100 mb-3" id="btnRodarAuditoria" onclick="window.rodarAuditoria()">
-            <i class="fa-solid fa-play me-1"></i> Rodar auditoria
-          </button>
+          <div class="d-flex gap-2 mb-3">
+            <button class="btn btn-danger flex-grow-1" id="btnRodarAuditoria" onclick="window.rodarAuditoria()">
+              <i class="fa-solid fa-play me-1"></i> Rodar auditoria
+            </button>
+            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#auditIgnoradosBox" aria-expanded="false" onclick="window.carregarAuditIgnorados()">
+              <i class="fa-solid fa-eye-slash me-1"></i> Ver ignorados
+            </button>
+          </div>
+          <div class="collapse mb-3" id="auditIgnoradosBox">
+            <div class="card card-body bg-body-tertiary py-2 px-3">
+              <h6 class="small fw-bold mb-2"><i class="fa-solid fa-clock-rotate-left me-1"></i>Quadras marcadas como OK</h6>
+              <div id="auditListaIgnorados" class="small">
+                <div class="text-muted">Carregando...</div>
+              </div>
+            </div>
+          </div>
           <h6 class="small fw-bold mt-3 mb-2">
             <i class="fa-solid fa-circle-exclamation text-warning me-1"></i>
             Quadras com múltiplos clusters IBGE

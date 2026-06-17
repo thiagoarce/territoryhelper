@@ -291,6 +291,44 @@
     #appSimples .cabecalho { background:#1976d2; color:#fff; border-radius:14px; padding:16px; margin-bottom:16px; }
     #appSimples .progresso { font-size:1.1rem; font-weight:700; }
     #appSimples .quadra { font-size:.85rem; opacity:.85; }
+    /* Hub: lista de quadras / faces */
+    #appSimples .hub-titulo { font-size:1.1rem; font-weight:700; margin-bottom:10px; color:#374151; }
+    body.tema-escuro #appSimples .hub-titulo { color:#cbd5e1; }
+    #appSimples .hub-mapa { height:200px; border-radius:14px; overflow:hidden; margin-bottom:14px;
+      border:1px solid #e5e7eb; position:relative; }
+    body.tema-escuro #appSimples .hub-mapa { border-color:#3a4047; }
+    #appSimples .hub-card {
+      background:#fff; border:2px solid #e5e7eb; border-radius:14px;
+      padding:16px; margin-bottom:10px; cursor:pointer; display:flex;
+      align-items:center; gap:14px; min-height:72px; transition:all .15s;
+    }
+    #appSimples .hub-card:active { transform:scale(.98); }
+    #appSimples .hub-card.completa { border-color:#16a34a; background:#f0fdf4; }
+    #appSimples .hub-card.parcial { border-color:#f59e0b; background:#fffbeb; }
+    body.tema-escuro #appSimples .hub-card { background:#2a2f33; border-color:#3a4047; color:#e8eef5; }
+    body.tema-escuro #appSimples .hub-card.completa { background:#0e2716; border-color:#16a34a; }
+    body.tema-escuro #appSimples .hub-card.parcial { background:#2d1f06; border-color:#f59e0b; }
+    #appSimples .hub-card-titulo { font-weight:800; font-size:1.15rem; }
+    #appSimples .hub-card-sub { font-size:.85rem; color:#6b7280; }
+    body.tema-escuro #appSimples .hub-card-sub { color:#95a4b3; }
+    #appSimples .hub-card-status { margin-left:auto; font-size:1.3rem; }
+    #appSimples .barra-mini { width:100%; height:6px; background:#e5e7eb; border-radius:999px;
+      overflow:hidden; margin-top:6px; }
+    #appSimples .barra-mini > div { height:100%; background:#16a34a; transition:width .3s; }
+    /* Botão voltar / refresh */
+    #appSimples .topbar-simples {
+      display:flex; gap:8px; align-items:center; margin-bottom:12px;
+    }
+    #appSimples .topbar-simples button {
+      background:#fff; border:1.5px solid #e5e7eb; color:#1976d2;
+      padding:8px 14px; border-radius:10px; font-weight:600; cursor:pointer;
+      display:inline-flex; align-items:center; gap:6px; min-height:44px;
+    }
+    body.tema-escuro #appSimples .topbar-simples button {
+      background:#1a1d20; color:#e8eef5; border-color:#3a4047;
+    }
+    #appSimples .topbar-simples .brisa { margin-left:auto; font-size:.75rem; color:#6b7280; }
+    body.tema-escuro #appSimples .topbar-simples .brisa { color:#95a4b3; }
     #appSimples .card-end {
       background:#fff; border-radius:16px; padding:24px 20px; margin-bottom:20px;
       box-shadow:0 4px 12px rgba(0,0,0,.08); text-align:center;
@@ -417,11 +455,6 @@
     <div id="msg-mapa">Toque no local do novo endereço</div>
     <button class="map-btn btn-gps" onclick="centralizarGPS()"><i class="fa-solid fa-crosshairs"></i></button>
     <button class="map-btn btn-rota" onclick="abrirRotaGoogle()"><i class="fa-solid fa-diamond-turn-right"></i></button>
-  </div>
-  <div id="legenda" class="d-none px-3 py-2 d-flex flex-wrap gap-3 small" style="background:#f8f9fa; border-bottom:1px solid #e5e7eb">
-    <span><span class="legenda-bola" style="background:#1976d2"></span> Designada</span>
-    <span><span class="legenda-bola" style="background:#dc2626"></span> Concluída (não pode)</span>
-    <span><span class="legenda-bola" style="background:#9ca3af"></span> Disponível</span>
   </div>
 
   <!-- Modo SIMPLES: um endereço grande por vez. Pra publicadores com
@@ -741,9 +774,11 @@
       document.getElementById('loader').classList.add('d-none');
       // Mostra switch de modo (sempre)
       document.getElementById('switchModo').classList.remove('d-none');
-      var modoSalvo = 'avancado';
-      try { modoSalvo = localStorage.getItem('modo_pub') || 'avancado'; } catch(e) {}
-      aplicarModo(modoSalvo);
+      // Padrão: modo simples na 1ª visita (sem chave salva).
+      // Quem já usou continua no que escolheu.
+      var modoSalvo = null;
+      try { modoSalvo = localStorage.getItem('modo_pub'); } catch(e) {}
+      aplicarModo(modoSalvo || 'simples');
     }
 
     function aplicarModo(modo) {
@@ -751,23 +786,19 @@
       var simples = document.getElementById('appSimples');
       var avc = document.getElementById('app-content');
       var mapa = document.getElementById('mapa-container');
-      var leg = document.getElementById('legenda');
       var lbl = document.getElementById('lblModo');
       var ico = document.getElementById('iconModo');
       if (modo === 'simples') {
         simples.classList.remove('d-none');
         avc.classList.add('d-none');
         mapa.classList.add('d-none');
-        leg.classList.add('d-none');
         if (lbl) lbl.textContent = 'Modo avançado';
         if (ico) ico.className = 'fa-solid fa-table';
-        if (typeof _indiceSimples === 'undefined' || _indiceSimples == null) _indiceSimples = 0;
         renderizarSimples();
       } else {
         simples.classList.add('d-none');
         avc.classList.remove('d-none');
         mapa.classList.remove('d-none');
-        leg.classList.remove('d-none');
         if (lbl) lbl.textContent = 'Modo simples';
         if (ico) ico.className = 'fa-solid fa-list';
         iniciarMapa();
@@ -782,70 +813,208 @@
       aplicarModo(atual === 'simples' ? 'avancado' : 'simples');
     };
 
-    // ====== MODO SIMPLES: 1 endereço por vez, botões enormes ======
-    var _indiceSimples = 0;
+    // ====== MODO SIMPLES: hub (quadras) → faces → paradas ======
+    // Estrutura: trabalha-se UMA quadra de cada vez, UMA face de cada vez.
+    // O publicador escolhe a quadra no hub, depois a face, depois marca paradas.
+    var _simplesView = 'hub'; // 'hub' | 'faces' | 'paradas'
+    var _simplesQuadra = null;
+    var _simplesFace = null;
+    var _simplesMiniMap = null;
+    var _simplesUserPos = null;
+    var _simplesUserMarker = null;
+    var _ultimoSync = null;
+    var _autoRefreshInt = null;
+    var _geoWatchId = null;
 
-    function _todosOsEnderecosSimples() {
-      // Agrupa endereços do mesmo prédio (logradouro+numero) em um
-      // grupo só — o publicador vê "Prédio Y" como uma "parada" só,
-      // navega aptos por dentro. Evita scroll infinito apto a apto.
-      var lista = [];
-      var inverter = false;
-      try { inverter = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
-      (dadosGerais || []).forEach(function(q){
-        var itens = (q.itens || []).filter(function(it){ return !it.naoVisitar; });
-        if (inverter) itens = itens.slice().reverse();
-        var grupos = {};
-        var ordem = [];
-        itens.forEach(function(it){
-          var chave = (it.logradouro || '') + '|' + (it.numero || '');
-          if (!grupos[chave]) {
-            grupos[chave] = { quadra: q.id, logradouro: it.logradouro, numero: it.numero, aptos: [] };
-            ordem.push(chave);
-          }
-          grupos[chave].aptos.push(it);
-        });
-        ordem.forEach(function(k){
-          var g = grupos[k];
-          // 1 endereço → trata como item simples. ≥2 → prédio
-          if (g.aptos.length === 1) {
-            lista.push({ quadra: g.quadra, tipo: 'item', item: g.aptos[0] });
-          } else {
-            lista.push({ quadra: g.quadra, tipo: 'predio', logradouro: g.logradouro, numero: g.numero, aptos: g.aptos });
-          }
-        });
-      });
-      return lista;
-    }
+    try {
+      _simplesQuadra = localStorage.getItem('simples_quadra') || null;
+      _simplesFace = localStorage.getItem('simples_face') || null;
+      if (_simplesFace) _simplesView = 'paradas';
+      else if (_simplesQuadra) _simplesView = 'faces';
+    } catch(e) {}
+
+    function escapeHtmlPub(s){ return String(s||'').replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
 
     function renderizarSimples() {
-      var lista = _todosOsEnderecosSimples();
       var box = document.getElementById('appSimples');
-      if (lista.length === 0) {
+      if (!dadosGerais || dadosGerais.length === 0) {
         box.innerHTML = '<div class="text-center text-muted py-5">Sem endereços.</div>';
         return;
       }
-      if (_indiceSimples >= lista.length) _indiceSimples = lista.length - 1;
-      if (_indiceSimples < 0) _indiceSimples = 0;
-      var atual = lista[_indiceSimples];
+      // Sanity: se a quadra salva sumiu da designação atual, volta pro hub
+      if (_simplesQuadra && !dadosGerais.find(function(q){ return q.id === _simplesQuadra; })) {
+        _simplesQuadra = null; _simplesFace = null; _simplesView = 'hub';
+        try { localStorage.removeItem('simples_quadra'); localStorage.removeItem('simples_face'); } catch(e) {}
+      }
+      if (_simplesView === 'paradas') renderParadas();
+      else if (_simplesView === 'faces') renderFaces();
+      else renderHub();
+      iniciarAutoRefreshSimples();
+    }
 
-      // Progresso: % de paradas (não endereços) totalmente feitas
-      var feitos = lista.filter(function(p){
-        if (p.tipo === 'item') return localStorage.getItem('desf_' + p.item.row);
-        return p.aptos.every(function(a){ return localStorage.getItem('desf_' + a.row); });
-      }).length;
+    function _statusQuadraSimples(q) {
+      var total = 0, feitos = 0;
+      (q.itens || []).forEach(function(it){
+        if (it.naoVisitar) return;
+        total++;
+        if (localStorage.getItem('desf_' + it.row)) feitos++;
+      });
+      return { total: total, feitos: feitos,
+               pct: total > 0 ? Math.round(feitos/total*100) : 0 };
+    }
 
+    function _facesDeQuadra(q) {
+      var faces = {}; var ordem = [];
+      (q.itens || []).forEach(function(it){
+        if (it.naoVisitar) return;
+        var f = String(it.face || '').trim() || '—';
+        if (!faces[f]) { faces[f] = []; ordem.push(f); }
+        faces[f].push(it);
+      });
+      return ordem.map(function(f){
+        var itens = faces[f];
+        var feitos = itens.filter(function(it){ return localStorage.getItem('desf_' + it.row); }).length;
+        return { face: f, itens: itens, total: itens.length, feitos: feitos };
+      });
+    }
+
+    function _paradasDeFace(q, face) {
+      var itens = (q.itens || []).filter(function(it){
+        if (it.naoVisitar) return false;
+        var f = String(it.face || '').trim() || '—';
+        return f === face;
+      });
+      var inverter = false;
+      try { inverter = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
+      if (inverter) itens = itens.slice().reverse();
+      var grupos = {}; var ordem = [];
+      itens.forEach(function(it){
+        var k = (it.logradouro || '') + '|' + (it.numero || '');
+        if (!grupos[k]) { grupos[k] = { logradouro: it.logradouro, numero: it.numero, aptos: [] }; ordem.push(k); }
+        grupos[k].aptos.push(it);
+      });
+      return ordem.map(function(k){
+        var g = grupos[k];
+        return g.aptos.length === 1
+          ? { tipo:'item', item: g.aptos[0] }
+          : { tipo:'predio', logradouro: g.logradouro, numero: g.numero, aptos: g.aptos };
+      });
+    }
+
+    function renderHub() {
+      var box = document.getElementById('appSimples');
+      var cards = dadosGerais.map(function(q){
+        var s = _statusQuadraSimples(q);
+        var cls = s.total > 0 && s.feitos === s.total ? 'completa' :
+                  s.feitos > 0 ? 'parcial' : '';
+        var ic = s.total > 0 && s.feitos === s.total ? '✓' : s.feitos > 0 ? '◐' : '';
+        var idEsc = q.id.replace(/'/g, "\\'");
+        return '<div class="hub-card ' + cls + '" onclick="window.simplesEscolherQuadra(\'' + idEsc + '\')">' +
+                 '<div style="flex:1">' +
+                   '<div class="hub-card-titulo">Quadra ' + escapeHtmlPub(q.id) + '</div>' +
+                   '<div class="hub-card-sub">' + s.feitos + ' de ' + s.total + ' tocados</div>' +
+                   '<div class="barra-mini"><div style="width:' + s.pct + '%"></div></div>' +
+                 '</div>' +
+                 '<div class="hub-card-status">' + ic + '</div>' +
+               '</div>';
+      }).join('');
+      box.innerHTML =
+        '<div class="topbar-simples">' +
+          '<button onclick="window.simplesRefresh()" title="Buscar atualizações de outros publicadores"><i class="fa-solid fa-rotate"></i> Atualizar</button>' +
+          '<div class="brisa" id="simplesUltimoSync"></div>' +
+        '</div>' +
+        '<div class="hub-mapa" id="simplesMapaMini"></div>' +
+        '<div class="hub-titulo">' + (dadosGerais.length === 1 ? 'Sua designação' : 'Escolha a quadra que vai trabalhar') + '</div>' +
+        cards;
+      _atualizarBrisaSync();
+      iniciarMapaSimples();
+    }
+
+    function renderFaces() {
+      var q = dadosGerais.find(function(qq){ return qq.id === _simplesQuadra; });
+      if (!q) { _simplesView = 'hub'; return renderHub(); }
+      var faces = _facesDeQuadra(q);
+      // Se só tem 1 face (ou nenhuma face cadastrada), pula direto pra paradas
+      if (faces.length <= 1) {
+        _simplesFace = faces.length === 1 ? faces[0].face : '—';
+        _simplesView = 'paradas';
+        try { localStorage.setItem('simples_face', _simplesFace); } catch(e) {}
+        return renderParadas();
+      }
+      var box = document.getElementById('appSimples');
+      var cards = faces.map(function(f){
+        var pct = f.total > 0 ? Math.round(f.feitos/f.total*100) : 0;
+        var cls = f.feitos === f.total ? 'completa' : f.feitos > 0 ? 'parcial' : '';
+        var ic = f.feitos === f.total ? '✓' : f.feitos > 0 ? '◐' : '';
+        var nome = f.face === '—' ? 'Sem face cadastrada' : 'Face ' + f.face;
+        var fEsc = f.face.replace(/'/g, "\\'");
+        return '<div class="hub-card ' + cls + '" onclick="window.simplesEscolherFace(\'' + fEsc + '\')">' +
+                 '<div style="flex:1">' +
+                   '<div class="hub-card-titulo">' + escapeHtmlPub(nome) + '</div>' +
+                   '<div class="hub-card-sub">' + f.feitos + ' de ' + f.total + ' tocados</div>' +
+                   '<div class="barra-mini"><div style="width:' + pct + '%"></div></div>' +
+                 '</div>' +
+                 '<div class="hub-card-status">' + ic + '</div>' +
+               '</div>';
+      }).join('');
+      box.innerHTML =
+        '<div class="topbar-simples">' +
+          '<button onclick="window.simplesVoltarHub()"><i class="fa-solid fa-arrow-left"></i> Quadras</button>' +
+          '<button onclick="window.simplesRefresh()" title="Atualizar"><i class="fa-solid fa-rotate"></i></button>' +
+          '<div class="brisa" id="simplesUltimoSync"></div>' +
+        '</div>' +
+        '<div class="hub-mapa" id="simplesMapaMini"></div>' +
+        '<div class="hub-titulo">Quadra ' + escapeHtmlPub(q.id) + ' · escolha a face</div>' +
+        cards;
+      _atualizarBrisaSync();
+      iniciarMapaSimples();
+    }
+
+    function renderParadas() {
+      var q = dadosGerais.find(function(qq){ return qq.id === _simplesQuadra; });
+      if (!q) { _simplesView = 'hub'; return renderHub(); }
+      var paradas = _paradasDeFace(q, _simplesFace);
+      var box = document.getElementById('appSimples');
       var inverso = false;
       try { inverso = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
       var iconeInv = inverso ? 'fa-rotate-left' : 'fa-rotate-right';
+      // Mostra "Faces" só se a quadra tem mais de uma. Senão, volta direto pra hub.
+      var temFaces = _facesDeQuadra(q).length > 1;
+      var voltarBtn = temFaces
+        ? '<button onclick="window.simplesVoltarFaces()"><i class="fa-solid fa-arrow-left"></i> Faces</button>'
+        : '<button onclick="window.simplesVoltarHub()"><i class="fa-solid fa-arrow-left"></i> Quadras</button>';
+      var nomeFace = _simplesFace === '—' ? '' : ' · Face ' + _simplesFace;
 
-      var corpo;
-      if (atual.tipo === 'predio') {
-        // Vista de prédio: 1 cabeçalho + grid de aptos com botões
-        var titPredio = atual.logradouro + ', ' + atual.numero;
-        var subPredio = atual.aptos.length + ' apartamento(s)';
+      if (paradas.length === 0) {
+        box.innerHTML =
+          '<div class="topbar-simples">' + voltarBtn + '</div>' +
+          '<div class="text-center text-muted py-5">Sem endereços nesta face.</div>';
+        return;
+      }
+      var feitos = paradas.filter(function(p){
+        if (p.tipo === 'item') return localStorage.getItem('desf_' + p.item.row);
+        return p.aptos.every(function(a){ return localStorage.getItem('desf_' + a.row); });
+      }).length;
+      var cards = paradas.map(renderCardParada).join('');
+      box.innerHTML =
+        '<div class="topbar-simples">' +
+          voltarBtn +
+          '<button onclick="window.simplesInverter()" title="Inverter sentido"><i class="fa-solid ' + iconeInv + '"></i></button>' +
+          '<button onclick="window.simplesRefresh()" title="Atualizar"><i class="fa-solid fa-rotate"></i></button>' +
+        '</div>' +
+        '<div class="cabecalho">' +
+          '<div class="progresso">' + feitos + ' de ' + paradas.length + ' paradas feitas</div>' +
+          '<div class="quadra">Quadra ' + escapeHtmlPub(q.id) + escapeHtmlPub(nomeFace) + '</div>' +
+        '</div>' +
+        cards;
+    }
+
+    function renderCardParada(p) {
+      if (p.tipo === 'predio') {
+        var titPredio = p.logradouro + ', ' + p.numero;
+        var subPredio = p.aptos.length + ' apartamento(s)';
         var mapsHref = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
-        var aptosHtml = atual.aptos.map(function(a){
+        var aptosHtml = p.aptos.map(function(a){
           var d = localStorage.getItem('desf_' + a.row) || '';
           var c = localStorage.getItem('carta_' + a.row) === 'true';
           var nome = a.complemento || a.tipo || 'Apto';
@@ -859,80 +1028,135 @@
                    '</div>' +
                  '</div>';
         }).join('');
-        corpo =
-          '<div class="card-end">' +
-            '<div class="endereco-titulo"><i class="fa-solid fa-building me-2"></i>' + escapeHtmlPub(titPredio) + '</div>' +
-            '<div class="endereco-sub">' + subPredio + '</div>' +
-            '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar (Google Maps)</a></div>' +
-            '<div class="aptos-grid">' + aptosHtml + '</div>' +
-          '</div>';
-      } else {
-        var it = atual.item;
-        var desfecho = localStorage.getItem('desf_' + it.row) || '';
-        var carta = localStorage.getItem('carta_' + it.row) === 'true';
-        var titulo = it.nome ? it.nome : (it.complemento ? it.complemento : (it.logradouro + ', ' + it.numero));
-        var sub = it.nome ? (it.logradouro + ', ' + it.numero + (it.complemento ? ' — ' + it.complemento : ''))
-                          : (it.complemento ? (it.logradouro + ', ' + it.numero) : it.tipo);
-        var mapsHref = (it.lat && it.lng)
-          ? 'https://www.google.com/maps/dir/?api=1&destination=' + it.lat + ',' + it.lng
-          : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(it.logradouro + ', ' + it.numero);
-        corpo =
-          '<div class="card-end">' +
-            '<div class="endereco-titulo">' + escapeHtmlPub(titulo) + '</div>' +
-            '<div class="endereco-sub">' + escapeHtmlPub(sub) + '</div>' +
-            (it.nota ? '<div class="nota-pessoal"><i class="fa-solid fa-note-sticky me-1"></i>' + escapeHtmlPub(it.nota) + '</div>' : '') +
-            '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a></div>' +
-            '<div class="acoes-simples">' +
-              botaoSimples('naoAtendeu', 'fa-door-closed', 'Não atendeu', desfecho === 'naoAtendeu', it.row) +
-              botaoSimples('semConversa', 'fa-comment-slash', 'Falou, sem palestra', desfecho === 'semConversa', it.row) +
-              botaoSimples('conversou', 'fa-check', 'Conversou', desfecho === 'conversou', it.row) +
-              '<button class="botao-acao carta ' + (carta ? 'ativo' : '') + '" onclick="window.simplesCarta(' + it.row + ')">' +
-                '<i class="fa-regular fa-envelope"></i> <span>Deixei carta</span>' +
-              '</button>' +
-            '</div>' +
-          '</div>';
+        return '<div class="card-end">' +
+                 '<div class="endereco-titulo"><i class="fa-solid fa-building me-2"></i>' + escapeHtmlPub(titPredio) + '</div>' +
+                 '<div class="endereco-sub">' + subPredio + '</div>' +
+                 '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a></div>' +
+                 '<div class="aptos-grid">' + aptosHtml + '</div>' +
+               '</div>';
       }
-
-      box.innerHTML =
-        '<div class="cabecalho">' +
-          '<div class="d-flex justify-content-between align-items-center">' +
-            '<div class="progresso">' + (_indiceSimples + 1) + ' de ' + lista.length + '</div>' +
-            '<button onclick="window.simplesInverter()" title="Inverter sentido" style="background:rgba(255,255,255,0.2); border:none; color:#fff; padding:6px 10px; border-radius:8px;">' +
-              '<i class="fa-solid ' + iconeInv + '"></i>' +
-            '</button>' +
-          '</div>' +
-          '<div class="quadra">Quadra ' + escapeHtmlPub(atual.quadra) + ' · ' + feitos + ' parada(s) feita(s)</div>' +
-        '</div>' +
-        corpo +
-        '<div class="navegacao">' +
-          '<button onclick="simplesAnterior()"' + (_indiceSimples === 0 ? ' disabled' : '') + '>' +
-            '<i class="fa-solid fa-chevron-left me-1"></i> Anterior' +
-          '</button>' +
-          '<button class="proximo" onclick="simplesProximo()"' + (_indiceSimples >= lista.length - 1 ? ' disabled' : '') + '>' +
-            'Próximo <i class="fa-solid fa-chevron-right ms-1"></i>' +
-          '</button>' +
-        '</div>';
+      var it = p.item;
+      var desfecho = localStorage.getItem('desf_' + it.row) || '';
+      var carta = localStorage.getItem('carta_' + it.row) === 'true';
+      var titulo = it.nome ? it.nome : (it.complemento ? it.complemento : (it.logradouro + ', ' + it.numero));
+      var sub = it.nome ? (it.logradouro + ', ' + it.numero + (it.complemento ? ' — ' + it.complemento : ''))
+                        : (it.complemento ? (it.logradouro + ', ' + it.numero) : it.tipo);
+      var mapsHref = (it.lat && it.lng)
+        ? 'https://www.google.com/maps/dir/?api=1&destination=' + it.lat + ',' + it.lng
+        : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(it.logradouro + ', ' + it.numero);
+      return '<div class="card-end">' +
+               '<div class="endereco-titulo">' + escapeHtmlPub(titulo) + '</div>' +
+               '<div class="endereco-sub">' + escapeHtmlPub(sub) + '</div>' +
+               (it.nota ? '<div class="nota-pessoal"><i class="fa-solid fa-note-sticky me-1"></i>' + escapeHtmlPub(it.nota) + '</div>' : '') +
+               '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a></div>' +
+               '<div class="acoes-simples">' +
+                 botaoSimples('naoAtendeu', 'fa-door-closed', 'Não atendeu', desfecho === 'naoAtendeu', it.row) +
+                 botaoSimples('semConversa', 'fa-comment-slash', 'Falou, sem palestra', desfecho === 'semConversa', it.row) +
+                 botaoSimples('conversou', 'fa-check', 'Conversou', desfecho === 'conversou', it.row) +
+                 '<button class="botao-acao carta ' + (carta ? 'ativo' : '') + '" onclick="window.simplesCarta(' + it.row + ')">' +
+                   '<i class="fa-regular fa-envelope"></i> <span>Deixei carta</span>' +
+                 '</button>' +
+               '</div>' +
+             '</div>';
     }
 
     function btnMini(tipo, icone, ativo, row) {
       return '<button class="mini-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' + icone + '</button>';
     }
-
-    window.simplesInverter = function() {
-      var atual = false;
-      try { atual = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
-      try { localStorage.setItem('simples_inverso', atual ? 'false' : 'true'); } catch(e) {}
-      _indiceSimples = 0;
-      renderizarSimples();
-    };
-
     function botaoSimples(tipo, icone, label, ativo, row) {
       return '<button class="botao-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' +
                '<i class="fa-solid ' + icone + '"></i> <span>' + label + '</span>' +
              '</button>';
     }
-    function escapeHtmlPub(s){ return String(s||'').replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
 
+    // Mini-mapa: quadras designadas + pin do publicador (geolocation)
+    function iniciarMapaSimples() {
+      var el = document.getElementById('simplesMapaMini');
+      if (!el) return;
+      if (_simplesMiniMap) {
+        try { _simplesMiniMap.remove(); } catch(e) {}
+        _simplesMiniMap = null;
+        _simplesUserMarker = null;
+      }
+      _simplesMiniMap = L.map(el, { zoomControl: false, attributionControl: false })
+        .setView([-7.115, -34.863], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(_simplesMiniMap);
+      var bounds = null;
+      dadosGerais.forEach(function(q){
+        if (!q.polyString) return;
+        var pts = parsePolyPub(q.polyString);
+        if (pts.length < 3) return;
+        var isAtual = q.id === _simplesQuadra;
+        var poly = L.polygon(pts, {
+          color: isAtual ? '#dc2626' : '#1976d2',
+          weight: isAtual ? 3 : 2,
+          fillColor: isAtual ? '#fca5a5' : '#1976d2',
+          fillOpacity: isAtual ? 0.5 : 0.3
+        }).bindTooltip(q.id, { permanent: true, direction: "center", className: "label-quadra" })
+          .addTo(_simplesMiniMap);
+        bounds = bounds ? bounds.extend(poly.getBounds()) : poly.getBounds();
+      });
+      if (bounds) _simplesMiniMap.fitBounds(bounds, { padding: [10, 10], maxZoom: 17 });
+      if (_simplesUserPos) _renderUserPin();
+      iniciarGeolocation();
+      _simplesMiniMap.on('click', function(){
+        if (_simplesUserPos) {
+          window.open('https://www.google.com/maps/?q=' + _simplesUserPos.lat + ',' + _simplesUserPos.lng, '_blank');
+        }
+      });
+    }
+
+    function _renderUserPin() {
+      if (!_simplesMiniMap || !_simplesUserPos) return;
+      if (_simplesUserMarker) {
+        _simplesUserMarker.setLatLng([_simplesUserPos.lat, _simplesUserPos.lng]);
+        return;
+      }
+      _simplesUserMarker = L.circleMarker([_simplesUserPos.lat, _simplesUserPos.lng], {
+        radius: 7, color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: 1
+      }).bindTooltip('Você está aqui').addTo(_simplesMiniMap);
+    }
+
+    function iniciarGeolocation() {
+      if (_geoWatchId != null || !navigator.geolocation) return;
+      _geoWatchId = navigator.geolocation.watchPosition(
+        function(pos) {
+          _simplesUserPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          _renderUserPin();
+        },
+        function(err){ /* ignora — sem GPS continua mostrando só o território */ },
+        { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 }
+      );
+    }
+
+    window.simplesEscolherQuadra = function(id) {
+      _simplesQuadra = id; _simplesFace = null; _simplesView = 'faces';
+      try { localStorage.setItem('simples_quadra', id); localStorage.removeItem('simples_face'); } catch(e) {}
+      renderizarSimples();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.simplesEscolherFace = function(face) {
+      _simplesFace = face; _simplesView = 'paradas';
+      try { localStorage.setItem('simples_face', face); } catch(e) {}
+      renderizarSimples();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.simplesVoltarHub = function() {
+      _simplesQuadra = null; _simplesFace = null; _simplesView = 'hub';
+      try { localStorage.removeItem('simples_quadra'); localStorage.removeItem('simples_face'); } catch(e) {}
+      renderizarSimples();
+    };
+    window.simplesVoltarFaces = function() {
+      _simplesFace = null; _simplesView = 'faces';
+      try { localStorage.removeItem('simples_face'); } catch(e) {}
+      renderizarSimples();
+    };
+    window.simplesInverter = function() {
+      var atual = false;
+      try { atual = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
+      try { localStorage.setItem('simples_inverso', atual ? 'false' : 'true'); } catch(e) {}
+      renderizarSimples();
+    };
     window.simplesMarcar = function(row, tipo) {
       window.marcarDesfecho && window.marcarDesfecho(row, tipo);
       renderizarSimples();
@@ -941,16 +1165,79 @@
       var chave = 'carta_' + row;
       var jaFeito = localStorage.getItem(chave) === 'true';
       localStorage.setItem(chave, !jaFeito ? 'true' : 'false');
-      if (!jaFeito) enfileirarSync && enfileirarSync('carta', { row: row });
+      if (!jaFeito && typeof enfileirarSync === 'function') enfileirarSync('carta', { row: row });
       renderizarSimples();
     };
-    window.simplesAnterior = function() {
-      if (_indiceSimples > 0) { _indiceSimples--; renderizarSimples(); }
+
+    // Sync com servidor: puxa marcações de outros publicadores trabalhando
+    // junto. Atualiza dadosGerais sem perder marcações locais (localStorage
+    // continua sendo a verdade do app — o servidor só preenche metadados).
+    window.simplesRefresh = function() {
+      var btns = document.querySelectorAll('#appSimples .topbar-simples button');
+      btns.forEach(function(b){ b.disabled = true; });
+      function finalizar() { btns.forEach(function(b){ b.disabled = false; }); }
+      function aplicar(designadas, contexto) {
+        if (designadas) dadosGerais = designadas;
+        if (contexto) contextoPolys = contexto;
+        _ultimoSync = Date.now();
+        renderizarSimples();
+        finalizar();
+      }
+      if (TE_ID) {
+        google.script.run
+          .withSuccessHandler(function(r){
+            if (r && r.ok) {
+              var itens = (r.enderecos || []).map(function(e){
+                return { row: e.row, quadra: 'TCE_' + r.tce.id, face: '',
+                  logradouro: e.logradouro, numero: e.numero, complemento: e.complemento,
+                  lat: e.lat, lng: e.lng, tipo: e.tipo, nome: e.nome, nota: e.nota,
+                  naoVisitar: false, ordem: null, ultimaVisita: '',
+                  ultimoTipo: e.ultimoTipo, ultimoDataStr: e.ultimoDataStr };
+              });
+              aplicar([{ id: r.tce.nome, polyString: r.tce.polyString || '', ultimaData: 'TCE', itens: itens }], []);
+            } else { finalizar(); }
+          })
+          .withFailureHandler(finalizar)
+          .getDadosTCE(TE_ID);
+        return;
+      }
+      google.script.url.getLocation(function(location){
+        var ids = location.parameter.ids;
+        if (!ids) { finalizar(); return; }
+        google.script.run
+          .withSuccessHandler(function(data){
+            if (data && data.designadas) {
+              try {
+                localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
+              } catch(e) {}
+              aplicar(data.designadas, data.contexto || []);
+            } else { finalizar(); }
+          })
+          .withFailureHandler(finalizar)
+          .getDadosComContexto(ids);
+      });
     };
-    window.simplesProximo = function() {
-      var total = _todosOsEnderecosSimples().length;
-      if (_indiceSimples < total - 1) { _indiceSimples++; renderizarSimples(); }
-    };
+
+    function _atualizarBrisaSync() {
+      var el = document.getElementById('simplesUltimoSync');
+      if (!el) return;
+      if (!_ultimoSync) { el.textContent = ''; return; }
+      var seg = Math.floor((Date.now() - _ultimoSync) / 1000);
+      el.textContent = seg < 60 ? 'agora' : Math.floor(seg/60) + ' min atrás';
+    }
+
+    // Auto-refresh silencioso a cada 2min em modo simples — vê marcações
+    // de outros publicadores trabalhando ao mesmo tempo. Não dispara
+    // enquanto o publicador tá interagindo (focus em mini-acao).
+    function iniciarAutoRefreshSimples() {
+      if (_autoRefreshInt) return;
+      _autoRefreshInt = setInterval(function(){
+        var sim = document.getElementById('appSimples');
+        if (!sim || sim.classList.contains('d-none')) return;
+        if (document.hidden) return;
+        window.simplesRefresh();
+      }, 120000);
+    }
 
     function iniciarMapa() {
         if (map) { renderizarMapa(); return; }
@@ -1487,9 +1774,13 @@ function criarItemHtml(item, isInsideGroup) {
       var box = document.getElementById('boxCobertura');
       if (!box) return;
       var total = 0, alcancados = 0, naoAtend = 0, sem = 0, conv = 0, cartas = 0;
+      // Agrupa por prédio (logradouro+numero) pra contar "prédios cobertos":
+      // prédio com ≥2 endereços conta como coberto quando 100% dos aptos
+      // tiveram algum desfecho. Endereços soltos (1) entram só no total.
+      var predios = {};
       (dadosGerais || []).forEach(function(q){
         (q.itens || []).forEach(function(it){
-          if (it.naoVisitar) return; // não-visitar não conta no total
+          if (it.naoVisitar) return;
           total++;
           var d = localStorage.getItem("desf_" + it.row) || '';
           if (!d && localStorage.getItem("v_" + it.row) === "true") d = 'conversou';
@@ -1498,19 +1789,45 @@ function criarItemHtml(item, isInsideGroup) {
           else if (d === 'semConversa') sem++;
           else if (d === 'conversou') conv++;
           if (localStorage.getItem("carta_" + it.row) === "true") cartas++;
+          var k = (it.logradouro || '') + '|' + (it.numero || '');
+          if (!predios[k]) predios[k] = { tot: 0, feitos: 0 };
+          predios[k].tot++;
+          if (d) predios[k].feitos++;
         });
       });
+      var predListBig = Object.keys(predios).filter(function(k){ return predios[k].tot >= 2; });
+      var predTot = predListBig.length;
+      var predFeitos = predListBig.filter(function(k){ return predios[k].feitos === predios[k].tot; }).length;
+      var predParciais = predListBig.filter(function(k){
+        return predios[k].feitos > 0 && predios[k].feitos < predios[k].tot;
+      }).length;
+
       var pct = total > 0 ? Math.round((alcancados / total) * 100) : 0;
-      var corBarra = pct >= 70 ? '#16a34a' : pct >= 30 ? '#f59e0b' : '#9ca3af';
+      // Cor focada em prédios completos (cobertura real) — não no % de
+      // endereços, que se anima com 1 toque no portão.
+      var pctPred = predTot > 0 ? Math.round((predFeitos / predTot) * 100) : pct;
+      var corBarra = pctPred >= 70 ? '#16a34a' : pctPred >= 30 ? '#f59e0b' : '#9ca3af';
+
+      var avisoParciais = '';
+      if (predParciais > 0) {
+        avisoParciais =
+          '<div class="small mt-2" style="background:#fef3c7; border-left:3px solid #f59e0b; padding:6px 10px; border-radius:4px; color:#92400e">' +
+            '<i class="fa-solid fa-circle-exclamation me-1"></i>' +
+            '<b>' + predParciais + '</b> prédio(s) com aptos pulados — vale voltar pra terminar.' +
+          '</div>';
+      }
+
       box.innerHTML =
         '<div class="d-flex justify-content-between align-items-baseline mb-1">' +
-          '<span class="fw-bold">📊 ' + alcancados + ' de ' + total + ' endereços alcançados</span>' +
-          '<span class="fw-bold" style="color:' + corBarra + '">' + pct + '%</span>' +
+          '<span class="fw-bold">🏢 ' + predFeitos + ' de ' + predTot + ' prédio(s) cobertos</span>' +
+          (predTot > 0 ? '<span class="fw-bold" style="color:' + corBarra + '">' + pctPred + '%</span>' : '') +
         '</div>' +
-        '<div class="barra-cobertura"><div style="width:' + pct + '%;background:' + corBarra + '"></div></div>' +
+        '<div class="barra-cobertura"><div style="width:' + pctPred + '%;background:' + corBarra + '"></div></div>' +
         '<div class="small text-muted mt-1">' +
+          alcancados + ' de ' + total + ' aptos/casas tocados · ' +
           conv + ' conversas · ' + sem + ' contatos · ' + naoAtend + ' não atenderam · ' + cartas + ' cartas' +
-        '</div>';
+        '</div>' +
+        avisoParciais;
     }
     window.atualizarCobertura = atualizarCobertura;
 
