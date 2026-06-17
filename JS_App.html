@@ -2721,11 +2721,17 @@ window.confirmarAssociacao = function(layerQuadra) {
           : 'Melhor candidata: <b>' + escapeHtml(c.melhorMatch.id) + '</b> (' + c.melhorMatch.qtd + '/' + c.melhorMatch.total + ' pontos = ' + pct + '%)';
         sugestao = '<div class="small ' + corPct + ' mt-1"><i class="fa-solid fa-bullseye"></i> ' + detalhe + '</div>';
       }
-      var d = ' data-setor="' + escapeHtml(setor) + '" data-qibge="' + escapeHtml(qibge) + '" data-total="' + c.totalEnderecos + '"';
+      // Guarda pontos do cluster pra "Ver no mapa" sem inflar HTML
+      window._clusterPontos = window._clusterPontos || {};
+      window._clusterPontos[c.chave] = c.pontos || [];
+      var d = ' data-setor="' + escapeHtml(setor) + '" data-qibge="' + escapeHtml(qibge) + '" data-total="' + c.totalEnderecos + '" data-chave="' + escapeHtml(c.chave) + '"';
       var btnVincular = c.melhorMatch && c.melhorMatch.id
         ? '<button class="btn btn-sm btn-success btn-vinc-sugerida"' + d + ' data-quadra="' + escapeHtml(c.melhorMatch.id) + '"><i class="fa-solid fa-link me-1"></i>' +
           (c.inconsistente ? 'Unificar a ' : 'Vincular a ') + escapeHtml(c.melhorMatch.id) + '</button>'
         : '<button class="btn btn-sm btn-outline-primary btn-vinc-custom"' + d + '><i class="fa-solid fa-link me-1"></i>Vincular…</button>';
+      var btnMapa = (c.pontos && c.pontos.length > 0)
+        ? '<button class="btn btn-sm btn-outline-info btn-ver-mapa"' + d + ' title="Ver pontos do cluster no mapa"><i class="fa-solid fa-map-location-dot"></i></button>'
+        : '';
       return '<div class="card mb-2 ' + classeBorda + '" style="border-left:4px solid ' + corBorda + '">' +
                '<div class="card-body py-2 px-3">' +
                  '<div class="d-flex justify-content-between align-items-start">' +
@@ -2739,6 +2745,7 @@ window.confirmarAssociacao = function(layerQuadra) {
                  '<div class="d-flex gap-2 mt-2">' +
                    btnVincular +
                    '<button class="btn btn-sm btn-outline-secondary btn-vinc-custom"' + d + ' title="Vincular a outra quadra"><i class="fa-solid fa-pen"></i></button>' +
+                   btnMapa +
                    '<button class="btn btn-sm btn-outline-danger ms-auto btn-excluir-cluster"' + d + ' title="Apagar cluster"><i class="fa-regular fa-trash-can"></i></button>' +
                  '</div>' +
                '</div>' +
@@ -2751,12 +2758,15 @@ window.confirmarAssociacao = function(layerQuadra) {
         var sug = ev.target.closest('.btn-vinc-sugerida');
         var cust = ev.target.closest('.btn-vinc-custom');
         var exc = ev.target.closest('.btn-excluir-cluster');
+        var mapa = ev.target.closest('.btn-ver-mapa');
         if (sug) {
           window.vincularClusterUI(sug.dataset.setor, sug.dataset.qibge, sug.dataset.quadra, parseInt(sug.dataset.total, 10));
         } else if (cust) {
           window.vincularClusterCustomUI(cust.dataset.setor, cust.dataset.qibge, parseInt(cust.dataset.total, 10));
         } else if (exc) {
           window.confirmarExcluirCluster(exc.dataset.setor, exc.dataset.qibge, parseInt(exc.dataset.total, 10));
+        } else if (mapa) {
+          window.verClusterNoMapa(mapa.dataset.chave, mapa.dataset.setor, mapa.dataset.qibge);
         }
       });
     }
@@ -2781,6 +2791,51 @@ window.confirmarAssociacao = function(layerQuadra) {
     q = q.trim();
     if (!q) return;
     window.vincularClusterUI(setor, qibge, q, total);
+  };
+
+  // Destaca pontos de um cluster incerto no mapa de Polígonos pra
+  // o user identificar visualmente onde fica e decidir o vínculo.
+  // Cria layer temporário (lgClusterDestaque) com markers roxos grandes.
+  window.verClusterNoMapa = function(chave, setor, qibge) {
+    var pontos = (window._clusterPontos || {})[chave] || [];
+    if (pontos.length === 0) {
+      window.toast && window.toast('Cluster sem coordenadas pra exibir', 'warn');
+      return;
+    }
+    // Fecha modal e vai pra aba Polígonos
+    var modal = bootstrap.Modal.getInstance(document.getElementById('modalAutoVincular'));
+    if (modal) modal.hide();
+    window.mudarAba && window.mudarAba('poligonos');
+    setTimeout(function(){
+      if (typeof mapPoligonos === 'undefined' || !mapPoligonos) return;
+      if (!window.lgClusterDestaque) {
+        window.lgClusterDestaque = L.featureGroup().addTo(mapPoligonos);
+      }
+      window.lgClusterDestaque.clearLayers();
+      pontos.forEach(function(p, i){
+        var m = L.circleMarker(p, {
+          radius: 11, color: '#7c3aed', weight: 3,
+          fillColor: '#a78bfa', fillOpacity: 0.85, pane: 'markerPane'
+        });
+        m.bindTooltip('#' + (i+1) + ' / ' + pontos.length + ' do cluster', { direction: 'top' });
+        window.lgClusterDestaque.addLayer(m);
+      });
+      var bounds = window.lgClusterDestaque.getBounds();
+      if (bounds.isValid()) mapPoligonos.fitBounds(bounds, { padding: [60, 60], maxZoom: 18 });
+      // Centroide pra abrir no Google Maps
+      var c = bounds.getCenter();
+      var linkGm = 'https://www.google.com/maps/@' + c.lat + ',' + c.lng + ',18z';
+      window.toast && window.toast(
+        pontos.length + ' ponto(s) do setor ' + setor + ' · quadra IBGE ' + qibge + ' destacados em roxo. ' +
+        '<a href="' + linkGm + '" target="_blank" rel="noopener" class="text-warning fw-bold">Abrir Google Maps</a>',
+        'info', 8000
+      );
+    }, 300);
+  };
+
+  // Limpa o destaque de cluster quando sair da aba Polígonos
+  window._limparDestaqueCluster = function() {
+    if (window.lgClusterDestaque) window.lgClusterDestaque.clearLayers();
   };
 
   window.confirmarExcluirCluster = function(setor, qibge, total) {

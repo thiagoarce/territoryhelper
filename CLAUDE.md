@@ -283,15 +283,59 @@ Link público dedicado (`?v=publico&te=ID`):
   no fluxo normal. É decisão do servo criar TCE — só faz sentido pra
   blocos concentrados (avenidas comerciais, centros). O app não força.
 
+## Auto-vinculação de endereços a quadras
+
+Aba Polígonos → botão "Auto-vincular". Backend:
+- `autoVincularEnderecos()` em `Code.gs` — agrupa por (setor + quadraIBGE)
+  que é a UNIDADE INDIVISÍVEL do IBGE. Pra cada cluster:
+  1. Vínculo único existente → propaga pros endereços sem vínculo
+  2. Sem vínculo → algoritmo point-in-polygon (`_pontoNoPoligono_`,
+     ray-casting + bbox short-circuit). ≥60% dos pontos dentro de
+     uma quadra → vincula todos
+  3. Vínculos divergentes → INCONSISTÊNCIA (erro humano). Card vermelho,
+     botão "Unificar a Q-X (maioria)" pra resolver com 1 clique
+- `vincularClusterAQuadra(setor, qibge, quadraId)` sobrescreve
+- `excluirClusterEnderecos(setor, qibge)` deleta cluster inteiro
+  (útil pra ruas que não pertencem ao território)
+- "Ver no mapa" no card destaca pontos em roxo no `mapPoligonos`,
+  fitBounds + link Google Maps
+
+## Densidade de prédios
+
+- `getDensidadePredios()` retorna `{ quadraId → qtdPredios }`. Conta
+  agrupamentos por (logradouro+numero) com ≥2 endereços. **Não conta
+  endereços diretos — aptos mascarariam a contagem real**
+- Admin: select "Coloração" tem opção "Densidade de prédios" no mapa Geral
+- Dirigente: toggle "Densidade" no header colore quadras designadas
+  por qtd de prédios (verde claro → vermelho intenso). Header também
+  mostra "X prédio(s)" além de "Y quadra(s)" pro dirigente saber o
+  volume real de trabalho
+- Tooltip da quadra no Dirigente mostra qtd: "Q-8 (3 préd.)"
+
+## Modo Simples (publicador)
+
+Switch flutuante no canto inferior esquerdo do Publico.html alterna
+entre modo "Avançado" (lista clássica) e "Simples" (1 parada por vez).
+
+Modo Simples:
+- **Paradas**, não endereços. Endereços com mesmo (logradouro+numero)
+  agrupam como "prédio" — publicador vê 1 cabeçalho + grid de aptos
+  com botões mini. Evita "passar por 30 aptos" no fluxo de lista
+- Cabeçalho com progresso "X de Y paradas feitas"
+- Botão "Inverter sentido" pra publicadores que fazem a rota ao contrário
+- Link "Como chegar" abre Google Maps (lat/lng se houver, senão busca
+  por logradouro+numero)
+- Persistência local: `simples_inverso`, `modo_pub` em localStorage
+
 ## Próximos passos sugeridos (não obrigatórios)
 
-- **Offline-fila no publicador**: hoje `marcarDesfecho` é fire-and-
-  forget. Sem rede, toques se perdem sem aviso. Implementar fila em
-  localStorage com retry quando voltar online + indicador visual de
-  "pending sync" no card do endereço
-- **Territórios Comerciais Especiais** (ver Decisões de produto)
-- Extrair JS_App.html em módulos (~2700 linhas)
+- **Testemunho público** — feature solicitada, ainda não modelada.
+  Provavelmente fluxo separado (postos fixos, períodos, distribuição
+  de revistas/cartões)
+- Extrair JS_App.html em módulos (~3k linhas)
 - Notificação automática por email quando designar
 - Cleanup automático de aba `Registros` antiga (>12 meses)
 - Relatório/dashboard mostrando qualidade de cobertura por quadra
   (conversa/contato/não atendeu) usando dados do Pacote F
+- Sincronizar `modo_pub` entre dispositivos do mesmo publicador
+  (hoje é per-device via localStorage)

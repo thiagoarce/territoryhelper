@@ -23,6 +23,26 @@ Mudanças relevantes do app. Datas relativas ao mês de release.
 - Filtro de endereços por vínculo com quadra no editor.
 - Tema escuro estendido pra telas standalone (Publico, Dirigente, Cartas).
 
+### Final do mês de junho
+- **Versão visível** no app — sufixo `v: abc1234` no rodapé das telas.
+  Workflow injeta SHA curto via `sed` antes do `clasp push`.
+- **Auto-vinculação geométrica** — point-in-polygon (ray-casting +
+  bbox short-circuit). Threshold 60%. Funciona sem vínculo manual prévio.
+- **Inconsistências** detectadas e reportadas com card vermelho +
+  botão "Unificar" pra resolver.
+- **Ver cluster no mapa** — destaca pontos em roxo + link Google Maps.
+- **Auto-deploy `/exec`** via clasp deploy + secret `CLASP_DEPLOYMENT_ID`.
+- **Densidade de prédios** — modo "Densidade" no mapa Geral + toggle no
+  Dirigente + indicador "X prédio(s)" no header (não mente como contagem
+  de endereços).
+- **Modo Simples** — agrupa aptos em "parada de prédio", botão inverter
+  sentido, link "Como chegar" no Google Maps.
+- **Offline-fila** no publicador — marcações sobrevivem queda de rede.
+- **Quadras Inativas** (área verde / parque) — fora da contabilização.
+- **Tela início** com 3 cartões orientadores na primeira visita.
+- **Renomeação interativa** clicando nas quadras na ordem desejada.
+- **Tema escuro** nos standalones (Publico/Dirigente/Cartas/CampanhaPublica).
+
 ### Hardening
 - XSS via URLs (link, anexoUrl) — bloqueio backend + frontend (`_sanitizarUrl_`, `safeUrl`).
 - Cache do publicador com TTL de 24h (envelope `{t, d}`).

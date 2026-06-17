@@ -310,6 +310,19 @@
     #appSimples .botao-acao.ativo.semConversa { background:#f59e0b; color:#fff; border-color:#f59e0b; }
     #appSimples .botao-acao.ativo.conversou { background:#16a34a; color:#fff; border-color:#16a34a; }
     #appSimples .botao-acao.carta.ativo { background:#d97706; color:#fff; border-color:#d97706; }
+    /* Grid de aptos quando a parada é um prédio */
+    #appSimples .aptos-grid { display:grid; grid-template-columns:1fr; gap:8px; margin-top:12px; }
+    #appSimples .apto-mini { border:1px solid #e5e7eb; border-radius:10px; padding:10px; background:#fafafa; }
+    #appSimples .apto-mini-nome { font-weight:700; font-size:1rem; margin-bottom:6px; text-align:left; }
+    #appSimples .apto-mini-acoes { display:flex; gap:6px; }
+    #appSimples .mini-acao { flex:1; padding:8px 4px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
+      font-size:1.1rem; cursor:pointer; min-height:44px; }
+    #appSimples .mini-acao.naoAtendeu.ativo { background:#6b7280; border-color:#6b7280; color:#fff; }
+    #appSimples .mini-acao.semConversa.ativo { background:#f59e0b; border-color:#f59e0b; color:#fff; }
+    #appSimples .mini-acao.conversou.ativo { background:#16a34a; border-color:#16a34a; color:#fff; }
+    #appSimples .mini-acao.carta.ativo { background:#d97706; border-color:#d97706; color:#fff; }
+    body.tema-escuro #appSimples .apto-mini { background:#1f242a; border-color:#3a4047; }
+    body.tema-escuro #appSimples .mini-acao { background:#1a1d20; border-color:#3a4047; color:#cbd5e1; }
     #appSimples .navegacao { display:flex; gap:10px; margin-top:20px; }
     #appSimples .navegacao button {
       flex:1; padding:14px; border-radius:12px; border:1.5px solid #1976d2;
@@ -773,11 +786,33 @@
     var _indiceSimples = 0;
 
     function _todosOsEnderecosSimples() {
+      // Agrupa endereços do mesmo prédio (logradouro+numero) em um
+      // grupo só — o publicador vê "Prédio Y" como uma "parada" só,
+      // navega aptos por dentro. Evita scroll infinito apto a apto.
       var lista = [];
+      var inverter = false;
+      try { inverter = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
       (dadosGerais || []).forEach(function(q){
-        (q.itens || []).forEach(function(it){
-          if (it.naoVisitar) return; // pula "não visitar"
-          lista.push({ quadra: q.id, item: it });
+        var itens = (q.itens || []).filter(function(it){ return !it.naoVisitar; });
+        if (inverter) itens = itens.slice().reverse();
+        var grupos = {};
+        var ordem = [];
+        itens.forEach(function(it){
+          var chave = (it.logradouro || '') + '|' + (it.numero || '');
+          if (!grupos[chave]) {
+            grupos[chave] = { quadra: q.id, logradouro: it.logradouro, numero: it.numero, aptos: [] };
+            ordem.push(chave);
+          }
+          grupos[chave].aptos.push(it);
+        });
+        ordem.forEach(function(k){
+          var g = grupos[k];
+          // 1 endereço → trata como item simples. ≥2 → prédio
+          if (g.aptos.length === 1) {
+            lista.push({ quadra: g.quadra, tipo: 'item', item: g.aptos[0] });
+          } else {
+            lista.push({ quadra: g.quadra, tipo: 'predio', logradouro: g.logradouro, numero: g.numero, aptos: g.aptos });
+          }
         });
       });
       return lista;
@@ -793,49 +828,103 @@
       if (_indiceSimples >= lista.length) _indiceSimples = lista.length - 1;
       if (_indiceSimples < 0) _indiceSimples = 0;
       var atual = lista[_indiceSimples];
-      var it = atual.item;
-      var desfecho = localStorage.getItem('desf_' + it.row) || '';
-      var carta = localStorage.getItem('carta_' + it.row) === 'true';
 
-      // Conta progresso: quantos já têm marcação
-      var feitos = lista.filter(function(x){
-        return localStorage.getItem('desf_' + x.item.row);
+      // Progresso: % de paradas (não endereços) totalmente feitas
+      var feitos = lista.filter(function(p){
+        if (p.tipo === 'item') return localStorage.getItem('desf_' + p.item.row);
+        return p.aptos.every(function(a){ return localStorage.getItem('desf_' + a.row); });
       }).length;
 
-      var titulo = it.nome
-        ? it.nome
-        : (it.complemento ? it.complemento : (it.logradouro + ', ' + it.numero));
-      var sub = it.nome
-        ? (it.logradouro + ', ' + it.numero + (it.complemento ? ' — ' + it.complemento : ''))
-        : (it.complemento ? (it.logradouro + ', ' + it.numero) : it.tipo);
+      var inverso = false;
+      try { inverso = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
+      var iconeInv = inverso ? 'fa-rotate-left' : 'fa-rotate-right';
+
+      var corpo;
+      if (atual.tipo === 'predio') {
+        // Vista de prédio: 1 cabeçalho + grid de aptos com botões
+        var titPredio = atual.logradouro + ', ' + atual.numero;
+        var subPredio = atual.aptos.length + ' apartamento(s)';
+        var mapsHref = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
+        var aptosHtml = atual.aptos.map(function(a){
+          var d = localStorage.getItem('desf_' + a.row) || '';
+          var c = localStorage.getItem('carta_' + a.row) === 'true';
+          var nome = a.complemento || a.tipo || 'Apto';
+          return '<div class="apto-mini">' +
+                   '<div class="apto-mini-nome">' + escapeHtmlPub(nome) + '</div>' +
+                   '<div class="apto-mini-acoes">' +
+                     btnMini('naoAtendeu', '🚪', d === 'naoAtendeu', a.row) +
+                     btnMini('semConversa', '📞', d === 'semConversa', a.row) +
+                     btnMini('conversou', '✓', d === 'conversou', a.row) +
+                     '<button class="mini-acao carta' + (c ? ' ativo' : '') + '" onclick="window.simplesCarta(' + a.row + ')">✉</button>' +
+                   '</div>' +
+                 '</div>';
+        }).join('');
+        corpo =
+          '<div class="card-end">' +
+            '<div class="endereco-titulo"><i class="fa-solid fa-building me-2"></i>' + escapeHtmlPub(titPredio) + '</div>' +
+            '<div class="endereco-sub">' + subPredio + '</div>' +
+            '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar (Google Maps)</a></div>' +
+            '<div class="aptos-grid">' + aptosHtml + '</div>' +
+          '</div>';
+      } else {
+        var it = atual.item;
+        var desfecho = localStorage.getItem('desf_' + it.row) || '';
+        var carta = localStorage.getItem('carta_' + it.row) === 'true';
+        var titulo = it.nome ? it.nome : (it.complemento ? it.complemento : (it.logradouro + ', ' + it.numero));
+        var sub = it.nome ? (it.logradouro + ', ' + it.numero + (it.complemento ? ' — ' + it.complemento : ''))
+                          : (it.complemento ? (it.logradouro + ', ' + it.numero) : it.tipo);
+        var mapsHref = (it.lat && it.lng)
+          ? 'https://www.google.com/maps/dir/?api=1&destination=' + it.lat + ',' + it.lng
+          : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(it.logradouro + ', ' + it.numero);
+        corpo =
+          '<div class="card-end">' +
+            '<div class="endereco-titulo">' + escapeHtmlPub(titulo) + '</div>' +
+            '<div class="endereco-sub">' + escapeHtmlPub(sub) + '</div>' +
+            (it.nota ? '<div class="nota-pessoal"><i class="fa-solid fa-note-sticky me-1"></i>' + escapeHtmlPub(it.nota) + '</div>' : '') +
+            '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a></div>' +
+            '<div class="acoes-simples">' +
+              botaoSimples('naoAtendeu', 'fa-door-closed', 'Não atendeu', desfecho === 'naoAtendeu', it.row) +
+              botaoSimples('semConversa', 'fa-comment-slash', 'Falou, sem palestra', desfecho === 'semConversa', it.row) +
+              botaoSimples('conversou', 'fa-check', 'Conversou', desfecho === 'conversou', it.row) +
+              '<button class="botao-acao carta ' + (carta ? 'ativo' : '') + '" onclick="window.simplesCarta(' + it.row + ')">' +
+                '<i class="fa-regular fa-envelope"></i> <span>Deixei carta</span>' +
+              '</button>' +
+            '</div>' +
+          '</div>';
+      }
 
       box.innerHTML =
         '<div class="cabecalho">' +
-          '<div class="progresso">' + (_indiceSimples + 1) + ' de ' + lista.length + '</div>' +
-          '<div class="quadra">Quadra ' + escapeHtmlPub(atual.quadra) + ' · ' + feitos + ' já feitos</div>' +
+          '<div class="d-flex justify-content-between align-items-center">' +
+            '<div class="progresso">' + (_indiceSimples + 1) + ' de ' + lista.length + '</div>' +
+            '<button onclick="window.simplesInverter()" title="Inverter sentido" style="background:rgba(255,255,255,0.2); border:none; color:#fff; padding:6px 10px; border-radius:8px;">' +
+              '<i class="fa-solid ' + iconeInv + '"></i>' +
+            '</button>' +
+          '</div>' +
+          '<div class="quadra">Quadra ' + escapeHtmlPub(atual.quadra) + ' · ' + feitos + ' parada(s) feita(s)</div>' +
         '</div>' +
-        '<div class="card-end">' +
-          '<div class="endereco-titulo">' + escapeHtmlPub(titulo) + '</div>' +
-          '<div class="endereco-sub">' + escapeHtmlPub(sub) + '</div>' +
-          (it.nota ? '<div class="nota-pessoal"><i class="fa-solid fa-note-sticky me-1"></i>' + escapeHtmlPub(it.nota) + '</div>' : '') +
-          '<div class="acoes-simples">' +
-            botaoSimples('naoAtendeu', 'fa-door-closed', 'Não atendeu', desfecho === 'naoAtendeu', it.row) +
-            botaoSimples('semConversa', 'fa-comment-slash', 'Falou, sem palestra', desfecho === 'semConversa', it.row) +
-            botaoSimples('conversou', 'fa-check', 'Conversou', desfecho === 'conversou', it.row) +
-            '<button class="botao-acao carta ' + (carta ? 'ativo' : '') + '" onclick="window.simplesCarta(' + it.row + ')">' +
-              '<i class="fa-regular fa-envelope"></i> <span>Deixei carta</span>' +
-            '</button>' +
-          '</div>' +
-          '<div class="navegacao">' +
-            '<button onclick="simplesAnterior()"' + (_indiceSimples === 0 ? ' disabled' : '') + '>' +
-              '<i class="fa-solid fa-chevron-left me-1"></i> Anterior' +
-            '</button>' +
-            '<button class="proximo" onclick="simplesProximo()"' + (_indiceSimples >= lista.length - 1 ? ' disabled' : '') + '>' +
-              'Próximo <i class="fa-solid fa-chevron-right ms-1"></i>' +
-            '</button>' +
-          '</div>' +
+        corpo +
+        '<div class="navegacao">' +
+          '<button onclick="simplesAnterior()"' + (_indiceSimples === 0 ? ' disabled' : '') + '>' +
+            '<i class="fa-solid fa-chevron-left me-1"></i> Anterior' +
+          '</button>' +
+          '<button class="proximo" onclick="simplesProximo()"' + (_indiceSimples >= lista.length - 1 ? ' disabled' : '') + '>' +
+            'Próximo <i class="fa-solid fa-chevron-right ms-1"></i>' +
+          '</button>' +
         '</div>';
     }
+
+    function btnMini(tipo, icone, ativo, row) {
+      return '<button class="mini-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' + icone + '</button>';
+    }
+
+    window.simplesInverter = function() {
+      var atual = false;
+      try { atual = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
+      try { localStorage.setItem('simples_inverso', atual ? 'false' : 'true'); } catch(e) {}
+      _indiceSimples = 0;
+      renderizarSimples();
+    };
 
     function botaoSimples(tipo, icone, label, ativo, row) {
       return '<button class="botao-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' +
