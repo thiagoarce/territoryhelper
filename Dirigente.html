@@ -530,26 +530,26 @@
           html += '<div class="alert alert-success py-2 mb-2 small"><i class="fa-solid fa-check me-1"></i>Concluída em ' + escapeHtmlDir(ultima) + '</div>';
           html += '<button class="btn btn-outline-secondary w-100" onclick="desfazerQuadra(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-rotate-left me-1"></i>Desfazer conclusão</button>';
         } else {
-          var hojeYmd = new Date().toISOString().split('T')[0];
-          html += '<div class="d-flex gap-2 align-items-center mb-2">';
-          html += '<label class="small text-muted m-0 me-1">Data:</label>';
-          html += '<input type="date" class="form-control form-control-sm" id="sheetDataConc_' + escapeHtmlDir(q.id) + '" value="' + hojeYmd + '" style="max-width:160px">';
-          html += '</div>';
-          html += '<div class="d-flex gap-2">';
-          html += '<button class="btn btn-success flex-fill" onclick="concluirQuadraDoSheet(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-check me-1"></i>Marcar Concluída</button>';
-          html += '<button class="btn btn-outline-primary" onclick="abrirQuadraEmLinkSeparado(\'' + escapeHtmlDir(q.id) + '\')" title="Abrir esta quadra em link separado"><i class="fa-solid fa-up-right-from-square"></i></button>';
-          html += '</div>';
+          html += _htmlConcluirECompartilhar(q.id);
         }
       } else {
-        // Contexto: quadra fora das designadas
+        // Contexto: quadra fora das designadas — mesmas ações inline,
+        // só com aviso visual diferente.
         if (q.status === 'Inativa') {
           html += '<div class="alert alert-success py-2 mb-2 small"><i class="fa-solid fa-tree me-1"></i>Área verde / parque — sem trabalho de campo.</div>';
         } else if (q.concluidaRecente) {
-          html += '<div class="alert alert-danger py-2 mb-2 small"><i class="fa-solid fa-circle-xmark me-1"></i>Essa quadra já foi feita em <b>' + escapeHtmlDir(ultima) + '</b>. Não dá pra designar agora.</div>';
-          html += '<button class="btn btn-outline-warning w-100" onclick="abrirQuadraEmLinkSeparadoConfirma(\'' + escapeHtmlDir(q.id) + '\', \'' + escapeHtmlDir(ultima) + '\')"><i class="fa-solid fa-up-right-from-square me-1"></i>Abrir mesmo assim em link separado</button>';
+          html += '<div class="alert alert-danger py-2 mb-2 small">' +
+                    '<i class="fa-solid fa-circle-xmark me-1"></i>' +
+                    'Essa quadra já foi concluída em <b>' + escapeHtmlDir(ultima) + '</b>. ' +
+                    'Não é pra designar agora — mas se for o caso, dá pra concluir/compartilhar mesmo assim.' +
+                  '</div>';
+          html += _htmlConcluirECompartilhar(q.id);
         } else {
-          html += '<div class="alert alert-info py-2 mb-2 small"><i class="fa-solid fa-circle-info me-1"></i>Disponível pra designar.</div>';
-          html += '<button class="btn btn-success w-100" onclick="abrirQuadraEmLinkSeparado(\'' + escapeHtmlDir(q.id) + '\')"><i class="fa-solid fa-up-right-from-square me-1"></i>Abrir esta quadra em link separado</button>';
+          html += '<div class="alert alert-info py-2 mb-2 small">' +
+                    '<i class="fa-solid fa-circle-info me-1"></i>' +
+                    'Essa quadra <b>não está</b> na sua designação. Tá disponível pra trabalhar.' +
+                  '</div>';
+          html += _htmlConcluirECompartilhar(q.id);
         }
       }
 
@@ -570,20 +570,42 @@
       processarSalvamento([id], 'Concluído', data);
     };
 
-    window.abrirQuadraEmLinkSeparado = function(id) {
+    // HTML compartilhado pelos blocos designada/contexto: input de data
+    // + botão concluir + botão compartilhar single-quadra (gera link de
+    // designação só dessa quadra).
+    function _htmlConcluirECompartilhar(id) {
+      var hojeYmd = new Date().toISOString().split('T')[0];
+      var idEsc = escapeHtmlDir(id);
+      return '<div class="d-flex gap-2 align-items-center mb-2">' +
+               '<label class="small text-muted m-0 me-1">Data:</label>' +
+               '<input type="date" class="form-control form-control-sm" id="sheetDataConc_' + idEsc + '" value="' + hojeYmd + '" style="max-width:160px">' +
+             '</div>' +
+             '<div class="d-flex gap-2">' +
+               '<button class="btn btn-success flex-fill" onclick="concluirQuadraDoSheet(\'' + idEsc + '\')"><i class="fa-solid fa-check me-1"></i>Marcar Concluída</button>' +
+               '<button class="btn btn-outline-primary flex-fill" onclick="compartilharSingleQuadra(\'' + idEsc + '\')"><i class="fa-solid fa-share-nodes me-1"></i>Compartilhar</button>' +
+             '</div>';
+    }
+
+    // Compartilhar uma única quadra com publicador — reusa o modal
+    // de link existente (mesma logic de nome/prazo/whatsapp).
+    window.compartilharSingleQuadra = function(id) {
+      _idsEnvioCorrente = [id];
+      var hoje30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      var ymd = hoje30.toISOString().slice(0, 10);
+      var inpNome = document.getElementById('inputPubNome');
+      var inpPrazo = document.getElementById('inputPubPrazo');
+      if (inpNome) inpNome.value = '';
+      if (inpPrazo) inpPrazo.value = ymd;
       google.script.run
         .withSuccessHandler(function(url){
           var baseUrl = url || window.location.href.split('?')[0];
-          window.open(baseUrl + '?v=dirigente&ids=' + encodeURIComponent(id), '_blank');
+          var finalUrl = baseUrl + '?v=publico&ids=' + id;
+          document.getElementById('inputLinkPub').value = finalUrl;
+          document.getElementById('msgDesignacao').value = montarMensagemDesignacao([id], finalUrl);
+          new bootstrap.Modal(document.getElementById('modalLinkPub')).show();
         })
-        .withFailureHandler(function(){
-          window.open(window.location.href.split('?')[0] + '?v=dirigente&ids=' + encodeURIComponent(id), '_blank');
-        })
+        .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
         .getScriptUrl();
-    };
-    window.abrirQuadraEmLinkSeparadoConfirma = function(id, ultima) {
-      if (!confirm('Quadra ' + id + ' foi concluída em ' + ultima + '. Tem certeza que quer abrir?')) return;
-      window.abrirQuadraEmLinkSeparado(id);
     };
 
     // ====== MODO COMPARTILHAR ======
@@ -951,12 +973,19 @@
             btns.forEach(function(b){ b.disabled = false; });
             return;
           }
-          // Atualiza estado local
+          // Atualiza estado local (designadas E contexto — dirigente pode
+          // ter concluído uma quadra do contexto via bottom sheet)
           dados.forEach(function(q) {
             if (ids.indexOf(q.id) > -1) {
               q.status = status;
               if (status === 'Concluído') q.ultimaData = formatarBR(data);
-              else if (status === 'Pendente') q.ultimaData = q.ultimaData; // mantém histórico
+            }
+          });
+          contexto.forEach(function(q) {
+            if (ids.indexOf(q.id) > -1 && status === 'Concluído') {
+              q.status = status;
+              q.ultimaData = formatarBR(data);
+              q.concluidaRecente = true;
             }
           });
           iniciarMapa();
