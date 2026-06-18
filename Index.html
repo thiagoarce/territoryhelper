@@ -686,7 +686,7 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label small fw-bold">Acesso ao prédio</label>
+            <label class="form-label small fw-bold">Acesso ao prédio (legado)</label>
             <div class="btn-group w-100" role="group">
               <input type="radio" class="btn-check" name="predioAcesso" id="acessoNi" value="">
               <label class="btn btn-outline-secondary btn-sm" for="acessoNi">Não informado</label>
@@ -695,7 +695,30 @@
               <input type="radio" class="btn-check" name="predioAcesso" id="acessoPort" value="portaria">
               <label class="btn btn-outline-warning btn-sm" for="acessoPort"><i class="fa-solid fa-building-shield me-1"></i>Portaria eletrônica</label>
             </div>
-            <div class="form-text small">Portaria eletrônica = sem acesso direto. Cartas só pelo correio.</div>
+            <div class="form-text small">Campo antigo — prefira usar os 3 abaixo (mais granulares).</div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-bold">Entrada do prédio</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntNi" value="">
+              <label class="btn btn-outline-secondary btn-sm" for="tEntNi">—</label>
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntPorteiro" value="porteiro">
+              <label class="btn btn-outline-primary btn-sm" for="tEntPorteiro"><i class="fa-solid fa-user-tie me-1"></i>Porteiro</label>
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntElet" value="eletronica">
+              <label class="btn btn-outline-warning btn-sm" for="tEntElet"><i class="fa-solid fa-building-shield me-1"></i>Eletrônica</label>
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntSem" value="sem">
+              <label class="btn btn-outline-success btn-sm" for="tEntSem"><i class="fa-solid fa-door-open me-1"></i>Sem</label>
+            </div>
+          </div>
+
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="predAcessoCaixas">
+            <label class="form-check-label small" for="predAcessoCaixas">Acesso às caixas de correio</label>
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="predAcessoInterfones">
+            <label class="form-check-label small" for="predAcessoInterfones">Acesso aos interfones dos aptos</label>
           </div>
 
           <div class="form-check form-switch mb-3">

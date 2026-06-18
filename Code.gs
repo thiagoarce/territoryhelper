@@ -2167,6 +2167,9 @@ function listarPredios() {
       irmaoMora: !!ov.irmaoMora,
       nomeIrmao: ov.nomeIrmao || '',
       acessoInterfone: ov.acessoInterfone || '',
+      tipoEntrada: ov.tipoEntrada || '',
+      acessoCaixas: !!ov.acessoCaixas,
+      acessoInterfones: !!ov.acessoInterfones,
       naoEhPredio: !!ov.naoEhPredio,
       ultimaCarta: ov.ultimaCarta || 0,
       ultimaCartaStr: ov.ultimaCarta
