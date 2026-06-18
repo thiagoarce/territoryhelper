@@ -72,11 +72,16 @@ var COL = {
     NOTAS_1IDX:        6,  // F
     ATUALIZADO_1IDX:   7,  // G
     NOME_IRMAO_1IDX:   8,  // H  nome do irmão que mora ali (referência)
-    ACESSO_INT_1IDX:   9,  // I  "individual" | "portaria" | "" (não informado)
+    ACESSO_INT_1IDX:   9,  // I  legado: "individual" | "portaria" | ""
     NAO_EH_PREDIO_1IDX:10, // J  esconde da listagem padrão
+    // Novas (publicador edita inline)
+    TIPO_ENTRADA_1IDX:    11, // K  "porteiro" | "eletronica" | "sem" | ""
+    ACESSO_CAIXAS_1IDX:   12, // L  true/false — caixa de correio do prédio
+    ACESSO_INTERFONES_1IDX:13,// M  true/false — interfone dos aptos
     // 0-indexed
     ID: 0, CHAVE: 1, NOME: 2, IRMAO_MORA: 3, ULTIMA_CARTA: 4, NOTAS: 5,
-    ATUALIZADO: 6, NOME_IRMAO: 7, ACESSO_INT: 8, NAO_EH_PREDIO: 9
+    ATUALIZADO: 6, NOME_IRMAO: 7, ACESSO_INT: 8, NAO_EH_PREDIO: 9,
+    TIPO_ENTRADA: 10, ACESSO_CAIXAS: 11, ACESSO_INTERFONES: 12
   },
 
   // Aba "TerritoriosEspeciais" — Territórios Comerciais Especiais (TCE).
