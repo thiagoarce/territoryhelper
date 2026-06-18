@@ -2018,11 +2018,14 @@ function ensureSheetPredios_() {
     // Migração: se a aba já existe mas com schema antigo, completa o
     // cabeçalho com as colunas novas (idempotente, sem perda de dados).
     var ult = sh.getLastColumn();
-    if (ult < 10) {
+    if (ult < 13) {
       var faltam = [];
       if (ult < 8)  faltam.push('nomeIrmao');
       if (ult < 9)  faltam.push('acessoInterfone');
       if (ult < 10) faltam.push('naoEhPredio');
+      if (ult < 11) faltam.push('tipoEntrada');
+      if (ult < 12) faltam.push('acessoCaixas');
+      if (ult < 13) faltam.push('acessoInterfones');
       if (faltam.length > 0) {
         sh.getRange(1, ult + 1, 1, faltam.length).setValues([faltam]);
       }
@@ -2032,7 +2035,8 @@ function ensureSheetPredios_() {
   sh = ss.insertSheet(SHEET.PREDIOS);
   sh.appendRow([
     'id', 'chave', 'nome', 'irmaoMora', 'ultimaCarta', 'notas', 'atualizado',
-    'nomeIrmao', 'acessoInterfone', 'naoEhPredio'
+    'nomeIrmao', 'acessoInterfone', 'naoEhPredio',
+    'tipoEntrada', 'acessoCaixas', 'acessoInterfones'
   ]);
   sh.setFrozenRows(1);
   return sh;
@@ -2063,23 +2067,25 @@ function _mapaOverlaysPredios_() {
   var sh = ensureSheetPredios_();
   var ult = sh.getLastRow();
   if (ult < 2) return {};
-  // Lê todas as colunas disponíveis (varia entre 7 e 10 dependendo da
-  // versão do schema; ensureSheetPredios_ já completou cabeçalho)
-  var nCols = Math.max(sh.getLastColumn(), 10);
+  var nCols = Math.max(sh.getLastColumn(), 13);
   var dados = sh.getRange(2, 1, ult - 1, nCols).getValues();
   var mapa = {};
+  function bool_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
   dados.forEach(function(r){
     var chave = String(r[COL.PREDIOS.CHAVE] || '');
     if (!chave) return;
     mapa[chave] = {
       id: String(r[COL.PREDIOS.ID] || ''),
       nome: String(r[COL.PREDIOS.NOME] || ''),
-      irmaoMora: r[COL.PREDIOS.IRMAO_MORA] === true || String(r[COL.PREDIOS.IRMAO_MORA]).toUpperCase() === 'TRUE',
+      irmaoMora: bool_(r[COL.PREDIOS.IRMAO_MORA]),
       ultimaCarta: r[COL.PREDIOS.ULTIMA_CARTA] ? new Date(r[COL.PREDIOS.ULTIMA_CARTA]).getTime() : 0,
       notas: String(r[COL.PREDIOS.NOTAS] || ''),
       nomeIrmao: String(r[COL.PREDIOS.NOME_IRMAO] || ''),
       acessoInterfone: String(r[COL.PREDIOS.ACESSO_INT] || ''),
-      naoEhPredio: r[COL.PREDIOS.NAO_EH_PREDIO] === true || String(r[COL.PREDIOS.NAO_EH_PREDIO]).toUpperCase() === 'TRUE'
+      naoEhPredio: bool_(r[COL.PREDIOS.NAO_EH_PREDIO]),
+      tipoEntrada: String(r[COL.PREDIOS.TIPO_ENTRADA] || ''),
+      acessoCaixas: bool_(r[COL.PREDIOS.ACESSO_CAIXAS]),
+      acessoInterfones: bool_(r[COL.PREDIOS.ACESSO_INTERFONES])
     };
   });
   return mapa;
@@ -2201,25 +2207,33 @@ function atualizarPredio(chave, patch) {
     var linha = _acharLinhaPredioPorChave_(sh, chave);
     if (linha < 0) {
       var id = 'pr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-      sh.appendRow([id, chave, '', false, '', '', new Date(), '', '', false]);
+      sh.appendRow([id, chave, '', false, '', '', new Date(), '', '', false, '', false, false]);
       linha = sh.getLastRow();
     }
     var mapa = {
-      nome:            COL.PREDIOS.NOME_1IDX,
-      irmaoMora:       COL.PREDIOS.IRMAO_MORA_1IDX,
-      ultimaCarta:     COL.PREDIOS.ULTIMA_CARTA_1IDX,
-      notas:           COL.PREDIOS.NOTAS_1IDX,
-      nomeIrmao:       COL.PREDIOS.NOME_IRMAO_1IDX,
-      acessoInterfone: COL.PREDIOS.ACESSO_INT_1IDX,
-      naoEhPredio:     COL.PREDIOS.NAO_EH_PREDIO_1IDX
+      nome:             COL.PREDIOS.NOME_1IDX,
+      irmaoMora:        COL.PREDIOS.IRMAO_MORA_1IDX,
+      ultimaCarta:      COL.PREDIOS.ULTIMA_CARTA_1IDX,
+      notas:            COL.PREDIOS.NOTAS_1IDX,
+      nomeIrmao:        COL.PREDIOS.NOME_IRMAO_1IDX,
+      acessoInterfone:  COL.PREDIOS.ACESSO_INT_1IDX,
+      naoEhPredio:      COL.PREDIOS.NAO_EH_PREDIO_1IDX,
+      tipoEntrada:      COL.PREDIOS.TIPO_ENTRADA_1IDX,
+      acessoCaixas:     COL.PREDIOS.ACESSO_CAIXAS_1IDX,
+      acessoInterfones: COL.PREDIOS.ACESSO_INTERFONES_1IDX
     };
     Object.keys(patch || {}).forEach(function(k){
       if (!(k in mapa)) return;
       var valor = patch[k];
-      if (k === 'irmaoMora' || k === 'naoEhPredio') valor = valor === true;
+      if (k === 'irmaoMora' || k === 'naoEhPredio' ||
+          k === 'acessoCaixas' || k === 'acessoInterfones') {
+        valor = valor === true;
+      }
       else if (k === 'acessoInterfone') {
-        // Aceita só valores conhecidos
         if (valor !== 'individual' && valor !== 'portaria') valor = '';
+      }
+      else if (k === 'tipoEntrada') {
+        if (valor !== 'porteiro' && valor !== 'eletronica' && valor !== 'sem') valor = '';
       }
       else if (k === 'ultimaCarta') {
         if (valor === true) valor = new Date();
@@ -2245,6 +2259,38 @@ function marcarCartaEntregue(chave) {
   var existe = lista.some(function(p){ return p.chave === chave; });
   if (!existe) return { ok: false, erro: 'Prédio não encontrado' };
   return atualizarPredio(chave, { ultimaCarta: true });
+}
+
+// Endpoint público: lê overlay de UM prédio pra popular o modal de edição
+// no painel do publicador. Retorna só os campos que o publicador edita.
+function getOverlayPredioPublico(chave) {
+  if (!chave) return { ok: false, erro: 'chave obrigatória' };
+  var lista = listarPredios();
+  var p = lista.find(function(x){ return x.chave === chave; });
+  if (!p) return { ok: false, erro: 'Prédio não encontrado' };
+  var ov = _mapaOverlaysPredios_()[chave] || {};
+  return {
+    ok: true,
+    chave: chave,
+    nome: p.nome || '',
+    tipoEntrada: ov.tipoEntrada || '',
+    acessoCaixas: !!ov.acessoCaixas,
+    acessoInterfones: !!ov.acessoInterfones
+  };
+}
+
+// Endpoint público pro publicador editar metadados do prédio (interfone,
+// portaria, caixa de correio). Só aceita campos seguros — não expõe
+// notas, irmaoMora ou outros campos administrativos.
+function atualizarPredioPublico(chave, patch) {
+  if (!chave) return { ok: false, erro: 'chave obrigatória' };
+  var lista = listarPredios();
+  var existe = lista.some(function(p){ return p.chave === chave; });
+  if (!existe) return { ok: false, erro: 'Prédio não encontrado' };
+  var permitidos = ['tipoEntrada', 'acessoCaixas', 'acessoInterfones'];
+  var seguro = {};
+  permitidos.forEach(function(k){ if (k in (patch || {})) seguro[k] = patch[k]; });
+  return atualizarPredio(chave, seguro);
 }
 
 // Versão pública (read-only) pra link compartilhado — não expõe notas

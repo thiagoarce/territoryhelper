@@ -596,6 +596,47 @@
     </div>
   </div>
 
+  <!-- Modal: Editar prédio (publicador edita acesso/portaria/caixas) -->
+  <div class="modal fade" id="modalEditarPredio" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fa-solid fa-building me-2"></i><span id="lblPredioNome">Prédio</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="predioChaveEdicao">
+
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Entrada do prédio</label>
+            <div class="d-grid gap-2">
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="porteiro" class="form-check-input me-2"><span>Porteiro</span></label>
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="eletronica" class="form-check-input me-2"><span>Portaria eletrônica</span></label>
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="sem" class="form-check-input me-2"><span>Sem porteiro</span></label>
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="" class="form-check-input me-2"><span class="text-muted">Não informado</span></label>
+            </div>
+          </div>
+
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="predCaixas">
+            <label class="form-check-label" for="predCaixas">Tem acesso às <b>caixas de correio</b></label>
+          </div>
+
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="predInterfones">
+            <label class="form-check-label" for="predInterfones">Tem acesso aos <b>interfones dos apartamentos</b></label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary" id="btnSalvarPredio" onclick="salvarEdicaoPredio()">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Aplica tema escuro salvo (compartilhado com Index via localStorage)
     try {
@@ -1060,10 +1101,15 @@
                    '</div>' +
                  '</div>';
         }).join('');
+        // Chave do prédio (mesma do backend): logradouro|numero em lowercase
+        var chavePr = (p.logradouro || '').trim().toLowerCase() + '|' + (p.numero || '').trim().toLowerCase();
         return '<div class="card-end">' +
                  '<div class="endereco-titulo"><i class="fa-solid fa-building me-2"></i>' + escapeHtmlPub(titPredio) + '</div>' +
                  '<div class="endereco-sub">' + subPredio + '</div>' +
-                 '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a></div>' +
+                 '<div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:.85rem">' +
+                   '<a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a>' +
+                   '<a href="#" onclick="event.preventDefault(); window.abrirEdicaoPredio(\'' + chavePr.replace(/'/g, "\\'") + '\')" style="color:#7c3aed"><i class="fa-solid fa-pen-to-square me-1"></i>Editar prédio</a>' +
+                 '</div>' +
                  '<div class="aptos-grid">' + aptosHtml + '</div>' +
                '</div>';
       }
@@ -1243,6 +1289,69 @@
       localStorage.setItem(chave, !jaFeito ? 'true' : 'false');
       if (!jaFeito && typeof enfileirarSync === 'function') enfileirarSync('carta', { row: row });
       renderizarSimples();
+    };
+
+    // ====== EDIÇÃO DO PRÉDIO (publicador) ======
+    window.abrirEdicaoPredio = function(chave) {
+      if (!chave) return;
+      var btn = document.getElementById('btnSalvarPredio');
+      if (btn) btn.disabled = true;
+      document.getElementById('predioChaveEdicao').value = chave;
+      document.getElementById('lblPredioNome').textContent = 'Carregando...';
+      // Reseta UI antes de pintar com dados do servidor
+      document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(r){ r.checked = (r.value === ''); });
+      document.getElementById('predCaixas').checked = false;
+      document.getElementById('predInterfones').checked = false;
+      var modal = new bootstrap.Modal(document.getElementById('modalEditarPredio'));
+      modal.show();
+      google.script.run
+        .withSuccessHandler(function(r){
+          if (!r || !r.ok) {
+            window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
+            modal.hide();
+            return;
+          }
+          document.getElementById('lblPredioNome').textContent = r.nome || 'Prédio';
+          document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(rd){
+            rd.checked = (rd.value === (r.tipoEntrada || ''));
+          });
+          document.getElementById('predCaixas').checked = !!r.acessoCaixas;
+          document.getElementById('predInterfones').checked = !!r.acessoInterfones;
+          if (btn) btn.disabled = false;
+        })
+        .withFailureHandler(function(e){
+          window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
+          modal.hide();
+        })
+        .getOverlayPredioPublico(chave);
+    };
+
+    window.salvarEdicaoPredio = function() {
+      var chave = document.getElementById('predioChaveEdicao').value;
+      if (!chave) return;
+      var tipo = (document.querySelector('input[name="predTipoEnt"]:checked') || {}).value || '';
+      var caixas = document.getElementById('predCaixas').checked;
+      var interfones = document.getElementById('predInterfones').checked;
+      var btn = document.getElementById('btnSalvarPredio');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...'; }
+      google.script.run
+        .withSuccessHandler(function(r){
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Salvar'; }
+          if (!r || !r.ok) {
+            alert('Erro: ' + (r && r.erro || '?'));
+            return;
+          }
+          bootstrap.Modal.getInstance(document.getElementById('modalEditarPredio')).hide();
+        })
+        .withFailureHandler(function(e){
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Salvar'; }
+          alert('Erro: ' + (e && e.message || e));
+        })
+        .atualizarPredioPublico(chave, {
+          tipoEntrada: tipo,
+          acessoCaixas: caixas,
+          acessoInterfones: interfones
+        });
     };
 
     // Sync com servidor: puxa marcações de outros publicadores trabalhando
@@ -1701,6 +1810,8 @@ function criarItemHtml(item, isInsideGroup) {
       var novoEstado = !jaFeito;
       localStorage.setItem(chave, novoEstado ? "true" : "false");
       el.classList.toggle('feito', novoEstado);
+      atualizarCobertura();
+      if (typeof aplicarFiltros === 'function') aplicarFiltros();
       if (!novoEstado) return;
       enfileirarSync('carta', { row: row });
     };
@@ -1861,11 +1972,12 @@ function criarItemHtml(item, isInsideGroup) {
           total++;
           var d = localStorage.getItem("desf_" + it.row) || '';
           if (!d && localStorage.getItem("v_" + it.row) === "true") d = 'conversou';
-          if (d) alcancados++;
+          var temCarta = localStorage.getItem("carta_" + it.row) === "true";
+          if (d || temCarta) alcancados++;
           if (d === 'naoAtendeu') naoAtend++;
           else if (d === 'semConversa') sem++;
           else if (d === 'conversou') conv++;
-          if (localStorage.getItem("carta_" + it.row) === "true") cartas++;
+          if (temCarta) cartas++;
           var k = (it.logradouro || '') + '|' + (it.numero || '');
           if (!predios[k]) predios[k] = { tot: 0, feitos: 0 };
           predios[k].tot++;
@@ -2106,12 +2218,12 @@ function toggleVisita(row, el) {
 
         var bateBusca = !q || texto.indexOf(q) > -1;
 
-        // "Feito" = qualquer desfecho marcado (naoAtendeu / semConversa /
-        // conversou) — armazenado em localStorage como desf_<row>. Conta
-        // também o legado 'v_<row>' = true pra compat com marcações antigas.
+        // "Feito" = qualquer desfecho marcado OU carta entregue. Vale
+        // também o legado v_<row>=true.
         var row = el.getAttribute('data-row');
         var feito = !!localStorage.getItem('desf_' + row) ||
-                    localStorage.getItem('v_' + row) === 'true';
+                    localStorage.getItem('v_' + row) === 'true' ||
+                    localStorage.getItem('carta_' + row) === 'true';
         var bateVisita = (filtroVisita === 'todos') ||
                          (filtroVisita === 'feitos' && feito) ||
                          (filtroVisita === 'pendentes' && !feito);
