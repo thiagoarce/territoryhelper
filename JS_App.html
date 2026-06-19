@@ -3700,11 +3700,7 @@ window.confirmarAssociacao = function(layerQuadra) {
     document.getElementById('predioNotas').value = p.notas || '';
     document.getElementById('predioNaoEhPredio').checked = !!p.naoEhPredio;
 
-    // Acesso (radio group) — legado
-    var radios = document.querySelectorAll('input[name="predioAcesso"]');
-    radios.forEach(function(r){ r.checked = (r.value === (p.acessoInterfone || '')); });
-
-    // Novos campos granulares
+    // Novos campos granulares (entrada / caixas / interfones)
     document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(r){
       r.checked = (r.value === (p.tipoEntrada || ''));
     });
@@ -3729,13 +3725,11 @@ window.confirmarAssociacao = function(layerQuadra) {
 
   window.salvarPredio = function() {
     var chave = document.getElementById('predioChave').value;
-    var acessoSel = document.querySelector('input[name="predioAcesso"]:checked');
     var tipoEntSel = document.querySelector('input[name="predTipoEnt"]:checked');
     var patch = {
       nome: document.getElementById('predioNome').value.trim(),
       irmaoMora: document.getElementById('predioIrmaoMora').checked,
       nomeIrmao: document.getElementById('predioNomeIrmao').value.trim(),
-      acessoInterfone: acessoSel ? acessoSel.value : '',
       tipoEntrada: tipoEntSel ? tipoEntSel.value : '',
       acessoCaixas: document.getElementById('predAcessoCaixas').checked,
       acessoInterfones: document.getElementById('predAcessoInterfones').checked,
