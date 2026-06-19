@@ -1052,7 +1052,7 @@ function getDadosIniciaisMaster() {
 
 function limparCacheServidor() {
   var cache = CacheService.getScriptCache();
-  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1']);
+  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1', 'DENSIDADE_PREDIOS_V1']);
 }
 
 // Marca toda escrita: invalida o cache para que a próxima leitura puxe fresco
@@ -2980,6 +2980,13 @@ function reutilizarTerritorioComercial(idAntigo, payload) {
 // Útil pro servo e dirigente saberem onde tem mais trabalho concentrado.
 // =================================================================
 function getDensidadePredios() {
+  // Cache 5min — chamado por getDadosComContexto em todo load de publico
+  // e dirigente. Sem cache, relê Dados Brutos inteiro toda vez = lento.
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('DENSIDADE_PREDIOS_V1');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetD = ss.getSheetByName(SHEET.DADOS);
   if (!sheetD || sheetD.getLastRow() < 2) return {};
@@ -3004,6 +3011,7 @@ function getDensidadePredios() {
     });
     resultado[q] = qtd;
   });
+  try { cache.put('DENSIDADE_PREDIOS_V1', JSON.stringify(resultado), 300); } catch(e) {}
   return resultado;
 }
 
