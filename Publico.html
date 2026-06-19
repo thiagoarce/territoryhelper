@@ -480,8 +480,9 @@
   <div class="position-fixed" style="bottom:4px; left:8px; font-size:.6rem; opacity:.4; pointer-events:none; z-index:1; color:#888">v: <?= getVersaoApp() ?></div>
 
   <!-- Switch flutuante pra alternar modo Simples/Avançado -->
-  <div id="switchModo" class="d-none position-fixed" style="bottom:16px; left:16px; z-index:1000;">
-    <button class="btn btn-sm shadow-lg" id="btnModoToggle" onclick="alternarModoPublicador()" style="background:#1976d2; color:#fff; border-radius:999px; padding:8px 14px; font-weight:600">
+  <!-- Canto superior direito (longe dos botões +/reorder do canto inferior) -->
+  <div id="switchModo" class="d-none position-fixed" style="top:8px; right:8px; z-index:1100;">
+    <button class="btn btn-sm shadow-lg" id="btnModoToggle" onclick="alternarModoPublicador()" style="background:#1976d2; color:#fff; border-radius:999px; padding:8px 14px; font-weight:600; min-height:40px">
       <i class="fa-solid fa-list" id="iconModo"></i> <span id="lblModo">Modo simples</span>
     </button>
   </div>
