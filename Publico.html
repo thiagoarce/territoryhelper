@@ -1660,7 +1660,7 @@ function renderizarLista() {
             var iconRota = sentidoHorario ? 'fa-rotate-right' : 'fa-rotate-left';
             var html = `
             <div class="quadra-card">
-                <div class="quadra-header" onclick="window.toggleQuadraAvancado('${quadra.id}')">
+                <div class="quadra-header" onclick="toggleDisplay('body-${quadra.id}')">
                    <span>Quadra ${quadra.id}</span>
                    <i class="fa-solid fa-chevron-down"></i>
                 </div>
@@ -1677,37 +1677,9 @@ function renderizarLista() {
 
                 <div id="body-${quadra.id}" class="sortable-list" data-quadra="${quadra.id}">`;
 
-            // Agrupa por face IBGE (F1, F2, F3, F4). "—" = sem face cadastrada.
-            // Ordem horária ascendente.
-            var porFace = {};
-            var ordemFaces = [];
-            quadra.itens.forEach(function(item){
-              var f = _faceKey(item);
-              if (!porFace[f]) { porFace[f] = []; ordemFaces.push(f); }
-              porFace[f].push(item);
-            });
-            ordemFaces.sort(function(a, b){
-              if (a === '—') return 1;
-              if (b === '—') return -1;
-              var na = parseInt(a.replace(/\D/g, ''), 10);
-              var nb = parseInt(b.replace(/\D/g, ''), 10);
-              if (isNaN(na) && isNaN(nb)) return a.localeCompare(b);
-              if (isNaN(na)) return 1;
-              if (isNaN(nb)) return -1;
-              return na - nb;
-            });
-            // Se a quadra tem só 1 face, pula o cabeçalho de face (UI mais limpa)
-            var mostrarCabFace = ordemFaces.length > 1;
+            var grupos = agruparItens(quadra.itens);
 
-            ordemFaces.forEach(function(f){
-              var corF = _corDeFace(f);
-              var nomeF = f === '—' ? 'Sem face' : 'Face ' + f;
-              if (mostrarCabFace) {
-                html += `<div class="face-divisao" style="border-left:4px solid ${corF}; background:linear-gradient(90deg, ${corF}22, transparent); padding:6px 12px; margin:8px 0 4px; font-weight:700; font-size:.85rem; color:${corF}">${nomeF} <span class="text-muted fw-normal">· ${porFace[f].length} end.</span></div>`;
-              }
-              var grupos = agruparItens(porFace[f]);
-
-              grupos.forEach(function(g) {
+            grupos.forEach(function(g) {
                 if(g.tipo === 'unico') {
                     html += criarItemHtml(g.item);
                 } else {
@@ -1741,7 +1713,6 @@ function renderizarLista() {
                         </div>
                     </div>`;
                 }
-              });
             });
 
             html += `</div></div>`;
@@ -1750,65 +1721,6 @@ function renderizarLista() {
 
         if(isReorder) ativarSortable();
         if (typeof aplicarFiltros === 'function') aplicarFiltros();
-    }
-
-    // Toggle do quadra-card no avançado: abre/fecha o body E pinta as
-    // arestas coloridas por face no mapa topo pra orientar o publicador.
-    window.toggleQuadraAvancado = function(qid) {
-      var el = document.getElementById('body-' + qid);
-      if (!el) return;
-      var abrindo = el.classList.contains('d-none');
-      el.classList.toggle('d-none');
-      if (abrindo) pintarFacesNoMapaTopo(qid);
-      else limparFacesNoMapaTopo();
-    };
-
-    var _layerFacesTopo = null;
-    function limparFacesNoMapaTopo() {
-      if (_layerFacesTopo) _layerFacesTopo.clearLayers();
-    }
-    function pintarFacesNoMapaTopo(qid) {
-      if (!map) return;
-      if (!_layerFacesTopo) _layerFacesTopo = L.featureGroup().addTo(map);
-      _layerFacesTopo.clearLayers();
-      var quadra = (dadosGerais || []).find(function(q){ return q.id === qid; });
-      if (!quadra || !quadra.polyString) return;
-      var pts = parsePolyPub(quadra.polyString);
-      if (pts.length < 3) return;
-      // Reusa a lógica do simples: encontra centroide de cada face,
-      // mapeia aresta → face mais próxima e pinta com a cor da face.
-      var centros = {};
-      (quadra.itens || []).forEach(function(it){
-        if (it.naoVisitar || !it.lat || !it.lng) return;
-        var f = _faceKey(it);
-        if (f === '—') return;
-        if (!centros[f]) centros[f] = { sLat:0, sLng:0, n:0 };
-        centros[f].sLat += parseFloat(it.lat);
-        centros[f].sLng += parseFloat(it.lng);
-        centros[f].n++;
-      });
-      Object.keys(centros).forEach(function(f){
-        var c = centros[f];
-        centros[f] = { lat: c.sLat / c.n, lng: c.sLng / c.n };
-      });
-      if (Object.keys(centros).length === 0) return;
-      for (var i = 0; i < pts.length; i++) {
-        var a = pts[i], b = pts[(i + 1) % pts.length];
-        var midLat = (a[0] + b[0]) / 2, midLng = (a[1] + b[1]) / 2;
-        var melhor = null, distMin = Infinity;
-        Object.keys(centros).forEach(function(f){
-          var dy = centros[f].lat - midLat;
-          var dx = centros[f].lng - midLng;
-          var d = dy * dy + dx * dx;
-          if (d < distMin) { distMin = d; melhor = f; }
-        });
-        if (!melhor) continue;
-        L.polyline([a, b], {
-          color: _corDeFace(melhor), weight: 7, opacity: 0.9
-        }).bindTooltip('Face ' + melhor, { sticky: true }).addTo(_layerFacesTopo);
-      }
-      // Centraliza nessa quadra
-      try { map.fitBounds(L.polygon(pts).getBounds(), { padding:[20,20], maxZoom:18 }); } catch(e) {}
     }
 
     function agruparItens(itens) {
