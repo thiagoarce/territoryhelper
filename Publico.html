@@ -675,6 +675,10 @@
     // Especial. Se presente, o publicador vê SÓ os endereços do TCE
     // em vez da estrutura por quadra.
     var TE_ID = "<?= te ?>";
+    // IDs vêm via template server-side (passa pelo doGet em vez de
+    // depender de google.script.url.getLocation, que usa postMessage
+    // entre iframe e parent — quebra silenciosamente no iOS Safari).
+    var IDS_PUB = "<?= ids ?>";
 
     // Lógica de Cores e Ícones
     function getVisualPorTipo(tipo) {
@@ -723,9 +727,12 @@
         // Caso TCE: usa fluxo separado (lista de endereços, sem quadras)
         if (TE_ID) { carregarTCE(); return; }
 
-        google.script.url.getLocation(function(location) {
-             var ids = location.parameter.ids;
-             if(!ids) { alert("Link inválido (sem IDs)."); return; }
+        (function(ids) {
+             if(!ids) {
+               document.getElementById('loader').innerHTML =
+                 '<div class="text-danger px-3">Link inválido — sem IDs.</div>';
+               return;
+             }
 
              // v3: cache com TTL — payload+timestamp serializados juntos.
              // Cache válido por 24h; depois exige nova busca pra evitar
@@ -815,7 +822,7 @@
                     }
                 })
                 .getDadosComContexto(ids);
-        });
+        })(IDS_PUB);
     }
 
     // Modo TCE: trata endereços como uma "pseudo-quadra" pra reusar
@@ -1443,21 +1450,19 @@
           .getDadosTCE(TE_ID);
         return;
       }
-      google.script.url.getLocation(function(location){
-        var ids = location.parameter.ids;
-        if (!ids) { finalizar(); return; }
-        google.script.run
-          .withSuccessHandler(function(data){
-            if (data && data.designadas) {
-              try {
-                localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
-              } catch(e) {}
-              aplicar(data.designadas, data.contexto || []);
-            } else { finalizar(); }
-          })
-          .withFailureHandler(finalizar)
-          .getDadosComContexto(ids);
-      });
+      var ids = IDS_PUB;
+      if (!ids) { finalizar(); return; }
+      google.script.run
+        .withSuccessHandler(function(data){
+          if (data && data.designadas) {
+            try {
+              localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
+            } catch(e) {}
+            aplicar(data.designadas, data.contexto || []);
+          } else { finalizar(); }
+        })
+        .withFailureHandler(finalizar)
+        .getDadosComContexto(ids);
     };
 
     function _atualizarBrisaSync() {
