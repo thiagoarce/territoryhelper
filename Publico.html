@@ -644,6 +644,24 @@
       if (temaSalvo === 'escuro') document.body.classList.add('tema-escuro');
     } catch(e) {}
 
+    // Handler global de erro: se algo travar durante o boot, mostra a
+    // mensagem no loader em vez de ficar girando pra sempre.
+    window.onerror = function(msg, src, line, col, err) {
+      var loader = document.getElementById('loader');
+      if (loader && !loader.classList.contains('d-none')) {
+        loader.innerHTML =
+          '<div class="text-danger px-3 text-center" style="max-width:90%">' +
+            '<i class="fa-solid fa-circle-exclamation fa-2x mb-3"></i>' +
+            '<div><b>Erro ao carregar</b></div>' +
+            '<div class="small text-muted mt-1" style="word-break:break-word">' + (msg || '?') + '</div>' +
+            '<div class="small text-muted">' + (src || '') + ':' + (line || '?') + '</div>' +
+            '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Atualizar</button>' +
+            '<button class="btn btn-sm btn-outline-secondary mt-3 ms-2" onclick="try{localStorage.clear();}catch(e){};location.reload()">Limpar cache e atualizar</button>' +
+          '</div>';
+      }
+      return false; // não suprime o console
+    };
+
     var dadosGerais = [];
     var contextoPolys = [];
     var infoTCE = null; // se ?te=ID, recebe { id, nome, publicador, total, polyString }
@@ -751,13 +769,18 @@
                  return;
                }
                document.getElementById('loader').innerHTML =
-                 '<div class="text-warning px-3 text-center">' +
+                 '<div class="text-warning px-3 text-center" style="max-width:90%">' +
                    '<i class="fa-solid fa-hourglass-half fa-2x mb-3"></i>' +
-                   '<div>O servidor não respondeu.</div>' +
-                   '<div class="small text-muted mt-1">Tente atualizar — pode ser cache de autenticação.</div>' +
-                   '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Atualizar</button>' +
+                   '<div><b>O servidor não respondeu</b></div>' +
+                   '<div class="small text-muted mt-1">Provável conflito de conta Google logada. Tente:</div>' +
+                   '<ul class="small text-start text-muted mt-2" style="list-style:none; padding:0">' +
+                     '<li>1. Sair de contas Google extras (mantém só uma)</li>' +
+                     '<li>2. Limpar cache e atualizar</li>' +
+                   '</ul>' +
+                   '<button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">Atualizar</button>' +
+                   '<button class="btn btn-sm btn-outline-secondary mt-2 ms-2" onclick="try{localStorage.clear();}catch(e){};location.reload()">Limpar cache + atualizar</button>' +
                  '</div>';
-             }, 30000);
+             }, 12000);
 
              google.script.run
                 .withSuccessHandler(function(data) {
