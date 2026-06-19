@@ -644,23 +644,6 @@
       if (temaSalvo === 'escuro') document.body.classList.add('tema-escuro');
     } catch(e) {}
 
-    // Handler global de erro: se algo travar durante o boot, mostra a
-    // mensagem no loader em vez de ficar girando pra sempre.
-    window.onerror = function(msg, src, line, col, err) {
-      var loader = document.getElementById('loader');
-      if (loader && !loader.classList.contains('d-none')) {
-        loader.innerHTML =
-          '<div class="text-danger px-3 text-center" style="max-width:90%">' +
-            '<i class="fa-solid fa-circle-exclamation fa-2x mb-3"></i>' +
-            '<div><b>Erro ao carregar</b></div>' +
-            '<div class="small text-muted mt-1" style="word-break:break-word">' + (msg || '?') + '</div>' +
-            '<div class="small text-muted">' + (src || '') + ':' + (line || '?') + '</div>' +
-            '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Atualizar</button>' +
-            '<button class="btn btn-sm btn-outline-secondary mt-3 ms-2" onclick="try{localStorage.clear();}catch(e){};location.reload()">Limpar cache e atualizar</button>' +
-          '</div>';
-      }
-      return false; // não suprime o console
-    };
 
     var dadosGerais = [];
     var contextoPolys = [];
@@ -727,102 +710,59 @@
         // Caso TCE: usa fluxo separado (lista de endereços, sem quadras)
         if (TE_ID) { carregarTCE(); return; }
 
-        (function(ids) {
-             if(!ids) {
-               document.getElementById('loader').innerHTML =
-                 '<div class="text-danger px-3">Link inválido — sem IDs.</div>';
-               return;
-             }
+        var ids = IDS_PUB;
+        if(!ids) {
+          document.getElementById('loader').innerHTML =
+            '<div class="text-danger px-3">Link inválido — sem IDs.</div>';
+          return;
+        }
 
-             // v3: cache com TTL — payload+timestamp serializados juntos.
-             // Cache válido por 24h; depois exige nova busca pra evitar
-             // que o publicador veja designação obsoleta indefinidamente
-             // se o backend estiver fora do ar.
-             var TTL_MS = 24 * 60 * 60 * 1000;
-             var cacheKey = 'publico_dados_v3_' + ids;
-             var cachedPayload = null;
-             var cachedStr = '';
-             try {
-               var raw = localStorage.getItem(cacheKey);
-               if (raw) {
-                 var env = JSON.parse(raw);
-                 if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
-                   cachedPayload = env.d;
-                   cachedStr = JSON.stringify(env.d);
-                 }
-               }
-             } catch(e) {}
+        // v3: cache com TTL — payload+timestamp serializados juntos.
+        var TTL_MS = 24 * 60 * 60 * 1000;
+        var cacheKey = 'publico_dados_v3_' + ids;
+        var cachedPayload = null;
+        var cachedStr = '';
+        try {
+          var raw = localStorage.getItem(cacheKey);
+          if (raw) {
+            var env = JSON.parse(raw);
+            if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
+              cachedPayload = env.d;
+              cachedStr = JSON.stringify(env.d);
+            }
+          }
+        } catch(e) {}
 
-             function aplicar(payload) {
-               dadosGerais = payload.designadas || [];
-               contextoPolys = payload.contexto || [];
-               mostrarApp();
-             }
+        function aplicar(payload) {
+          dadosGerais = payload.designadas || [];
+          contextoPolys = payload.contexto || [];
+          mostrarApp();
+        }
 
-             // Stale-while-revalidate: mostra cache (se válido) e busca frescos
-             if (cachedPayload) aplicar(cachedPayload);
+        if (cachedPayload) aplicar(cachedPayload);
 
-             // Timeout de 30s pra fallback do postMessage do Apps Script
-             // ser engolido sem disparar success NEM failure (bug conhecido
-             // com /dev quando contexto de autenticação muda). Sem isso o
-             // loader fica eterno. Se cache existe, esse timeout só logga;
-             // sem cache, mostra erro friendly com retry.
-             var _respondeu = false;
-             var _timeoutFallback = setTimeout(function(){
-               if (_respondeu) return;
-               _respondeu = true;
-               if (cachedPayload) {
-                 console.warn('Servidor não respondeu, seguindo com cache.');
-                 return;
-               }
-               document.getElementById('loader').innerHTML =
-                 '<div class="text-warning px-3 text-center" style="max-width:90%">' +
-                   '<i class="fa-solid fa-hourglass-half fa-2x mb-3"></i>' +
-                   '<div><b>O servidor não respondeu</b></div>' +
-                   '<div class="small text-muted mt-1">Provável conflito de conta Google logada. Tente:</div>' +
-                   '<ul class="small text-start text-muted mt-2" style="list-style:none; padding:0">' +
-                     '<li>1. Sair de contas Google extras (mantém só uma)</li>' +
-                     '<li>2. Limpar cache e atualizar</li>' +
-                   '</ul>' +
-                   '<button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">Atualizar</button>' +
-                   '<button class="btn btn-sm btn-outline-secondary mt-2 ms-2" onclick="try{localStorage.clear();}catch(e){};location.reload()">Limpar cache + atualizar</button>' +
-                 '</div>';
-             }, 12000);
-
-             google.script.run
-                .withSuccessHandler(function(data) {
-                    _respondeu = true; clearTimeout(_timeoutFallback);
-                    if(!data || !data.designadas || data.designadas.length === 0) {
-                      if (!cachedPayload) {
-                        document.getElementById('loader').innerHTML =
-                          '<div class="text-warning px-3 text-center">' +
-                            '<i class="fa-solid fa-triangle-exclamation fa-2x mb-3"></i>' +
-                            '<div>Nenhuma quadra encontrada pra esse link.</div>' +
-                            '<div class="small text-muted mt-1">IDs: ' + (ids || '?') + '</div>' +
-                          '</div>';
-                      }
-                      return;
-                    }
-                    var novoStr = JSON.stringify(data);
-                    try {
-                      localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: data }));
-                    } catch(e) {}
-                    if (novoStr !== cachedStr) aplicar(data);
-                })
-                .withFailureHandler(function(e) {
-                    _respondeu = true; clearTimeout(_timeoutFallback);
-                    if (!cachedPayload) {
-                      document.getElementById('loader').innerHTML =
-                        '<div class="text-danger px-3 text-center">' +
-                          '<i class="fa-solid fa-circle-xmark fa-2x mb-3"></i>' +
-                          '<div>Não consegui carregar a designação.</div>' +
-                          '<div class="small text-muted mt-1">' + (e && e.message ? e.message : 'Sem conexão e sem dados salvos.') + '</div>' +
-                          '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Tentar de novo</button>' +
-                        '</div>';
-                    }
-                })
-                .getDadosComContexto(ids);
-        })(IDS_PUB);
+        google.script.run
+          .withSuccessHandler(function(data) {
+            if(!data || !data.designadas || data.designadas.length === 0) {
+              if (!cachedPayload) {
+                document.getElementById('loader').innerHTML =
+                  '<div class="text-warning px-3 text-center"><div>Nenhuma quadra encontrada pra esse link.</div><div class="small text-muted mt-1">IDs: ' + ids + '</div></div>';
+              }
+              return;
+            }
+            var novoStr = JSON.stringify(data);
+            try {
+              localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: data }));
+            } catch(e) {}
+            if (novoStr !== cachedStr) aplicar(data);
+          })
+          .withFailureHandler(function(e) {
+            if (!cachedPayload) {
+              document.getElementById('loader').innerHTML =
+                '<div class="text-danger px-3 text-center"><div>Erro ao carregar.</div><button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Tentar de novo</button></div>';
+            }
+          })
+          .getDadosComContexto(ids);
     }
 
     // Modo TCE: trata endereços como uma "pseudo-quadra" pra reusar
