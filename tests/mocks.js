@@ -57,7 +57,8 @@ function makeSheet(name, rows) {
       };
     },
     appendRow: function(row) { this._data.push(row.slice()); },
-    deleteRow: function(rowIdx) { this._data.splice(rowIdx - 1, 1); }
+    deleteRow: function(rowIdx) { this._data.splice(rowIdx - 1, 1); },
+    setFrozenRows: function() { return this; } // no-op
   };
   return sheet;
 }

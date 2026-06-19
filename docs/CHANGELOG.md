@@ -4,6 +4,103 @@ Mudanças relevantes do app. Datas relativas ao mês de release.
 
 ## 2026-06 (atual)
 
+### Final do mês (depois do release)
+
+#### Faces IBGE em todo o app
+- **Faces (F1, F2, F3, F4)** lidas da coluna D (FACE_IBGE) de Dados Brutos.
+- **Modo simples**: cards de face coloridos + barra do header colorida; mapa
+  desenha cada aresta da quadra com a cor da face cujo centroide está mais
+  próximo. Ordem horária ascendente (convenção IBGE).
+- **Modo avançado**: dentro de cada quadra, endereços agrupados por face com
+  divisão colorida; click no header da quadra pinta as arestas no mapa topo.
+- Paleta única `FACE_COLORS` (azul, vermelho, verde, laranja, roxo, ciano).
+
+#### Editar prédio no publicador
+- Aba publicador (modo simples e avançado) ganhou link/botão "Editar prédio"
+  no header dos grupos de prédio.
+- Modal com 3 dimensões independentes: **Entrada** (porteiro / eletrônica /
+  sem), **Acesso às caixas de correio**, **Acesso aos interfones dos aptos**.
+- Schema `Predios` ganha colunas K/L/M (tipoEntrada, acessoCaixas,
+  acessoInterfones). Migração idempotente em `ensureSheetPredios_`.
+- Endpoints públicos `getOverlayPredioPublico` + `atualizarPredioPublico`
+  com whitelist de campos (publicador não pode editar notas/irmãoMora).
+- Campo legado `acessoInterfone` (individual/portaria) mantido só pra
+  compat — UI nova não usa mais.
+
+#### Dirigente redesenhado map-driven
+- Mapa ocupa a tela; lista removida. Click numa quadra abre bottom sheet
+  com detalhes (status, qtd endereços/prédios, última conclusão).
+- **Alerta amarelo** quando quadra tem endereço marcado "não visitar" +
+  símbolo ⚠ no tooltip da quadra.
+- **Concluir inline** (data + botão) sem segundo modal.
+- **Modo Compartilhar**: toolbar amarela onde click adiciona/remove
+  quadras à seleção pra mandar pro publicador. Pré-marca todas designadas.
+- **Estacionar perto**: busca via Overpass API (OSM) por
+  estacionamentos / praças / farmácias / padarias / postos / mercados.
+  Cada POI marker mostra tooltip "Mais perto de Q-X (~Y m)".
+- **GPS do dirigente**: botão crosshair + ponto azul no mapa.
+- **Legenda overlay** dinâmica no canto do mapa (muda quando densidade
+  liga/desliga; só mostra cores presentes).
+- **Contexto bbox sempre**: vizinhança geográfica (de outros territórios)
+  agora sempre aparece junto com contexto territorial.
+- **Exportar mapa** esconde contexto/POIs e dá zoom apertado nas
+  designadas (padding 10, maxZoom 19).
+- **Densidade off** voltou a funcionar (era bug que sobrescrevia o
+  estilo original).
+- **Tooltip da quadra**: só ID por default; contagem de prédios só com
+  densidade ligada.
+
+#### Publicador menos assustador
+- **Modo simples padrão** na 1ª visita (hub com mapa pequeno + GPS +
+  cards das quadras). Quem já usou continua no que escolheu.
+- Sem mais legenda "Designada/Concluída/Disponível" (era jargão de
+  dirigente — não fazia sentido pro publicador).
+- Header de cobertura focado em **prédios completos** (não no % de
+  endereços que se anima com 1 toque no portão). Aviso amarelo quando
+  há prédios com aptos pulados.
+- **Auto-sync silencioso** a cada 2min em modo simples (vê marcações
+  de outros publicadores). Botão "Atualizar" pra refresh manual.
+- **Trabalho por quadra → face → paradas** no modo simples
+  (publicadores não misturam quadras na prática — UI passa a respeitar).
+- **Carta = feito** nos filtros e contador (entregar carta é trabalho
+  válido).
+- **Filtros Pendentes/Feitos** voltaram a funcionar (estavam quebrados
+  pelo redesign dos botões mutex).
+- **Modo avançado**: faces na lista + pintar arestas ao clicar.
+- **Quadras fechadas por default** no avançado, com animação max-height.
+- **Toggle Simples/Avançado** movido pro canto superior direito.
+- **Editar prédio** acessível tanto no simples quanto no avançado.
+- **IDs via template server-side** (`<?= ids ?>`) — antes usava
+  `google.script.url.getLocation` que dependia de postMessage e travava
+  silenciosamente no iOS Safari.
+
+#### Hardenings
+- **XSS via item.nome/complemento/nota**: escapados com `escapeHtmlPub`
+  nos templates de criarItemHtml (era hole real — qualquer notinha do
+  servidor podia injetar HTML/script).
+- **XSS via emTCE.publicador**: escapado no badge TCE.
+- **XSS via g.titulo**: escapado no group-title.
+- **Sync de undo**: `marcarDesfecho` agora envia evento `desfeito`
+  pro Registros quando publicador desmarca um desfecho. Antes só fazia
+  mudança local — backend ficava sempre na última marca.
+- **Botão Editar Prédio no avançado**: chave do prédio via
+  `data-chave-pr` em vez de regex em template literal (regex literal
+  dentro de template literal quebrava o parser do Apps Script).
+- **Cache `getDensidadePredios`** (5min) — era chamado em todo
+  `getDadosComContexto` lendo Dados Brutos inteiro.
+
+#### Fixes
+- Loader infinito quando designação vazia OU postMessage drop.
+- Listagem de prédios no link de cartas usa Col M (nome do
+  estabelecimento) quando overlay manual não tem nome.
+- "Como chegar" do prédio usa lat/lng do primeiro apto em vez de
+  pesquisa por endereço.
+- Filtros Pendentes/Feitos checam `desf_<row>` (em vez de classe
+  `.check-visita.checked` que sumiu no redesign mutex).
+- Toggle Densidade do dirigente preserva `_estiloOriginal` corretamente.
+
+
+
 ### Features grandes
 - **Designações** — Território Pessoal. Trava quadras em nome do publicador com prazo. Auto-fecha ao concluir, mostra vencidas.
 - **Trabalho de Cartas / Prédios** — nova 5ª aba admin. Detecção automática de prédios (≥2 endereços no mesmo número). Link público focado num prédio mostra apartamentos com 4 ações (escrita, entregue, desocupado, não escrever).
