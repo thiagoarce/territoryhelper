@@ -596,15 +596,12 @@
     </div>
   </div>
 
-  <!-- Modal: Editar prédio (publicador edita acesso/portaria/caixas) -->
-
   <script>
     // Aplica tema escuro salvo (compartilhado com Index via localStorage)
     try {
       var temaSalvo = localStorage.getItem('th_tema');
       if (temaSalvo === 'escuro') document.body.classList.add('tema-escuro');
     } catch(e) {}
-
 
     var dadosGerais = [];
     var contextoPolys = [];
@@ -619,10 +616,6 @@
     // Especial. Se presente, o publicador vê SÓ os endereços do TCE
     // em vez da estrutura por quadra.
     var TE_ID = "<?= te ?>";
-    // IDs vêm via template server-side (passa pelo doGet em vez de
-    // depender de google.script.url.getLocation, que usa postMessage
-    // entre iframe e parent — quebra silenciosamente no iOS Safari).
-    var IDS_PUB = "<?= ids ?>";
 
     // Lógica de Cores e Ícones
     function getVisualPorTipo(tipo) {
@@ -671,59 +664,60 @@
         // Caso TCE: usa fluxo separado (lista de endereços, sem quadras)
         if (TE_ID) { carregarTCE(); return; }
 
-        var ids = IDS_PUB;
-        if(!ids) {
-          document.getElementById('loader').innerHTML =
-            '<div class="text-danger px-3">Link inválido — sem IDs.</div>';
-          return;
-        }
+        google.script.url.getLocation(function(location) {
+             var ids = location.parameter.ids;
+             if(!ids) { alert("Link inválido (sem IDs)."); return; }
 
-        // v3: cache com TTL — payload+timestamp serializados juntos.
-        var TTL_MS = 24 * 60 * 60 * 1000;
-        var cacheKey = 'publico_dados_v3_' + ids;
-        var cachedPayload = null;
-        var cachedStr = '';
-        try {
-          var raw = localStorage.getItem(cacheKey);
-          if (raw) {
-            var env = JSON.parse(raw);
-            if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
-              cachedPayload = env.d;
-              cachedStr = JSON.stringify(env.d);
-            }
-          }
-        } catch(e) {}
+             // v3: cache com TTL — payload+timestamp serializados juntos.
+             // Cache válido por 24h; depois exige nova busca pra evitar
+             // que o publicador veja designação obsoleta indefinidamente
+             // se o backend estiver fora do ar.
+             var TTL_MS = 24 * 60 * 60 * 1000;
+             var cacheKey = 'publico_dados_v3_' + ids;
+             var cachedPayload = null;
+             var cachedStr = '';
+             try {
+               var raw = localStorage.getItem(cacheKey);
+               if (raw) {
+                 var env = JSON.parse(raw);
+                 if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
+                   cachedPayload = env.d;
+                   cachedStr = JSON.stringify(env.d);
+                 }
+               }
+             } catch(e) {}
 
-        function aplicar(payload) {
-          dadosGerais = payload.designadas || [];
-          contextoPolys = payload.contexto || [];
-          mostrarApp();
-        }
+             function aplicar(payload) {
+               dadosGerais = payload.designadas || [];
+               contextoPolys = payload.contexto || [];
+               mostrarApp();
+             }
 
-        if (cachedPayload) aplicar(cachedPayload);
+             // Stale-while-revalidate: mostra cache (se válido) e busca frescos
+             if (cachedPayload) aplicar(cachedPayload);
 
-        google.script.run
-          .withSuccessHandler(function(data) {
-            if(!data || !data.designadas || data.designadas.length === 0) {
-              if (!cachedPayload) {
-                document.getElementById('loader').innerHTML =
-                  '<div class="text-warning px-3 text-center"><div>Nenhuma quadra encontrada pra esse link.</div><div class="small text-muted mt-1">IDs: ' + ids + '</div></div>';
-              }
-              return;
-            }
-            var novoStr = JSON.stringify(data);
-            try {
-              localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: data }));
-            } catch(e) {}
-            if (novoStr !== cachedStr) aplicar(data);
-          })
-          .withFailureHandler(function(e) {
-            if (!cachedPayload) {
-              document.getElementById('loader').innerHTML =
-                '<div class="text-danger px-3 text-center"><div>Erro ao carregar.</div><button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Tentar de novo</button></div>';
-            }
-          })
-          .getDadosComContexto(ids);
+             google.script.run
+                .withSuccessHandler(function(data) {
+                    if(!data || !data.designadas || data.designadas.length === 0) {
+                      if (!cachedPayload) alert("Nenhum dado encontrado.");
+                      return;
+                    }
+                    var novoStr = JSON.stringify(data);
+                    // Renova o timestamp do cache mesmo se conteúdo não mudou,
+                    // pra estender o TTL enquanto o publicador estiver ativo.
+                    try {
+                      localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: data }));
+                    } catch(e) {}
+                    if (novoStr !== cachedStr) aplicar(data);
+                })
+                .withFailureHandler(function(e) {
+                    if (!cachedPayload) {
+                      document.getElementById('loader').innerHTML =
+                        '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
+                    }
+                })
+                .getDadosComContexto(ids);
+        });
     }
 
     // Modo TCE: trata endereços como uma "pseudo-quadra" pra reusar
@@ -869,47 +863,26 @@
                pct: total > 0 ? Math.round(feitos/total*100) : 0 };
     }
 
-    // Paleta de cores por face IBGE (sentido horário F1→F4). Quinta+ face
-    // = pega o índice mod 4. F vazio fica cinza neutro.
-    var FACE_COLORS = ['#1976d2', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2'];
-    function _corDeFace(face) {
-      if (!face || face === '—') return '#6b7280';
-      var n = parseInt(String(face).replace(/\D/g, ''), 10);
-      if (isNaN(n) || n < 1) return '#6b7280';
-      return FACE_COLORS[(n - 1) % FACE_COLORS.length];
-    }
-    function _faceKey(it) { return String(it.faceIBGE || '').trim() || '—'; }
-
     function _facesDeQuadra(q) {
-      var faces = {}; var todasKeys = {};
+      var faces = {}; var ordem = [];
       (q.itens || []).forEach(function(it){
         if (it.naoVisitar) return;
-        var f = _faceKey(it);
-        if (!faces[f]) { faces[f] = []; todasKeys[f] = true; }
+        var f = String(it.face || '').trim() || '—';
+        if (!faces[f]) { faces[f] = []; ordem.push(f); }
         faces[f].push(it);
-      });
-      // Ordena ascendente: F1, F2, F3, F4. "—" (sem face) por último.
-      var ordem = Object.keys(todasKeys).sort(function(a, b){
-        if (a === '—') return 1;
-        if (b === '—') return -1;
-        var na = parseInt(a.replace(/\D/g, ''), 10);
-        var nb = parseInt(b.replace(/\D/g, ''), 10);
-        if (isNaN(na) && isNaN(nb)) return a.localeCompare(b);
-        if (isNaN(na)) return 1;
-        if (isNaN(nb)) return -1;
-        return na - nb;
       });
       return ordem.map(function(f){
         var itens = faces[f];
         var feitos = itens.filter(function(it){ return localStorage.getItem('desf_' + it.row); }).length;
-        return { face: f, itens: itens, total: itens.length, feitos: feitos, cor: _corDeFace(f) };
+        return { face: f, itens: itens, total: itens.length, feitos: feitos };
       });
     }
 
     function _paradasDeFace(q, face) {
       var itens = (q.itens || []).filter(function(it){
         if (it.naoVisitar) return false;
-        return _faceKey(it) === face;
+        var f = String(it.face || '').trim() || '—';
+        return f === face;
       });
       var inverter = false;
       try { inverter = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
@@ -975,14 +948,11 @@
         var ic = f.feitos === f.total ? '✓' : f.feitos > 0 ? '◐' : '';
         var nome = f.face === '—' ? 'Sem face cadastrada' : 'Face ' + f.face;
         var fEsc = f.face.replace(/'/g, "\\'");
-        return '<div class="hub-card ' + cls + '" onclick="window.simplesEscolherFace(\'' + fEsc + '\')" style="border-left:6px solid ' + f.cor + '">' +
+        return '<div class="hub-card ' + cls + '" onclick="window.simplesEscolherFace(\'' + fEsc + '\')">' +
                  '<div style="flex:1">' +
-                   '<div class="hub-card-titulo">' +
-                     '<span style="display:inline-block; width:14px; height:14px; border-radius:4px; background:' + f.cor + '; margin-right:8px; vertical-align:middle"></span>' +
-                     escapeHtmlPub(nome) +
-                   '</div>' +
+                   '<div class="hub-card-titulo">' + escapeHtmlPub(nome) + '</div>' +
                    '<div class="hub-card-sub">' + f.feitos + ' de ' + f.total + ' tocados</div>' +
-                   '<div class="barra-mini"><div style="width:' + pct + '%; background:' + f.cor + '"></div></div>' +
+                   '<div class="barra-mini"><div style="width:' + pct + '%"></div></div>' +
                  '</div>' +
                  '<div class="hub-card-status">' + ic + '</div>' +
                '</div>';
@@ -1026,32 +996,24 @@
         return p.aptos.every(function(a){ return localStorage.getItem('desf_' + a.row); });
       }).length;
       var cards = paradas.map(renderCardParada).join('');
-      var corFace = _corDeFace(_simplesFace);
       box.innerHTML =
         '<div class="topbar-simples">' +
           voltarBtn +
           '<button onclick="window.simplesInverter()" title="Inverter sentido"><i class="fa-solid ' + iconeInv + '"></i></button>' +
           '<button onclick="window.simplesRefresh()" title="Atualizar"><i class="fa-solid fa-rotate"></i></button>' +
         '</div>' +
-        '<div class="hub-mapa" id="simplesMapaMini"></div>' +
-        '<div class="cabecalho" style="background:' + corFace + '">' +
+        '<div class="cabecalho">' +
           '<div class="progresso">' + feitos + ' de ' + paradas.length + ' paradas feitas</div>' +
           '<div class="quadra">Quadra ' + escapeHtmlPub(q.id) + escapeHtmlPub(nomeFace) + '</div>' +
         '</div>' +
         cards;
-      iniciarMapaSimples();
     }
 
     function renderCardParada(p) {
       if (p.tipo === 'predio') {
         var titPredio = p.logradouro + ', ' + p.numero;
         var subPredio = p.aptos.length + ' apartamento(s)';
-        // Pega lat/lng do primeiro apto com coordenada — todos do mesmo
-        // prédio compartilham (ou estão a poucos metros)
-        var aptoComCoord = p.aptos.find(function(a){ return a.lat && a.lng; });
-        var mapsHref = aptoComCoord
-          ? 'https://www.google.com/maps/dir/?api=1&destination=' + aptoComCoord.lat + ',' + aptoComCoord.lng
-          : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
+        var mapsHref = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
         var aptosHtml = p.aptos.map(function(a){
           var d = localStorage.getItem('desf_' + a.row) || '';
           var c = localStorage.getItem('carta_' + a.row) === 'true';
@@ -1066,15 +1028,10 @@
                    '</div>' +
                  '</div>';
         }).join('');
-        // Chave do prédio (mesma do backend): logradouro|numero em lowercase
-        var chavePr = (p.logradouro || '').trim().toLowerCase() + '|' + (p.numero || '').trim().toLowerCase();
         return '<div class="card-end">' +
                  '<div class="endereco-titulo"><i class="fa-solid fa-building me-2"></i>' + escapeHtmlPub(titPredio) + '</div>' +
                  '<div class="endereco-sub">' + subPredio + '</div>' +
-                 '<div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:.85rem">' +
-                   '<a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a>' +
-                   '<a href="#" onclick="event.preventDefault(); window.abrirEdicaoPredio(\'' + chavePr.replace(/'/g, "\\'") + '\')" style="color:#7c3aed"><i class="fa-solid fa-pen-to-square me-1"></i>Editar prédio</a>' +
-                 '</div>' +
+                 '<div class="mb-2"><a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a></div>' +
                  '<div class="aptos-grid">' + aptosHtml + '</div>' +
                '</div>';
       }
@@ -1112,10 +1069,7 @@
              '</button>';
     }
 
-    // Mini-mapa: quadras designadas + pin do publicador (geolocation).
-    // Quando há quadra ativa (faces view ou paradas view), desenha cada
-    // aresta colorida pela face IBGE — mapeia a aresta à face cujo
-    // centroide de endereços é mais próximo do meio da aresta.
+    // Mini-mapa: quadras designadas + pin do publicador (geolocation)
     function iniciarMapaSimples() {
       var el = document.getElementById('simplesMapaMini');
       if (!el) return;
@@ -1134,14 +1088,13 @@
         if (pts.length < 3) return;
         var isAtual = q.id === _simplesQuadra;
         var poly = L.polygon(pts, {
-          color: isAtual ? '#374151' : '#1976d2',
-          weight: isAtual ? 1 : 2,
-          fillColor: isAtual ? '#e5e7eb' : '#1976d2',
-          fillOpacity: isAtual ? 0.25 : 0.3
+          color: isAtual ? '#dc2626' : '#1976d2',
+          weight: isAtual ? 3 : 2,
+          fillColor: isAtual ? '#fca5a5' : '#1976d2',
+          fillOpacity: isAtual ? 0.5 : 0.3
         }).bindTooltip(q.id, { permanent: true, direction: "center", className: "label-quadra" })
           .addTo(_simplesMiniMap);
         bounds = bounds ? bounds.extend(poly.getBounds()) : poly.getBounds();
-        if (isAtual) _desenharArestasPorFace(q, pts);
       });
       if (bounds) _simplesMiniMap.fitBounds(bounds, { padding: [10, 10], maxZoom: 17 });
       if (_simplesUserPos) _renderUserPin();
@@ -1151,46 +1104,6 @@
           window.open('https://www.google.com/maps/?q=' + _simplesUserPos.lat + ',' + _simplesUserPos.lng, '_blank');
         }
       });
-    }
-
-    function _desenharArestasPorFace(q, pts) {
-      // Agrupa endereços com lat/lng por face e calcula centroide
-      var centros = {};
-      (q.itens || []).forEach(function(it){
-        if (it.naoVisitar || !it.lat || !it.lng) return;
-        var f = _faceKey(it);
-        if (f === '—') return;
-        if (!centros[f]) centros[f] = { sLat: 0, sLng: 0, n: 0 };
-        centros[f].sLat += parseFloat(it.lat);
-        centros[f].sLng += parseFloat(it.lng);
-        centros[f].n++;
-      });
-      Object.keys(centros).forEach(function(f){
-        var c = centros[f];
-        centros[f] = { lat: c.sLat / c.n, lng: c.sLng / c.n };
-      });
-      if (Object.keys(centros).length === 0) return;
-      // Pra cada aresta i→i+1, descobre face cujo centroide está mais perto
-      // do midpoint da aresta. Destaca face selecionada com traço mais grosso.
-      for (var i = 0; i < pts.length; i++) {
-        var a = pts[i], b = pts[(i + 1) % pts.length];
-        var midLat = (a[0] + b[0]) / 2, midLng = (a[1] + b[1]) / 2;
-        var melhor = null, distMin = Infinity;
-        Object.keys(centros).forEach(function(f){
-          var dy = centros[f].lat - midLat;
-          var dx = centros[f].lng - midLng;
-          var d = dy * dy + dx * dx;
-          if (d < distMin) { distMin = d; melhor = f; }
-        });
-        if (!melhor) continue;
-        var cor = _corDeFace(melhor);
-        var ativa = (_simplesFace === melhor);
-        L.polyline([a, b], {
-          color: cor,
-          weight: ativa ? 8 : 5,
-          opacity: ativa ? 1 : 0.85
-        }).bindTooltip('Face ' + melhor, { sticky: true }).addTo(_simplesMiniMap);
-      }
     }
 
     function _renderUserPin() {
@@ -1256,9 +1169,6 @@
       renderizarSimples();
     };
 
-    // Placeholder pra não quebrar onclick existentes
-    window.abrirEdicaoPredio = function() { alert('Edição de prédio temporariamente desabilitada pra debug.'); };
-
     // Sync com servidor: puxa marcações de outros publicadores trabalhando
     // junto. Atualiza dadosGerais sem perder marcações locais (localStorage
     // continua sendo a verdade do app — o servidor só preenche metadados).
@@ -1291,19 +1201,21 @@
           .getDadosTCE(TE_ID);
         return;
       }
-      var ids = IDS_PUB;
-      if (!ids) { finalizar(); return; }
-      google.script.run
-        .withSuccessHandler(function(data){
-          if (data && data.designadas) {
-            try {
-              localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
-            } catch(e) {}
-            aplicar(data.designadas, data.contexto || []);
-          } else { finalizar(); }
-        })
-        .withFailureHandler(finalizar)
-        .getDadosComContexto(ids);
+      google.script.url.getLocation(function(location){
+        var ids = location.parameter.ids;
+        if (!ids) { finalizar(); return; }
+        google.script.run
+          .withSuccessHandler(function(data){
+            if (data && data.designadas) {
+              try {
+                localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
+              } catch(e) {}
+              aplicar(data.designadas, data.contexto || []);
+            } else { finalizar(); }
+          })
+          .withFailureHandler(finalizar)
+          .getDadosComContexto(ids);
+      });
     };
 
     function _atualizarBrisaSync() {
@@ -1517,36 +1429,26 @@ function renderizarLista() {
                 </div>
 
                 <div id="body-${quadra.id}" class="sortable-list" data-quadra="${quadra.id}">`;
-
+            
             var grupos = agruparItens(quadra.itens);
-
+            
             grupos.forEach(function(g) {
                 if(g.tipo === 'unico') {
                     html += criarItemHtml(g.item);
                 } else {
                     // Grupo (Prédio ou Residências Agrupadas)
                     var vis = getVisualPorTipo(g.itens[0].tipo);
-                    // Chave do prédio = logradouro|numero (lowercase) — bate
-                    // com o backend. Só mostra "Editar prédio" se ≥2 aptos
-                    // (=prédio detectado) e tem endereço completo.
-                    var primeiroG = g.itens[0];
-                    var chavePr = ((primeiroG.logradouro || '').trim().toLowerCase()) + '|' + ((primeiroG.numero || '').trim().toLowerCase());
-                    var ehPredio = g.itens.length >= 2 && primeiroG.logradouro && primeiroG.numero;
-                    var btnEditPr = ehPredio
-                      ? `<button class="btn btn-sm btn-link p-0 me-2" title="Editar prédio" onclick="event.stopPropagation(); window.abrirEdicaoPredio('${chavePr.replace(/'/g, "\\'")}')" style="color:#7c3aed"><i class="fa-solid fa-pen-to-square"></i></button>`
-                      : '';
-
+                    
                     html += `
                     <div>
                         <div class="group-header" onclick="toggleDisplay('grp-${g.id}')">
                            <div class="handle me-2"><i class="fa-solid fa-bars"></i></div>
-
+                           
                            <div class="icon-box ${vis.cls}"><i class="fa-solid ${vis.icon}"></i></div>
                            <div class="flex-grow-1">
                                <div class="group-title">${g.titulo}</div>
                                <div class="small text-muted">${g.itens.length} unidades</div>
                            </div>
-                           ${btnEditPr}
                            <i class="fa-solid fa-chevron-down text-muted"></i>
                         </div>
                         <div id="grp-${g.id}" class="group-body d-none sortable-sublist">
@@ -1723,8 +1625,6 @@ function criarItemHtml(item, isInsideGroup) {
       var novoEstado = !jaFeito;
       localStorage.setItem(chave, novoEstado ? "true" : "false");
       el.classList.toggle('feito', novoEstado);
-      atualizarCobertura();
-      if (typeof aplicarFiltros === 'function') aplicarFiltros();
       if (!novoEstado) return;
       enfileirarSync('carta', { row: row });
     };
@@ -1849,7 +1749,6 @@ function criarItemHtml(item, isInsideGroup) {
       else localStorage.removeItem(chave);
       atualizarBotoesDesfecho(row, novo);
       atualizarCobertura();
-      if (typeof aplicarFiltros === 'function') aplicarFiltros();
       if (!novo) return;
       enfileirarSync('desfecho', { row: row, tipo: tipo });
     };
@@ -1885,12 +1784,11 @@ function criarItemHtml(item, isInsideGroup) {
           total++;
           var d = localStorage.getItem("desf_" + it.row) || '';
           if (!d && localStorage.getItem("v_" + it.row) === "true") d = 'conversou';
-          var temCarta = localStorage.getItem("carta_" + it.row) === "true";
-          if (d || temCarta) alcancados++;
+          if (d) alcancados++;
           if (d === 'naoAtendeu') naoAtend++;
           else if (d === 'semConversa') sem++;
           else if (d === 'conversou') conv++;
-          if (temCarta) cartas++;
+          if (localStorage.getItem("carta_" + it.row) === "true") cartas++;
           var k = (it.logradouro || '') + '|' + (it.numero || '');
           if (!predios[k]) predios[k] = { tot: 0, feitos: 0 };
           predios[k].tot++;
@@ -2131,12 +2029,7 @@ function toggleVisita(row, el) {
 
         var bateBusca = !q || texto.indexOf(q) > -1;
 
-        // "Feito" = qualquer desfecho marcado OU carta entregue. Vale
-        // também o legado v_<row>=true.
-        var row = el.getAttribute('data-row');
-        var feito = !!localStorage.getItem('desf_' + row) ||
-                    localStorage.getItem('v_' + row) === 'true' ||
-                    localStorage.getItem('carta_' + row) === 'true';
+        var feito = el.querySelector('.check-visita.checked') !== null;
         var bateVisita = (filtroVisita === 'todos') ||
                          (filtroVisita === 'feitos' && feito) ||
                          (filtroVisita === 'pendentes' && !feito);
