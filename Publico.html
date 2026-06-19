@@ -144,6 +144,21 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background .15s;
+    }
+    .quadra-header:active { background: #1f242a; }
+    .quadra-header .fa-chevron-down { transition: transform .25s; }
+    .quadra-card.aberta .quadra-header .fa-chevron-down { transform: rotate(180deg); }
+    /* Animação de abrir/fechar a lista da quadra */
+    .sortable-list {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height .35s ease;
+    }
+    .quadra-card.aberta .sortable-list {
+      max-height: 20000px; /* alto o bastante pra qualquer quadra */
     }
 
     .quadra-meta {
@@ -1693,11 +1708,15 @@ function renderizarLista() {
 
     // Toggle do quadra-card no avançado: abre/fecha o body E pinta as
     // arestas coloridas por face no mapa topo pra orientar o publicador.
+    // Quadras começam FECHADAS por default (UX menos assustadora — só
+    // expande o que o publicador escolheu trabalhar).
     window.toggleQuadraAvancado = function(qid) {
-      var el = document.getElementById('body-' + qid);
-      if (!el) return;
-      var abrindo = el.classList.contains('d-none');
-      el.classList.toggle('d-none');
+      var body = document.getElementById('body-' + qid);
+      if (!body) return;
+      var card = body.closest('.quadra-card');
+      if (!card) return;
+      var abrindo = !card.classList.contains('aberta');
+      card.classList.toggle('aberta');
       if (abrindo) pintarFacesNoMapaTopo(qid);
       else limparFacesNoMapaTopo();
     };
@@ -2341,10 +2360,14 @@ function toggleVisita(row, el) {
         gb.style.display = visiveis > 0 ? '' : 'none';
       });
 
-      // Esconde quadras sem nada visível
+      // Esconde quadras sem nada visível. Se há filtro de busca ativo
+      // (texto digitado), abre automaticamente as quadras que têm match
+      // pra o publicador ver os endereços filtrados sem precisar clicar.
+      var temBusca = !!q;
       document.querySelectorAll('.quadra-card').forEach(function(qc) {
         var visiveis = Array.from(qc.querySelectorAll('.address-item')).filter(function(it){ return it.style.display !== 'none'; }).length;
         qc.style.display = visiveis > 0 ? '' : 'none';
+        if (temBusca && visiveis > 0) qc.classList.add('aberta');
       });
 
       // Atualiza progresso global
