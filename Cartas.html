@@ -205,7 +205,28 @@
         infoPredio.logradouro + ', ' + infoPredio.numero + ' · ' + dados.length + ' apto(s)';
 
       var avisos = [];
-      if (infoPredio.acessoInterfone === 'portaria') {
+      // Entrada do prédio (porteiro/eletrônica/sem) — orientação imediata
+      // pro irmão que vai entregar carta.
+      if (infoPredio.tipoEntrada === 'porteiro') {
+        avisos.push('<span class="badge-aviso" style="background:#dbeafe;color:#1e40af">' +
+          '<i class="fa-solid fa-user-tie"></i> Tem porteiro</span>');
+      } else if (infoPredio.tipoEntrada === 'eletronica') {
+        avisos.push('<span class="badge-aviso" style="background:#fbbf24;color:#7c2d12">' +
+          '<i class="fa-solid fa-building-shield"></i> Portaria eletrônica</span>');
+      } else if (infoPredio.tipoEntrada === 'sem') {
+        avisos.push('<span class="badge-aviso" style="background:#dcfce7;color:#166534">' +
+          '<i class="fa-solid fa-door-open"></i> Sem porteiro</span>');
+      }
+      if (infoPredio.acessoCaixas) {
+        avisos.push('<span class="badge-aviso" style="background:#fef3c7;color:#92400e">' +
+          '<i class="fa-solid fa-envelope"></i> Acesso às caixas</span>');
+      }
+      if (infoPredio.acessoInterfones) {
+        avisos.push('<span class="badge-aviso" style="background:#e0e7ff;color:#3730a3">' +
+          '<i class="fa-solid fa-phone"></i> Acesso aos interfones</span>');
+      }
+      // Compatibilidade: legado (individual/portaria) ainda existe em dados antigos
+      if (!infoPredio.tipoEntrada && infoPredio.acessoInterfone === 'portaria') {
         avisos.push('<span class="badge-aviso" style="background:#fbbf24;color:#7c2d12">' +
           '<i class="fa-solid fa-building-shield"></i> Portaria eletrônica — cartas só pelo correio</span>');
       }
