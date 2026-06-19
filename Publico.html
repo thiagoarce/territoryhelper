@@ -1622,17 +1622,27 @@ function renderizarLista() {
                 } else {
                     // Grupo (Prédio ou Residências Agrupadas)
                     var vis = getVisualPorTipo(g.itens[0].tipo);
-                    
+                    // Chave do prédio = logradouro|numero (lowercase) — bate
+                    // com o backend. Só mostra "Editar prédio" se ≥2 aptos
+                    // (=prédio detectado) e tem endereço completo.
+                    var primeiroG = g.itens[0];
+                    var chavePr = ((primeiroG.logradouro || '').trim().toLowerCase()) + '|' + ((primeiroG.numero || '').trim().toLowerCase());
+                    var ehPredio = g.itens.length >= 2 && primeiroG.logradouro && primeiroG.numero;
+                    var btnEditPr = ehPredio
+                      ? `<button class="btn btn-sm btn-link p-0 me-2" title="Editar prédio" onclick="event.stopPropagation(); window.abrirEdicaoPredio('${chavePr.replace(/'/g, "\\'")}')" style="color:#7c3aed"><i class="fa-solid fa-pen-to-square"></i></button>`
+                      : '';
+
                     html += `
                     <div>
                         <div class="group-header" onclick="toggleDisplay('grp-${g.id}')">
                            <div class="handle me-2"><i class="fa-solid fa-bars"></i></div>
-                           
+
                            <div class="icon-box ${vis.cls}"><i class="fa-solid ${vis.icon}"></i></div>
                            <div class="flex-grow-1">
                                <div class="group-title">${g.titulo}</div>
                                <div class="small text-muted">${g.itens.length} unidades</div>
                            </div>
+                           ${btnEditPr}
                            <i class="fa-solid fa-chevron-down text-muted"></i>
                         </div>
                         <div id="grp-${g.id}" class="group-body d-none sortable-sublist">
