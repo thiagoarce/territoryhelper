@@ -2469,6 +2469,9 @@ function listarAptosDoPredio(chave) {
     irmaoMora: !!overlay.irmaoMora,
     nomeIrmao: overlay.nomeIrmao || '',
     acessoInterfone: overlay.acessoInterfone || '',
+    tipoEntrada: overlay.tipoEntrada || '',
+    acessoCaixas: !!overlay.acessoCaixas,
+    acessoInterfones: !!overlay.acessoInterfones,
     naoEhPredio: !!overlay.naoEhPredio
   };
   return { ok: true, predio: predio, aptos: aptos };
