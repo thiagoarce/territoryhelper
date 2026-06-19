@@ -527,8 +527,10 @@
     <i class="fa-solid fa-wifi" style="opacity:0.5"></i> Sem conexão — usando dados salvos
   </div>
 
+  <!-- Reordenar e adicionar só fazem sentido no modo avançado.
+       aplicarModo() liga/desliga o display destes. -->
   <button class="btn-float-reorder" onclick="toggleReorder()" id="btnReorder"><i class="fa-solid fa-sort"></i></button>
-  <button class="btn-float-add" onclick="iniciarAdicaoPeloMapa()"><i class="fa-solid fa-plus"></i></button>
+  <button class="btn-float-add" id="btnAddEndereco" onclick="iniciarAdicaoPeloMapa()"><i class="fa-solid fa-plus"></i></button>
   <button id="btnVoltarTopo" onclick="window.scrollTo({top:0,behavior:'smooth'})"
           class="position-fixed d-none"
           style="bottom:80px; right:20px; width:42px; height:42px; border-radius:50%; border:0; background:#1a1a1a; color:white; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:1500"
@@ -845,10 +847,16 @@
       var mapa = document.getElementById('mapa-container');
       var lbl = document.getElementById('lblModo');
       var ico = document.getElementById('iconModo');
+      var btnReorder = document.getElementById('btnReorder');
+      var btnAdd = document.getElementById('btnAddEndereco');
       if (modo === 'simples') {
         simples.classList.remove('d-none');
         avc.classList.add('d-none');
         mapa.classList.add('d-none');
+        // Reordenar/adicionar não fazem sentido no fluxo do publicador
+        // no campo — escondidos pra não confundir.
+        if (btnReorder) btnReorder.classList.add('d-none');
+        if (btnAdd) btnAdd.classList.add('d-none');
         if (lbl) lbl.textContent = 'Modo avançado';
         if (ico) ico.className = 'fa-solid fa-table';
         renderizarSimples();
@@ -856,6 +864,8 @@
         simples.classList.add('d-none');
         avc.classList.remove('d-none');
         mapa.classList.remove('d-none');
+        if (btnReorder) btnReorder.classList.remove('d-none');
+        if (btnAdd) btnAdd.classList.remove('d-none');
         if (lbl) lbl.textContent = 'Modo simples';
         if (ico) ico.className = 'fa-solid fa-list';
         iniciarMapa();
@@ -1685,7 +1695,7 @@ function renderizarLista() {
 
                            <div class="icon-box ${vis.cls}"><i class="fa-solid ${vis.icon}"></i></div>
                            <div class="flex-grow-1">
-                               <div class="group-title">${g.titulo}</div>
+                               <div class="group-title">${escapeHtmlPub(g.titulo)}</div>
                                <div class="small text-muted">${g.itens.length} unidades</div>
                            </div>
                            ${btnEditPr}
@@ -1837,19 +1847,22 @@ function criarItemHtml(item, isInsideGroup) {
         var checked = !!desfecho || isRecente;
         var opacidade = checked ? "opacity:0.5" : "";
 
-        var title, sub;
+        var titleRaw, subRaw;
         if(isInsideGroup) {
-            title = item.complemento || "Unidade";
-            sub = item.tipo;
+            titleRaw = item.complemento || "Unidade";
+            subRaw = item.tipo;
         } else {
             if(item.nome) {
-                title = item.nome;
-                sub = item.logradouro + ", " + item.numero + (item.complemento ? " (" + item.complemento + ")" : "");
+                titleRaw = item.nome;
+                subRaw = item.logradouro + ", " + item.numero + (item.complemento ? " (" + item.complemento + ")" : "");
             } else {
-                title = item.complemento ? item.complemento : (item.logradouro + ", " + item.numero);
-                sub = item.complemento ? (item.logradouro + ", " + item.numero) : "Residência";
+                titleRaw = item.complemento ? item.complemento : (item.logradouro + ", " + item.numero);
+                subRaw = item.complemento ? (item.logradouro + ", " + item.numero) : "Residência";
             }
         }
+        // Escape contra XSS via nome/complemento/notas vindos do servidor
+        var title = escapeHtmlPub(titleRaw);
+        var sub = escapeHtmlPub(subRaw);
 
         // Badge "antes": último desfecho registrado por ALGUÉM. Só mostra
         // se essa sessão ainda não marcou nada — memória do território
@@ -1875,7 +1888,7 @@ function criarItemHtml(item, isInsideGroup) {
         var classeTCE = '';
         if (emTCE) {
           classeTCE = ' em-tce';
-          var quem = emTCE.publicador ? ' (' + emTCE.publicador + ')' : '';
+          var quem = emTCE.publicador ? ' (' + escapeHtmlPub(emTCE.publicador) + ')' : '';
           badgeTCE = `<div class="aviso-tce mt-1">
                         <i class="fa-solid fa-store me-1"></i>
                         <b>Em território comercial${quem}</b>, mas pregue se tiver uma boa oportunidade.
@@ -1902,7 +1915,7 @@ function criarItemHtml(item, isInsideGroup) {
                     ${htmlAntes}
                 </div>
                 <div class="small text-muted">${sub}</div>
-                ${item.nota ? `<div class="small text-primary mt-1"><i class="fa-solid fa-note-sticky"></i> ${item.nota}</div>` : ''}
+                ${item.nota ? `<div class="small text-primary mt-1"><i class="fa-solid fa-note-sticky"></i> ${escapeHtmlPub(item.nota)}</div>` : ''}
                 ${badgeTCE}
             </div>
 
@@ -2054,8 +2067,9 @@ function criarItemHtml(item, isInsideGroup) {
       atualizarBotoesDesfecho(row, novo);
       atualizarCobertura();
       if (typeof aplicarFiltros === 'function') aplicarFiltros();
-      if (!novo) return;
-      enfileirarSync('desfecho', { row: row, tipo: tipo });
+      // Sincroniza tanto marcação como desmarcação (tipo vazio = undo).
+      // Antes o undo só fazia mudança local — backend ficava com estado errado.
+      enfileirarSync('desfecho', { row: row, tipo: novo || '' });
     };
 
     function atualizarBotoesDesfecho(row, desfecho) {

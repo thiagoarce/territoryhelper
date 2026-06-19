@@ -2518,8 +2518,11 @@ function atualizarAptoStatus(row, patch) {
 function registrarDesfechoEndereco(row, tipo) {
   var rowNum = parseInt(row, 10);
   if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
-  var TIPOS_VALIDOS = { naoAtendeu: 1, semConversa: 1, conversou: 1 };
-  if (!TIPOS_VALIDOS[tipo]) return { ok: false, erro: 'tipo inválido' };
+  // tipo vazio = undo (publicador desmarcou). Registra como 'desfeito'
+  // pra preservar trilha de auditoria em Registros.
+  var TIPOS_VALIDOS = { naoAtendeu: 1, semConversa: 1, conversou: 1, '': 1 };
+  if (!TIPOS_VALIDOS[tipo == null ? '' : tipo]) return { ok: false, erro: 'tipo inválido' };
+  var tipoFinal = tipo === '' || tipo == null ? 'desfeito' : tipo;
   return withLock_(function(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheetD = getSheetByName_(SHEET.DADOS);
@@ -2534,7 +2537,7 @@ function registrarDesfechoEndereco(row, tipo) {
     sheetReg.appendRow([
       'endereco:' + rowNum,
       Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      tipo,
+      tipoFinal,
       new Date()
     ]);
     // Mantém compat: atualiza coluna ULT_VISITA na Dados Brutos pra
