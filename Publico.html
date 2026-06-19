@@ -596,6 +596,47 @@
     </div>
   </div>
 
+  <!-- Modal: Editar prédio (publicador edita acesso/portaria/caixas) -->
+  <div class="modal fade" id="modalEditarPredio" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fa-solid fa-building me-2"></i><span id="lblPredioNome">Prédio</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="predioChaveEdicao">
+
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Entrada do prédio</label>
+            <div class="d-grid gap-2">
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="porteiro" class="form-check-input me-2"><span>Porteiro</span></label>
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="eletronica" class="form-check-input me-2"><span>Portaria eletrônica</span></label>
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="sem" class="form-check-input me-2"><span>Sem porteiro</span></label>
+              <label class="form-check"><input type="radio" name="predTipoEnt" value="" class="form-check-input me-2"><span class="text-muted">Não informado</span></label>
+            </div>
+          </div>
+
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="predCaixas">
+            <label class="form-check-label" for="predCaixas">Tem acesso às <b>caixas de correio</b></label>
+          </div>
+
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="predInterfones">
+            <label class="form-check-label" for="predInterfones">Tem acesso aos <b>interfones dos apartamentos</b></label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary" id="btnSalvarPredio" onclick="salvarEdicaoPredio()">
+            <i class="fa-solid fa-floppy-disk me-1"></i>Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Aplica tema escuro salvo (compartilhado com Index via localStorage)
     try {
