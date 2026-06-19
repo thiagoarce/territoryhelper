@@ -1701,6 +1701,8 @@ function criarItemHtml(item, isInsideGroup) {
       var novoEstado = !jaFeito;
       localStorage.setItem(chave, novoEstado ? "true" : "false");
       el.classList.toggle('feito', novoEstado);
+      atualizarCobertura();
+      if (typeof aplicarFiltros === 'function') aplicarFiltros();
       if (!novoEstado) return;
       enfileirarSync('carta', { row: row });
     };
@@ -1861,11 +1863,12 @@ function criarItemHtml(item, isInsideGroup) {
           total++;
           var d = localStorage.getItem("desf_" + it.row) || '';
           if (!d && localStorage.getItem("v_" + it.row) === "true") d = 'conversou';
-          if (d) alcancados++;
+          var temCarta = localStorage.getItem("carta_" + it.row) === "true";
+          if (d || temCarta) alcancados++;
           if (d === 'naoAtendeu') naoAtend++;
           else if (d === 'semConversa') sem++;
           else if (d === 'conversou') conv++;
-          if (localStorage.getItem("carta_" + it.row) === "true") cartas++;
+          if (temCarta) cartas++;
           var k = (it.logradouro || '') + '|' + (it.numero || '');
           if (!predios[k]) predios[k] = { tot: 0, feitos: 0 };
           predios[k].tot++;
@@ -2111,6 +2114,7 @@ function toggleVisita(row, el) {
         // também o legado 'v_<row>' = true pra compat com marcações antigas.
         var row = el.getAttribute('data-row');
         var feito = !!localStorage.getItem('desf_' + row) ||
+                    localStorage.getItem('carta_' + row) === 'true' ||
                     localStorage.getItem('v_' + row) === 'true';
         var bateVisita = (filtroVisita === 'todos') ||
                          (filtroVisita === 'feitos' && feito) ||
