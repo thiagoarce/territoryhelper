@@ -740,7 +740,14 @@
              google.script.run
                 .withSuccessHandler(function(data) {
                     if(!data || !data.designadas || data.designadas.length === 0) {
-                      if (!cachedPayload) alert("Nenhum dado encontrado.");
+                      if (!cachedPayload) {
+                        document.getElementById('loader').innerHTML =
+                          '<div class="text-warning px-3 text-center">' +
+                            '<i class="fa-solid fa-triangle-exclamation fa-2x mb-3"></i>' +
+                            '<div>Nenhuma quadra encontrada pra esse link.</div>' +
+                            '<div class="small text-muted mt-1">IDs: ' + (ids || '?') + '</div>' +
+                          '</div>';
+                      }
                       return;
                     }
                     var novoStr = JSON.stringify(data);
@@ -754,7 +761,12 @@
                 .withFailureHandler(function(e) {
                     if (!cachedPayload) {
                       document.getElementById('loader').innerHTML =
-                        '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
+                        '<div class="text-danger px-3 text-center">' +
+                          '<i class="fa-solid fa-circle-xmark fa-2x mb-3"></i>' +
+                          '<div>Não consegui carregar a designação.</div>' +
+                          '<div class="small text-muted mt-1">' + (e && e.message ? e.message : 'Sem conexão e sem dados salvos.') + '</div>' +
+                          '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Tentar de novo</button>' +
+                        '</div>';
                     }
                 })
                 .getDadosComContexto(ids);
