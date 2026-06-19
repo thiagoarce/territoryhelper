@@ -863,26 +863,47 @@
                pct: total > 0 ? Math.round(feitos/total*100) : 0 };
     }
 
+    // Paleta de cores por face IBGE (sentido horário F1→F4). Quinta+ face
+    // = pega o índice mod 4. F vazio fica cinza neutro.
+    var FACE_COLORS = ['#1976d2', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2'];
+    function _corDeFace(face) {
+      if (!face || face === '—') return '#6b7280';
+      var n = parseInt(String(face).replace(/\D/g, ''), 10);
+      if (isNaN(n) || n < 1) return '#6b7280';
+      return FACE_COLORS[(n - 1) % FACE_COLORS.length];
+    }
+    function _faceKey(it) { return String(it.faceIBGE || '').trim() || '—'; }
+
     function _facesDeQuadra(q) {
-      var faces = {}; var ordem = [];
+      var faces = {}; var todasKeys = {};
       (q.itens || []).forEach(function(it){
         if (it.naoVisitar) return;
-        var f = String(it.face || '').trim() || '—';
-        if (!faces[f]) { faces[f] = []; ordem.push(f); }
+        var f = _faceKey(it);
+        if (!faces[f]) { faces[f] = []; todasKeys[f] = true; }
         faces[f].push(it);
+      });
+      // Ordena ascendente: F1, F2, F3, F4. "—" (sem face) por último.
+      var ordem = Object.keys(todasKeys).sort(function(a, b){
+        if (a === '—') return 1;
+        if (b === '—') return -1;
+        var na = parseInt(a.replace(/\D/g, ''), 10);
+        var nb = parseInt(b.replace(/\D/g, ''), 10);
+        if (isNaN(na) && isNaN(nb)) return a.localeCompare(b);
+        if (isNaN(na)) return 1;
+        if (isNaN(nb)) return -1;
+        return na - nb;
       });
       return ordem.map(function(f){
         var itens = faces[f];
         var feitos = itens.filter(function(it){ return localStorage.getItem('desf_' + it.row); }).length;
-        return { face: f, itens: itens, total: itens.length, feitos: feitos };
+        return { face: f, itens: itens, total: itens.length, feitos: feitos, cor: _corDeFace(f) };
       });
     }
 
     function _paradasDeFace(q, face) {
       var itens = (q.itens || []).filter(function(it){
         if (it.naoVisitar) return false;
-        var f = String(it.face || '').trim() || '—';
-        return f === face;
+        return _faceKey(it) === face;
       });
       var inverter = false;
       try { inverter = localStorage.getItem('simples_inverso') === 'true'; } catch(e) {}
@@ -948,11 +969,14 @@
         var ic = f.feitos === f.total ? '✓' : f.feitos > 0 ? '◐' : '';
         var nome = f.face === '—' ? 'Sem face cadastrada' : 'Face ' + f.face;
         var fEsc = f.face.replace(/'/g, "\\'");
-        return '<div class="hub-card ' + cls + '" onclick="window.simplesEscolherFace(\'' + fEsc + '\')">' +
+        return '<div class="hub-card ' + cls + '" onclick="window.simplesEscolherFace(\'' + fEsc + '\')" style="border-left:6px solid ' + f.cor + '">' +
                  '<div style="flex:1">' +
-                   '<div class="hub-card-titulo">' + escapeHtmlPub(nome) + '</div>' +
+                   '<div class="hub-card-titulo">' +
+                     '<span style="display:inline-block; width:14px; height:14px; border-radius:4px; background:' + f.cor + '; margin-right:8px; vertical-align:middle"></span>' +
+                     escapeHtmlPub(nome) +
+                   '</div>' +
                    '<div class="hub-card-sub">' + f.feitos + ' de ' + f.total + ' tocados</div>' +
-                   '<div class="barra-mini"><div style="width:' + pct + '%"></div></div>' +
+                   '<div class="barra-mini"><div style="width:' + pct + '%; background:' + f.cor + '"></div></div>' +
                  '</div>' +
                  '<div class="hub-card-status">' + ic + '</div>' +
                '</div>';
@@ -996,24 +1020,32 @@
         return p.aptos.every(function(a){ return localStorage.getItem('desf_' + a.row); });
       }).length;
       var cards = paradas.map(renderCardParada).join('');
+      var corFace = _corDeFace(_simplesFace);
       box.innerHTML =
         '<div class="topbar-simples">' +
           voltarBtn +
           '<button onclick="window.simplesInverter()" title="Inverter sentido"><i class="fa-solid ' + iconeInv + '"></i></button>' +
           '<button onclick="window.simplesRefresh()" title="Atualizar"><i class="fa-solid fa-rotate"></i></button>' +
         '</div>' +
-        '<div class="cabecalho">' +
+        '<div class="hub-mapa" id="simplesMapaMini"></div>' +
+        '<div class="cabecalho" style="background:' + corFace + '">' +
           '<div class="progresso">' + feitos + ' de ' + paradas.length + ' paradas feitas</div>' +
           '<div class="quadra">Quadra ' + escapeHtmlPub(q.id) + escapeHtmlPub(nomeFace) + '</div>' +
         '</div>' +
         cards;
+      iniciarMapaSimples();
     }
 
     function renderCardParada(p) {
       if (p.tipo === 'predio') {
         var titPredio = p.logradouro + ', ' + p.numero;
         var subPredio = p.aptos.length + ' apartamento(s)';
-        var mapsHref = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
+        // Pega lat/lng do primeiro apto com coordenada — todos do mesmo
+        // prédio compartilham (ou estão a poucos metros)
+        var aptoComCoord = p.aptos.find(function(a){ return a.lat && a.lng; });
+        var mapsHref = aptoComCoord
+          ? 'https://www.google.com/maps/dir/?api=1&destination=' + aptoComCoord.lat + ',' + aptoComCoord.lng
+          : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(titPredio + ' Brasil');
         var aptosHtml = p.aptos.map(function(a){
           var d = localStorage.getItem('desf_' + a.row) || '';
           var c = localStorage.getItem('carta_' + a.row) === 'true';
@@ -1069,7 +1101,10 @@
              '</button>';
     }
 
-    // Mini-mapa: quadras designadas + pin do publicador (geolocation)
+    // Mini-mapa: quadras designadas + pin do publicador (geolocation).
+    // Quando há quadra ativa (faces view ou paradas view), desenha cada
+    // aresta colorida pela face IBGE — mapeia a aresta à face cujo
+    // centroide de endereços é mais próximo do meio da aresta.
     function iniciarMapaSimples() {
       var el = document.getElementById('simplesMapaMini');
       if (!el) return;
@@ -1088,13 +1123,14 @@
         if (pts.length < 3) return;
         var isAtual = q.id === _simplesQuadra;
         var poly = L.polygon(pts, {
-          color: isAtual ? '#dc2626' : '#1976d2',
-          weight: isAtual ? 3 : 2,
-          fillColor: isAtual ? '#fca5a5' : '#1976d2',
-          fillOpacity: isAtual ? 0.5 : 0.3
+          color: isAtual ? '#374151' : '#1976d2',
+          weight: isAtual ? 1 : 2,
+          fillColor: isAtual ? '#e5e7eb' : '#1976d2',
+          fillOpacity: isAtual ? 0.25 : 0.3
         }).bindTooltip(q.id, { permanent: true, direction: "center", className: "label-quadra" })
           .addTo(_simplesMiniMap);
         bounds = bounds ? bounds.extend(poly.getBounds()) : poly.getBounds();
+        if (isAtual) _desenharArestasPorFace(q, pts);
       });
       if (bounds) _simplesMiniMap.fitBounds(bounds, { padding: [10, 10], maxZoom: 17 });
       if (_simplesUserPos) _renderUserPin();
@@ -1104,6 +1140,46 @@
           window.open('https://www.google.com/maps/?q=' + _simplesUserPos.lat + ',' + _simplesUserPos.lng, '_blank');
         }
       });
+    }
+
+    function _desenharArestasPorFace(q, pts) {
+      // Agrupa endereços com lat/lng por face e calcula centroide
+      var centros = {};
+      (q.itens || []).forEach(function(it){
+        if (it.naoVisitar || !it.lat || !it.lng) return;
+        var f = _faceKey(it);
+        if (f === '—') return;
+        if (!centros[f]) centros[f] = { sLat: 0, sLng: 0, n: 0 };
+        centros[f].sLat += parseFloat(it.lat);
+        centros[f].sLng += parseFloat(it.lng);
+        centros[f].n++;
+      });
+      Object.keys(centros).forEach(function(f){
+        var c = centros[f];
+        centros[f] = { lat: c.sLat / c.n, lng: c.sLng / c.n };
+      });
+      if (Object.keys(centros).length === 0) return;
+      // Pra cada aresta i→i+1, descobre face cujo centroide está mais perto
+      // do midpoint da aresta. Destaca face selecionada com traço mais grosso.
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[i], b = pts[(i + 1) % pts.length];
+        var midLat = (a[0] + b[0]) / 2, midLng = (a[1] + b[1]) / 2;
+        var melhor = null, distMin = Infinity;
+        Object.keys(centros).forEach(function(f){
+          var dy = centros[f].lat - midLat;
+          var dx = centros[f].lng - midLng;
+          var d = dy * dy + dx * dx;
+          if (d < distMin) { distMin = d; melhor = f; }
+        });
+        if (!melhor) continue;
+        var cor = _corDeFace(melhor);
+        var ativa = (_simplesFace === melhor);
+        L.polyline([a, b], {
+          color: cor,
+          weight: ativa ? 8 : 5,
+          opacity: ativa ? 1 : 0.85
+        }).bindTooltip('Face ' + melhor, { sticky: true }).addTo(_simplesMiniMap);
+      }
     }
 
     function _renderUserPin() {
@@ -1749,6 +1825,7 @@ function criarItemHtml(item, isInsideGroup) {
       else localStorage.removeItem(chave);
       atualizarBotoesDesfecho(row, novo);
       atualizarCobertura();
+      if (typeof aplicarFiltros === 'function') aplicarFiltros();
       if (!novo) return;
       enfileirarSync('desfecho', { row: row, tipo: tipo });
     };
@@ -2029,7 +2106,12 @@ function toggleVisita(row, el) {
 
         var bateBusca = !q || texto.indexOf(q) > -1;
 
-        var feito = el.querySelector('.check-visita.checked') !== null;
+        // "Feito" = qualquer desfecho marcado (naoAtendeu / semConversa /
+        // conversou) — armazenado em localStorage como desf_<row>. Conta
+        // também o legado 'v_<row>' = true pra compat com marcações antigas.
+        var row = el.getAttribute('data-row');
+        var feito = !!localStorage.getItem('desf_' + row) ||
+                    localStorage.getItem('v_' + row) === 'true';
         var bateVisita = (filtroVisita === 'todos') ||
                          (filtroVisita === 'feitos' && feito) ||
                          (filtroVisita === 'pendentes' && !feito);
