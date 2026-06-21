@@ -561,8 +561,12 @@
   </div>
 
   <div id="indicadorOffline" class="d-none position-fixed" style="bottom:80px; left:50%; transform:translateX(-50%); background:#1a1a1a; color:white; padding:8px 16px; border-radius:20px; font-size:0.85rem; z-index:2000; box-shadow:0 4px 12px rgba(0,0,0,0.3)">
-    <i class="fa-solid fa-wifi" style="opacity:0.5"></i> Sem conexão — usando dados salvos
+    <i class="fa-solid fa-wifi" style="opacity:0.5"></i> Sem conexão — marcações vão sincronizar quando voltar
   </div>
+
+  <!-- Indicador global de fila pendente (visível em qualquer modo).
+       Aparece quando offline OU quando há sync em curso. -->
+  <div id="indicadorFila" class="d-none position-fixed" style="top:8px; left:8px; background:#f59e0b; color:#1a1a1a; padding:6px 12px; border-radius:999px; font-size:.8rem; font-weight:600; z-index:1100; box-shadow:0 2px 8px rgba(0,0,0,0.2);"></div>
 
   <!-- Reordenar e adicionar só fazem sentido no modo avançado.
        aplicarModo() liga/desliga o display destes. -->
@@ -2112,18 +2116,41 @@ function criarItemHtml(item, isInsideGroup) {
     function atualizarStatusSync() {
       var q;
       try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { q = []; }
+      // Banner detalhado dentro do modo avançado
       var el = document.getElementById('statusSync');
-      if (!el) return;
-      if (q.length === 0) { el.classList.add('d-none'); return; }
-      el.classList.remove('d-none');
-      el.innerHTML = (!navigator.onLine ? '<i class="fa-solid fa-cloud-arrow-up me-1"></i>' : '<i class="fa-solid fa-rotate me-1 fa-spin"></i>') +
-                     q.length + ' marcação(ões) pendente(s) ' +
-                     (!navigator.onLine ? '(sem rede)' : '(sincronizando…)');
+      if (el) {
+        if (q.length === 0) { el.classList.add('d-none'); }
+        else {
+          el.classList.remove('d-none');
+          el.innerHTML = (!navigator.onLine ? '<i class="fa-solid fa-cloud-arrow-up me-1"></i>' : '<i class="fa-solid fa-rotate me-1 fa-spin"></i>') +
+                         q.length + ' marcação(ões) pendente(s) ' +
+                         (!navigator.onLine ? '(sem rede)' : '(sincronizando…)');
+        }
+      }
+      // Indicador global no canto superior esquerdo (sempre visível)
+      var pill = document.getElementById('indicadorFila');
+      if (pill) {
+        if (q.length === 0 && navigator.onLine) {
+          pill.classList.add('d-none');
+        } else {
+          pill.classList.remove('d-none');
+          if (!navigator.onLine) {
+            pill.style.background = '#dc2626';
+            pill.style.color = '#fff';
+            pill.innerHTML = '<i class="fa-solid fa-wifi-slash me-1"></i>Offline' +
+                             (q.length > 0 ? ' · ' + q.length + ' na fila' : '');
+          } else {
+            pill.style.background = '#f59e0b';
+            pill.style.color = '#1a1a1a';
+            pill.innerHTML = '<i class="fa-solid fa-rotate me-1 fa-spin"></i>Sincronizando ' + q.length;
+          }
+        }
+      }
     }
-    window.addEventListener('online', processarFilaSync);
+    window.addEventListener('online', function(){ atualizarStatusSync(); processarFilaSync(); });
     window.addEventListener('offline', atualizarStatusSync);
-    // Tenta sincronizar ao abrir a página
-    setTimeout(processarFilaSync, 1500);
+    // Tenta sincronizar ao abrir a página + render inicial do indicador
+    setTimeout(function(){ atualizarStatusSync(); processarFilaSync(); }, 500);
 
     window.marcarDesfecho = function(row, tipo) {
       if (window._tceReadonly) return; // TCE concluído — só leitura
