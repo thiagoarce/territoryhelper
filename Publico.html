@@ -766,6 +766,16 @@
              function aplicar(payload) {
                dadosGerais = payload.designadas || [];
                contextoPolys = payload.contexto || [];
+               // Sincroniza estado de carta vindo do servidor com localStorage.
+               // Se o arranjo de cartas marcou apto X como entregue, o
+               // publicador vê ✉ ligado mesmo sem ter clicado.
+               dadosGerais.forEach(function(q){
+                 (q.itens || []).forEach(function(it){
+                   if (it.cartaEntregue && localStorage.getItem('carta_' + it.row) !== 'true') {
+                     try { localStorage.setItem('carta_' + it.row, 'true'); } catch(e) {}
+                   }
+                 });
+               });
                mostrarApp();
              }
 
@@ -1329,8 +1339,9 @@
     window.simplesCarta = function(row) {
       var chave = 'carta_' + row;
       var jaFeito = localStorage.getItem(chave) === 'true';
-      localStorage.setItem(chave, !jaFeito ? 'true' : 'false');
-      if (!jaFeito && typeof enfileirarSync === 'function') enfileirarSync('carta', { row: row });
+      var novo = !jaFeito;
+      localStorage.setItem(chave, novo ? 'true' : 'false');
+      if (typeof enfileirarSync === 'function') enfileirarSync('carta', { row: row, undo: !novo });
       renderizarSimples();
     };
 
@@ -1964,8 +1975,9 @@ function criarItemHtml(item, isInsideGroup) {
       el.classList.toggle('feito', novoEstado);
       atualizarCobertura();
       if (typeof aplicarFiltros === 'function') aplicarFiltros();
-      if (!novoEstado) return;
-      enfileirarSync('carta', { row: row });
+      // Sincroniza marcar E desmarcar (undo) com backend, pra reverter
+      // também o cartaEntregue em PrediosAptos.
+      enfileirarSync('carta', { row: row, undo: !novoEstado });
     };
 
     // Pacote C — Rota dentro da quadra (sentido horário/anti-horário).
@@ -2034,7 +2046,7 @@ function criarItemHtml(item, isInsideGroup) {
             .registrarDesfechoEndereco(item.payload.row, item.payload.tipo);
         } else if (item.tipo === 'carta') {
           google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail)
-            .registrarCartaEndereco(item.payload.row);
+            .registrarCartaEndereco(item.payload.row, !!item.payload.undo);
         } else { onSuccess(); /* tipo desconhecido — descarta */ }
       } catch (e) { onFail(e); }
     }
