@@ -4,6 +4,72 @@ Mudanças relevantes do app. Datas relativas ao mês de release.
 
 ## 2026-06 (atual)
 
+### Rodada de polimento + features (depois do release)
+
+#### Performance do primeiro load
+- **Cache `_ultimoDesfechoPorRow_`** em ScriptCache (5min). Era chamado
+  3x por carregamento (getDadosPublicos + listarAptosDoPredio + getDadosTCE)
+  e relia Registros inteiro toda vez.
+- **Cache `getDadosComContexto`** completo por idsString (5min).
+  Invalidação versionada via chave `DADOS_CTX_VER` (não precisa percorrer
+  chaves no CacheService). Pulla se payload >90KB.
+- **Cache `_mapaCartasEntregues_`** + `getDensidadePredios` (já tinha)
+  agora todos invalidados em `limparCacheServidor`.
+- **Defer CDNs** (Publico + Dirigente): Bootstrap/Leaflet com `defer` =
+  não bloqueiam parse do HTML.
+- **Lazy-load Sortable.js**: só carrega quando publicador entra em
+  modo reordenar.
+- **Lazy-load dom-to-image-more**: só carrega quando dirigente clica
+  Exportar mapa.
+- **renderizarLista sem reparse quadrático** — acumula em array e faz
+  UM `innerHTML` único no fim (em vez de `innerHTML +=` dentro do forEach).
+
+#### Sync unificado de cartas (publicador ↔ link de cartas)
+- **registrarCartaEndereco** escreve em DUAS abas: Registros (trilha) e
+  PrediosAptos.cartaEntregue (estado atual). Aceita parâmetro `undo` pra
+  reverter ambos.
+- **atualizarAptoStatus** quando muda `cartaEntregue` espelha em Registros
+  (`'carta'` ou `'carta_undo'`) pra publicador ver entregas vindas do
+  arranjo de cartas.
+- **getDadosPublicos** enriquece `item.cartaEntregue` lendo PrediosAptos.
+- **Frontend Publico**: ao carregar, sincroniza `localStorage.carta_<row>`
+  com server. `toggleCarta` + `simplesCarta` sempre disparam sync.
+- `_atualizarAptoStatusInterno_` extraído pra evitar lock-em-lock.
+
+#### Acessibilidade
+- **Toggle "Texto grande"** no canto superior direito do Publico (ícone
+  ↕). Aumenta fontes/botões críticos +25%. Botões mutex viram 52px.
+  Persiste em localStorage `pub_texto_grande`.
+
+#### Street View no card de prédio
+- Link "📷 Street View" no card de prédio do publicador (simples e
+  avançado) e no header de Cartas.html, gerando URL
+  `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=lat,lng`.
+- `listarAptosDoPredio` retorna `predio.lat/lng` (do primeiro apto com
+  coord) pra Cartas.html usar.
+
+#### Offline awareness
+- **Indicador global de fila** (pill no canto superior esquerdo) sempre
+  visível quando offline OU quando há marcações na fila de sync.
+  Vermelho = offline. Amarelo = sincronizando.
+- Banner detalhado dentro do modo avançado mantido.
+
+#### Schema Testemunho Público (TP) — base
+- 4 abas autocriadas: `TpPontos`, `TpHorarios`, `TpCarrinhos`,
+  `TpAgendamentos`. Schemas em `Constants.gs`.
+- CRUDs backend: `listarPontosTP`, `criarPontoTP`, `listarHorariosTP`,
+  `criarHorarioTP`, `listarCarrinhosTP`, `criarCarrinhoTP`,
+  `listarAgendamentosTP`, `agendarTP`, `checkInTP`, `checkOutTP`,
+  `cancelarAgendamentoTP`, `getDadosTPPublico`.
+- `STATUS_TP` (agendado/presente/concluido/ausente/cancelado).
+- UI completa (admin + link público pra publicador agendar) fica pra
+  próxima rodada.
+
+#### Testes
+- `tests/cartas-tp.test.js` (+11 testes): sync de cartas bidirecional,
+  schema TP, agendamento, check-in/out, cancelamento.
+- Total: 74 testes passando (era 63).
+
 ### Final do mês (depois do release)
 
 #### Faces IBGE em todo o app
