@@ -1185,11 +1185,16 @@
         }).join('');
         // Chave do prédio (mesma do backend): logradouro|numero em lowercase
         var chavePr = (p.logradouro || '').trim().toLowerCase() + '|' + (p.numero || '').trim().toLowerCase();
+        // Street View: usa lat/lng do primeiro apto com coordenada
+        var svHref = aptoComCoord
+          ? 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + aptoComCoord.lat + ',' + aptoComCoord.lng
+          : '';
         return '<div class="card-end">' +
                  '<div class="endereco-titulo"><i class="fa-solid fa-building me-2"></i>' + escapeHtmlPub(titPredio) + '</div>' +
                  '<div class="endereco-sub">' + subPredio + '</div>' +
                  '<div class="d-flex gap-3 mb-2 flex-wrap" style="font-size:.85rem">' +
                    '<a href="' + mapsHref + '" target="_blank" rel="noopener" style="color:#1976d2"><i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a>' +
+                   (svHref ? '<a href="' + svHref + '" target="_blank" rel="noopener" style="color:#16a34a"><i class="fa-solid fa-street-view me-1"></i>Street View</a>' : '') +
                    '<a href="#" onclick="event.preventDefault(); window.abrirEdicaoPredio(\'' + chavePr.replace(/'/g, "\\'") + '\')" style="color:#7c3aed"><i class="fa-solid fa-pen-to-square me-1"></i>Editar prédio</a>' +
                  '</div>' +
                  '<div class="aptos-grid">' + aptosHtml + '</div>' +

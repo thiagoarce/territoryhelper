@@ -96,6 +96,7 @@
     <div class="hero">
       <h1 id="heroNome"><i class="fa-solid fa-building me-2"></i>—</h1>
       <div class="sub" id="heroEnd">—</div>
+      <div id="heroLinks" class="mt-2 d-flex gap-3 flex-wrap" style="font-size:.9rem"></div>
       <div id="heroAviso"></div>
     </div>
     <div class="resumo d-flex gap-3" id="resumoBox"></div>
@@ -203,6 +204,19 @@
         '<i class="fa-solid fa-building me-2"></i>' + escapeHtml(infoPredio.nome);
       document.getElementById('heroEnd').innerText =
         infoPredio.logradouro + ', ' + infoPredio.numero + ' · ' + dados.length + ' apto(s)';
+
+      // Links: Como chegar + Street View (lat/lng do primeiro apto)
+      var links = [];
+      if (infoPredio.lat && infoPredio.lng) {
+        var dest = infoPredio.lat + ',' + infoPredio.lng;
+        links.push('<a href="https://www.google.com/maps/dir/?api=1&destination=' + dest +
+                   '" target="_blank" rel="noopener" style="color:#fff; text-decoration:underline">' +
+                   '<i class="fa-solid fa-map-location-dot me-1"></i>Como chegar</a>');
+        links.push('<a href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + dest +
+                   '" target="_blank" rel="noopener" style="color:#fff; text-decoration:underline">' +
+                   '<i class="fa-solid fa-street-view me-1"></i>Street View</a>');
+      }
+      document.getElementById('heroLinks').innerHTML = links.join('');
 
       var avisos = [];
       // Entrada do prédio (porteiro/eletrônica/sem) — orientação imediata
