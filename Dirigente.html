@@ -12,12 +12,25 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- dom-to-image-more lida com transform: translate3d() do Leaflet melhor
-       que html2canvas, evitando que os polígonos (SVG overlay pane) saiam
-       desalinhados dos tiles (img tile pane) no PNG exportado. -->
-  <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.5.0/dist/dom-to-image-more.min.js"></script>
+  <!-- Críticos defer pra não bloquear parse -->
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- dom-to-image-more só é usado em "Exportar mapa" — lazy load.
+       Lida com transform: translate3d() do Leaflet melhor que html2canvas. -->
+  <script>
+    window._domToImageLoadPromise = null;
+    window.carregarDomToImage = function() {
+      if (window.domtoimage) return Promise.resolve();
+      if (window._domToImageLoadPromise) return window._domToImageLoadPromise;
+      window._domToImageLoadPromise = new Promise(function(resolve, reject){
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/dom-to-image-more@3.5.0/dist/dom-to-image-more.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      return window._domToImageLoadPromise;
+    };
+  </script>
 
   <style>
     body { background:#f0f2f5; padding-bottom:0; margin:0; overflow:hidden; }
@@ -1046,6 +1059,17 @@
       var btn = event && event.currentTarget;
       var textoOriginal = btn ? btn.innerHTML : null;
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando...'; }
+
+      // Lazy-load dom-to-image: 30KB+ que só é usado nesse botão.
+      (window.carregarDomToImage ? window.carregarDomToImage() : Promise.resolve())
+        .then(function(){ _exportarMapaInterno(mapaEl, btn, textoOriginal); })
+        .catch(function(err){
+          if (btn) { btn.disabled = false; btn.innerHTML = textoOriginal; }
+          alert('Erro carregando biblioteca de imagem: ' + (err && err.message || err));
+        });
+    }
+
+    function _exportarMapaInterno(mapaEl, btn, textoOriginal) {
 
       // Esconde temporariamente as camadas de CONTEXTO e POIs pra que
       // o PNG exportado mostre só as quadras designadas (cartão limpo).

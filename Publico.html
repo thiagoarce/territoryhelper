@@ -12,9 +12,26 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+  <!-- Críticos pra primeira renderização: defer pra não bloquear o parse do HTML -->
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Sortable só é usado quando o publicador entra em modo "reordenar".
+       Lazy-load via JS quando precisar (carregarSortableSeNecessario). -->
+  <script>
+    window._sortableLoadPromise = null;
+    window.carregarSortableSeNecessario = function() {
+      if (window.Sortable) return Promise.resolve();
+      if (window._sortableLoadPromise) return window._sortableLoadPromise;
+      window._sortableLoadPromise = new Promise(function(resolve, reject){
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js';
+        s.onload = function(){ resolve(); };
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      return window._sortableLoadPromise;
+    };
+  </script>
 
   <style>
     body {
@@ -1603,13 +1620,16 @@ function verificarSeRecente(dataStr) {
     }
 function renderizarLista() {
         var container = document.getElementById('lista-territorio');
-        container.innerHTML = "";
 
         if (!dadosGerais || dadosGerais.length === 0) {
           container.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-inbox" style="font-size:3rem; opacity:.3"></i><div class="mt-2">Sem endereços disponíveis.</div></div>';
           return;
         }
 
+        // Acumula fragmentos numa array e faz UM ÚNICO innerHTML no final.
+        // Antes: innerHTML += html dentro do forEach causa reparse quadrático.
+        // Em designações com 20+ quadras isso virava jank visível.
+        var fragmentos = [];
         dadosGerais.forEach(function(quadra) {
             // Pacote C: ordena endereços por ângulo em volta do centroide
             // do polígono da quadra → sentido horário/anti-horário.
@@ -1710,8 +1730,10 @@ function renderizarLista() {
             });
 
             html += `</div></div>`;
-            container.innerHTML += html;
+            fragmentos.push(html);
         });
+
+        container.innerHTML = fragmentos.join('');
 
         if(isReorder) ativarSortable();
         if (typeof aplicarFiltros === 'function') aplicarFiltros();
@@ -2243,13 +2265,18 @@ function criarItemHtml(item, isInsideGroup) {
         var btn = document.getElementById('btnReorder');
         document.body.classList.toggle('reorder-mode', isReorder);
         if(isReorder) {
-            btn.innerHTML = '<i class="fa-solid fa-save"></i>'; btn.style.background = "#ffc107"; ativarSortable();
+            btn.innerHTML = '<i class="fa-solid fa-save"></i>'; btn.style.background = "#ffc107";
+            // Sortable é lazy-loaded — primeira vez baixa o JS
+            (window.carregarSortableSeNecessario ? window.carregarSortableSeNecessario() : Promise.resolve())
+              .then(ativarSortable)
+              .catch(function(){ window.toast && window.toast('Erro carregando Sortable', 'error'); });
         } else {
             btn.innerHTML = '<i class="fa-solid fa-sort"></i>'; btn.style.background = "#6c757d"; salvarOrdem();
             sortables.forEach(s => s.destroy());
         }
     }
     function ativarSortable() {
+        if (!window.Sortable) return;
         document.querySelectorAll('.sortable-list, .sortable-sublist').forEach(el => {
             sortables.push(new Sortable(el, { handle: '.handle', animation: 150 }));
         });
