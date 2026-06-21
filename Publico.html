@@ -319,6 +319,23 @@
       background:#f3f4f6; color:#6b7280; font-size:.7em;
     }
 
+    /* ===== Acessibilidade: texto grande =====
+       Toggle aumenta as fontes/botões críticos pra publicadores idosos.
+       Persiste em localStorage 'pub_texto_grande'. */
+    body.texto-grande { font-size: 1.15rem; }
+    body.texto-grande #appSimples .endereco-titulo { font-size: 2rem; }
+    body.texto-grande #appSimples .endereco-sub { font-size: 1.15rem; }
+    body.texto-grande #appSimples .botao-acao { font-size: 1.35rem; padding: 22px; }
+    body.texto-grande #appSimples .botao-acao i { font-size: 1.9rem; }
+    body.texto-grande #appSimples .hub-card-titulo { font-size: 1.45rem; }
+    body.texto-grande #appSimples .hub-card-sub { font-size: 1rem; }
+    body.texto-grande #appSimples .apto-mini-nome { font-size: 1.1rem; }
+    body.texto-grande #appSimples .mini-acao { font-size: 1.3rem; min-height: 52px; min-width: 52px; padding: 12px 6px; }
+    body.texto-grande .quadra-header { font-size: 1.15rem; padding: 16px; }
+    body.texto-grande .address-item { font-size: 1.05rem; }
+    body.texto-grande .btn-desf { min-width: 52px; min-height: 52px; font-size: 1.3rem; }
+    body.texto-grande .btn-carta { min-width: 52px; min-height: 52px; font-size: 1.4rem; }
+
     /* ===== Modo Simples ===== */
     #appSimples .cabecalho { background:#1976d2; color:#fff; border-radius:14px; padding:16px; margin-bottom:16px; }
     #appSimples .progresso { font-size:1.1rem; font-weight:700; }
@@ -498,7 +515,10 @@
 
   <!-- Switch flutuante pra alternar modo Simples/Avançado -->
   <!-- Canto superior direito (longe dos botões +/reorder do canto inferior) -->
-  <div id="switchModo" class="d-none position-fixed" style="top:8px; right:8px; z-index:1100;">
+  <div id="switchModo" class="d-none position-fixed d-flex gap-2" style="top:8px; right:8px; z-index:1100;">
+    <button class="btn btn-sm shadow-lg" id="btnTextoGrande" onclick="alternarTextoGrande()" title="Texto grande / acessibilidade" aria-label="Alternar texto grande" style="background:rgba(0,0,0,0.6); color:#fff; border-radius:999px; padding:8px 12px; font-weight:600; min-height:40px; min-width:44px">
+      <i class="fa-solid fa-text-height"></i>
+    </button>
     <button class="btn btn-sm shadow-lg" id="btnModoToggle" onclick="alternarModoPublicador()" style="background:#1976d2; color:#fff; border-radius:999px; padding:8px 14px; font-weight:600; min-height:40px">
       <i class="fa-solid fa-list" id="iconModo"></i> <span id="lblModo">Modo simples</span>
     </button>
@@ -677,7 +697,16 @@
     try {
       var temaSalvo = localStorage.getItem('th_tema');
       if (temaSalvo === 'escuro') document.body.classList.add('tema-escuro');
+      // Acessibilidade: aplica texto grande se persistido
+      if (localStorage.getItem('pub_texto_grande') === 'true') {
+        document.body.classList.add('texto-grande');
+      }
     } catch(e) {}
+
+    window.alternarTextoGrande = function() {
+      var on = document.body.classList.toggle('texto-grande');
+      try { localStorage.setItem('pub_texto_grande', on ? 'true' : 'false'); } catch(e) {}
+    };
 
     var dadosGerais = [];
     var contextoPolys = [];
