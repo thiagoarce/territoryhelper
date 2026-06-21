@@ -119,6 +119,30 @@ var COL = {
     ATUALIZADO: 4, NAO_ESCREVER: 5
   },
 
+  // ===== TESTEMUNHO PÚBLICO =====
+  TP_PONTOS: {
+    ID_1IDX:        1, NOME_1IDX: 2, LAT_1IDX: 3, LNG_1IDX: 4,
+    ENDERECO_1IDX:  5, ATIVO_1IDX: 6, NOTAS_1IDX: 7,
+    ID: 0, NOME: 1, LAT: 2, LNG: 3, ENDERECO: 4, ATIVO: 5, NOTAS: 6
+  },
+  TP_HORARIOS: {
+    ID_1IDX: 1, PONTO_ID_1IDX: 2, DIA_SEMANA_1IDX: 3,
+    HORA_INICIO_1IDX: 4, HORA_FIM_1IDX: 5, CAPACIDADE_1IDX: 6, ATIVO_1IDX: 7,
+    ID: 0, PONTO_ID: 1, DIA_SEMANA: 2, HORA_INICIO: 3,
+    HORA_FIM: 4, CAPACIDADE: 5, ATIVO: 6
+  },
+  TP_CARRINHOS: {
+    ID_1IDX: 1, NOME_1IDX: 2, LOCAL_GUARDA_1IDX: 3, ATIVO_1IDX: 4, NOTAS_1IDX: 5,
+    ID: 0, NOME: 1, LOCAL_GUARDA: 2, ATIVO: 3, NOTAS: 4
+  },
+  TP_AGENDAMENTOS: {
+    ID_1IDX: 1, HORARIO_ID_1IDX: 2, DATA_1IDX: 3, PUBLICADOR_1IDX: 4,
+    CARRINHO_ID_1IDX: 5, STATUS_1IDX: 6, CHECKIN_1IDX: 7, CHECKOUT_1IDX: 8,
+    REVISTAS_1IDX: 9, NOTAS_1IDX: 10, CRIADO_1IDX: 11,
+    ID: 0, HORARIO_ID: 1, DATA: 2, PUBLICADOR: 3, CARRINHO_ID: 4,
+    STATUS: 5, CHECKIN: 6, CHECKOUT: 7, REVISTAS: 8, NOTAS: 9, CRIADO: 10
+  },
+
   // Aba "Campanha" (objetivos estruturados)
   CAMPANHA: {
     ID_1IDX:         1,  // A
@@ -212,6 +236,15 @@ var STATUS_TCE = {
   CANCELADO: "cancelado"
 };
 
+// Status de um agendamento de Testemunho Público
+var STATUS_TP = {
+  AGENDADO:  "agendado",  // marcou, ainda não chegou
+  PRESENTE:  "presente",  // check-in feito
+  CONCLUIDO: "concluido", // check-out feito
+  AUSENTE:   "ausente",   // não compareceu
+  CANCELADO: "cancelado"  // desmarcou antes
+};
+
 var SHEET = {
   QUADRAS:     "Quadras",
   TERRITORIOS: "Territorios", // fallback "Territórios"
@@ -221,7 +254,12 @@ var SHEET = {
   DESIGNACOES:    "Designacoes",
   PREDIOS:        "Predios",
   PREDIOS_APTOS:  "PrediosAptos",
-  TERRITORIOS_ESP: "TerritoriosEspeciais"
+  TERRITORIOS_ESP: "TerritoriosEspeciais",
+  // Testemunho Público: pontos fixos, horários, carrinhos, agendamentos
+  TP_PONTOS:       "TpPontos",
+  TP_HORARIOS:     "TpHorarios",
+  TP_CARRINHOS:    "TpCarrinhos",
+  TP_AGENDAMENTOS: "TpAgendamentos"
 };
 
 // Desfecho de visita por endereço (gravado em Registros, tipo=desfecho)
