@@ -28,6 +28,11 @@ function doGet(e) {
     return tmplCt.evaluate().setTitle('Trabalho de Cartas').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
   }
 
+  if (view === 'tp') {
+    var tmplTp = HtmlService.createTemplateFromFile('TP');
+    return tmplTp.evaluate().setTitle('Testemunho Público — Agendamento').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
+  }
+
   return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('Gestão de Territórios').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', viewport);
 }
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
