@@ -4,6 +4,16 @@ Mudanças relevantes do app. Datas relativas ao mês de release.
 
 ## 2026-06 (atual)
 
+### Cleanup: Testemunho Público (TP) movido pra app separado
+
+TP foi removido daqui (Code.gs, Constants.gs, Index.html, JS_App.html,
+TP.html, tests). Schema preservado no histórico git (commit `b86aed8`)
+caso útil pra referência.
+
+Por quê? TP é domínio próprio: agenda, recorrência, check-in/out, swap,
+calendário. Crescimento natural ia poluir o app de território e a planilha.
+App novo vai começar com schema melhor já incorporando as lições do MVP.
+
 ### Rodada de polimento + features (depois do release)
 
 #### Performance do primeiro load
