@@ -54,10 +54,15 @@ function getPoligonosQuadras() {
     var poly = String(r[4] || "");
     if (poly.length < 5) return null; // Sem polígono não serve
 
-    // Tratamento de data seguro
+    // Tratamento de data: aceita Date (formato novo, meio-dia local)
+    // OU string "yyyy-MM-dd" (formato legado pré-fix-timezone).
     var dataF = "";
-    if (r[8] && r[8] instanceof Date) {
-      try { dataF = Utilities.formatDate(r[8], Session.getScriptTimeZone(), "yyyy-MM-dd"); } catch (e) { }
+    if (r[8]) {
+      if (r[8] instanceof Date) {
+        try { dataF = Utilities.formatDate(r[8], Session.getScriptTimeZone(), "yyyy-MM-dd"); } catch (e) { }
+      } else if (typeof r[8] === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r[8])) {
+        dataF = r[8].slice(0, 10);
+      }
     }
 
     return {
@@ -811,6 +816,15 @@ function salvarNotaEmMassa(d) {
   return "Prédio atualizado!";
 }
 
+// Converte 'yyyy-MM-dd' em Date ao meio-dia local. Garante que mesmo
+// sob conversões de fuso (UTC, +/-3h), nunca cruza fronteira de dia.
+function _dataLocalMeioDia_(yyyymmdd) {
+  if (!yyyymmdd) return '';
+  var p = String(yyyymmdd).split('-');
+  if (p.length !== 3) return new Date(yyyymmdd);
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0);
+}
+
 function salvarConclusaoQuadras(payload) {
   if (!payload || !Array.isArray(payload.ids) || payload.ids.length === 0) {
     throw new Error("Sem IDs para concluir.");
@@ -847,7 +861,9 @@ function salvarConclusaoQuadras(payload) {
     if (row) {
       if (payload.modo !== "apenas_historico") {
         sheetQ.getRange(row, COL.QUADRAS.STATUS_1IDX).setValue(STATUS.CONCLUIDO);
-        sheetQ.getRange(row, COL.QUADRAS.DATA_CONC_1IDX).setValue(payload.data);
+        // Armazena como Date ao MEIO-DIA local pra evitar timezone shift
+        // (string "2026-06-19" interpretada como UTC vira 2026-06-18 em -3)
+        sheetQ.getRange(row, COL.QUADRAS.DATA_CONC_1IDX).setValue(_dataLocalMeioDia_(payload.data));
         var nmTerr = dataQ[row - 1][COL.QUADRAS.TERRITORIO];
         if (nmTerr) verificarStatusTerritorio(nmTerr, payload.data);
       }
@@ -1427,7 +1443,11 @@ function getDadosDashboard() {
       if (!porTerritorio[terr]) porTerritorio[terr] = { total: 0, completas: 0 };
       porTerritorio[terr].total++;
 
-      var dataConc = (r[COL.QUADRAS.DATA_CONC] instanceof Date) ? r[COL.QUADRAS.DATA_CONC] : null;
+      // Aceita Date OU string yyyy-MM-dd (formato legado pré-fix-timezone)
+      var rawDC = r[COL.QUADRAS.DATA_CONC];
+      var dataConc = rawDC instanceof Date ? rawDC
+                  : (typeof rawDC === 'string' && /^\d{4}-\d{2}-\d{2}/.test(rawDC)) ? _dataLocalMeioDia_(rawDC.slice(0,10))
+                  : null;
       if (dataConc && dataInicio && dataConc >= dataInicio) {
         completasCampanha++;
         porTerritorio[terr].completas++;
