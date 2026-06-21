@@ -33,6 +33,8 @@
     };
   </script>
 
+  <?!= include('JS_ToastPublico') ?>
+
   <style>
     body {
       background-color: #f0f2f5;
@@ -403,7 +405,7 @@
     #appSimples .apto-mini-nome { font-weight:700; font-size:1rem; margin-bottom:6px; text-align:left; }
     #appSimples .apto-mini-acoes { display:flex; gap:6px; }
     #appSimples .mini-acao { flex:1; padding:8px 4px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
-      font-size:1.1rem; cursor:pointer; min-height:44px; }
+      font-size:1.1rem; cursor:pointer; min-height:44px; min-width:44px; }
     #appSimples .mini-acao.naoAtendeu.ativo { background:#6b7280; border-color:#6b7280; color:#fff; }
     #appSimples .mini-acao.semConversa.ativo { background:#f59e0b; border-color:#f59e0b; color:#fff; }
     #appSimples .mini-acao.conversou.ativo { background:#16a34a; border-color:#16a34a; color:#fff; }
@@ -502,8 +504,8 @@
   <div id="mapa-container" class="d-none">
     <div id="mapa-topo"></div>
     <div id="msg-mapa">Toque no local do novo endereço</div>
-    <button class="map-btn btn-gps" onclick="centralizarGPS()"><i class="fa-solid fa-crosshairs"></i></button>
-    <button class="map-btn btn-rota" onclick="abrirRotaGoogle()"><i class="fa-solid fa-diamond-turn-right"></i></button>
+    <button class="map-btn btn-gps" onclick="centralizarGPS()" aria-label="Centralizar na minha localização" title="Minha localização"><i class="fa-solid fa-crosshairs"></i></button>
+    <button class="map-btn btn-rota" onclick="abrirRotaGoogle()" aria-label="Abrir rota no Google Maps" title="Abrir rota"><i class="fa-solid fa-diamond-turn-right"></i></button>
   </div>
 
   <!-- Modo SIMPLES: um endereço grande por vez. Pra publicadores com
@@ -570,8 +572,8 @@
 
   <!-- Reordenar e adicionar só fazem sentido no modo avançado.
        aplicarModo() liga/desliga o display destes. -->
-  <button class="btn-float-reorder" onclick="toggleReorder()" id="btnReorder"><i class="fa-solid fa-sort"></i></button>
-  <button class="btn-float-add" id="btnAddEndereco" onclick="iniciarAdicaoPeloMapa()"><i class="fa-solid fa-plus"></i></button>
+  <button class="btn-float-reorder" onclick="toggleReorder()" id="btnReorder" aria-label="Reordenar endereços" title="Reordenar"><i class="fa-solid fa-sort"></i></button>
+  <button class="btn-float-add" id="btnAddEndereco" onclick="iniciarAdicaoPeloMapa()" aria-label="Adicionar endereço" title="Adicionar endereço"><i class="fa-solid fa-plus"></i></button>
   <button id="btnVoltarTopo" onclick="window.scrollTo({top:0,behavior:'smooth'})"
           class="position-fixed d-none"
           style="bottom:80px; right:20px; width:42px; height:42px; border-radius:50%; border:0; background:#1a1a1a; color:white; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:1500"
@@ -707,6 +709,29 @@
       }
     } catch(e) {}
 
+    // Salva cache do publicador com retry: se QuotaExceededError, limpa
+    // caches v3 antigos (de outras designações) e tenta de novo.
+    function salvarCachePublico(chave, payload) {
+      var str = JSON.stringify(payload);
+      try { localStorage.setItem(chave, str); return true; }
+      catch(e) {
+        try {
+          // Remove outros caches publico_dados_v3_* (mantém só o atual)
+          var aDeletar = [];
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('publico_dados_v3_') === 0 && k !== chave) aDeletar.push(k);
+          }
+          aDeletar.forEach(function(k){ localStorage.removeItem(k); });
+          localStorage.setItem(chave, str);
+          return true;
+        } catch(e2) {
+          if (window.toast) window.toast('Storage do navegador cheio — cache desativado.', 'warn', 5000);
+          return false;
+        }
+      }
+    }
+
     window.alternarTextoGrande = function() {
       var on = document.body.classList.toggle('texto-grande');
       try { localStorage.setItem('pub_texto_grande', on ? 'true' : 'false'); } catch(e) {}
@@ -775,7 +800,7 @@
 
         google.script.url.getLocation(function(location) {
              var ids = location.parameter.ids;
-             if(!ids) { alert("Link inválido (sem IDs)."); return; }
+             if(!ids) { window.toast && window.toast("Link inválido (sem IDs).", "warn"); return; }
 
              // v3: cache com TTL — payload+timestamp serializados juntos.
              // Cache válido por 24h; depois exige nova busca pra evitar
@@ -818,15 +843,13 @@
              google.script.run
                 .withSuccessHandler(function(data) {
                     if(!data || !data.designadas || data.designadas.length === 0) {
-                      if (!cachedPayload) alert("Nenhum dado encontrado.");
+                      if (!cachedPayload) window.toast && window.toast("Nenhum dado encontrado.", "warn");
                       return;
                     }
                     var novoStr = JSON.stringify(data);
-                    // Renova o timestamp do cache mesmo se conteúdo não mudou,
-                    // pra estender o TTL enquanto o publicador estiver ativo.
-                    try {
-                      localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), d: data }));
-                    } catch(e) {}
+                    // Renova o timestamp do cache mesmo se conteúdo não mudou.
+                    // Em QuotaExceededError: limpa caches v3 antigos e tenta de novo.
+                    salvarCachePublico(cacheKey, { t: Date.now(), d: data });
                     if (novoStr !== cachedStr) aplicar(data);
                 })
                 .withFailureHandler(function(e) {
@@ -1230,7 +1253,11 @@
     }
 
     function btnMini(tipo, icone, ativo, row) {
-      return '<button class="mini-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' + icone + '</button>';
+      var labels = { naoAtendeu: 'Não atendeu', semConversa: 'Falou sem palestra', conversou: 'Conversou' };
+      var lbl = labels[tipo] || tipo;
+      return '<button class="mini-acao ' + tipo + (ativo ? ' ativo' : '') +
+             '" aria-label="' + lbl + '" title="' + lbl + '"' +
+             ' onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' + icone + '</button>';
     }
     function botaoSimples(tipo, icone, label, ativo, row) {
       return '<button class="botao-acao ' + tipo + (ativo ? ' ativo' : '') + '" onclick="window.simplesMarcar(' + row + ', \'' + tipo + '\')">' +
@@ -1398,7 +1425,7 @@
       google.script.run
         .withSuccessHandler(function(r){
           if (!r || !r.ok) {
-            alert('Erro: ' + (r && r.erro || '?'));
+            window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
             modal.hide();
             return;
           }
@@ -1411,7 +1438,7 @@
           if (btn) btn.disabled = false;
         })
         .withFailureHandler(function(e){
-          alert('Erro: ' + (e && e.message || e));
+          window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
           modal.hide();
         })
         .getOverlayPredioPublico(chave);
@@ -1429,14 +1456,14 @@
         .withSuccessHandler(function(r){
           if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Salvar'; }
           if (!r || !r.ok) {
-            alert('Erro: ' + (r && r.erro || '?'));
+            window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
             return;
           }
           bootstrap.Modal.getInstance(document.getElementById('modalEditarPredio')).hide();
         })
         .withFailureHandler(function(e){
           if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Salvar'; }
-          alert('Erro: ' + (e && e.message || e));
+          window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
         })
         .atualizarPredioPublico(chave, {
           tipoEntrada: tipo,
@@ -1597,7 +1624,7 @@
             isPickingLocation = false;
             document.getElementById('msg-mapa').style.display = 'none';
             document.getElementById('mapa-topo').classList.remove('picking-location');
-            return alert("Não há endereços próximos para usar de referência.");
+            window.toast && window.toast("Não há endereços próximos para usar de referência.", "warn"); return;
         }
 
         isPickingLocation = false;
@@ -2320,7 +2347,7 @@ function criarItemHtml(item, isInsideGroup) {
                 btn.innerText = txtOriginal; btn.disabled = false;
                 carregarDados();
             })
-            .withFailureHandler(e => { alert("Erro: " + e); btn.innerText = txtOriginal; btn.disabled = false; });
+            .withFailureHandler(e => { window.toast && window.toast("Erro: " + e, "error"); btn.innerText = txtOriginal; btn.disabled = false; });
 
         // Decide qual função chamar
         if(!row) {
@@ -2415,12 +2442,12 @@ function toggleVisita(row, el) {
         google.script.run
           .withSuccessHandler(function(){
             if (window.toast) window.toast("Status atualizado: " + status, "success");
-            else alert("Status atualizado: " + status);
+            else if (window.toast) window.toast("Status atualizado: " + status, "success");
             if(status === 'Concluído') carregarDados();
           })
           .withFailureHandler(function(e){
             if (window.toast) window.toast("Erro: " + (e && e.message ? e.message : e), "error");
-            else alert("Erro ao atualizar status. Tente de novo.");
+            else if (window.toast) window.toast("Erro ao atualizar status. Tente de novo.", "error");
           })
           .definirStatusQuadra(qId, status);
     }
@@ -2508,12 +2535,12 @@ function toggleVisita(row, el) {
         google.script.run
           .withSuccessHandler(function(){
             if (window.toast) window.toast("Registrado!", "success");
-            else alert("Registrado!");
+            else if (window.toast) window.toast("Registrado!", "success");
             carregarDados();
           })
           .withFailureHandler(function(e){
             if (window.toast) window.toast("Erro ao registrar: " + (e && e.message ? e.message : e), "error");
-            else alert("Erro ao registrar. Verifique a conexão e tente de novo.");
+            else if (window.toast) window.toast("Erro ao registrar. Verifique a conexão e tente de novo.", "error");
           })
           .salvarConclusaoQuadras({ ids: [qId], data: hoje, modo: 'auto' });
     }
