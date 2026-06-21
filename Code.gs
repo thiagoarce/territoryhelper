@@ -2522,6 +2522,7 @@ function listarAptosDoPredio(chave) {
       complemento: String(r[COL.DADOS.COMPLEMENTO] || ''),
       tipo: String(r[COL.DADOS.TIPO] || ''),
       nome: String(r[COL.DADOS.NOME_EDIF] || ''),
+      lat: r[COL.DADOS.LAT], lng: r[COL.DADOS.LNG],
       logradouro: log, numero: num
     });
   });
@@ -2556,11 +2557,18 @@ function listarAptosDoPredio(chave) {
   for (var i = 0; i < aptos.length; i++) {
     if (aptos[i].nome) { nomeAuto = aptos[i].nome; break; }
   }
+  // Primeiro apto com lat/lng pra Street View + Como chegar
+  var aptoComCoord = null;
+  for (var k = 0; k < aptos.length; k++) {
+    if (aptos[k].lat && aptos[k].lng) { aptoComCoord = aptos[k]; break; }
+  }
   var predio = {
     chave: chave,
     nome: overlay.nome || nomeAuto || (aptos[0].logradouro + ', ' + aptos[0].numero),
     logradouro: aptos[0].logradouro,
     numero: aptos[0].numero,
+    lat: aptoComCoord ? aptoComCoord.lat : null,
+    lng: aptoComCoord ? aptoComCoord.lng : null,
     qtdEnderecos: aptos.length,
     irmaoMora: !!overlay.irmaoMora,
     nomeIrmao: overlay.nomeIrmao || '',
