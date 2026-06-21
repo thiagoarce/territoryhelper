@@ -3712,7 +3712,8 @@ function agendarTP(payload) {
   if (!payload || !payload.horarioId || !payload.publicador || !payload.data) {
     return { ok: false, erro: 'horarioId, publicador e data obrigatórios' };
   }
-  if (!validarData_(payload.data)) return { ok: false, erro: 'data inválida' };
+  var v = validarData_(payload.data);
+  if (!v.ok) return { ok: false, erro: 'data inválida' };
   return withLock_(function(){
     var sh = ensureSheetTpAgendamentos_();
     var id = _novoIdTP_('tpa');
