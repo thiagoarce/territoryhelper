@@ -3522,3 +3522,263 @@ function listarAuditoriaIgnoradas() {
   }
   return { ok: true, multi: mapear(idsMulti), vazia: mapear(idsVazia) };
 }
+
+// =================================================================
+// TESTEMUNHO PÚBLICO (TP) — Pontos, horários, carrinhos, agendamentos
+// =================================================================
+// Schema introduzido nessa rodada. UI completa em rodadas futuras.
+// Por enquanto o servo cadastra via planilha direta + endpoints de
+// listagem. Próxima iteração: aba admin "TP" no Index.html + link
+// público pra publicador agendar.
+
+function ensureSheetTpPontos_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.TP_PONTOS);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.TP_PONTOS);
+  sh.appendRow(['id', 'nome', 'lat', 'lng', 'endereco', 'ativo', 'notas']);
+  sh.setFrozenRows(1);
+  return sh;
+}
+function ensureSheetTpHorarios_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.TP_HORARIOS);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.TP_HORARIOS);
+  sh.appendRow(['id', 'pontoId', 'diaSemana', 'horaInicio', 'horaFim', 'capacidade', 'ativo']);
+  sh.setFrozenRows(1);
+  return sh;
+}
+function ensureSheetTpCarrinhos_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.TP_CARRINHOS);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.TP_CARRINHOS);
+  sh.appendRow(['id', 'nome', 'localGuarda', 'ativo', 'notas']);
+  sh.setFrozenRows(1);
+  return sh;
+}
+function ensureSheetTpAgendamentos_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET.TP_AGENDAMENTOS);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET.TP_AGENDAMENTOS);
+  sh.appendRow([
+    'id', 'horarioId', 'data', 'publicador', 'carrinhoId', 'status',
+    'checkin', 'checkout', 'revistas', 'notas', 'criado'
+  ]);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function _novoIdTP_(prefix) {
+  return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+}
+
+// ---------- Pontos ----------
+function listarPontosTP(somenteAtivos) {
+  var sh = ensureSheetTpPontos_();
+  if (sh.getLastRow() < 2) return [];
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
+  var out = [];
+  dados.forEach(function(r){
+    var ativo = r[COL.TP_PONTOS.ATIVO] === true || String(r[COL.TP_PONTOS.ATIVO]).toUpperCase() === 'TRUE';
+    if (somenteAtivos && !ativo) return;
+    out.push({
+      id: String(r[COL.TP_PONTOS.ID] || ''),
+      nome: String(r[COL.TP_PONTOS.NOME] || ''),
+      lat: r[COL.TP_PONTOS.LAT],
+      lng: r[COL.TP_PONTOS.LNG],
+      endereco: String(r[COL.TP_PONTOS.ENDERECO] || ''),
+      ativo: ativo,
+      notas: String(r[COL.TP_PONTOS.NOTAS] || '')
+    });
+  });
+  return out;
+}
+function criarPontoTP(payload) {
+  if (!payload || !payload.nome) return { ok: false, erro: 'nome obrigatório' };
+  return withLock_(function(){
+    var sh = ensureSheetTpPontos_();
+    var id = _novoIdTP_('tpp');
+    sh.appendRow([
+      id, sanitizar_(payload.nome),
+      parseFloat(payload.lat) || '', parseFloat(payload.lng) || '',
+      sanitizar_(payload.endereco || ''), payload.ativo !== false,
+      sanitizar_(payload.notas || '')
+    ]);
+    return { ok: true, id: id };
+  });
+}
+
+// ---------- Horários ----------
+function listarHorariosTP(diaSemana) {
+  var sh = ensureSheetTpHorarios_();
+  if (sh.getLastRow() < 2) return [];
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
+  var out = [];
+  dados.forEach(function(r){
+    var ativo = r[COL.TP_HORARIOS.ATIVO] === true || String(r[COL.TP_HORARIOS.ATIVO]).toUpperCase() === 'TRUE';
+    if (!ativo) return;
+    var dia = Number(r[COL.TP_HORARIOS.DIA_SEMANA]);
+    if (diaSemana != null && dia !== Number(diaSemana)) return;
+    out.push({
+      id: String(r[COL.TP_HORARIOS.ID] || ''),
+      pontoId: String(r[COL.TP_HORARIOS.PONTO_ID] || ''),
+      diaSemana: dia,
+      horaInicio: String(r[COL.TP_HORARIOS.HORA_INICIO] || ''),
+      horaFim: String(r[COL.TP_HORARIOS.HORA_FIM] || ''),
+      capacidade: Number(r[COL.TP_HORARIOS.CAPACIDADE]) || 1
+    });
+  });
+  return out;
+}
+function criarHorarioTP(payload) {
+  if (!payload || !payload.pontoId) return { ok: false, erro: 'pontoId obrigatório' };
+  return withLock_(function(){
+    var sh = ensureSheetTpHorarios_();
+    var id = _novoIdTP_('tph');
+    sh.appendRow([
+      id, sanitizar_(payload.pontoId),
+      Number(payload.diaSemana) || 0,
+      sanitizar_(payload.horaInicio || ''),
+      sanitizar_(payload.horaFim || ''),
+      Number(payload.capacidade) || 1,
+      payload.ativo !== false
+    ]);
+    return { ok: true, id: id };
+  });
+}
+
+// ---------- Carrinhos ----------
+function listarCarrinhosTP() {
+  var sh = ensureSheetTpCarrinhos_();
+  if (sh.getLastRow() < 2) return [];
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
+  return dados.map(function(r){
+    return {
+      id: String(r[COL.TP_CARRINHOS.ID] || ''),
+      nome: String(r[COL.TP_CARRINHOS.NOME] || ''),
+      localGuarda: String(r[COL.TP_CARRINHOS.LOCAL_GUARDA] || ''),
+      ativo: r[COL.TP_CARRINHOS.ATIVO] === true || String(r[COL.TP_CARRINHOS.ATIVO]).toUpperCase() === 'TRUE',
+      notas: String(r[COL.TP_CARRINHOS.NOTAS] || '')
+    };
+  }).filter(function(c){ return c.ativo; });
+}
+function criarCarrinhoTP(payload) {
+  if (!payload || !payload.nome) return { ok: false, erro: 'nome obrigatório' };
+  return withLock_(function(){
+    var sh = ensureSheetTpCarrinhos_();
+    var id = _novoIdTP_('tpc');
+    sh.appendRow([
+      id, sanitizar_(payload.nome),
+      sanitizar_(payload.localGuarda || ''),
+      payload.ativo !== false,
+      sanitizar_(payload.notas || '')
+    ]);
+    return { ok: true, id: id };
+  });
+}
+
+// ---------- Agendamentos ----------
+// Lista agendamentos a partir de uma data (yyyy-MM-dd), ou da semana atual
+// se nada passar. Indexa por horarioId+data pra UI checar lotação.
+function listarAgendamentosTP(dataInicio) {
+  var sh = ensureSheetTpAgendamentos_();
+  if (sh.getLastRow() < 2) return [];
+  var dados = sh.getRange(2, 1, sh.getLastRow() - 1, 11).getValues();
+  var corte = dataInicio ? new Date(dataInicio + 'T00:00:00').getTime()
+                         : Date.now() - 24*60*60*1000;
+  var out = [];
+  dados.forEach(function(r){
+    var status = String(r[COL.TP_AGENDAMENTOS.STATUS] || '');
+    if (status === STATUS_TP.CANCELADO) return;
+    var dataStr = String(r[COL.TP_AGENDAMENTOS.DATA] || '');
+    var t = new Date(dataStr + 'T00:00:00').getTime();
+    if (!isNaN(t) && t < corte) return;
+    out.push({
+      id: String(r[COL.TP_AGENDAMENTOS.ID] || ''),
+      horarioId: String(r[COL.TP_AGENDAMENTOS.HORARIO_ID] || ''),
+      data: dataStr,
+      publicador: String(r[COL.TP_AGENDAMENTOS.PUBLICADOR] || ''),
+      carrinhoId: String(r[COL.TP_AGENDAMENTOS.CARRINHO_ID] || ''),
+      status: status,
+      revistas: Number(r[COL.TP_AGENDAMENTOS.REVISTAS]) || 0
+    });
+  });
+  return out;
+}
+function agendarTP(payload) {
+  if (!payload || !payload.horarioId || !payload.publicador || !payload.data) {
+    return { ok: false, erro: 'horarioId, publicador e data obrigatórios' };
+  }
+  if (!validarData_(payload.data)) return { ok: false, erro: 'data inválida' };
+  return withLock_(function(){
+    var sh = ensureSheetTpAgendamentos_();
+    var id = _novoIdTP_('tpa');
+    sh.appendRow([
+      id, sanitizar_(payload.horarioId), payload.data,
+      sanitizar_(payload.publicador),
+      sanitizar_(payload.carrinhoId || ''),
+      STATUS_TP.AGENDADO, '', '', 0,
+      sanitizar_(payload.notas || ''),
+      new Date()
+    ]);
+    return { ok: true, id: id };
+  });
+}
+function _acharLinhaTP_(sh, id) {
+  if (sh.getLastRow() < 2) return -1;
+  var col = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]) === String(id)) return i + 2;
+  }
+  return -1;
+}
+function checkInTP(agendamentoId) {
+  if (!agendamentoId) return { ok: false, erro: 'id obrigatório' };
+  return withLock_(function(){
+    var sh = ensureSheetTpAgendamentos_();
+    var linha = _acharLinhaTP_(sh, agendamentoId);
+    if (linha < 0) return { ok: false, erro: 'agendamento não encontrado' };
+    sh.getRange(linha, COL.TP_AGENDAMENTOS.STATUS_1IDX).setValue(STATUS_TP.PRESENTE);
+    sh.getRange(linha, COL.TP_AGENDAMENTOS.CHECKIN_1IDX).setValue(new Date());
+    return { ok: true };
+  });
+}
+function checkOutTP(agendamentoId, revistasDistribuidas) {
+  if (!agendamentoId) return { ok: false, erro: 'id obrigatório' };
+  return withLock_(function(){
+    var sh = ensureSheetTpAgendamentos_();
+    var linha = _acharLinhaTP_(sh, agendamentoId);
+    if (linha < 0) return { ok: false, erro: 'agendamento não encontrado' };
+    sh.getRange(linha, COL.TP_AGENDAMENTOS.STATUS_1IDX).setValue(STATUS_TP.CONCLUIDO);
+    sh.getRange(linha, COL.TP_AGENDAMENTOS.CHECKOUT_1IDX).setValue(new Date());
+    if (revistasDistribuidas != null) {
+      sh.getRange(linha, COL.TP_AGENDAMENTOS.REVISTAS_1IDX).setValue(Number(revistasDistribuidas) || 0);
+    }
+    return { ok: true };
+  });
+}
+function cancelarAgendamentoTP(agendamentoId) {
+  if (!agendamentoId) return { ok: false, erro: 'id obrigatório' };
+  return withLock_(function(){
+    var sh = ensureSheetTpAgendamentos_();
+    var linha = _acharLinhaTP_(sh, agendamentoId);
+    if (linha < 0) return { ok: false, erro: 'agendamento não encontrado' };
+    sh.getRange(linha, COL.TP_AGENDAMENTOS.STATUS_1IDX).setValue(STATUS_TP.CANCELADO);
+    return { ok: true };
+  });
+}
+
+// Endpoint público: pacote completo pra montar a grade de agendamento
+// (link `?v=tp` no futuro). Retorna pontos ativos + horários ativos +
+// agendamentos das próximas semanas. UI agenda chamando agendarTP.
+function getDadosTPPublico() {
+  return {
+    pontos: listarPontosTP(true),
+    horarios: listarHorariosTP(),
+    carrinhos: listarCarrinhosTP(),
+    agendamentos: listarAgendamentosTP()
+  };
+}
