@@ -671,6 +671,9 @@ function getDadosPublicos(idsString) {
     var ultimos = _ultimoDesfechoPorRow_();
     var emTCE = {};
     try { emTCE = getEnderecosEmTCE(); } catch (e) {}
+    // Estado de cartas por row — vem do PrediosAptos. Publicador vê
+    // "deixei carta" ligado se o arranjo de cartas já entregou.
+    var cartasEntregues = _mapaCartasEntregues_();
     var tz = "GMT-3";
     resultado.forEach(function(q){
       (q.itens || []).forEach(function(it){
@@ -679,6 +682,8 @@ function getDadosPublicos(idsString) {
           it.ultimoTipo = u.tipo;
           it.ultimoDataStr = Utilities.formatDate(new Date(u.dataMs), tz, 'dd/MM/yy');
         }
+        // Carta entregue (de qualquer fluxo: publicador OU arranjo de cartas)
+        if (cartasEntregues[it.row]) it.cartaEntregue = true;
         // Endereço já está num Território Comercial Especial?
         // Frontend esmaece + mostra badge com aviso.
         if (emTCE[it.row]) {
@@ -1052,7 +1057,7 @@ function getDadosIniciaisMaster() {
 
 function limparCacheServidor() {
   var cache = CacheService.getScriptCache();
-  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1', 'DENSIDADE_PREDIOS_V1', 'ULT_DESFECHO_V1']);
+  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1', 'DENSIDADE_PREDIOS_V1', 'ULT_DESFECHO_V1', 'CARTAS_ENTREGUES_V1']);
   // Cache de getDadosComContexto é por-ids; CacheService não tem removeMatching,
   // então marcamos versão pra invalidação em massa.
   try { cache.put('DADOS_CTX_VER', String(Date.now()), 21600); } catch(e) {}
@@ -2335,15 +2340,18 @@ function listarPrediosPublico() {
   });
 }
 
-// Registra "deixei carta" num endereço específico (linha de Dados Brutos)
-// na aba Registros. Usado pelo painel do publicador.
-function registrarCartaEndereco(row) {
+// Registra "deixei carta" num endereço específico. Escreve em DUAS abas
+// pra unificar com o link Cartas.html:
+//   - Registros: trilha histórica + visibilidade pro publicador
+//   - PrediosAptos.cartaEntregue: estado atual usado pela Cartas.html
+// Tipo opcional 'desfazer' reverte (limpa PrediosAptos.cartaEntregue
+// e appenda 'carta_undo' em Registros).
+function registrarCartaEndereco(row, undo) {
   var rowNum = parseInt(row, 10);
   if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
   return withLock_(function(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheetD = getSheetByName_(SHEET.DADOS);
-    // Limite superior pra evitar registro de lixo via row absurdo
     if (sheetD && rowNum > sheetD.getLastRow()) {
       return { ok: false, erro: 'row fora do range' };
     }
@@ -2352,10 +2360,70 @@ function registrarCartaEndereco(row) {
       sheetReg = ss.insertSheet(SHEET.REGISTROS);
       sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]);
     }
-    sheetReg.appendRow(['endereco:' + rowNum, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'carta', new Date()]);
+    sheetReg.appendRow([
+      'endereco:' + rowNum,
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      undo ? 'carta_undo' : 'carta',
+      new Date()
+    ]);
+    // Espelha em PrediosAptos.cartaEntregue pra link Cartas.html ver
+    try {
+      _atualizarAptoStatusInterno_(rowNum, { cartaEntregue: undo ? '' : true });
+    } catch(e) {}
     _invalidar();
     return { ok: true };
   });
+}
+
+// Mapa de cartas entregues por row (lê PrediosAptos). Cacheado 5min.
+// Usado pra inicializar o estado de carta_<row> no publicador a partir
+// do servidor (sem isso o publicador só vê o que ELE marcou local).
+function _mapaCartasEntregues_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('CARTAS_ENTREGUES_V1');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
+  var sh = ensureSheetPrediosAptos_();
+  var ult = sh.getLastRow();
+  if (ult < 2) return {};
+  var nCols = Math.max(sh.getLastColumn(), 6);
+  var dados = sh.getRange(2, 1, ult - 1, nCols).getValues();
+  var mapa = {};
+  dados.forEach(function(r){
+    var row = parseInt(r[COL.PREDIOS_APTOS.ROW], 10);
+    var dt = r[COL.PREDIOS_APTOS.CARTA_ENTREGUE];
+    if (row && dt) mapa[row] = true;
+  });
+  try { cache.put('CARTAS_ENTREGUES_V1', JSON.stringify(mapa), 300); } catch(e) {}
+  return mapa;
+}
+
+// Versão sem lock (pra ser chamada de dentro de outro withLock_).
+// Extraída de atualizarAptoStatus pra evitar lock-em-lock.
+function _atualizarAptoStatusInterno_(rowNum, patch) {
+  var sh = ensureSheetPrediosAptos_();
+  var linha = _acharLinhaAptoPorRow_(sh, rowNum);
+  if (linha < 0) {
+    sh.appendRow([rowNum, '', '', false, new Date(), false]);
+    linha = sh.getLastRow();
+  }
+  var mapa = {
+    cartaEscrita:   COL.PREDIOS_APTOS.CARTA_ESCRITA_1IDX,
+    cartaEntregue:  COL.PREDIOS_APTOS.CARTA_ENTREGUE_1IDX,
+    desocupado:     COL.PREDIOS_APTOS.DESOCUPADO_1IDX,
+    naoEscrever:    COL.PREDIOS_APTOS.NAO_ESCREVER_1IDX
+  };
+  Object.keys(patch || {}).forEach(function(k){
+    if (!(k in mapa)) return;
+    var valor = patch[k];
+    if (k === 'desocupado' || k === 'naoEscrever') valor = valor === true;
+    else if (valor === true) valor = new Date();
+    else if (valor === false || valor === null || valor === '') valor = '';
+    else if (typeof valor === 'string') valor = new Date(valor + 'T00:00:00');
+    sh.getRange(linha, mapa[k]).setValue(valor);
+  });
+  sh.getRange(linha, COL.PREDIOS_APTOS.ATUALIZADO_1IDX).setValue(new Date());
 }
 
 // =================================================================
@@ -2509,28 +2577,26 @@ function atualizarAptoStatus(row, patch) {
   var rowNum = parseInt(row, 10);
   if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
   return withLock_(function(){
-    var sh = ensureSheetPrediosAptos_();
-    var linha = _acharLinhaAptoPorRow_(sh, rowNum);
-    if (linha < 0) {
-      sh.appendRow([rowNum, '', '', false, new Date(), false]);
-      linha = sh.getLastRow();
+    _atualizarAptoStatusInterno_(rowNum, patch);
+    // Quando o arranjo de cartas marca/desmarca 'cartaEntregue', espelha
+    // em Registros pra publicador (que olha Registros) ver a entrega.
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'cartaEntregue')) {
+      try {
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var sheetReg = getSheetByName_(SHEET.REGISTROS);
+        if (!sheetReg) {
+          sheetReg = ss.insertSheet(SHEET.REGISTROS);
+          sheetReg.appendRow(["ID", "Data", "Tipo", "TS"]);
+        }
+        var entregou = patch.cartaEntregue && patch.cartaEntregue !== '';
+        sheetReg.appendRow([
+          'endereco:' + rowNum,
+          Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+          entregou ? 'carta' : 'carta_undo',
+          new Date()
+        ]);
+      } catch(e) {}
     }
-    var mapa = {
-      cartaEscrita:   COL.PREDIOS_APTOS.CARTA_ESCRITA_1IDX,
-      cartaEntregue:  COL.PREDIOS_APTOS.CARTA_ENTREGUE_1IDX,
-      desocupado:     COL.PREDIOS_APTOS.DESOCUPADO_1IDX,
-      naoEscrever:    COL.PREDIOS_APTOS.NAO_ESCREVER_1IDX
-    };
-    Object.keys(patch || {}).forEach(function(k){
-      if (!(k in mapa)) return;
-      var valor = patch[k];
-      if (k === 'desocupado' || k === 'naoEscrever') valor = valor === true;
-      else if (valor === true) valor = new Date(); // toggle on com data atual
-      else if (valor === false || valor === null || valor === '') valor = '';
-      else if (typeof valor === 'string') valor = new Date(valor + 'T00:00:00');
-      sh.getRange(linha, mapa[k]).setValue(valor);
-    });
-    sh.getRange(linha, COL.PREDIOS_APTOS.ATUALIZADO_1IDX).setValue(new Date());
     _invalidar();
     return { ok: true };
   });
