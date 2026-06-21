@@ -1052,7 +1052,10 @@ function getDadosIniciaisMaster() {
 
 function limparCacheServidor() {
   var cache = CacheService.getScriptCache();
-  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1', 'DENSIDADE_PREDIOS_V1']);
+  cache.removeAll(['DADOS_MAPA_CACHE', 'PREDIOS_LISTA_V1', 'DENSIDADE_PREDIOS_V1', 'ULT_DESFECHO_V1']);
+  // Cache de getDadosComContexto é por-ids; CacheService não tem removeMatching,
+  // então marcamos versão pra invalidação em massa.
+  try { cache.put('DADOS_CTX_VER', String(Date.now()), 21600); } catch(e) {}
 }
 
 // Marca toda escrita: invalida o cache para que a próxima leitura puxe fresco
@@ -1181,6 +1184,16 @@ function getDadosDirigente(idsString) {
 function getDadosComContexto(idsString) {
   var COTA_FALLBACK = 80;
 
+  // Cache versionado por (ids + versão). Versão sobe quando _invalidar
+  // roda, invalidando todos os ids de uma vez sem percorrer chaves.
+  var cache = CacheService.getScriptCache();
+  var ver = cache.get('DADOS_CTX_VER') || '0';
+  var cacheKey = 'DADOS_CTX_' + ver + '_' + Utilities.base64EncodeWebSafe(idsString || '');
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
+
   var designadas = getDadosDirigente(idsString);
 
   var idsSet = {};
@@ -1306,11 +1319,18 @@ function getDadosComContexto(idsString) {
   designadas.forEach(function(q){ q.qtdPredios = densidade[q.id] || 0; });
   contexto.forEach(function(q){ q.qtdPredios = densidade[q.id] || 0; });
 
-  return {
+  var resultado = {
     designadas: designadas,
     contexto: contexto,
     territorios: Object.keys(territoriosSet)
   };
+  // Cache de 5min. Pode estourar 100KB se designação for grande;
+  // CacheService aceita até 100KB por chave, então tentamos só se couber.
+  try {
+    var json = JSON.stringify(resultado);
+    if (json.length < 90000) cache.put(cacheKey, json, 300);
+  } catch(e) {}
+  return resultado;
 }
 
 function bboxDasDesignadas_(designadas) {
@@ -2383,6 +2403,13 @@ function _mapaAptosStatus_() {
 // mostrar "antes" tanto no painel do publicador quanto na lista de
 // aptos do trabalho de cartas.
 function _ultimoDesfechoPorRow_() {
+  // Cache 5min — chamado por getDadosPublicos + listarAptosDoPredio +
+  // getDadosTCE. Sem cache, relê Registros inteiro toda vez = lento.
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('ULT_DESFECHO_V1');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetReg = ss.getSheetByName(SHEET.REGISTROS);
   if (!sheetReg || sheetReg.getLastRow() < 2) return {};
@@ -2403,6 +2430,7 @@ function _ultimoDesfechoPorRow_() {
       mapa[row] = { tipo: tipo, dataMs: ts };
     }
   });
+  try { cache.put('ULT_DESFECHO_V1', JSON.stringify(mapa), 300); } catch(e) {}
   return mapa;
 }
 
