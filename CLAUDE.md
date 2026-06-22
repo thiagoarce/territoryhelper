@@ -8,180 +8,201 @@ como banco. Quando trabalhar aqui, leia esta nota primeiro.
 
 - `Code.gs` — entrada (`doGet`), funções de save/load, lógica de negócio
 - `Constants.gs` — mapa de colunas, enums (STATUS, SHEET, MODALIDADES_CAMPANHA,
-  STATUS_DESIGNACAO, DESFECHO). **Mude aqui se reordenar a planilha.**
+  STATUS_DESIGNACAO, STATUS_TCE, DESFECHO). **Mude aqui se reordenar a planilha.**
 - `Utils.gs` — `withLock_`, validações (`validarPolyString_`, `validarId_`,
   `validarData_`, `validarCor_`), `sanitizar_` (anti-formula-injection),
   `getSheetByName_`, `acharLinhaQuadra_`, `logErro_`
 - `Index.html` — UI da Gestão (web app do servo de território)
 - `Publico.html` — UI do publicador (recebe link com lista de quadras)
-- `Dirigente.html` — UI do dirigente (marca como feita, exporta mapa)
+- `Dirigente.html` — UI do dirigente (map-driven, bottom sheet)
 - `CampanhaPublica.html` — tela motivacional pública da campanha
 - `Cartas.html` — trabalho de cartas (lista prédios ou aptos de UM prédio)
 - `JS_Core.html` — utilities compartilhadas (toast, confirmar, runApp,
-  tema escuro, atalhos). Incluído ANTES de JS_App.
+  tema escuro, atalhos). Incluído ANTES de JS_App. **Só no admin.**
+- `JS_ToastPublico.html` — toast standalone (sem deps). Incluído em
+  Publico/Dirigente/Cartas/CampanhaPublica via `<?!= include('JS_ToastPublico') ?>`
 - `JS_App.html` — JS principal da Gestão (Visão Geral, Polígonos, Registro,
   Campanha, Prédios)
 - `CSS.html` — estilos compartilhados (incluído só pelo Index)
-- `tests/` — testes Node sem deps; `node tests/run.js`
-- `docs/` — documentação (manual do usuário, setup clasp)
+- `tests/` — testes Node sem deps; `node tests/run.js` (74 testes)
+- `docs/` — documentação (manual, setup clasp, CHANGELOG)
 - `.github/workflows/` — CI (tests, deploy-apps-script, sync-apps-script)
 
 ## Modelo de dados (abas no Sheets)
 
 Todas as abas são **autocriadas** via `ensureSheet*_()` na primeira escrita
-ou leitura. Schemas em `Constants.gs`.
+ou leitura. Schemas em `Constants.gs`. Migração idempotente — `ensureSheet*_`
+checa `getLastColumn()` e completa cabeçalho com colunas novas sem perda.
 
-| Aba | O que guarda | Auto-criada por |
-|---|---|---|
-| `Quadras` | id, polyString, color, territorio, status (Pendente/Concluído), dataConclusao | manual |
-| `Territorios` | nome, cor, ids_quadras (CSV), polyString, label_pos, label_type, status, dataConclusao | manual |
-| `Dados Brutos` | endereços IBGE (logradouro, número, lat/lng, tipo, etc) | manual |
-| `Registros` | trilha de eventos (auto/manual/desfeito/carta/conversou/semConversa/naoAtendeu) | salvarConclusaoQuadras |
-| `Campanha` | objetivos estruturados {id, tipo (geral/semana), modalidade, titulo, descricao, link, anexo, publico} | ensureSheetCampanha_ |
-| `Designacoes` | território pessoal — quadras travadas em nome de publicador {id, ids_quadras, publicador, criada, prazo, status, notas} | ensureSheetDesignacoes_ |
-| `Predios` | overlay manual sobre Dados Brutos {chave="logradouro|numero", nome, irmaoMora, nomeIrmao, acessoInterfone, naoEhPredio, notas, ultimaCarta} | ensureSheetPredios_ |
-| `PrediosAptos` | overlay per-apto {row→DadosBrutos, cartaEscrita, cartaEntregue, desocupado, naoEscrever} | ensureSheetPrediosAptos_ |
-| `TerritoriosEspeciais` | TCE (Territórios Comerciais Especiais) que atravessam quadras: {id, nome, tipo, rows (CSV), polyString (convex hull), publicador, prazo, status} | ensureSheetTerritoriosEsp_ |
-
-**Migração de schema**: as `ensureSheet*_` checam `getLastColumn()` e completam
-cabeçalho com colunas novas (idempotente, sem perda de dados).
+| Aba | O que guarda |
+|---|---|
+| `Quadras` | id, polyString, color, territorio, status, dataConclusao |
+| `Territorios` | nome, cor, ids_quadras (CSV), polyString, label_pos, label_type, status, dataConclusao |
+| `Dados Brutos` | endereços IBGE (logradouro, número, lat/lng, tipo, **face IBGE col D**, etc) |
+| `Registros` | trilha de eventos: auto/manual/desfeito/carta/carta_undo/conversou/semConversa/naoAtendeu/interfone |
+| `Campanha` | objetivos estruturados {id, tipo (geral/semana), modalidade, titulo, descricao, link, anexo, publico} |
+| `Designacoes` | território pessoal {id, ids_quadras, publicador, criada, prazo, status, notas} |
+| `Predios` | overlay manual {chave="logradouro\|numero", nome, irmaoMora, nomeIrmao, acessoInterfone (legado), naoEhPredio, notas, ultimaCarta, **tipoEntrada, acessoCaixas, acessoInterfones**} |
+| `PrediosAptos` | overlay per-apto {row→DadosBrutos, cartaEscrita, **cartaEntregue**, desocupado, naoEscrever} |
+| `TerritoriosEspeciais` | TCE que atravessam quadras: {id, nome, tipo, rows (CSV), polyString (convex hull), publicador, prazo, status} |
 
 ## Convenções
 
-### Backend
-- Toda função de write usa `withLock_(function() { ... })` (LockService 20s)
-- Toda função de write chama `_invalidar()` no fim — limpa cache do `CacheService`
+### Backend (`.gs`)
+
+- **Todo write usa `withLock_(function() { ... })`** (LockService 20s)
+- **Todo write chama `_invalidar()` no fim** — limpa cache do `CacheService`
+- **Cache em `CacheService` com TTL 5min** pra reads pesados. Hoje cacheamos:
+  - `DADOS_MAPA_CACHE`
+  - `PREDIOS_LISTA_V1`
+  - `DENSIDADE_PREDIOS_V1`
+  - `ULT_DESFECHO_V1`
+  - `CARTAS_ENTREGUES_V1`
+  - `DADOS_CTX_VER` + `DADOS_CTX_*` (cache versionado de `getDadosComContexto`)
+- **Invalidação versionada** quando chave é dinâmica (ex: cache por idsString):
+  guarda `*_VER` com timestamp; `_invalidar` só atualiza a versão.
 - Acessos a colunas usam `COL.QUADRAS.X` (0-indexed) ou `COL.QUADRAS.X_1IDX`
-  (1-indexed para `getRange()`)
-- Status canônicos: `STATUS.PENDENTE` / `STATUS.CONCLUIDO`
+- Status canônicos: `STATUS.PENDENTE` / `STATUS.CONCLUIDO` / `STATUS.INATIVA`
 - `sanitizar_(valor)` antes de gravar strings vindas do usuário
 - `_sanitizarUrl_(url)` antes de gravar URLs (só http(s)/mailto)
-- `_propagarRenomeacaoIds_(mapa)` cascateia renomeação de quadra em
-  Dados Brutos + Territorios + Designacoes + Registros (chamado dentro
-  do lock)
+- `_propagarRenomeacaoIds_(mapa)` cascateia renomeação de quadra em 5 abas
+- **Datas em Sheets**: nunca gravar `"yyyy-MM-dd"` direto (string vira UTC
+  midnight = dia anterior em -3). Use `_dataLocalMeioDia_(yyyymmdd)` que
+  retorna Date ao MEIO-DIA local. Leitura tolerante: aceita Date OU string.
 
 ### Frontend
-- Prefira `window.toast(msg, tipo)` a `alert()`
-- Confirmação destrutiva: `window.confirmar({titulo,mensagem,perigo:true})`
+
+- **`window.toast(msg, tipo)`** em vez de `alert()` (tipos: success/error/warn/info)
+- **Confirmação destrutiva**: `window.confirmar({titulo,mensagem,perigo:true})`
+  (só no admin; públicos usam `confirm()` ou ações reversíveis)
 - `google.script.run` envolvido com `withSuccessHandler`/`withFailureHandler`
 - Polígonos: formato string `lat,lng | lat,lng | ...`
-- Render de HTML com input do usuário: SEMPRE escapar com `escapeHtml`/`_escHtml`/`escapeHtmlPub`.
-  Pra `href`, usar `safeUrl` (bloqueia `javascript:` etc).
-- Sempre `rel="noopener"` em `<a target="_blank">`
+- **Render com input do usuário: SEMPRE escapar** com `escapeHtml`/`escapeHtmlPub`.
+  `href` dinâmico: `safeUrl`/`safeUrlPub`
+- `rel="noopener"` em `<a target="_blank">`
+- **`aria-label`** em botões só-ícone
+- **Min 44×44 px** em touch targets (HIG mobile)
+- **Defer CDNs**: Bootstrap/Leaflet com `<script defer>`. Sortable/dom-to-image
+  lazy-load via `carregarSortableSeNecessario()` / `carregarDomToImage()`
+- **IDs via template server-side**: `var IDS = "<?= ids ?>";` — NÃO use
+  `google.script.url.getLocation` (postMessage falha silenciosamente no iOS Safari)
+- **Acumular HTML em array e ONE `innerHTML`** no fim — não use `innerHTML +=`
+  dentro de forEach (reparse quadrático)
 
 ## Features principais (state atual)
 
 ### Visão Geral (admin)
 - Mapa com quadras + territórios
 - Botão "Designações" → modal lista designações abertas/vencidas
-- Seleção de quadras → barra "Compartilhar" → modal com:
-  - Card "Território Pessoal" (opcional — nome + prazo)
-  - Link gerado (publico ou dirigente)
-  - Email, WhatsApp, copiar
-  - Cria `Designacao` no backend ao compartilhar se nome preenchido
-- Cadeado 🔒 azul/vermelho no centro de quadras designadas (overlay
-  `lgGeralDesignacoes`); cache `window._quadrasDesignadasCache` evita
-  roundtrip em cliques
-- Alerta antes de selecionar quadra já designada (impede redesignar)
+- Seleção de quadras → barra "Compartilhar" → modal com Território Pessoal
+- Cadeado 🔒 nas designadas; cache `_quadrasDesignadasCache` evita roundtrip
+- Alerta antes de redesignar quadra já designada
 
 ### Polígonos (admin)
 - Vincular faces (endereços) a quadras: selecionar pontos + clicar na quadra
-- Filtros: **Tipo** (Dom/Com) × **Vínculo** (Vinculados/Sem quadra)
-- Botão "Renomear" → modo interativo: clica nas quadras na ordem que
-  devem receber A, B, C (com prefixo do território). Veja
-  `renomearQuadrasDoTerritorio(nome, prefixo, ordemIds?)`
+- Filtros: Tipo (Dom/Com) × Vínculo (Vinculados/Sem quadra)
+- Botão "Renomear" → modo interativo com cascata em 5 abas
+- Botão "TCE" amarelo cria Território Comercial Especial
+- Botão "Auto-vincular" — algoritmo point-in-polygon por cluster IBGE
+- Botão "Auditar" — múltiplos clusters IBGE + quadras vazias + "Ver ignorados"
 
 ### Registro (admin)
 - Mapa com quadras coloridas por gradiente temporal
-- Seleção pra marcar como Concluído (com data)
-- Botão "Desfazer" em quadras concluídas — restaura data anterior
-  (não força Pendente). Veja `desfazerConclusaoQuadra`
-- Mesmo overlay 🔒 do mapa Geral + mesmo alerta antes de selecionar
+- Seleção + data → marcar como Concluído. Veja `salvarConclusaoQuadras`
+- Botão "Desfazer" → `desfazerConclusaoQuadra` (restaura penúltima ou volta pra Pendente)
+- Bug timezone CONSERTADO: `_dataLocalMeioDia_` evita dia errado
 
 ### Campanha (admin)
-- Switch principal **"Campanha ativa"** (`CAMPANHA_ATIVA` em ScriptProperty)
-- Quando OFF, painel público mostra "Sem campanha ativa"
-- Seção **Objetivos** estruturados por modalidade (casa, comercial,
-  rural, cartas, telefone, testemunho público). Cada objetivo tem
-  tipo (geral/semana), título, descrição, link, anexo (upload Drive),
-  switch público. Toggle visível inline na lista admin
-- Botão "Compartilhar" → gera PNG com html2canvas (template oculto
-  `#cardCampanhaTemplate`) + texto pra WhatsApp
+- Switch "Campanha ativa" (`CAMPANHA_ATIVA` em ScriptProperty)
+- Objetivos por modalidade (casa/comercial/rural/cartas/telefone/público)
+- Cada objetivo: tipo (geral/semana), título, descrição, link, anexo Drive, visibilidade
+- Compartilhar PNG via html2canvas + texto WhatsApp
 
-### Prédios — Cartas (admin, 5ª aba)
-- Lista auto-detectada: agrupa Dados Brutos por (logradouro+numero),
-  ≥2 endereços = prédio. Cache 5min em `CacheService`
-- Modal editar: nome, switch "irmão mora" + nome do irmão, radio
-  acesso (individual/portaria/—), switch "não é prédio", notas
-- Filtros: busca + "Só com irmão" + "Mostrar não-prédios"
-- **Botão WhatsApp individual em CADA card** — gera link `?v=cartas&p=CHAVE`
-- Detecção e overlays separados pra não bloquear (Drive público
-  com `ANYONE_WITH_LINK` em uploads)
+### Prédios — Cartas (admin)
+- Lista auto-detectada (Dados Brutos agrupado por logradouro+numero ≥2)
+- Modal editar com 3 campos NOVOS: **tipoEntrada** (porteiro/eletronica/sem),
+  **acessoCaixas**, **acessoInterfones**. Campo legado `acessoInterfone`
+  preservado pra compat mas UI nova não usa.
+- Botão WhatsApp individual em cada card → link `?v=cartas&p=CHAVE`
 
-### Painel publicador (Publico.html)
-- Lista por quadra com endereços ordenados (rota dentro da quadra)
-- Botão "inverter sentido" (sentido horário/anti-horário via atan2 em
-  volta do centroide do polígono); persiste em localStorage `rota_h_QID`
-- 3 botões de desfecho **mutex** por endereço:
-  - 🚪 cinza — não atendeu
-  - 📞 amarelo — atendeu, sem palestra
-  - ✓ verde — conversou
-- ✉ laranja — carta (independente, combina com qualquer desfecho)
-- Indicador de cobertura no topo: "X de Y endereços alcançados"
-  + breakdown (conversas/contatos/não atenderam/cartas). Cores:
-  verde ≥70%, amarelo 30-69%, cinza <30%. **Sem vermelho** — não
-  culpabiliza
-- Badge "antes" pequeno em endereço com registro prévio de outro publicador
-  — memória do território. Some quando essa sessão marca algo
-- Mapa Leaflet em cima, legenda das cores
-- Cache `publico_dados_v3_` com TTL de 24h
+### Painel publicador (Publico.html) — MODO SIMPLES é padrão na 1ª visita
+
+**Modo Simples (hub → quadras → faces → paradas)**:
+- Mapa pequeno no topo com GPS do publicador (ponto azul via `watchPosition`)
+- Cards das quadras designadas, cada um com progresso
+- Click em quadra → cards de **faces** (F1/F2/F3/F4 horário IBGE, coloridos)
+- Click em face → lista de paradas (prédios agrupados + endereços soltos)
+- Botão "Atualizar" + auto-refresh 2min pra ver marcações de outros publicadores
+- Trabalha UMA quadra de cada vez, UMA face de cada vez
+
+**Modo Avançado (lista por quadra)**:
+- Quadras fechadas por default, click no header abre + pinta arestas
+  coloridas por face no mapa topo
+- Endereços agrupados por face dentro de cada quadra
+- Botão "Editar prédio" no header do grupo (via `data-chave-pr`, não regex)
+- Busca + filtros Todos/Pendentes/Feitos (Feito = qualquer desfecho OU carta)
+
+**Comum (ambos modos)**:
+- 3 botões mutex por endereço: 🚪 não atendeu / 📞 sem palestra / ✓ conversou
+- ✉ carta (independente) — entrega marca em Registros E PrediosAptos
+- Indicador de cobertura focado em PRÉDIOS COMPLETOS (não % de endereços)
+- Aviso amarelo "X prédios com aptos pulados" — incentiva cobrir prédio inteiro
+- Badge "antes" com memória do território (último desfecho de outro publicador)
+- Toggle "Texto grande" (canto sup. direito) +25% fontes/botões pra idosos
+- Indicador global de fila + offline (pill canto sup. esquerdo)
+- "Editar prédio" no card (modo simples) — modal com tipoEntrada/caixas/interfones
+- Link "Street View" no card de prédio
+- Offline-first com `syncQueue` em localStorage + retry no `online` event
+- Cache `publico_dados_v3_*` com TTL 24h, envelope `{t, d}`. Em `QuotaExceededError`,
+  limpa caches v3 antigos de outras designações e tenta de novo
 
 ### Link de cartas (Cartas.html)
-- Sem `?p=`: lista todos os prédios (visão geral)
+- Sem `?p=`: lista todos os prédios
 - Com `?p=CHAVE`: foca num prédio, mostra aptos com 4 ações:
-  - 🔵 Escrita (azul)
-  - 🟢 Entregue (verde)
-  - ⚪ Desocupado (cinza)
-  - 🔴 Não escrever (vermelho — borda esquerda no card)
-- Aviso amarelo no topo se prédio é "portaria eletrônica"
-- Badge "antes" também aparece nos aptos
+  - 🔵 Escrita / 🟢 Entregue / ⚪ Desocupado / 🔴 Não escrever
+- Hero do prédio mostra badges: Porteiro/Eletrônica/Sem + Acesso caixas + Acesso interfones
+- Links "Como chegar" + "Street View" no hero
+- **Sync unificado**: marcar entregue aqui também escreve em Registros (publicador vê)
 
-### Dirigente (Dirigente.html)
-- Recebe link `?v=dirigente&ids=...`
-- Lista de quadras designadas + mapa com contexto (vizinhança)
-- Modal "Enviar pro publicador" tem card "Território Pessoal"
-- Exportar cartão de território como PNG (dom-to-image-more — Leaflet
-  com translate3d) com legenda de cores + localidade (Nominatim
-  reverse geocode + fallback "Congregação Aeroclube")
-- Botão "Desfazer" em concluídas
+### Dirigente (Dirigente.html) — MAP-DRIVEN
+- Mapa ocupa tela; sem lista
+- Click numa quadra → bottom sheet com detalhes + alerta ⚠ se tem "não visitar"
+- **Concluir inline** (data + botão), sem segundo modal
+- Quadras concluídas viram vermelhas no mapa
+- Modo Compartilhar: toolbar amarela, click adiciona/remove quadras à seleção
+- **Estacionar perto**: Overpass API (OSM) busca estacionamentos/praças/farmácias/etc.
+  Cada POI no mapa com tooltip "Mais perto de Q-X (~Y m)"
+- GPS do dirigente (botão crosshair)
+- Legenda overlay dinâmica (muda com densidade on/off)
+- Contexto bbox sempre (vizinhança de outros territórios também)
+- Exportar mapa esconde contexto/POIs, zoom apertado nas designadas
 
 ## Funções backend chave (Code.gs)
 
-- `getDadosPublicos(idsString)` — enriquecido com `ultimoTipo`/`ultimoDataStr`
-  por endereço (memória do território, lê aba Registros 1x)
-- `getDadosComContexto(idsString)` — designadas + contexto (outras quadras
-  do mesmo território, ou bbox geográfico se sem território explícito)
-- `salvarConclusaoQuadras(payload)` — write com lock; depois
-  `_fecharDesignacoesCompletas_` que **remove** quadras concluídas das
-  designações abertas (não fecha designação inteira a menos que ela
-  fique vazia)
-- `desfazerConclusaoQuadra(id)` — restaura penúltima conclusão do
-  Registros ou volta pra Pendente. Fallback de sort por linha quando
-  ts é inválido (linhas legadas)
-- `salvarEdicaoQuadra({idOriginal, idNovo, ...})` — atualiza Quadras E
-  propaga em cascata via `_propagarRenomeacaoIds_`. Detecta conflito de ID
+- `getDadosPublicos(idsString)` — payload do publicador. Enriquece com:
+  `ultimoTipo`/`ultimoDataStr` (Registros), `emTCE`, `cartaEntregue` (PrediosAptos),
+  `face` (Col C QUADRA_IBGE — legado) e `faceIBGE` (Col D — face de verdade)
+- `getDadosComContexto(idsString)` — designadas + contexto (territorial + bbox).
+  **Cacheado** por idsString (5min). Invalidação versionada via `DADOS_CTX_VER`.
+- `_ultimoDesfechoPorRow_()` — cacheado 5min em `ULT_DESFECHO_V1`
+- `_mapaCartasEntregues_()` — lê PrediosAptos pra sincronizar carta no publicador
+- `salvarConclusaoQuadras(payload)` — write com lock; usa `_dataLocalMeioDia_`
+  pra Date ao meio-dia local (anti-timezone). Depois `_fecharDesignacoesCompletas_`
+- `desfazerConclusaoQuadra(id)` — restaura penúltima conclusão do Registros
+- `salvarEdicaoQuadra({...})` — atualiza Quadras E propaga via `_propagarRenomeacaoIds_`
 - `criarDesignacao({ids, publicador, prazo, notas})` — valida prazo
-  com `validarData_`, retorna `{ok, id, conflitos[]}`
-- `criarObjetivoCampanha/atualizarObjetivoCampanha/removerObjetivoCampanha`
-  — campanha CRUD. URLs filtradas com `_sanitizarUrl_`
-- `uploadAnexoCampanha({base64, nome, mime})` — Drive com
-  `withLock_` + cache de folderId em ScriptProperty
-- `listarPredios()` — detecção + overlay manual, cache 5min em
-  `CacheService` (chave `PREDIOS_LISTA_V1`)
-- `listarAptosDoPredio(chave)` — enriquecido com status individual +
-  último desfecho. Usado pelo link `?v=cartas&p=`
-- `renomearQuadrasDoTerritorio(nome, prefixo, ordemIds?)` — cascata
-  em 5 abas. Detecta conflitos antes de aplicar
+- `registrarCartaEndereco(row, undo)` — escreve em DUAS abas: Registros (trilha)
+  + PrediosAptos.cartaEntregue. `undo=true` reverte ambos.
+- `atualizarAptoStatus(row, patch)` — quando muda `cartaEntregue`, espelha em
+  Registros (`carta`/`carta_undo`) pra publicador ver
+- `registrarDesfechoEndereco(row, tipo)` — aceita `tipo=''` (undo, grava 'desfeito')
+- `getOverlayPredioPublico(chave)` + `atualizarPredioPublico(chave, patch)` —
+  endpoints públicos com whitelist (publicador edita só tipoEntrada/caixas/interfones)
+- `listarPredios()` — cache `PREDIOS_LISTA_V1` (5min)
+- `listarAptosDoPredio(chave)` — retorna `predio.lat/lng` (primeiro apto com coord)
+- `getDensidadePredios()` — cache `DENSIDADE_PREDIOS_V1` (5min)
+- `renomearQuadrasDoTerritorio(nome, prefixo, ordemIds?)` — cascata em 5 abas
+- `_dataLocalMeioDia_(yyyymmdd)` — Date ao meio-dia local, anti-timezone
 
 ## Rodando os testes
 
@@ -189,153 +210,120 @@ cabeçalho com colunas novas (idempotente, sem perda de dados).
 node tests/run.js
 ```
 
-Sintaxe de TODOS os arquivos `.gs` e `<script>` em `.html` é verificada.
-Refatorações que quebram sintaxe falham aqui ANTES de chegar no Apps Script.
+74 testes em arquivos `tests/*.test.js`. Sintaxe de TODOS os `.gs` e
+`<script>` em `.html` validada. Refatorações que quebram sintaxe falham
+aqui ANTES de chegar no Apps Script.
 
 ## Branch / Deploy
 
-- `main` — branch principal de dev. Contém TUDO (testes, CI, docs, clasp).
-- `apps-script` — espelho automático da `main` SÓ com arquivos do Apps
-  Script. Existe para a extensão gas-github poder pullar sem engasgar.
-  Atualizada por `sync-apps-script.yml`.
-- Deploy automático: workflow `deploy-apps-script.yml` faz `clasp push`
-  toda vez que `.gs`/`.html`/`appsscript.json` mudam em `main`.
-  Token em `secrets.CLASP_CREDENTIALS`. Setup em `docs/clasp-setup.md`.
-- **`clasp push` envia código pra HEAD, NÃO atualiza deployment `/exec`**.
-  Pra URL pública estável: edite o deployment existente em
-  "Deploy → Manage deployments" (mantém URL) em vez de criar "New deployment".
-- URL `/dev` (Test deployments) sempre serve HEAD — boa pra dev.
+- `main` — branch principal. Push em main = `clasp push` automático via
+  `.github/workflows/deploy-apps-script.yml`
+- Token em `secrets.CLASP_CREDENTIALS` (refresh_token), deployment id em
+  `secrets.CLASP_DEPLOYMENT_ID`. Setup em `docs/clasp-setup.md`
+- **`clasp push` envia HEAD ao Apps Script; `/exec` atualizado se o secret
+  CLASP_DEPLOYMENT_ID estiver setado** (workflow faz `clasp deploy --deploymentId $ID`)
+- URL `/dev` (Test deployments) sempre serve HEAD — boa pra dev
+- `apps-script` branch é espelho automático da `main` só com arquivos do
+  Apps Script (mantida por `sync-apps-script.yml`)
 
-Desenvolva em feature branches e merge para `main` quando os testes passarem.
+Desenvolva em feature branches e merge pra `main` quando os testes passarem.
 
-## Limitações
+## Limitações conhecidas
 
-- Apps Script roda em iframe sandboxed: **sem Service Worker real** —
-  PWA install completo não funciona. Meta tags "Add to home screen"
-  funcionam parcialmente no iOS.
-- `MailApp.sendEmail` tem cota diária (~100 emails/dia em conta gratuita).
-- LockService tem timeout de 20s no `withLock_`.
-- `dom-to-image-more` corta elementos fora do viewport (use `html2canvas`
-  com `windowWidth` explícito pra capturar templates >viewport mobile).
-- Cache TTL em `CacheService`: `DADOS_MAPA_CACHE`, `PREDIOS_LISTA_V1`.
-  `_invalidar()` limpa ambos.
+- Apps Script em iframe sandboxed — **sem Service Worker real** (PWA install limitado)
+- `google.script.url.getLocation` (postMessage) **falha silenciosamente em iOS Safari**.
+  Use `<?= var ?>` no template em vez de URL params
+- `MailApp.sendEmail` cota ~100/dia em conta gratuita
+- `LockService` timeout 20s no `withLock_`
+- `CacheService.put` max 100KB por chave
+- `dom-to-image-more` corta elementos fora do viewport (use `html2canvas` com
+  `windowWidth` explícito pra capturar templates >viewport mobile)
 
 ## Hardenings importantes (não regredir)
 
-- **XSS**: campos `link`/`anexoUrl` filtrados no backend
-  (`_sanitizarUrl_`) E no frontend (`safeUrl`/`safeUrlPub`). Render
-  com `escapeHtml` em tudo que vem do usuário (publicador, nomes,
-  título de objetivo, etc).
-- **FileReader.onerror** definido em uploads (modal de objetivos)
-- **Cache do publicador**: TTL de 24h em `publico_dados_v3_` (envelope
-  `{t, d}` em localStorage)
-- **Quadra órfã em designação**: `_fecharDesignacoesCompletas_` trata
-  `statusPorId === undefined` como concluída (não trava designações zumbis)
-- **Race em `_pastaAnexosCampanha_`**: cache do folderId em
-  ScriptProperty + `withLock_` em `uploadAnexoCampanha`
+- **XSS no publicador**: `item.nome`/`complemento`/`nota`/`emTCE.publicador`/
+  `g.titulo` escapados com `escapeHtmlPub`. Não voltar a interpolar raw.
+- **XSS via URL**: `link`/`anexoUrl` filtrados no backend (`_sanitizarUrl_`)
+  E no frontend (`safeUrl`/`safeUrlPub`)
+- **FileReader.onerror** definido em uploads
+- **Cache TTL 24h** no publicador (envelope `{t, d}`)
+- **Quadra órfã em designação**: `_fecharDesignacoesCompletas_` trata `undefined`
+  como concluída
+- **Race `_pastaAnexosCampanha_`**: cache ScriptProperty + `withLock_`
 - **Anti-double-click**: `_togglesEmVoo` em `alternarPublicoObjetivo`
-- **HTML tags**: cuidado com `<small>` fechado com `</div>` (já houve
-  regressão dessa). Validar HTML manualmente nos modais novos.
+- **Sync de undo**: `marcarDesfecho` envia `tipo=''` pro Registros gravar 'desfeito'.
+  `toggleCarta` envia `undo=true` quando desmarca.
 
-## Territórios Comerciais Especiais (TCE) — implementado
+## Anti-padrões observados (NÃO cair)
 
-Aba `TerritoriosEspeciais` agrupa endereços comerciais que atravessam
-fronteiras de quadras. Modelo:
-
-- `id`, `nome`, `tipo` ("comercial"), `rows` (CSV de rows de Dados
-  Brutos), `polyString` (convex hull dos pontos, calculado no front
-  com Turf.js), `publicador`, `prazo`, `status` (`aberto|concluido|
-  cancelado`), `criado`, `dataConc`, `notas`. `STATUS_TCE` em
-  Constants.gs.
-
-Funções (Code.gs):
-- `criarTerritorioComercial(payload)` — withLock_ + valida data
-- `listarTerritoriosComerciais(somenteAbertos?)`
-- `getEnderecosEmTCE()` → mapa `{ row → {tceId, nome, publicador} }`
-  usado pra esmaecer endereços no painel residencial
-- `getDadosTCE(id)` — payload do link `?v=publico&te=ID`
-- `concluirTerritorioComercial` / `cancelarTerritorioComercial`
-
-UI admin (aba Polígonos):
-- Botão "TCE" amarelo na toolbar dispara `iniciarCriacaoTCE`
-- Filtros forçam Com on/Dom off; user clica em pontos COMERCIAIS
-- Marker selecionado fica verde maior; barra amarela mostra contagem
-- Modal pede nome/publicador/prazo/notas; salva com convex hull
-
-Header da Geral:
-- Botão "🏪 TCEs" com badge de qtd aberta
-- Modal lista cards com Compartilhar/Concluir/Cancelar
-
-Painel residencial (Publico.html):
-- Endereço em TCE recebe `.em-tce` (opacity 0.55, fundo amarelo) +
-  bloco `.aviso-tce`: "🏪 Em território comercial (Fulano), mas
-  pregue se tiver uma boa oportunidade."
-
-Link público dedicado (`?v=publico&te=ID`):
-- `carregarTCE()` monta UMA pseudo-quadra com os endereços do TCE
-  pra reusar toda a infra de marcação de desfecho/carta/etc.
-- Mesma persistência localStorage (`desf_ROW`, `carta_ROW`) — row
-  é o mesmo de Dados Brutos
-
-## Decisões de produto / escopo
-
-- **Comercial isolado** (1-3 pontos numa quadra residencial) continua
-  no fluxo normal. É decisão do servo criar TCE — só faz sentido pra
-  blocos concentrados (avenidas comerciais, centros). O app não força.
+- **Regex literal dentro de template literal** (`` `... ${x.replace(/'/g, ...)}` ``)
+  quebra o parser do HtmlService. Use `data-attribute` + `dataset` no onclick.
+- **`innerHTML += html` dentro de forEach** — reparse quadrático. Sempre
+  array.push + `innerHTML = arr.join('')` no fim.
+- **`alert()`** — bloqueante em mobile. Sempre `window.toast()`.
+- **`new Date("yyyy-MM-dd")` direto** — UTC midnight = dia errado em -3.
+  Sempre `_dataLocalMeioDia_`.
+- **`google.script.url.getLocation`** — usar template `<?= ids ?>` server-side.
 
 ## Auto-vinculação de endereços a quadras
 
-Aba Polígonos → botão "Auto-vincular". Backend:
-- `autoVincularEnderecos()` em `Code.gs` — agrupa por (setor + quadraIBGE)
-  que é a UNIDADE INDIVISÍVEL do IBGE. Pra cada cluster:
-  1. Vínculo único existente → propaga pros endereços sem vínculo
-  2. Sem vínculo → algoritmo point-in-polygon (`_pontoNoPoligono_`,
-     ray-casting + bbox short-circuit). ≥60% dos pontos dentro de
-     uma quadra → vincula todos
-  3. Vínculos divergentes → INCONSISTÊNCIA (erro humano). Card vermelho,
-     botão "Unificar a Q-X (maioria)" pra resolver com 1 clique
-- `vincularClusterAQuadra(setor, qibge, quadraId)` sobrescreve
-- `excluirClusterEnderecos(setor, qibge)` deleta cluster inteiro
-  (útil pra ruas que não pertencem ao território)
-- "Ver no mapa" no card destaca pontos em roxo no `mapPoligonos`,
-  fitBounds + link Google Maps
+Aba Polígonos → "Auto-vincular". Backend: `autoVincularEnderecos()`
+- Agrupa por (setor + quadraIBGE) — unidade INDIVISÍVEL do IBGE
+- Vínculo único existente → propaga
+- Sem vínculo → point-in-polygon (`_pontoNoPoligono_`, ray-casting + bbox)
+- ≥60% dos pontos dentro de uma quadra → vincula todos
+- Vínculos divergentes → INCONSISTÊNCIA (card vermelho, "Unificar a Q-X (maioria)")
+- "Ver no mapa" destaca pontos em roxo no `mapPoligonos`
+
+## Faces IBGE em todo o app
+
+- Backend: `getDadosPublicos` retorna `face` (Col C QUADRA_IBGE — legado) e
+  `faceIBGE` (Col D — face de verdade). Frontend usa `faceIBGE` via `_faceKey(it)`.
+- Modo simples: hub mostra mapa com arestas coloridas por face (cada aresta
+  pintada com cor da face cujo centroide é mais próximo do meio da aresta).
+- Modo avançado: endereços agrupados por face dentro de cada quadra; click
+  no header da quadra pinta arestas no mapa topo.
+- Paleta única `FACE_COLORS` em `Publico.html`.
+
+## Auditoria de quadras
+
+Aba Polígonos → "Auditar":
+- Quadras com múltiplos clusters IBGE (erro humano potencial)
+- Quadras vazias (sem endereço vinculado)
+- "Ver no mapa" destaca no `mapPoligonos`
+- "Tá certo, ignorar" persiste em ScriptProperty (`AUDIT_OK_MULTI`/`AUDIT_OK_VAZIA`)
+- "Ver ignorados" mostra os que foram marcados como OK + botão "Reativar"
 
 ## Densidade de prédios
 
-- `getDensidadePredios()` retorna `{ quadraId → qtdPredios }`. Conta
-  agrupamentos por (logradouro+numero) com ≥2 endereços. **Não conta
-  endereços diretos — aptos mascarariam a contagem real**
-- Admin: select "Coloração" tem opção "Densidade de prédios" no mapa Geral
-- Dirigente: toggle "Densidade" no header colore quadras designadas
-  por qtd de prédios (verde claro → vermelho intenso). Header também
-  mostra "X prédio(s)" além de "Y quadra(s)" pro dirigente saber o
-  volume real de trabalho
-- Tooltip da quadra no Dirigente mostra qtd: "Q-8 (3 préd.)"
+- `getDensidadePredios()` retorna `{quadraId → qtdPredios}`. Conta agrupamentos
+  por (logradouro+numero) com ≥2 endereços. **Não conta endereços diretos** —
+  aptos mascaram a contagem real
+- Admin: select "Coloração" tem opção "Densidade de prédios"
+- Dirigente: toggle "Densidade" + header mostra "X prédio(s)"
 
-## Modo Simples (publicador)
+## TCE (Territórios Comerciais Especiais)
 
-Switch flutuante no canto inferior esquerdo do Publico.html alterna
-entre modo "Avançado" (lista clássica) e "Simples" (1 parada por vez).
+Aba `TerritoriosEspeciais`. Funções:
+- `criarTerritorioComercial(payload)` — convex hull via Turf.js no front
+- `listarTerritoriosComerciais(somenteAbertos?)`
+- `getEnderecosEmTCE()` → `{row → {tceId, nome, publicador}}` (esmaece endereços no publicador)
+- `getDadosTCE(id)` — payload do link `?v=publico&te=ID`
+- `concluirTerritorioComercial` / `cancelarTerritorioComercial` / `reabrirTerritorioComercial`
 
-Modo Simples:
-- **Paradas**, não endereços. Endereços com mesmo (logradouro+numero)
-  agrupam como "prédio" — publicador vê 1 cabeçalho + grid de aptos
-  com botões mini. Evita "passar por 30 aptos" no fluxo de lista
-- Cabeçalho com progresso "X de Y paradas feitas"
-- Botão "Inverter sentido" pra publicadores que fazem a rota ao contrário
-- Link "Como chegar" abre Google Maps (lat/lng se houver, senão busca
-  por logradouro+numero)
-- Persistência local: `simples_inverso`, `modo_pub` em localStorage
+## O que NÃO está aqui
+
+- **Testemunho Público (TP)** com carrinhos — virou app separado
+  ([thiagoarce/tp-carrinhos](https://github.com/thiagoarce/tp-carrinhos)).
+  Schema MVP foi removido em `ab9eb3f`; histórico preservado em git.
 
 ## Próximos passos sugeridos (não obrigatórios)
 
-- **Testemunho público** — feature solicitada, ainda não modelada.
-  Provavelmente fluxo separado (postos fixos, períodos, distribuição
-  de revistas/cartões)
-- Extrair JS_App.html em módulos (~3k linhas)
-- Notificação automática por email quando designar
+- `data-obj=JSON.stringify(item)` no avançado infla DOM — fazer lookup-on-demand
+- Aria-labels nos botões dinâmicos que sobraram (sortable handle, etc.)
+- Service Worker pra tiles offline (bloqueado pela iframe do Apps Script —
+  considerar PWA standalone se prioridade)
+- Extrair `JS_App.html` em módulos (~4k linhas)
 - Cleanup automático de aba `Registros` antiga (>12 meses)
-- Relatório/dashboard mostrando qualidade de cobertura por quadra
-  (conversa/contato/não atendeu) usando dados do Pacote F
-- Sincronizar `modo_pub` entre dispositivos do mesmo publicador
-  (hoje é per-device via localStorage)
+- Relatório/dashboard de cobertura por quadra usando Pacote F (conversa/contato/não atendeu)
+- Sincronizar `modo_pub` entre dispositivos do mesmo publicador (hoje localStorage per-device)
