@@ -2899,22 +2899,33 @@ function criarItemHtml(item, isInsideGroup) {
                 if (ehNovo) _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
                 atualizarStatusSync();
 
-                // Substitui rows temporárias pelos rows reais retornados
+                // Substitui rows temporárias pelos rows reais retornados.
+                // Busca por row temporária em TODAS as quadras pra não depender
+                // de match exato do quadraId (string vs number etc).
+                // Também migra desf_<tmp> e carta_<tmp> pra desf_<real>/carta_<real>
+                // pra não perder marcações feitas durante o sync.
                 if (ehNovo && tempRows.length > 0 && r) {
-                  var q = (dadosGerais || []).find(function(x){ return x.id === payload.quadraId; });
-                  if (q && q.itens) {
-                    if (criarPredio && r.primeiraRow) {
-                      // Mapeia 1-pra-1: tempRows[i] → primeiraRow+i
-                      tempRows.forEach(function(tmp, idx){
-                        var it = q.itens.find(function(x){ return x.row === tmp; });
-                        if (it) it.row = r.primeiraRow + idx;
-                      });
-                    } else if (r.row) {
-                      var it = q.itens.find(function(x){ return x.row === tempRows[0]; });
-                      if (it) it.row = r.row;
-                    }
-                    salvarCacheQuadra(q);
-                  }
+                  var quadrasComTemp = new Set();
+                  tempRows.forEach(function(tmp, idx){
+                    var realRow = criarPredio && r.primeiraRow
+                      ? r.primeiraRow + idx
+                      : (r.row || null);
+                    if (realRow == null) return;
+                    (dadosGerais || []).forEach(function(q){
+                      if (!q.itens) return;
+                      var it = q.itens.find(function(x){ return x.row === tmp; });
+                      if (it) { it.row = realRow; quadrasComTemp.add(q); }
+                    });
+                    // Migra metadados locais do row temporário pro real
+                    try {
+                      var d = localStorage.getItem('desf_' + tmp);
+                      if (d) { localStorage.setItem('desf_' + realRow, d); localStorage.removeItem('desf_' + tmp); }
+                      var c = localStorage.getItem('carta_' + tmp);
+                      if (c) { localStorage.setItem('carta_' + realRow, c); localStorage.removeItem('carta_' + tmp); }
+                    } catch(e) {}
+                  });
+                  quadrasComTemp.forEach(salvarCacheQuadra);
+                  _rerenderModoAtivo();
                 }
 
                 if (!ehNovo) {
