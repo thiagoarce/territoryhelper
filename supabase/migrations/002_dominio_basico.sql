@@ -34,15 +34,19 @@ create table quadras (
 create index quadras_territorio_idx on quadras(territorio_id);
 create index quadras_status_idx on quadras(status);
 
--- Endereços (Dados Brutos no app antigo)
+-- Endereços (Dados Brutos no app antigo).
+-- legacy_row preserva o índice de linha da planilha original — usado pra
+-- ligar Registros, PrediosAptos, TCEs durante a migração (essas tabelas
+-- referenciavam "row" do Dados Brutos). Após migração pode ser dropado.
 create table enderecos (
   id bigserial primary key,
+  legacy_row integer unique,
   quadra_id text references quadras(id) on delete set null,
   setor text,
   quadra_ibge text,
   face_ibge text,
-  logradouro text not null,
-  numero text not null,
+  logradouro text not null default '',
+  numero text not null default '',
   complemento text,
   lat double precision,
   lng double precision,
@@ -57,6 +61,7 @@ create table enderecos (
 create index enderecos_quadra_idx on enderecos(quadra_id);
 create index enderecos_predio_idx on enderecos(logradouro, numero);
 create index enderecos_face_idx on enderecos(quadra_id, face_ibge);
+create index enderecos_legacy_row_idx on enderecos(legacy_row);
 
 -- Designações: quem trabalha quais quadras
 create table designacoes (
