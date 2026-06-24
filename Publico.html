@@ -979,6 +979,10 @@
         var temCache = cachedDesignadas.length > 0;
         if (temCache) {
           aplicar({ designadas: cachedDesignadas, contexto: [] });
+          // Prefetch overlays já a partir do cache local — não espera o
+          // fetch fresco do PASSO 2. Se usuário tocar em "Editar prédio"
+          // logo na abertura, modal já abre instantâneo.
+          setTimeout(_prefetchOverlaysPredios, 50);
         }
 
         // PASSO 2: busca tudo do servidor (designadas + contexto) e atualiza
@@ -1572,6 +1576,17 @@
     // Populado por _prefetchOverlaysPredios() após carregarDados().
     // Modal de editar prédio abre instantâneo se chave estiver aqui.
     var _cacheOverlaysPredios = {};
+    var _prefetchEmAndamento = false;
+    var _prefetchPendentes = []; // callbacks aguardando o batch terminar
+
+    // Mesma fórmula do backend (_chavePredio_): trim individual de cada
+    // parte (logradouro e numero), depois junta com pipe. Se errar aqui,
+    // cache fica órfão e modal cai no fetch single (lento).
+    function _chavePredioFE(logradouro, numero) {
+      return String(logradouro || '').trim().toLowerCase()
+           + '|'
+           + String(numero || '').trim().toLowerCase();
+    }
 
     function _popularModalPredio(r, btn) {
       document.getElementById('lblPredioNome').textContent = r.nome || 'Prédio';
@@ -1598,12 +1613,13 @@
     // designadas e busca overlays em batch. Roda em background; modal usa
     // o cache em memória ao abrir.
     function _prefetchOverlaysPredios() {
+      if (_prefetchEmAndamento) return;
       if (!dadosGerais || dadosGerais.length === 0) return;
       var contagem = {};
       dadosGerais.forEach(function(q){
         (q.itens || []).forEach(function(it){
           if (!it.logradouro || !it.numero) return;
-          var chave = (it.logradouro + '|' + it.numero).toLowerCase().trim();
+          var chave = _chavePredioFE(it.logradouro, it.numero);
           contagem[chave] = (contagem[chave] || 0) + 1;
         });
       });
@@ -1611,17 +1627,25 @@
         return contagem[c] >= 2 && !_cacheOverlaysPredios[c];
       });
       if (chaves.length === 0) return;
+      _prefetchEmAndamento = true;
+      function finalizar() {
+        _prefetchEmAndamento = false;
+        var fns = _prefetchPendentes; _prefetchPendentes = [];
+        fns.forEach(function(fn){ try { fn(); } catch(e){} });
+      }
       try {
         google.script.run
           .withSuccessHandler(function(r){
-            if (!r || !r.ok || !r.mapa) return;
-            Object.keys(r.mapa).forEach(function(k){
-              _cacheOverlaysPredios[k] = r.mapa[k];
-            });
+            if (r && r.ok && r.mapa) {
+              Object.keys(r.mapa).forEach(function(k){
+                _cacheOverlaysPredios[k] = r.mapa[k];
+              });
+            }
+            finalizar();
           })
-          .withFailureHandler(function(){ /* silencioso — fallback é fetch on demand */ })
+          .withFailureHandler(function(){ finalizar(); /* fallback é fetch on demand */ })
           .getOverlaysPrediosLote(chaves);
-      } catch(e) {}
+      } catch(e) { finalizar(); }
     }
 
     window.abrirEdicaoPredio = function(chave) {
@@ -1641,7 +1665,30 @@
         return;
       }
 
-      // Caminho lento (cache miss): mantém overlay enquanto fetch corre
+      // Caminho médio: prefetch em voo → modal aguarda ele terminar (em vez
+      // de disparar um fetch single duplicado). Geralmente leva ms — usuário
+      // vê overlay piscar brevemente.
+      if (_prefetchEmAndamento) {
+        var modalP = new bootstrap.Modal(document.getElementById('modalEditarPredio'));
+        if (btn) btn.disabled = true;
+        if (overlay) overlay.classList.remove('d-none');
+        document.getElementById('lblPredioNome').textContent = 'Carregando...';
+        modalP.show();
+        _prefetchPendentes.push(function(){
+          var depois = _cacheOverlaysPredios[chave];
+          if (depois) {
+            if (overlay) overlay.classList.add('d-none');
+            _popularModalPredio(depois, btn);
+          } else {
+            // Prefetch terminou mas chave não veio (ex: <2 aptos, ou prédio
+            // recém-criado nesta sessão). Cai pro fetch single.
+            window.abrirEdicaoPredio(chave);
+          }
+        });
+        return;
+      }
+
+      // Caminho lento (cache miss + sem prefetch em voo): fetch single
       if (btn) btn.disabled = true;
       if (overlay) overlay.classList.remove('d-none');
       document.getElementById('lblPredioNome').textContent = 'Carregando...';
