@@ -2640,34 +2640,72 @@ function criarItemHtml(item, isInsideGroup) {
     });
 
     window.executarExcluirEndereco = function() {
-      var row = document.getElementById('editRow').value;
-      if (!row) return;
+      var rowStr = document.getElementById('editRow').value;
+      if (!rowStr) return;
+      var rowNum = parseInt(rowStr, 10);
+      var qid = document.getElementById('editQuadraId').value;
       var btn = document.getElementById('btnConfirmExcluirEndereco');
       var txt = btn.innerHTML;
+
+      // OPTIMISTIC: remove o item da memória e re-renderiza ANTES da
+      // resposta do servidor — quadra continua visível, só sem o item.
+      // Snapshot do item original pra reverter se o servidor falhar.
+      var quadraRef = (dadosGerais || []).find(function(x){ return x.id === qid; });
+      var idxOriginal = -1, itemOriginal = null;
+      if (quadraRef && quadraRef.itens) {
+        idxOriginal = quadraRef.itens.findIndex(function(it){ return Number(it.row) === rowNum; });
+        if (idxOriginal >= 0) {
+          itemOriginal = quadraRef.itens[idxOriginal];
+          quadraRef.itens.splice(idxOriginal, 1);
+        }
+      }
+      // Atualiza cache POR QUADRA com a versão sem o item (preserva quadra
+      // no localStorage — se usuário recarregar página, quadra continua lá).
+      if (quadraRef) salvarCacheQuadra(quadraRef);
+      _criandoEnderecos++; // reusa o contador pro pill "Sincronizando"
+      atualizarStatusSync();
+      bootstrap.Modal.getInstance(document.getElementById('modalConfirmExcluir')).hide();
+      modalEdicao.hide();
+      renderizarLista();
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Excluindo...';
+
       google.script.run
         .withSuccessHandler(function(r){
           btn.disabled = false; btn.innerHTML = txt;
+          _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
+          atualizarStatusSync();
           if (!r || !r.ok) {
+            // Reverte: recoloca o item na posição original
+            if (quadraRef && itemOriginal && idxOriginal >= 0) {
+              quadraRef.itens.splice(idxOriginal, 0, itemOriginal);
+              salvarCacheQuadra(quadraRef);
+              renderizarLista();
+            }
             window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
             return;
           }
-          bootstrap.Modal.getInstance(document.getElementById('modalConfirmExcluir')).hide();
-          modalEdicao.hide();
+          // Limpa metadados locais do row excluído (desfecho/carta)
+          try { localStorage.removeItem('desf_' + rowNum); } catch(e) {}
+          try { localStorage.removeItem('carta_' + rowNum); } catch(e) {}
           window.toast && window.toast('Endereço excluído', 'success');
-          // Invalida cache POR QUADRA da quadra afetada pra forçar refetch
-          var qid = document.getElementById('editQuadraId').value;
-          if (qid) {
-            try { localStorage.removeItem('publico_quadra_v1_' + qid); } catch(e) {}
-          }
-          carregarDados();
         })
         .withFailureHandler(function(e){
           btn.disabled = false; btn.innerHTML = txt;
-          window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
+          _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
+          atualizarStatusSync();
+          // Reverte na falha
+          if (quadraRef && itemOriginal && idxOriginal >= 0) {
+            quadraRef.itens.splice(idxOriginal, 0, itemOriginal);
+            salvarCacheQuadra(quadraRef);
+            renderizarLista();
+          }
+          var msg = navigator.onLine
+            ? 'Erro ao excluir — tente de novo'
+            : 'Sem conexão — endereço não foi excluído. Conecte a internet e tente de novo.';
+          window.toast && window.toast(msg, 'error', 6000);
         })
-        .excluirEnderecoPublico(parseInt(row, 10));
+        .excluirEnderecoPublico(rowNum);
     };
 
     function toggleFormFields() {
