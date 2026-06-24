@@ -201,7 +201,7 @@ window.mudarAba = function(aba) {
           if (titulo) titulo.innerText = labelHeader;
           modalLinkPublico.show();
         })
-        .withFailureHandler(function(e){ showLoading(false); alert(e); })
+        .withFailureHandler(function(e){ showLoading(false); window.toast && window.toast(e, "error"); })
         .getScriptUrl();
     };
 
@@ -914,7 +914,7 @@ window.carregarEditorDados = function() {
           
           showLoading(true);
           google.script.run.withSuccessHandler(() => { window.toast("Quadra dividida!", "success"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
-      } catch(e) { alert(e); window.carregarEditorDados(); }
+      } catch(e) { window.toast && window.toast(e, "error"); window.carregarEditorDados(); }
   };
 
   window.ativarEdicaoVertices = function() {
@@ -1691,9 +1691,10 @@ window.confirmarAssociacao = function(layerQuadra) {
          showLoading(false);
          configCampanhaGlobal = cfg;
          if (window._modalEditorCampanha) window._modalEditorCampanha.hide();
+         window.toast && window.toast("Campanha atualizada", "success");
          window.carregarDadosCampanha();
       })
-      .withFailureHandler(function(e){ showLoading(false); alert("Erro: " + e); })
+      .withFailureHandler(function(e){ showLoading(false); window.toast && window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000); })
       .salvarConfiguracoesCampanhaCompleta(cfg);
   };
 
@@ -1710,7 +1711,7 @@ window.confirmarAssociacao = function(layerQuadra) {
          if (titulo) titulo.innerText = "Tela pública da Campanha";
          modalLinkPublico.show();
       })
-      .withFailureHandler(function(e){ showLoading(false); alert(e); })
+      .withFailureHandler(function(e){ showLoading(false); window.toast && window.toast(e, "error"); })
       .getScriptUrl();
   };
 
@@ -1761,7 +1762,7 @@ window.confirmarAssociacao = function(layerQuadra) {
       .withFailureHandler(function(erro) {
         window.showLoading(false);
         if (!temCache) {
-          alert("Falha ao carregar dados: " + (erro && erro.message ? erro.message : erro));
+          window.toast && window.toast("Falha ao carregar dados: " + (erro && erro.message ? erro.message : erro), "error");
         }
       })
       .getDadosIniciaisMaster();
@@ -2307,7 +2308,7 @@ window.confirmarAssociacao = function(layerQuadra) {
   window.salvarObjetivoAtual = function() {
     var id = document.getElementById('objInputId').value || null;
     var titulo = document.getElementById('objInputTitulo').value.trim();
-    if (!titulo) { alert('Dá um título pro objetivo.'); return; }
+    if (!titulo) { window.toast && window.toast('Dá um título pro objetivo.', 'warn'); return; }
 
     var dados = {
       tipo: document.querySelector('input[name="objInputTipo"]:checked').value,
@@ -2328,19 +2329,20 @@ window.confirmarAssociacao = function(layerQuadra) {
       fn(function(r){
         if (r && r.ok) {
           bootstrap.Modal.getInstance(document.getElementById('modalObjetivo')).hide();
+          window.toast && window.toast('Objetivo salvo', 'success');
           window.carregarObjetivosCampanha();
         } else {
-          alert('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'));
+          window.toast && window.toast('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'), 'error', 6000);
         }
       });
     }
-    function onErro(e) { alert('Erro: ' + (e && e.message ? e.message : e)); }
+    function onErro(e) { window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), 'error', 6000); }
 
     if (arquivo) {
       // Limite prudente — Apps Script aceita até ~50MB mas o roundtrip
       // base64 fica pesado. 10MB cobre PDFs e planilhas normais.
       if (arquivo.size > 10 * 1024 * 1024) {
-        alert('Arquivo muito grande (máx 10 MB). Use o campo de link.');
+        window.toast && window.toast('Arquivo muito grande (máx 10 MB). Use o campo de link.', 'warn', 6000);
         return;
       }
       var reader = new FileReader();
@@ -2348,7 +2350,7 @@ window.confirmarAssociacao = function(layerQuadra) {
         var base64 = ev.target.result.split(',')[1];
         google.script.run
           .withSuccessHandler(function(r){
-            if (!r || !r.ok) { alert('Erro no upload: ' + (r && r.erro ? r.erro : 'desconhecido')); return; }
+            if (!r || !r.ok) { window.toast && window.toast('Erro no upload: ' + (r && r.erro ? r.erro : 'desconhecido'), "error"); return; }
             dados.anexoNome = r.nome;
             dados.anexoUrl = r.url;
             persistir();
@@ -2357,7 +2359,7 @@ window.confirmarAssociacao = function(layerQuadra) {
           .uploadAnexoCampanha({ base64: base64, nome: arquivo.name, mime: arquivo.type });
       };
       reader.onerror = function(){
-        alert('Não foi possível ler o arquivo selecionado. Tente outro.');
+        window.toast && window.toast('Não foi possível ler o arquivo selecionado. Tente outro.', "error");
       };
       reader.readAsDataURL(arquivo);
     } else {
@@ -2382,13 +2384,13 @@ window.confirmarAssociacao = function(layerQuadra) {
         liberar();
         if (!r || !r.ok) {
           if (idx >= 0) { _objetivos[idx].publico = !novoEstado; renderObjetivos(); }
-          alert('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'));
+          window.toast && window.toast('Erro: ' + (r && r.erro ? r.erro : 'desconhecido'), "error");
         }
       })
       .withFailureHandler(function(e){
         liberar();
         if (idx >= 0) { _objetivos[idx].publico = !novoEstado; renderObjetivos(); }
-        alert('Erro: ' + (e && e.message ? e.message : e));
+        window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), "error");
       })
       .atualizarObjetivoCampanha(id, { publico: novoEstado });
   };
@@ -2404,7 +2406,7 @@ window.confirmarAssociacao = function(layerQuadra) {
           window.carregarObjetivosCampanha();
         }
       })
-      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), "error"); })
       .removerObjetivoCampanha(id);
   };
 
@@ -2466,7 +2468,7 @@ window.confirmarAssociacao = function(layerQuadra) {
         })
         .catch(function(e){
           tpl.style.opacity = '0';
-          alert('Erro: ' + (e && e.message ? e.message : e));
+          window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), "error");
           restaurar();
         });
       })}); // fecha os 2 requestAnimationFrame
@@ -3394,7 +3396,7 @@ window.confirmarAssociacao = function(layerQuadra) {
   window.aplicarRenomearOrdem = function() {
     if (!_renomearTerritorio || !_renomearPrefixo) return;
     if (_renomearOrdem.length !== _renomearTodasDoTerr.length) {
-      alert('Atribua todas as quadras antes de confirmar.');
+      window.toast && window.toast('Atribua todas as quadras antes de confirmar.', "warn");
       return;
     }
     var btn = document.getElementById('btnAplicarRenomear');
@@ -3403,7 +3405,7 @@ window.confirmarAssociacao = function(layerQuadra) {
     google.script.run
       .withSuccessHandler(function(r){
         if (!r || !r.ok) {
-          alert('Erro: ' + (r && r.erro || 'desconhecido'));
+          window.toast && window.toast('Erro: ' + (r && r.erro || 'desconhecido'), "error");
           btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar';
           return;
         }
@@ -3417,7 +3419,7 @@ window.confirmarAssociacao = function(layerQuadra) {
         window.forcarSincronizacao && window.forcarSincronizacao();
       })
       .withFailureHandler(function(e){
-        alert('Erro: ' + (e && e.message || e));
+        window.toast && window.toast('Erro: ' + (e && e.message || e), "error");
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar';
       })
       .renomearQuadrasDoTerritorio(_renomearTerritorio, _renomearPrefixo, _renomearOrdem);
@@ -3672,10 +3674,10 @@ window.confirmarAssociacao = function(layerQuadra) {
         if (navigator.share) {
           navigator.share({ title: p.nome, text: texto }).catch(function(){});
         } else {
-          navigator.clipboard.writeText(texto).then(function(){ alert('Link copiado!'); });
+          navigator.clipboard.writeText(texto).then(function(){ window.toast && window.toast('Link copiado!', "success"); });
         }
       })
-      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), "error"); })
       .getScriptUrl();
   };
 
@@ -3736,13 +3738,25 @@ window.confirmarAssociacao = function(layerQuadra) {
       naoEhPredio: document.getElementById('predioNaoEhPredio').checked,
       notas: document.getElementById('predioNotas').value.trim()
     };
+    // Spinner no botão + toast de sucesso/erro pra feedback claro
+    var btn = document.querySelector('#modalPredio .btn-success');
+    var txt = btn ? btn.innerHTML : null;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...'; }
     google.script.run
       .withSuccessHandler(function(r){
-        if (!r || !r.ok) { alert('Erro: ' + (r && r.erro || '?')); return; }
+        if (btn) { btn.disabled = false; btn.innerHTML = txt; }
+        if (!r || !r.ok) {
+          window.toast && window.toast('Erro ao salvar: ' + (r && r.erro || '?'), 'error');
+          return;
+        }
         bootstrap.Modal.getInstance(document.getElementById('modalPredio')).hide();
+        window.toast && window.toast('Prédio atualizado', 'success');
         window.carregarPredios();
       })
-      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .withFailureHandler(function(e){
+        if (btn) { btn.disabled = false; btn.innerHTML = txt; }
+        window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), 'error');
+      })
       .atualizarPredio(chave, patch);
   };
 
@@ -3756,10 +3770,10 @@ window.confirmarAssociacao = function(layerQuadra) {
           navigator.share({ title: 'Trabalho de Cartas', text: texto })
             .catch(function(){});
         } else {
-          navigator.clipboard.writeText(texto).then(function(){ alert('Link copiado!'); });
+          navigator.clipboard.writeText(texto).then(function(){ window.toast && window.toast('Link copiado!', "success"); });
         }
       })
-      .withFailureHandler(function(e){ alert('Erro: ' + (e && e.message ? e.message : e)); })
+      .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), "error"); })
       .getScriptUrl();
   };
 
