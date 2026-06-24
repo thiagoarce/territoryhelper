@@ -972,6 +972,7 @@
           iniciarMapa();
           atualizarLegenda();
           fecharSheet();
+          window.toast && window.toast('Conclusão desfeita', 'success');
         })
         .withFailureHandler(function(e){
           btns.forEach(function(b){ b.disabled = false; });

@@ -327,6 +327,14 @@
       var apto = dados.find(function(x){ return x.row === row; });
       if (!apto) return;
       var hoje = new Date().toLocaleDateString('pt-BR');
+      // Snapshot pra rollback se servidor falhar (UI otimista mas
+      // reverte se a chamada não der certo)
+      var snapshot = {
+        cartaEscritaStr: apto.cartaEscritaStr,
+        cartaEntregueStr: apto.cartaEntregueStr,
+        desocupado: apto.desocupado,
+        naoEscrever: apto.naoEscrever
+      };
       var patch = {};
       if (acao === 'cartaEscrita') {
         var jaTem = !!apto.cartaEscritaStr;
@@ -345,14 +353,25 @@
       }
       renderAptos();
       btn.disabled = true;
+      function reverter() {
+        apto.cartaEscritaStr = snapshot.cartaEscritaStr;
+        apto.cartaEntregueStr = snapshot.cartaEntregueStr;
+        apto.desocupado = snapshot.desocupado;
+        apto.naoEscrever = snapshot.naoEscrever;
+        renderAptos();
+      }
       google.script.run
         .withSuccessHandler(function(r){
           btn.disabled = false;
-          if (!r || !r.ok) toast('Erro: ' + (r && r.erro || '?'), true);
+          if (!r || !r.ok) {
+            reverter();
+            (window.toast || toast)('Erro: ' + (r && r.erro || '?'), 'error');
+          }
         })
         .withFailureHandler(function(e){
           btn.disabled = false;
-          toast('Erro: ' + (e && e.message ? e.message : e), true);
+          reverter();
+          (window.toast || toast)('Erro: ' + (e && e.message ? e.message : e), 'error');
         })
         .atualizarAptoStatus(row, patch);
     }

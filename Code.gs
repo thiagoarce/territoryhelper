@@ -1007,7 +1007,7 @@ function salvarNovoEnderecoPublico(dados) {
 }
 
 // Helper: monta linha de Dados Brutos a partir do payload do publicador.
-// Sanitiza strings pra evitar formula injection.
+// Sanitiza strings (anti-formula-injection) e valida lat/lng.
 function _montarLinhaEndereco_(dados) {
   var novaLinha = new Array(18).fill("");
   novaLinha[0] = sanitizar_(dados.quadraId);
@@ -1016,12 +1016,16 @@ function _montarLinhaEndereco_(dados) {
   novaLinha[5] = sanitizar_(dados.logradouro);
   novaLinha[6] = sanitizar_(dados.numero);
   novaLinha[8] = sanitizar_(dados.complemento || "");
-  novaLinha[9] = dados.lat;
-  novaLinha[10] = dados.lng;
+  // lat/lng: só grava se for número válido. Senão vai vazio (sem coords no mapa).
+  var lat = parseFloat(dados.lat), lng = parseFloat(dados.lng);
+  novaLinha[9] = (!isNaN(lat) && Math.abs(lat) <= 90) ? lat : "";
+  novaLinha[10] = (!isNaN(lng) && Math.abs(lng) <= 180) ? lng : "";
   novaLinha[11] = sanitizar_(dados.tipo);
   novaLinha[12] = sanitizar_(dados.nome || "");
   novaLinha[13] = sanitizar_(dados.nota || "");
-  novaLinha[14] = dados.naoVisitar === true || dados.naoVisitar === 'true';
+  // naoVisitar SEMPRE como bool nativo do Sheets (evita ambiguidade
+  // string "true"/"false" vs bool em leituras posteriores)
+  novaLinha[14] = (dados.naoVisitar === true || dados.naoVisitar === 'true');
   novaLinha[17] = dados.ordem || "";
   return novaLinha;
 }
@@ -1042,12 +1046,36 @@ function criarPredioEmMassa(payload) {
   if (andares * aptosPorAndar > 500) {
     return { ok: false, erro: 'Limite de 500 aptos por prédio' };
   }
+  // Valida lat/lng (evita gravar NaN/lixo que quebra o mapa depois)
+  var lat = parseFloat(payload.lat), lng = parseFloat(payload.lng);
+  if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return { ok: false, erro: 'coordenadas inválidas' };
+  }
+  payload.lat = lat;
+  payload.lng = lng;
   var prefixo = payload.prefixoComplemento != null ? String(payload.prefixoComplemento) : '';
   // Se já existem aptos nesse mesmo logradouro+número, perguntar?
   // Por simplicidade: cria todos. Frontend deve avisar antes.
   return withLock_(function(){
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
     if (!sheet) return { ok: false, erro: 'Aba Dados Brutos não encontrada' };
+
+    // Idempotência: se já existe um prédio com mesma chave (logradouro+numero)
+    // e mesmo logradouro/numero, retorna duplicado em vez de criar de novo.
+    // Race: 2 chamadas rápidas — withLock_ serializa, então a 2ª vê o que a 1ª criou.
+    var logLower = String(payload.logradouro).trim().toLowerCase();
+    var numLower = String(payload.numero).trim().toLowerCase();
+    if (sheet.getLastRow() >= 2) {
+      var existentes = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+      var jaTem = existentes.some(function(r){
+        return String(r[COL.DADOS.LOGRADOURO] || '').trim().toLowerCase() === logLower &&
+               String(r[COL.DADOS.NUMERO] || '').trim().toLowerCase() === numLower;
+      });
+      if (jaTem) {
+        return { ok: false, erro: 'Já existe endereço com esse logradouro + número. Cancele e adicione aptos individualmente, ou exclua os existentes primeiro.', duplicado: true };
+      }
+    }
+
     var linhas = [];
     for (var andar = 1; andar <= andares; andar++) {
       for (var apto = 1; apto <= aptosPorAndar; apto++) {
