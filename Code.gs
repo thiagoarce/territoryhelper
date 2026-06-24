@@ -2441,6 +2441,31 @@ function getOverlayPredioPublico(chave) {
   var p = lista.find(function(x){ return x.chave === chave; });
   if (!p) return { ok: false, erro: 'Prédio não encontrado' };
   var ov = _mapaOverlaysPredios_()[chave] || {};
+  return _montarOverlayPredio_(chave, p, ov);
+}
+
+// Batch: usado pelo publicador pra pre-carregar overlays de todos os prédios
+// de uma quadra em UMA chamada. Modal abre instantâneo a partir do cache em
+// memória. Aceita até ~100 chaves por chamada — listarPredios + _mapaOverlays_
+// já é cacheado, então custo é desprezível mesmo com várias chaves.
+function getOverlaysPrediosLote(chaves) {
+  if (!Array.isArray(chaves) || chaves.length === 0) {
+    return { ok: true, mapa: {} };
+  }
+  var lista = listarPredios();
+  var listaMap = {};
+  lista.forEach(function(p){ listaMap[p.chave] = p; });
+  var overlays = _mapaOverlaysPredios_();
+  var mapa = {};
+  chaves.forEach(function(chave){
+    var p = listaMap[chave];
+    if (!p) return; // pula prédios desconhecidos silenciosamente
+    mapa[chave] = _montarOverlayPredio_(chave, p, overlays[chave] || {});
+  });
+  return { ok: true, mapa: mapa };
+}
+
+function _montarOverlayPredio_(chave, p, ov) {
   return {
     ok: true,
     chave: chave,

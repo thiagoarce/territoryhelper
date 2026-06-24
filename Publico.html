@@ -991,6 +991,9 @@
                 // Atualiza cache POR QUADRA com os dados frescos
                 data.designadas.forEach(salvarCacheQuadra);
                 aplicar(data);
+                // Prefetch dos overlays de prédios em background — modal
+                // de editar prédio abre instantâneo na próxima vez.
+                setTimeout(_prefetchOverlaysPredios, 100);
             })
             .withFailureHandler(function(e) {
                 if (!temCache) {
@@ -1565,19 +1568,84 @@
     };
 
     // ====== EDIÇÃO DO PRÉDIO (publicador) — modal completo igual ao admin ======
+    // Cache em memória dos overlays de prédios (chave → dados).
+    // Populado por _prefetchOverlaysPredios() após carregarDados().
+    // Modal de editar prédio abre instantâneo se chave estiver aqui.
+    var _cacheOverlaysPredios = {};
+
+    function _popularModalPredio(r, btn) {
+      document.getElementById('lblPredioNome').textContent = r.nome || 'Prédio';
+      document.getElementById('predioEnderecoLbl').textContent =
+        (r.endereco || '') + (r.qtdAptos ? ' · ' + r.qtdAptos + ' apto(s)' : '');
+      document.getElementById('predioNomePub').value = r.nome || '';
+      document.getElementById('predioIrmaoMoraPub').checked = !!r.irmaoMora;
+      document.getElementById('predioNomeIrmaoPub').value = r.nomeIrmao || '';
+      document.getElementById('boxNomeIrmaoPub').classList.toggle('d-none', !r.irmaoMora);
+      document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(rd){
+        rd.checked = (rd.value === (r.tipoEntrada || ''));
+      });
+      document.getElementById('predCaixas').checked = !!r.acessoCaixas;
+      document.getElementById('predInterfones').checked = !!r.acessoInterfones;
+      document.getElementById('predioNaoEhPredioPub').checked = !!r.naoEhPredio;
+      document.getElementById('predioNotasPub').value = r.notas || '';
+      document.getElementById('predioUltimaCartaPub').innerHTML = r.ultimaCartaStr
+        ? '<i class="fa-solid fa-envelope-circle-check text-success me-1"></i>Última carta entregue em <b>' + escapeHtmlPub(r.ultimaCartaStr) + '</b>'
+        : '<i class="fa-regular fa-envelope-open me-1"></i>Nenhuma carta entregue ainda';
+      if (btn) btn.disabled = false;
+    }
+
+    // Coleta chaves de prédios (logradouro|numero com ≥2 aptos) das quadras
+    // designadas e busca overlays em batch. Roda em background; modal usa
+    // o cache em memória ao abrir.
+    function _prefetchOverlaysPredios() {
+      if (!dadosGerais || dadosGerais.length === 0) return;
+      var contagem = {};
+      dadosGerais.forEach(function(q){
+        (q.itens || []).forEach(function(it){
+          if (!it.logradouro || !it.numero) return;
+          var chave = (it.logradouro + '|' + it.numero).toLowerCase().trim();
+          contagem[chave] = (contagem[chave] || 0) + 1;
+        });
+      });
+      var chaves = Object.keys(contagem).filter(function(c){
+        return contagem[c] >= 2 && !_cacheOverlaysPredios[c];
+      });
+      if (chaves.length === 0) return;
+      try {
+        google.script.run
+          .withSuccessHandler(function(r){
+            if (!r || !r.ok || !r.mapa) return;
+            Object.keys(r.mapa).forEach(function(k){
+              _cacheOverlaysPredios[k] = r.mapa[k];
+            });
+          })
+          .withFailureHandler(function(){ /* silencioso — fallback é fetch on demand */ })
+          .getOverlaysPrediosLote(chaves);
+      } catch(e) {}
+    }
+
     window.abrirEdicaoPredio = function(chave) {
       if (!chave) return;
       var btn = document.getElementById('btnSalvarPredio');
       var overlay = document.getElementById('predioLoadingOverlay');
-      // Bloqueia a interação enquanto carrega: mostra overlay com spinner
-      // sobre o form (em vez de form vazio editável que o usuário começava
-      // a preencher antes do servidor responder)
+      var cached = _cacheOverlaysPredios[chave];
+
+      document.getElementById('predioChaveEdicao').value = chave;
+
+      // Caminho rápido: temos no cache → modal abre populado e habilitado.
+      if (cached) {
+        if (overlay) overlay.classList.add('d-none');
+        _popularModalPredio(cached, btn);
+        var modalC = new bootstrap.Modal(document.getElementById('modalEditarPredio'));
+        modalC.show();
+        return;
+      }
+
+      // Caminho lento (cache miss): mantém overlay enquanto fetch corre
       if (btn) btn.disabled = true;
       if (overlay) overlay.classList.remove('d-none');
-      document.getElementById('predioChaveEdicao').value = chave;
       document.getElementById('lblPredioNome').textContent = 'Carregando...';
       document.getElementById('predioEnderecoLbl').textContent = '';
-      // Reseta UI antes de pintar com dados do servidor
       document.getElementById('predioNomePub').value = '';
       document.getElementById('predioIrmaoMoraPub').checked = false;
       document.getElementById('predioNomeIrmaoPub').value = '';
@@ -1600,24 +1668,8 @@
             modal.hide();
             return;
           }
-          document.getElementById('lblPredioNome').textContent = r.nome || 'Prédio';
-          document.getElementById('predioEnderecoLbl').textContent =
-            (r.endereco || '') + (r.qtdAptos ? ' · ' + r.qtdAptos + ' apto(s)' : '');
-          document.getElementById('predioNomePub').value = r.nome || '';
-          document.getElementById('predioIrmaoMoraPub').checked = !!r.irmaoMora;
-          document.getElementById('predioNomeIrmaoPub').value = r.nomeIrmao || '';
-          document.getElementById('boxNomeIrmaoPub').classList.toggle('d-none', !r.irmaoMora);
-          document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(rd){
-            rd.checked = (rd.value === (r.tipoEntrada || ''));
-          });
-          document.getElementById('predCaixas').checked = !!r.acessoCaixas;
-          document.getElementById('predInterfones').checked = !!r.acessoInterfones;
-          document.getElementById('predioNaoEhPredioPub').checked = !!r.naoEhPredio;
-          document.getElementById('predioNotasPub').value = r.notas || '';
-          document.getElementById('predioUltimaCartaPub').innerHTML = r.ultimaCartaStr
-            ? '<i class="fa-solid fa-envelope-circle-check text-success me-1"></i>Última carta entregue em <b>' + escapeHtmlPub(r.ultimaCartaStr) + '</b>'
-            : '<i class="fa-regular fa-envelope-open me-1"></i>Nenhuma carta entregue ainda';
-          if (btn) btn.disabled = false;
+          _cacheOverlaysPredios[chave] = r; // popula cache pra próxima abertura
+          _popularModalPredio(r, btn);
         })
         .withFailureHandler(function(e){
           if (overlay) overlay.classList.add('d-none');
@@ -1660,6 +1712,12 @@
           }
           bootstrap.Modal.getInstance(document.getElementById('modalEditarPredio')).hide();
           window.toast && window.toast('Prédio atualizado', 'success');
+          // Atualiza cache em memória com o patch recém-salvo, pra
+          // próxima abertura abrir instantâneo já com os novos valores.
+          var atual = _cacheOverlaysPredios[chave];
+          if (atual) {
+            Object.keys(patch).forEach(function(k){ atual[k] = patch[k]; });
+          }
         })
         .withFailureHandler(function(e){
           if (btn) { btn.disabled = false; btn.innerHTML = txt; }
