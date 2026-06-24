@@ -636,6 +636,31 @@
              </label>
           </div>
 
+          <!-- Bloco "Criar prédio inteiro" — só aparece quando NOVO endereço
+               + tipo Apartamento. Cria N andares × M aptos por andar em massa
+               com complementos 101, 102, 201, etc. -->
+          <div class="d-none mb-3 p-3 border border-primary rounded" id="divCriarPredio" style="background:#f0f7ff">
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" id="checkCriarPredio">
+              <label class="form-check-label fw-bold text-primary" for="checkCriarPredio">
+                <i class="fa-solid fa-building me-1"></i> Criar prédio inteiro de uma vez
+              </label>
+            </div>
+            <div id="boxAptosMassa" class="d-none">
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label small">Nº de andares</label>
+                  <input type="number" class="form-control form-control-sm" id="inputAndares" min="1" max="50" value="4">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small">Aptos por andar</label>
+                  <input type="number" class="form-control form-control-sm" id="inputAptosPorAndar" min="1" max="20" value="4">
+                </div>
+              </div>
+              <div class="small text-muted" id="previewAptos">Vai criar 16 apartamentos (101 até 404).</div>
+            </div>
+          </div>
+
           <hr>
           <p class="small text-muted mb-2">Endereço Físico</p>
           <div class="row g-2">
@@ -750,6 +775,9 @@
     // Especial. Se presente, o publicador vê SÓ os endereços do TCE
     // em vez da estrutura por quadra.
     var TE_ID = "<?= te ?>";
+    // IDs via template server-side (não google.script.url.getLocation que
+    // falha silenciosamente em iOS Safari por postMessage de origem errada)
+    var IDS_PUB = "<?= ids ?>";
 
     // Lógica de Cores e Ícones
     function getVisualPorTipo(tipo) {
@@ -794,72 +822,107 @@
        });
     };
 
+    // Cache POR QUADRA — chave: publico_quadra_v1_<ID>. TTL 48h.
+    // Vantagem vs cache por designação inteira:
+    //   - Cada quadra que o publicador já viu fica salva pra sempre
+    //   - Próximo link com IDs DIFERENTES reusa as quadras já vistas
+    //   - 1ª carga visualmente instantânea pras quadras já cacheadas
+    var TTL_QUADRA_MS = 48 * 60 * 60 * 1000;
+    function _keyQuadra(id) { return 'publico_quadra_v1_' + id; }
+    function lerCacheQuadra(id) {
+      try {
+        var raw = localStorage.getItem(_keyQuadra(id));
+        if (!raw) return null;
+        var env = JSON.parse(raw);
+        if (env && env.t && env.d && (Date.now() - env.t) < TTL_QUADRA_MS) return env.d;
+      } catch(e) {}
+      return null;
+    }
+    function salvarCacheQuadra(quadra) {
+      if (!quadra || !quadra.id) return;
+      var env = { t: Date.now(), d: quadra };
+      try { localStorage.setItem(_keyQuadra(quadra.id), JSON.stringify(env)); return; }
+      catch(e) {
+        // Quota cheia: limpa quadras cacheadas mais antigas e tenta de novo
+        _limparQuadrasAntigas();
+        try { localStorage.setItem(_keyQuadra(quadra.id), JSON.stringify(env)); }
+        catch(e2) { /* desisto silenciosamente */ }
+      }
+    }
+    function _limparQuadrasAntigas() {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('publico_quadra_v1_') === 0) {
+          try {
+            var env = JSON.parse(localStorage.getItem(k));
+            keys.push({ k: k, t: env && env.t || 0 });
+          } catch(e) {}
+        }
+      }
+      keys.sort(function(a, b){ return a.t - b.t; });
+      // Remove a metade mais antiga
+      var rem = Math.floor(keys.length / 2);
+      for (var j = 0; j < rem; j++) {
+        try { localStorage.removeItem(keys[j].k); } catch(e) {}
+      }
+    }
+
     function carregarDados() {
         // Caso TCE: usa fluxo separado (lista de endereços, sem quadras)
         if (TE_ID) { carregarTCE(); return; }
 
-        google.script.url.getLocation(function(location) {
-             var ids = location.parameter.ids;
-             if(!ids) { window.toast && window.toast("Link inválido (sem IDs).", "warn"); return; }
+        var ids = IDS_PUB;
+        if (!ids) { window.toast && window.toast("Link inválido (sem IDs).", "warn"); return; }
+        var idsArr = ids.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
 
-             // v3: cache com TTL — payload+timestamp serializados juntos.
-             // Cache válido por 24h; depois exige nova busca pra evitar
-             // que o publicador veja designação obsoleta indefinidamente
-             // se o backend estiver fora do ar.
-             var TTL_MS = 24 * 60 * 60 * 1000;
-             var cacheKey = 'publico_dados_v3_' + ids;
-             var cachedPayload = null;
-             var cachedStr = '';
-             try {
-               var raw = localStorage.getItem(cacheKey);
-               if (raw) {
-                 var env = JSON.parse(raw);
-                 if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
-                   cachedPayload = env.d;
-                   cachedStr = JSON.stringify(env.d);
-                 }
-               }
-             } catch(e) {}
+        function aplicar(payload) {
+          dadosGerais = payload.designadas || [];
+          contextoPolys = payload.contexto || [];
+          // Sincroniza estado de carta vindo do servidor com localStorage.
+          dadosGerais.forEach(function(q){
+            (q.itens || []).forEach(function(it){
+              if (it.cartaEntregue && localStorage.getItem('carta_' + it.row) !== 'true') {
+                try { localStorage.setItem('carta_' + it.row, 'true'); } catch(e) {}
+              }
+            });
+          });
+          mostrarApp();
+        }
 
-             function aplicar(payload) {
-               dadosGerais = payload.designadas || [];
-               contextoPolys = payload.contexto || [];
-               // Sincroniza estado de carta vindo do servidor com localStorage.
-               // Se o arranjo de cartas marcou apto X como entregue, o
-               // publicador vê ✉ ligado mesmo sem ter clicado.
-               dadosGerais.forEach(function(q){
-                 (q.itens || []).forEach(function(it){
-                   if (it.cartaEntregue && localStorage.getItem('carta_' + it.row) !== 'true') {
-                     try { localStorage.setItem('carta_' + it.row, 'true'); } catch(e) {}
-                   }
-                 });
-               });
-               mostrarApp();
-             }
-
-             // Stale-while-revalidate: mostra cache (se válido) e busca frescos
-             if (cachedPayload) aplicar(cachedPayload);
-
-             google.script.run
-                .withSuccessHandler(function(data) {
-                    if(!data || !data.designadas || data.designadas.length === 0) {
-                      if (!cachedPayload) window.toast && window.toast("Nenhum dado encontrado.", "warn");
-                      return;
-                    }
-                    var novoStr = JSON.stringify(data);
-                    // Renova o timestamp do cache mesmo se conteúdo não mudou.
-                    // Em QuotaExceededError: limpa caches v3 antigos e tenta de novo.
-                    salvarCachePublico(cacheKey, { t: Date.now(), d: data });
-                    if (novoStr !== cachedStr) aplicar(data);
-                })
-                .withFailureHandler(function(e) {
-                    if (!cachedPayload) {
-                      document.getElementById('loader').innerHTML =
-                        '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
-                    }
-                })
-                .getDadosComContexto(ids);
+        // PASSO 1: monta dadosGerais imediato com cache por quadra (se houver)
+        var cachedDesignadas = [];
+        idsArr.forEach(function(id){
+          var c = lerCacheQuadra(id);
+          if (c) cachedDesignadas.push(c);
         });
+        var temCache = cachedDesignadas.length > 0;
+        if (temCache) {
+          aplicar({ designadas: cachedDesignadas, contexto: [] });
+        }
+
+        // PASSO 2: busca tudo do servidor (designadas + contexto) e atualiza
+        google.script.run
+            .withSuccessHandler(function(data) {
+                if (!data || !data.designadas || data.designadas.length === 0) {
+                  if (!temCache) window.toast && window.toast("Nenhum dado encontrado.", "warn");
+                  return;
+                }
+                // Atualiza cache POR QUADRA com os dados frescos
+                data.designadas.forEach(salvarCacheQuadra);
+                aplicar(data);
+            })
+            .withFailureHandler(function(e) {
+                if (!temCache) {
+                  document.getElementById('loader').innerHTML =
+                    '<div class="text-danger px-3 text-center">' +
+                      '<i class="fa-solid fa-circle-xmark fa-2x mb-3"></i>' +
+                      '<div>Sem conexão e sem dados salvos.</div>' +
+                      '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Tentar de novo</button>' +
+                    '</div>';
+                }
+            })
+            .getDadosComContexto(ids);
     }
 
     // Modo TCE: trata endereços como uma "pseudo-quadra" pra reusar
@@ -1050,6 +1113,17 @@
       });
     }
 
+    // Ordena aptos dentro de um prédio por complemento alfanumérico
+    // crescente: 101, 102, 201, 202... ou "Apto 1", "Apto 2"...
+    function _ordenarAptos(aptos) {
+      return aptos.slice().sort(function(a, b){
+        return String(a.complemento || '').localeCompare(
+          String(b.complemento || ''),
+          'pt-BR', { numeric: true, sensitivity: 'base' }
+        );
+      });
+    }
+
     function _paradasDeFace(q, face) {
       var itens = (q.itens || []).filter(function(it){
         if (it.naoVisitar) return false;
@@ -1068,7 +1142,7 @@
         var g = grupos[k];
         return g.aptos.length === 1
           ? { tipo:'item', item: g.aptos[0] }
-          : { tipo:'predio', logradouro: g.logradouro, numero: g.numero, aptos: g.aptos };
+          : { tipo:'predio', logradouro: g.logradouro, numero: g.numero, aptos: _ordenarAptos(g.aptos) };
       });
     }
 
@@ -1504,21 +1578,17 @@
           .getDadosTCE(TE_ID);
         return;
       }
-      google.script.url.getLocation(function(location){
-        var ids = location.parameter.ids;
-        if (!ids) { finalizar(); return; }
-        google.script.run
-          .withSuccessHandler(function(data){
-            if (data && data.designadas) {
-              try {
-                localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
-              } catch(e) {}
-              aplicar(data.designadas, data.contexto || []);
-            } else { finalizar(); }
-          })
-          .withFailureHandler(finalizar)
-          .getDadosComContexto(ids);
-      });
+      var ids = IDS_PUB;
+      if (!ids) { finalizar(); return; }
+      google.script.run
+        .withSuccessHandler(function(data){
+          if (data && data.designadas) {
+            data.designadas.forEach(salvarCacheQuadra);
+            aplicar(data.designadas, data.contexto || []);
+          } else { finalizar(); }
+        })
+        .withFailureHandler(finalizar)
+        .getDadosComContexto(ids);
     };
 
     function _atualizarBrisaSync() {
@@ -1915,7 +1985,14 @@ function renderizarLista() {
                 
                 // Cria grupo se tiver mais de 1 item OU se tiver nome definido (para ficar bonito)
                 if(lista.length > 1 || primeiro.nome) {
-                    resultado.push({ tipo: 'grupo', id: key, titulo: titulo, itens: lista });
+                    // Ordena aptos por complemento alfanumérico (101 antes de 102)
+                    var itensOrdenados = lista.slice().sort(function(a,b){
+                      return String(a.complemento || '').localeCompare(
+                        String(b.complemento || ''),
+                        'pt-BR', { numeric: true, sensitivity: 'base' }
+                      );
+                    });
+                    resultado.push({ tipo: 'grupo', id: key, titulo: titulo, itens: itensOrdenados });
                 } else {
                     resultado.push({ tipo: 'unico', item: primeiro });
                 }
@@ -2304,11 +2381,45 @@ function criarItemHtml(item, isInsideGroup) {
         // Apto ou Alojamento permite edição em massa
         var isApt = tipo.includes('apartamento') || tipo.includes('coletivo') || tipo.includes('vila');
         var divMassa = document.getElementById('divCheckMassa');
-        
+
         if(divMassa) {
             divMassa.classList.toggle('d-none', !isApt);
             document.getElementById('checkAplicarMassa').checked = false;
         }
+
+        // "Criar prédio inteiro" só faz sentido em endereço NOVO + tipo Apartamento
+        var rowVazio = !document.getElementById('editRow').value;
+        var divCriar = document.getElementById('divCriarPredio');
+        if (divCriar) {
+            divCriar.classList.toggle('d-none', !(rowVazio && isApt));
+            var ck = document.getElementById('checkCriarPredio');
+            if (ck) ck.checked = false;
+            var box = document.getElementById('boxAptosMassa');
+            if (box) box.classList.add('d-none');
+        }
+    }
+
+    // Wire-up: liga/desliga box de andares/aptos e atualiza preview
+    document.addEventListener('change', function(ev){
+      if (ev.target && ev.target.id === 'checkCriarPredio') {
+        document.getElementById('boxAptosMassa').classList.toggle('d-none', !ev.target.checked);
+        _atualizarPreviewPredio();
+      }
+    });
+    document.addEventListener('input', function(ev){
+      if (ev.target && (ev.target.id === 'inputAndares' || ev.target.id === 'inputAptosPorAndar')) {
+        _atualizarPreviewPredio();
+      }
+    });
+    function _atualizarPreviewPredio() {
+      var a = parseInt(document.getElementById('inputAndares').value, 10) || 0;
+      var p = parseInt(document.getElementById('inputAptosPorAndar').value, 10) || 0;
+      var total = a * p;
+      var ultimo = a > 0 && p > 0 ? (a * 100 + p) : 0;
+      var el = document.getElementById('previewAptos');
+      if (el) el.textContent = total > 0
+        ? 'Vai criar ' + total + ' apartamentos (101 até ' + ultimo + ').'
+        : 'Preencha andares e aptos por andar.';
     }
 
     function salvarFormulario() {
@@ -2341,16 +2452,51 @@ function criarItemHtml(item, isInsideGroup) {
         btn.innerText = "Salvando...";
         btn.disabled = true;
 
+        // Verifica se o usuário pediu "criar prédio inteiro"
+        var criarPredio = !row &&
+                          document.getElementById('checkCriarPredio') &&
+                          document.getElementById('checkCriarPredio').checked;
+
         var runner = google.script.run
-            .withSuccessHandler(() => {
+            .withSuccessHandler(function(r){
                 modalEdicao.hide();
                 btn.innerText = txtOriginal; btn.disabled = false;
+                if (criarPredio && r && r.qtdCriada) {
+                    window.toast && window.toast(
+                        'Prédio criado: ' + r.qtdCriada + ' aptos', 'success', 4000);
+                } else if (!row) {
+                    window.toast && window.toast('Endereço adicionado', 'success');
+                } else {
+                    window.toast && window.toast('Salvo', 'success');
+                }
                 carregarDados();
             })
-            .withFailureHandler(e => { window.toast && window.toast("Erro: " + e, "error"); btn.innerText = txtOriginal; btn.disabled = false; });
+            .withFailureHandler(function(e){
+                window.toast && window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000);
+                btn.innerText = txtOriginal; btn.disabled = false;
+            });
 
         // Decide qual função chamar
-        if(!row) {
+        if (criarPredio) {
+            var andares = parseInt(document.getElementById('inputAndares').value, 10) || 0;
+            var aptosPorAndar = parseInt(document.getElementById('inputAptosPorAndar').value, 10) || 0;
+            if (andares < 1 || aptosPorAndar < 1) {
+                window.toast && window.toast('Preencha andares e aptos por andar', 'warn');
+                btn.innerText = txtOriginal; btn.disabled = false;
+                return;
+            }
+            runner.criarPredioEmMassa({
+                quadraId: payload.quadraId,
+                face: payload.face,
+                logradouro: payload.logradouro,
+                numero: payload.numero,
+                lat: payload.lat,
+                lng: payload.lng,
+                nome: payload.nome,
+                andares: andares,
+                aptosPorAndar: aptosPorAndar
+            });
+        } else if(!row) {
             runner.salvarNovoEnderecoPublico(payload);
         } else if(aplicarMassa) {
             runner.salvarNotaEmMassa(payload);
