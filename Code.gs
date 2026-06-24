@@ -1006,13 +1006,42 @@ function salvarNovoEnderecoPublico(dados) {
   });
 }
 
+// Exclusão DEFINITIVA de endereço (linha de Dados Brutos). Irreversível.
+// Frontend deve confirmar com aviso grande antes. Também limpa eventuais
+// linhas relacionadas em PrediosAptos pra não deixar overlay órfão.
+function excluirEnderecoPublico(row) {
+  var rowNum = parseInt(row, 10);
+  if (!rowNum || rowNum < 2) return { ok: false, erro: 'row inválida' };
+  return withLock_(function(){
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetD = ss.getSheetByName("Dados Brutos");
+    if (!sheetD) return { ok: false, erro: 'Aba Dados Brutos não encontrada' };
+    if (rowNum > sheetD.getLastRow()) return { ok: false, erro: 'row fora do range' };
+    // Captura o endereço pra mostrar no log/retorno
+    var rng = sheetD.getRange(rowNum, 1, 1, sheetD.getLastColumn()).getValues()[0];
+    var endereco = String(rng[COL.DADOS.LOGRADOURO] || '') + ', ' +
+                   String(rng[COL.DADOS.NUMERO] || '') + ' ' +
+                   String(rng[COL.DADOS.COMPLEMENTO] || '');
+    sheetD.deleteRow(rowNum);
+    // Remove overlay correspondente em PrediosAptos (se houver)
+    try {
+      var sh = ensureSheetPrediosAptos_();
+      var linhaApto = _acharLinhaAptoPorRow_(sh, rowNum);
+      if (linhaApto > 0) sh.deleteRow(linhaApto);
+    } catch(e) {}
+    _invalidar();
+    return { ok: true, endereco: endereco };
+  });
+}
+
 // Helper: monta linha de Dados Brutos a partir do payload do publicador.
 // Sanitiza strings (anti-formula-injection) e valida lat/lng.
 function _montarLinhaEndereco_(dados) {
   var novaLinha = new Array(18).fill("");
   novaLinha[0] = sanitizar_(dados.quadraId);
   novaLinha[1] = sanitizar_(dados.setor || "");
-  novaLinha[2] = sanitizar_(dados.face || "");
+  novaLinha[2] = sanitizar_(dados.face || "");       // Col C — QUADRA_IBGE (legado)
+  novaLinha[3] = sanitizar_(dados.faceIBGE || "");   // Col D — FACE_IBGE (face de verdade)
   novaLinha[5] = sanitizar_(dados.logradouro);
   novaLinha[6] = sanitizar_(dados.numero);
   novaLinha[8] = sanitizar_(dados.complemento || "");
@@ -1053,7 +1082,11 @@ function criarPredioEmMassa(payload) {
   }
   payload.lat = lat;
   payload.lng = lng;
-  var prefixo = payload.prefixoComplemento != null ? String(payload.prefixoComplemento) : '';
+  // Padrão da congregação: "APARTAMENTO 101", "APARTAMENTO 102"...
+  // Usuário pode passar prefixoComplemento='' pra obter só "101", "102"...
+  var prefixo = payload.prefixoComplemento != null
+    ? String(payload.prefixoComplemento)
+    : 'APARTAMENTO ';
   // Se já existem aptos nesse mesmo logradouro+número, perguntar?
   // Por simplicidade: cria todos. Frontend deve avisar antes.
   return withLock_(function(){
@@ -1086,6 +1119,7 @@ function criarPredioEmMassa(payload) {
         linhas.push(_montarLinhaEndereco_({
           quadraId: payload.quadraId,
           face: payload.face,
+          faceIBGE: payload.faceIBGE,
           logradouro: payload.logradouro,
           numero: payload.numero,
           complemento: compl,
@@ -2405,21 +2439,31 @@ function getOverlayPredioPublico(chave) {
     ok: true,
     chave: chave,
     nome: p.nome || '',
+    endereco: (p.logradouro || '') + ', ' + (p.numero || ''),
+    qtdAptos: p.qtdEnderecos || 0,
     tipoEntrada: ov.tipoEntrada || '',
     acessoCaixas: !!ov.acessoCaixas,
-    acessoInterfones: !!ov.acessoInterfones
+    acessoInterfones: !!ov.acessoInterfones,
+    irmaoMora: !!ov.irmaoMora,
+    nomeIrmao: ov.nomeIrmao || '',
+    naoEhPredio: !!ov.naoEhPredio,
+    notas: ov.notas || '',
+    ultimaCartaStr: p.ultimaCartaStr || ''
   };
 }
 
-// Endpoint público pro publicador editar metadados do prédio (interfone,
-// portaria, caixa de correio). Só aceita campos seguros — não expõe
-// notas, irmaoMora ou outros campos administrativos.
+// Endpoint público pro publicador editar metadados do prédio. Agora aceita
+// os mesmos campos que o admin (não é prédio, irmão mora, notas, nome do
+// edifício) — o publicador tem o contexto e pode atualizar tudo.
 function atualizarPredioPublico(chave, patch) {
   if (!chave) return { ok: false, erro: 'chave obrigatória' };
   var lista = listarPredios();
   var existe = lista.some(function(p){ return p.chave === chave; });
   if (!existe) return { ok: false, erro: 'Prédio não encontrado' };
-  var permitidos = ['tipoEntrada', 'acessoCaixas', 'acessoInterfones'];
+  var permitidos = [
+    'tipoEntrada', 'acessoCaixas', 'acessoInterfones',
+    'nome', 'irmaoMora', 'nomeIrmao', 'naoEhPredio', 'notas'
+  ];
   var seguro = {};
   permitidos.forEach(function(k){ if (k in (patch || {})) seguro[k] = patch[k]; });
   return atualizarPredio(chave, seguro);

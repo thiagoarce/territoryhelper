@@ -592,6 +592,7 @@
           <input type="hidden" id="editRow">
           <input type="hidden" id="editQuadraId">
           <input type="hidden" id="editFace">
+          <input type="hidden" id="editFaceIBGE">
           <input type="hidden" id="editLat">
           <input type="hidden" id="editLng">
           <input type="hidden" id="editOrdem">
@@ -675,47 +676,126 @@
             </div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-primary w-100" onclick="salvarFormulario()">Salvar Alterações</button>
+        <div class="modal-footer d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-danger d-none" id="btnExcluirEndereco" onclick="abrirConfirmacaoExcluir()" title="Excluir endereço">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+          <button type="button" class="btn btn-primary flex-grow-1 ms-2" onclick="salvarFormulario()">Salvar Alterações</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Editar prédio (publicador edita acesso/portaria/caixas) -->
+  <!-- Modal de confirmação grande de EXCLUSÃO — destrutivo + irreversível -->
+  <div class="modal fade" id="modalConfirmExcluir" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-danger" style="border-width:3px">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-triangle-exclamation me-2"></i>Excluir endereço?</h5>
+        </div>
+        <div class="modal-body">
+          <div class="text-center mb-3">
+            <i class="fa-solid fa-trash text-danger" style="font-size:3rem"></i>
+          </div>
+          <p class="fs-5 text-center mb-3">
+            Tem certeza que quer apagar este endereço <b>permanentemente</b>?
+          </p>
+          <div class="alert alert-danger small mb-3">
+            <b><i class="fa-solid fa-circle-exclamation me-1"></i>Esta ação NÃO pode ser desfeita.</b>
+            O endereço sai da planilha pra sempre. Marcações, cartas, histórico — tudo é perdido.
+          </div>
+          <div class="bg-light p-3 rounded mb-2" id="confirmExcluirInfo"></div>
+          <div class="form-check mt-3">
+            <input type="checkbox" class="form-check-input" id="confirmExcluirCheck">
+            <label class="form-check-label small" for="confirmExcluirCheck">
+              Entendo que esta ação é permanente.
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-danger" id="btnConfirmExcluirEndereco" onclick="executarExcluirEndereco()" disabled>
+            <i class="fa-solid fa-trash me-1"></i>Excluir permanentemente
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Editar prédio (versão completa equivalente ao admin) -->
   <div class="modal fade" id="modalEditarPredio" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
-        <div class="modal-header">
+        <div class="modal-header bg-success text-white">
           <h5 class="modal-title"><i class="fa-solid fa-building me-2"></i><span id="lblPredioNome">Prédio</span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-body">
+        <!-- Overlay de carregamento — bloqueia interação enquanto busca dados do servidor -->
+        <div id="predioLoadingOverlay" class="d-none position-absolute w-100 h-100" style="background:rgba(255,255,255,0.85); z-index:10; top:0; left:0; display:flex; align-items:center; justify-content:center;">
+          <div class="text-center">
+            <div class="spinner-border text-success mb-2"></div>
+            <div class="small text-muted">Carregando dados...</div>
+          </div>
+        </div>
+        <div class="modal-body" id="predioModalBody">
           <input type="hidden" id="predioChaveEdicao">
+          <p class="small text-muted mb-3" id="predioEnderecoLbl">—</p>
 
           <div class="mb-3">
-            <label class="form-label fw-bold small">Entrada do prédio</label>
-            <div class="d-grid gap-2">
-              <label class="form-check"><input type="radio" name="predTipoEnt" value="porteiro" class="form-check-input me-2"><span>Porteiro</span></label>
-              <label class="form-check"><input type="radio" name="predTipoEnt" value="eletronica" class="form-check-input me-2"><span>Portaria eletrônica</span></label>
-              <label class="form-check"><input type="radio" name="predTipoEnt" value="sem" class="form-check-input me-2"><span>Sem porteiro</span></label>
-              <label class="form-check"><input type="radio" name="predTipoEnt" value="" class="form-check-input me-2"><span class="text-muted">Não informado</span></label>
+            <label class="form-label small fw-bold">Nome do edifício</label>
+            <input type="text" class="form-control" id="predioNomePub" placeholder="Ex: Edifício Solar">
+          </div>
+
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="predioIrmaoMoraPub">
+            <label class="form-check-label" for="predioIrmaoMoraPub">
+              <i class="fa-solid fa-house-user me-1"></i> Irmão mora aqui
+            </label>
+          </div>
+          <div class="mb-3 d-none" id="boxNomeIrmaoPub">
+            <input type="text" class="form-control form-control-sm" id="predioNomeIrmaoPub" placeholder="Nome do irmão (referência)">
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-bold">Entrada do prédio</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntNiPub" value="">
+              <label class="btn btn-outline-secondary btn-sm" for="tEntNiPub">—</label>
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntPorteiroPub" value="porteiro">
+              <label class="btn btn-outline-primary btn-sm" for="tEntPorteiroPub"><i class="fa-solid fa-user-tie me-1"></i>Porteiro</label>
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntEletPub" value="eletronica">
+              <label class="btn btn-outline-warning btn-sm" for="tEntEletPub"><i class="fa-solid fa-building-shield me-1"></i>Eletrônica</label>
+              <input type="radio" class="btn-check" name="predTipoEnt" id="tEntSemPub" value="sem">
+              <label class="btn btn-outline-success btn-sm" for="tEntSemPub"><i class="fa-solid fa-door-open me-1"></i>Sem</label>
             </div>
           </div>
 
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" id="predCaixas">
-            <label class="form-check-label" for="predCaixas">Tem acesso às <b>caixas de correio</b></label>
+            <label class="form-check-label small" for="predCaixas">Acesso às caixas de correio</label>
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="predInterfones">
+            <label class="form-check-label small" for="predInterfones">Acesso aos interfones dos aptos</label>
           </div>
 
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="predInterfones">
-            <label class="form-check-label" for="predInterfones">Tem acesso aos <b>interfones dos apartamentos</b></label>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="predioNaoEhPredioPub">
+            <label class="form-check-label" for="predioNaoEhPredioPub">
+              <i class="fa-solid fa-circle-minus me-1"></i> Não é prédio
+            </label>
+            <div class="form-text small">Endereços agrupados que não formam um edifício real.</div>
           </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-bold">Notas</label>
+            <textarea class="form-control" id="predioNotasPub" rows="2" placeholder="Ex: portaria 24h, tem elevador..."></textarea>
+          </div>
+          <div id="predioUltimaCartaPub" class="small text-muted"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button class="btn btn-primary" id="btnSalvarPredio" onclick="salvarEdicaoPredio()">
+          <button class="btn btn-success" id="btnSalvarPredio" onclick="salvarEdicaoPredio()" disabled>
             <i class="fa-solid fa-floppy-disk me-1"></i>Salvar
           </button>
         </div>
@@ -1484,66 +1564,108 @@
       renderizarSimples();
     };
 
-    // ====== EDIÇÃO DO PRÉDIO (publicador) ======
+    // ====== EDIÇÃO DO PRÉDIO (publicador) — modal completo igual ao admin ======
     window.abrirEdicaoPredio = function(chave) {
       if (!chave) return;
       var btn = document.getElementById('btnSalvarPredio');
+      var overlay = document.getElementById('predioLoadingOverlay');
+      // Bloqueia a interação enquanto carrega: mostra overlay com spinner
+      // sobre o form (em vez de form vazio editável que o usuário começava
+      // a preencher antes do servidor responder)
       if (btn) btn.disabled = true;
+      if (overlay) overlay.classList.remove('d-none');
       document.getElementById('predioChaveEdicao').value = chave;
       document.getElementById('lblPredioNome').textContent = 'Carregando...';
+      document.getElementById('predioEnderecoLbl').textContent = '';
+      // Reseta UI antes de pintar com dados do servidor
+      document.getElementById('predioNomePub').value = '';
+      document.getElementById('predioIrmaoMoraPub').checked = false;
+      document.getElementById('predioNomeIrmaoPub').value = '';
+      document.getElementById('boxNomeIrmaoPub').classList.add('d-none');
       document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(r){ r.checked = (r.value === ''); });
       document.getElementById('predCaixas').checked = false;
       document.getElementById('predInterfones').checked = false;
+      document.getElementById('predioNaoEhPredioPub').checked = false;
+      document.getElementById('predioNotasPub').value = '';
+      document.getElementById('predioUltimaCartaPub').innerHTML = '';
+
       var modal = new bootstrap.Modal(document.getElementById('modalEditarPredio'));
       modal.show();
+
       google.script.run
         .withSuccessHandler(function(r){
+          if (overlay) overlay.classList.add('d-none');
           if (!r || !r.ok) {
             window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
             modal.hide();
             return;
           }
           document.getElementById('lblPredioNome').textContent = r.nome || 'Prédio';
+          document.getElementById('predioEnderecoLbl').textContent =
+            (r.endereco || '') + (r.qtdAptos ? ' · ' + r.qtdAptos + ' apto(s)' : '');
+          document.getElementById('predioNomePub').value = r.nome || '';
+          document.getElementById('predioIrmaoMoraPub').checked = !!r.irmaoMora;
+          document.getElementById('predioNomeIrmaoPub').value = r.nomeIrmao || '';
+          document.getElementById('boxNomeIrmaoPub').classList.toggle('d-none', !r.irmaoMora);
           document.querySelectorAll('input[name="predTipoEnt"]').forEach(function(rd){
             rd.checked = (rd.value === (r.tipoEntrada || ''));
           });
           document.getElementById('predCaixas').checked = !!r.acessoCaixas;
           document.getElementById('predInterfones').checked = !!r.acessoInterfones;
+          document.getElementById('predioNaoEhPredioPub').checked = !!r.naoEhPredio;
+          document.getElementById('predioNotasPub').value = r.notas || '';
+          document.getElementById('predioUltimaCartaPub').innerHTML = r.ultimaCartaStr
+            ? '<i class="fa-solid fa-envelope-circle-check text-success me-1"></i>Última carta entregue em <b>' + escapeHtmlPub(r.ultimaCartaStr) + '</b>'
+            : '<i class="fa-regular fa-envelope-open me-1"></i>Nenhuma carta entregue ainda';
           if (btn) btn.disabled = false;
         })
         .withFailureHandler(function(e){
+          if (overlay) overlay.classList.add('d-none');
           window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
           modal.hide();
         })
         .getOverlayPredioPublico(chave);
     };
 
+    // Mostra/esconde campo "nome do irmão" baseado no switch
+    document.addEventListener('change', function(ev){
+      if (ev.target && ev.target.id === 'predioIrmaoMoraPub') {
+        document.getElementById('boxNomeIrmaoPub').classList.toggle('d-none', !ev.target.checked);
+      }
+    });
+
     window.salvarEdicaoPredio = function() {
       var chave = document.getElementById('predioChaveEdicao').value;
       if (!chave) return;
-      var tipo = (document.querySelector('input[name="predTipoEnt"]:checked') || {}).value || '';
-      var caixas = document.getElementById('predCaixas').checked;
-      var interfones = document.getElementById('predInterfones').checked;
+      var tipoEntSel = document.querySelector('input[name="predTipoEnt"]:checked');
+      var patch = {
+        nome: document.getElementById('predioNomePub').value.trim(),
+        irmaoMora: document.getElementById('predioIrmaoMoraPub').checked,
+        nomeIrmao: document.getElementById('predioNomeIrmaoPub').value.trim(),
+        tipoEntrada: tipoEntSel ? tipoEntSel.value : '',
+        acessoCaixas: document.getElementById('predCaixas').checked,
+        acessoInterfones: document.getElementById('predInterfones').checked,
+        naoEhPredio: document.getElementById('predioNaoEhPredioPub').checked,
+        notas: document.getElementById('predioNotasPub').value.trim()
+      };
       var btn = document.getElementById('btnSalvarPredio');
+      var txt = btn ? btn.innerHTML : null;
       if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...'; }
       google.script.run
         .withSuccessHandler(function(r){
-          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Salvar'; }
+          if (btn) { btn.disabled = false; btn.innerHTML = txt; }
           if (!r || !r.ok) {
             window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
             return;
           }
           bootstrap.Modal.getInstance(document.getElementById('modalEditarPredio')).hide();
+          window.toast && window.toast('Prédio atualizado', 'success');
         })
         .withFailureHandler(function(e){
-          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Salvar'; }
+          if (btn) { btn.disabled = false; btn.innerHTML = txt; }
           window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
         })
-        .atualizarPredioPublico(chave, {
-          tipoEntrada: tipo,
-          acessoCaixas: caixas,
-          acessoInterfones: interfones
-        });
+        .atualizarPredioPublico(chave, patch);
     };
 
     // Sync com servidor: puxa marcações de outros publicadores trabalhando
@@ -1704,10 +1826,18 @@
         // Prepara Modal Novo
         document.getElementById('editRow').value = ""; // Vazio = Novo
         document.getElementById('editQuadraId').value = vizinho.quadra;
-        document.getElementById('editFace').value = vizinho.face;
+        // Herda DUAS faces do vizinho: face (Col C, legado) e faceIBGE (Col D real)
+        // Antes só herdava face, então endereço novo aparecia em "Sem face" porque
+        // o agrupamento usa faceIBGE.
+        document.getElementById('editFace').value = vizinho.face || '';
+        document.getElementById('editFaceIBGE').value = vizinho.faceIBGE || '';
         document.getElementById('editLat').value = lat;
         document.getElementById('editLng').value = lng;
         document.getElementById('editOrdem').value = (vizinho.ordem || 0) + 1; // Coloca logo depois
+
+        // Esconde botão excluir (endereço novo, ainda não existe pra excluir)
+        var btnExc = document.getElementById('btnExcluirEndereco');
+        if (btnExc) btnExc.classList.add('d-none');
 
         // Preenche com sugestões do vizinho
         document.getElementById('inputLogradouro').value = vizinho.logradouro;
@@ -2352,7 +2482,7 @@ function criarItemHtml(item, isInsideGroup) {
 
     // ================= AÇÕES =================
     window.abrirEdicao = function(row) {
-        if(isReorder) return; 
+        if(isReorder) return;
 
         var item = null;
         dadosGerais.forEach(q => { var f = q.itens.find(i => i.row == row); if(f) item = f; });
@@ -2361,19 +2491,76 @@ function criarItemHtml(item, isInsideGroup) {
         // Preenche campos ocultos
         document.getElementById('editRow').value = item.row;
         document.getElementById('editQuadraId').value = item.quadra;
-        
+        document.getElementById('editFace').value = item.face || '';
+        document.getElementById('editFaceIBGE').value = item.faceIBGE || '';
+
         // Campos Visíveis
-        document.getElementById('inputNome').value = item.nome || ""; // Col M
+        document.getElementById('inputNome').value = item.nome || "";
         document.getElementById('inputNota').value = item.nota || "";
         document.getElementById('inputTipo').value = item.tipo;
         document.getElementById('checkNaoVisitar').checked = item.naoVisitar;
-        
+
         document.getElementById('inputLogradouro').value = item.logradouro;
         document.getElementById('inputNumero').value = item.numero;
         document.getElementById('inputComplemento').value = item.complemento;
 
+        // Botão excluir só aparece quando editando endereço existente (row preenchido)
+        var btnExcluir = document.getElementById('btnExcluirEndereco');
+        if (btnExcluir) btnExcluir.classList.remove('d-none');
+
         toggleFormFields();
         modalEdicao.show();
+    };
+
+    // ====== EXCLUSÃO DE ENDEREÇO (irreversível) ======
+    window.abrirConfirmacaoExcluir = function() {
+      var row = document.getElementById('editRow').value;
+      if (!row) return;
+      var titulo = (document.getElementById('inputLogradouro').value || '') + ', ' +
+                   (document.getElementById('inputNumero').value || '') +
+                   (document.getElementById('inputComplemento').value ? ' (' + document.getElementById('inputComplemento').value + ')' : '');
+      document.getElementById('confirmExcluirInfo').textContent = titulo;
+      document.getElementById('confirmExcluirCheck').checked = false;
+      document.getElementById('btnConfirmExcluirEndereco').disabled = true;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfirmExcluir')).show();
+    };
+
+    // Habilita botão "Excluir permanentemente" só quando user marca o checkbox
+    document.addEventListener('change', function(ev){
+      if (ev.target && ev.target.id === 'confirmExcluirCheck') {
+        document.getElementById('btnConfirmExcluirEndereco').disabled = !ev.target.checked;
+      }
+    });
+
+    window.executarExcluirEndereco = function() {
+      var row = document.getElementById('editRow').value;
+      if (!row) return;
+      var btn = document.getElementById('btnConfirmExcluirEndereco');
+      var txt = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Excluindo...';
+      google.script.run
+        .withSuccessHandler(function(r){
+          btn.disabled = false; btn.innerHTML = txt;
+          if (!r || !r.ok) {
+            window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
+            return;
+          }
+          bootstrap.Modal.getInstance(document.getElementById('modalConfirmExcluir')).hide();
+          modalEdicao.hide();
+          window.toast && window.toast('Endereço excluído', 'success');
+          // Invalida cache POR QUADRA da quadra afetada pra forçar refetch
+          var qid = document.getElementById('editQuadraId').value;
+          if (qid) {
+            try { localStorage.removeItem('publico_quadra_v1_' + qid); } catch(e) {}
+          }
+          carregarDados();
+        })
+        .withFailureHandler(function(e){
+          btn.disabled = false; btn.innerHTML = txt;
+          window.toast && window.toast('Erro: ' + (e && e.message || e), 'error');
+        })
+        .excluirEnderecoPublico(parseInt(row, 10));
     };
 
     function toggleFormFields() {
@@ -2418,7 +2605,7 @@ function criarItemHtml(item, isInsideGroup) {
       var ultimo = a > 0 && p > 0 ? (a * 100 + p) : 0;
       var el = document.getElementById('previewAptos');
       if (el) el.textContent = total > 0
-        ? 'Vai criar ' + total + ' apartamentos (101 até ' + ultimo + ').'
+        ? 'Vai criar ' + total + ' apartamentos: APARTAMENTO 101 até APARTAMENTO ' + ultimo + '.'
         : 'Preencha andares e aptos por andar.';
     }
 
@@ -2431,6 +2618,7 @@ function criarItemHtml(item, isInsideGroup) {
             quadraId: document.getElementById('editQuadraId').value,
             // Campos Extras p/ Novo
             face: document.getElementById('editFace').value,
+            faceIBGE: document.getElementById('editFaceIBGE').value,
             lat: document.getElementById('editLat').value,
             lng: document.getElementById('editLng').value,
             ordem: document.getElementById('editOrdem').value,
@@ -2488,6 +2676,7 @@ function criarItemHtml(item, isInsideGroup) {
             runner.criarPredioEmMassa({
                 quadraId: payload.quadraId,
                 face: payload.face,
+                faceIBGE: payload.faceIBGE,
                 logradouro: payload.logradouro,
                 numero: payload.numero,
                 lat: payload.lat,

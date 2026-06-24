@@ -69,25 +69,33 @@ test('atualizarPredioPublico só aceita campos permitidos (whitelist)', () => {
      'nomeIrmao','acessoInterfone','naoEhPredio','tipoEntrada','acessoCaixas','acessoInterfones']
   ]);
   const ctx = setup([dados, predios]);
-  // Tenta passar campos NÃO permitidos (notas, irmaoMora) + permitidos
+  // Publicador agora pode editar 8 campos (decisão de produto após uso real).
+  // Campos fora da whitelist (qualquer outro) NÃO devem passar.
   const r = ctx.atualizarPredioPublico('rua a|100', {
     tipoEntrada: 'porteiro',
     acessoCaixas: true,
     acessoInterfones: false,
-    notas: 'HACK',           // não permitido
-    irmaoMora: true,         // não permitido
-    naoEhPredio: true        // não permitido
+    nome: 'Edif Solar',
+    irmaoMora: true,
+    nomeIrmao: 'João',
+    naoEhPredio: false,
+    notas: 'porteiro 24h',
+    // Campos fora da whitelist — devem ser ignorados
+    ultimaCarta: 'HACK',
+    acessoInterfone: 'individual'  // (legado, não mais usado)
   });
   assertTrue(r.ok);
-  // Lê do sheet pra confirmar — só os 3 permitidos passaram
   const overlay = ctx._mapaOverlaysPredios_()['rua a|100'];
   assertEq(overlay.tipoEntrada, 'porteiro');
   assertEq(overlay.acessoCaixas, true);
   assertEq(overlay.acessoInterfones, false);
-  // Não permitidos não foram alterados (default false/'')
-  assertEq(overlay.notas, '');
-  assertEq(overlay.irmaoMora, false);
-  assertEq(overlay.naoEhPredio, false);
+  assertEq(overlay.nome, 'Edif Solar');
+  assertEq(overlay.irmaoMora, true);
+  assertEq(overlay.nomeIrmao, 'João');
+  assertEq(overlay.notas, 'porteiro 24h');
+  // Fora da whitelist permaneceu vazio/default
+  assertEq(overlay.ultimaCarta, 0);
+  assertEq(overlay.acessoInterfone, '');
 });
 
 test('atualizarPredio normaliza tipoEntrada inválido pra string vazia', () => {
