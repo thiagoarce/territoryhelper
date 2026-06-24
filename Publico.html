@@ -1135,6 +1135,18 @@
 
     function escapeHtmlPub(s){ return String(s||'').replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
 
+    // Renderiza no modo ativo (simples ou avançado). Usado pelos optimistic
+    // updates pra não chamar a função do modo errado e a UI "sumir" pro user.
+    function _rerenderModoAtivo() {
+      var modo = 'avancado';
+      try { modo = localStorage.getItem('modo_pub') || 'avancado'; } catch(e) {}
+      if (modo === 'simples') renderizarSimples();
+      else {
+        renderizarLista();
+        if (window.atualizarCobertura) window.atualizarCobertura();
+      }
+    }
+
     function renderizarSimples() {
       var box = document.getElementById('appSimples');
       if (!dadosGerais || dadosGerais.length === 0) {
@@ -2666,7 +2678,7 @@ function criarItemHtml(item, isInsideGroup) {
       atualizarStatusSync();
       bootstrap.Modal.getInstance(document.getElementById('modalConfirmExcluir')).hide();
       modalEdicao.hide();
-      renderizarLista();
+      _rerenderModoAtivo();
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Excluindo...';
 
@@ -2680,7 +2692,7 @@ function criarItemHtml(item, isInsideGroup) {
             if (quadraRef && itemOriginal && idxOriginal >= 0) {
               quadraRef.itens.splice(idxOriginal, 0, itemOriginal);
               salvarCacheQuadra(quadraRef);
-              renderizarLista();
+              _rerenderModoAtivo();
             }
             window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
             return;
@@ -2698,7 +2710,7 @@ function criarItemHtml(item, isInsideGroup) {
           if (quadraRef && itemOriginal && idxOriginal >= 0) {
             quadraRef.itens.splice(idxOriginal, 0, itemOriginal);
             salvarCacheQuadra(quadraRef);
-            renderizarLista();
+            _rerenderModoAtivo();
           }
           var msg = navigator.onLine
             ? 'Erro ao excluir — tente de novo'
@@ -2869,7 +2881,7 @@ function criarItemHtml(item, isInsideGroup) {
             atualizarStatusSync();
             modalEdicao.hide();
             btn.innerText = txtOriginal; btn.disabled = false;
-            renderizarLista();
+            _rerenderModoAtivo();
           }
         }
 
@@ -2917,7 +2929,7 @@ function criarItemHtml(item, isInsideGroup) {
                 // Reverte optimistic: tira os itens temporários, re-renderiza
                 if (ehNovo && tempRows.length > 0) {
                   tempRows.forEach(function(tmp){ _removerOtimista(payload.quadraId, tmp); });
-                  renderizarLista();
+                  _rerenderModoAtivo();
                   var msg = navigator.onLine
                     ? 'Erro ao salvar — tente de novo'
                     : 'Sem conexão — endereço não foi enviado. Conecte a internet e tente de novo.';
@@ -2938,7 +2950,7 @@ function criarItemHtml(item, isInsideGroup) {
                   tempRows.forEach(function(tmp){ _removerOtimista(payload.quadraId, tmp); });
                   _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
                   atualizarStatusSync();
-                  renderizarLista();
+                  _rerenderModoAtivo();
                 }
                 btn.innerText = txtOriginal; btn.disabled = false;
                 return;
