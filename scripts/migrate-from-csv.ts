@@ -1,21 +1,26 @@
 // ============================================================================
 // Migração one-shot: CSVs exportados do Google Sheets (app antigo) → Postgres.
 //
+// Modelo novo (branch pwa-rewrite, após redesign):
+//   - Dados Brutos é AGRUPADO por (logradouro, numero) → cada grupo vira
+//     1 local + N unidades. Não há mais 30 linhas duplicadas pra 1 prédio.
+//   - Predios.csv mescla em locais (overlay: nome, irmão mora, portaria...)
+//   - PrediosAptos.csv mescla em unidades (overlay: carta, desocupado...)
+//   - Registros aponta pra unidades via legacy_row → unidade_id
+//   - Quadras.poly_string ("lat,lng | lat,lng") vira PostGIS Polygon
+//   - TCEs.endereco_ids (CSV de rows) vira tabela junção tce_unidades
+//
 // USO:
-//   1. Baixe cada aba do Sheets como CSV (Arquivo → Download → .csv)
-//   2. Coloque em ./migration-data/ com os nomes:
+//   1. Exporte cada aba do Sheets como CSV (Arquivo → Download → .csv)
+//   2. Coloque em ./migration-data/ com nomes:
 //        Quadras.csv, Territorios.csv, Dados Brutos.csv, Registros.csv,
 //        Predios.csv, PrediosAptos.csv, Designacoes.csv, Campanha.csv,
 //        TerritoriosEspeciais.csv
-//   3. Configure .env com PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
-//   4. npm run migrate
+//   3. Configure .env (PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)
+//   4. Rode as migrations 001..008 no Supabase SQL Editor
+//   5. npm run migrate
 //
-// ORDEM dos inserts (respeita FKs):
-//   territorios → quadras → enderecos → predios → predios_aptos
-//   → registros → tces → designacoes → campanha
-//
-// IDEMPOTÊNCIA: deleta tudo de cada tabela antes de inserir. Roda quantas
-// vezes quiser. Profiles NÃO são tocados.
+// IDEMPOTÊNCIA: limpa cada tabela antes de inserir. Roda quantas vezes quiser.
 // ============================================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -37,8 +42,7 @@ const db = createClient(SUPABASE_URL, SERVICE_KEY, {
 const DATA_DIR = join(process.cwd(), 'migration-data');
 
 // ============================================================================
-// CSV parser — suporta quote-escaping standard (RFC 4180). Google Sheets
-// exporta em UTF-8 com aspas duplas em campos com vírgula/quebra/aspas.
+// CSV parser — RFC 4180. Suporta quote-escape ("") + BOM + CRLF.
 // ============================================================================
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
@@ -46,14 +50,13 @@ function parseCSV(text: string): string[][] {
   let cell = '';
   let inQuotes = false;
   let i = 0;
-  // Remove BOM se houver
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
   while (i < text.length) {
     const c = text[i];
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') { cell += '"'; i += 2; continue; } // escape ""
+        if (text[i + 1] === '"') { cell += '"'; i += 2; continue; }
         inQuotes = false; i++; continue;
       }
       cell += c; i++; continue;
@@ -64,7 +67,6 @@ function parseCSV(text: string): string[][] {
     if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; i++; continue; }
     cell += c; i++;
   }
-  // última célula/linha
   if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }
   return rows;
 }
@@ -109,7 +111,6 @@ const toBool = (v: unknown): boolean => {
 const toDate = (v: unknown): string | null => {
   const s = toStr(v);
   if (!s) return null;
-  // Aceita "yyyy-MM-dd", "dd/MM/yyyy", ISO completo
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
@@ -123,8 +124,6 @@ const toTs = (v: unknown): string | null => {
   return isNaN(d.getTime()) ? null : d.toISOString();
 };
 
-// Tenta achar coluna por vários nomes possíveis (case-insensitive,
-// tolerante a acento/espaço extra).
 function colIdx(headers: string[], ...nomes: string[]): number {
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
   const headersNorm = headers.map(norm);
@@ -135,11 +134,55 @@ function colIdx(headers: string[], ...nomes: string[]): number {
   return -1;
 }
 
+// Chave do prédio: igual ao backend antigo (logradouro|numero, lowercase, trim)
+function chaveLocal(logradouro: string, numero: string): string {
+  return logradouro.trim().toLowerCase() + '|' + numero.trim().toLowerCase();
+}
+
+// Decide tipo do local. Prioridade:
+//   1. Se foi explicitamente marcado como prédio no Predios.csv → predio
+//   2. Se ≥2 unidades no mesmo logradouro+numero → predio
+//   3. Senão deriva de "Tipo" do CSV (Dados Brutos coluna L)
+function decidirTipoLocal(tipoUnidade: string, qtdUnidades: number, marcadoComoPredio: boolean): string {
+  if (marcadoComoPredio) return 'predio';
+  if (qtdUnidades >= 2) return 'predio';
+  const t = tipoUnidade.toLowerCase();
+  if (t.includes('apartamento')) return 'predio';   // single apto solto = ainda prédio
+  if (t.includes('comercio') || t.includes('comércio') || t.includes('comercial')) return 'comercio';
+  if (t.includes('coletivo') || t.includes('alojamento') || t.includes('asilo')) return 'coletivo';
+  if (t.includes('terreno') || t.includes('lote')) return 'terreno';
+  // Default = casa (cobre "Domicílio particular Casa", "Domicílio particular", etc)
+  return 'casa';
+}
+
+// Converte "lat,lng | lat,lng | ..." pra WKT Polygon WGS84.
+// Postgres aceita: SELECT ST_GeomFromText('POLYGON((lng lat, lng lat, ...))', 4326)
+// IMPORTANTE: WKT é lng lat (não lat lng). Fechar o anel se não fechado.
+function polyStringToWKT(polyString: string): string | null {
+  if (!polyString) return null;
+  const pts = polyString.split('|').map((s) => s.trim()).filter(Boolean).map((p) => {
+    const parts = p.split(',').map((x) => parseFloat(x.trim()));
+    if (parts.length < 2 || !isFinite(parts[0]) || !isFinite(parts[1])) return null;
+    return [parts[0], parts[1]] as [number, number]; // [lat, lng]
+  }).filter((p): p is [number, number] => p !== null);
+  if (pts.length < 3) return null;
+  // Fecha anel (PostGIS exige)
+  const first = pts[0], last = pts[pts.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) pts.push(first);
+  const wkt = pts.map(([lat, lng]) => `${lng} ${lat}`).join(', ');
+  return `SRID=4326;POLYGON((${wkt}))`;
+}
+
+function latLngToWKT(lat: number | null, lng: number | null): string | null {
+  if (lat == null || lng == null) return null;
+  return `SRID=4326;POINT(${lng} ${lat})`;
+}
+
 // ============================================================================
-// Insert em lote — Postgres tem limite de parameters por query, então
-// quebramos em chunks. 500 linhas é seguro pra ~20 colunas.
+// Insert em lote
 // ============================================================================
 async function insertBatch(table: string, rows: Record<string, unknown>[], chunkSize = 500) {
+  if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize);
     const { error } = await db.from(table).insert(chunk as any);
@@ -148,98 +191,136 @@ async function insertBatch(table: string, rows: Record<string, unknown>[], chunk
       throw error;
     }
   }
-  console.log(`✅ ${table}: ${rows.length} linhas inseridas`);
+  console.log(`✅ ${table}: ${rows.length} linhas`);
 }
 
 async function clearTable(table: string) {
-  // .neq com id sempre verdadeiro pra "delete all" via REST. Service role bypassa RLS.
-  const { error } = await db.from(table).delete().neq('id', '__never__');
-  // Se ID for bigint o filtro acima falha; tenta alternativa
+  // Workaround pra "delete all" via REST: cria filtro que sempre casa
+  const { error } = await db.from(table).delete().not('id', 'is', null);
   if (error) {
-    const r2 = await db.from(table).delete().gt('criado_em', '1900-01-01');
-    if (r2.error) console.warn(`⚠️  Não consegui limpar ${table}: ${error.message}`);
+    // tenta alternativa pra tabelas sem `id` (junção)
+    const alt = await db.rpc('exec_sql' as any, { sql: `delete from ${table}` }).catch(() => null);
+    if (!alt || alt.error) {
+      console.warn(`⚠️  ${table}: não consegui limpar via REST (${error.message}). Continuando.`);
+    }
   }
 }
 
-// ============================================================================
-// Importadores por tabela
-// ============================================================================
+// Junction tables: deletam tudo via .neq numa coluna any
+async function clearJunctionTable(table: string, anyCol: string) {
+  const { error } = await db.from(table).delete().not(anyCol, 'is', null);
+  if (error) console.warn(`⚠️  ${table}: ${error.message}`);
+}
 
+// ============================================================================
+// 1. Territorios
+// ============================================================================
 async function importTerritorios() {
   const csv = readCSV('Territorios.csv');
   if (!csv) return;
   const { headers, rows } = csv;
-  const nome = colIdx(headers, 'Nome');
-  const cor = colIdx(headers, 'Cor');
-  const ids = colIdx(headers, 'ids_quadras', 'IDs Quadras', 'ids');
-  const poly = colIdx(headers, 'polyString', 'poly');
-  const labelPos = colIdx(headers, 'label_pos', 'labelPos');
-  const labelType = colIdx(headers, 'label_type', 'labelType');
-  const status = colIdx(headers, 'Status');
-  const dataConc = colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao');
+  const c = {
+    nome: colIdx(headers, 'Nome'),
+    cor: colIdx(headers, 'Cor'),
+    labelPos: colIdx(headers, 'label_pos', 'labelPos'),
+    labelType: colIdx(headers, 'label_type', 'labelType'),
+    status: colIdx(headers, 'Status'),
+    dataConc: colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao')
+  };
 
   const dados = rows
     .map((r) => {
-      const id = toStr(r[nome]);
+      const id = toStr(r[c.nome]);
       if (!id) return null;
       let labelPosObj = null;
       try {
-        const lp = toStr(r[labelPos]);
+        const lp = toStr(r[c.labelPos]);
         if (lp) labelPosObj = JSON.parse(lp);
-      } catch {
-        // ignora — não é JSON válido
-      }
+      } catch { /* ignora */ }
       return {
         id,
         nome: id,
-        cor: toStr(r[cor]) || '#3388ff',
-        ids_quadras: toStr(r[ids]).split(',').map((s) => s.trim()).filter(Boolean),
-        poly_string: toStrOrNull(r[poly]),
+        cor: toStr(r[c.cor]) || '#3388ff',
         label_pos: labelPosObj,
-        label_type: toStrOrNull(r[labelType]),
-        status: toStr(r[status]) || 'pendente',
-        data_conclusao: toDate(r[dataConc])
+        label_type: toStrOrNull(r[c.labelType]),
+        status: toStr(r[c.status]) || 'pendente',
+        data_conclusao: toDate(r[c.dataConc])
       };
     })
     .filter(Boolean);
 
   await clearTable('territorios');
-  if (dados.length) await insertBatch('territorios', dados as any[]);
+  await insertBatch('territorios', dados as any[]);
 }
 
+// ============================================================================
+// 2. Quadras (poly_string → PostGIS)
+// ============================================================================
 async function importQuadras() {
   const csv = readCSV('Quadras.csv');
   if (!csv) return;
   const { headers, rows } = csv;
-  const id = colIdx(headers, 'ID', 'Id', 'id');
-  const poly = colIdx(headers, 'polyString', 'poly_string', 'poly');
-  const color = colIdx(headers, 'Color', 'Cor');
-  const territorio = colIdx(headers, 'Territorio', 'Território', 'territorio');
-  const status = colIdx(headers, 'Status');
-  const dataConc = colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao');
+  const c = {
+    id: colIdx(headers, 'ID', 'Id', 'id'),
+    poly: colIdx(headers, 'polyString', 'poly_string', 'poly'),
+    color: colIdx(headers, 'Color', 'Cor'),
+    territorio: colIdx(headers, 'Territorio', 'Território', 'territorio'),
+    status: colIdx(headers, 'Status'),
+    dataConc: colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao')
+  };
 
-  const dados = rows
-    .map((r) => {
-      const qid = toStr(r[id]);
-      if (!qid) return null;
-      return {
-        id: qid,
-        poly_string: toStr(r[poly]) || '',
-        color: toStr(r[color]) || '#3388ff',
-        territorio_id: toStrOrNull(r[territorio]),
-        status: toStr(r[status]) || 'pendente',
-        data_conclusao: toDate(r[dataConc])
-      };
-    })
-    .filter((q) => q && q.poly_string);
+  const dados: Record<string, unknown>[] = [];
+  let semPoly = 0;
+  for (const r of rows) {
+    const qid = toStr(r[c.id]);
+    if (!qid) continue;
+    const wkt = polyStringToWKT(toStr(r[c.poly]));
+    if (!wkt) { semPoly++; continue; }
+    dados.push({
+      id: qid,
+      poly: wkt,
+      color: toStr(r[c.color]) || '#3388ff',
+      territorio_id: toStrOrNull(r[c.territorio]),
+      status: toStr(r[c.status]) || 'pendente',
+      data_conclusao: toDate(r[c.dataConc])
+    });
+  }
+  if (semPoly > 0) console.warn(`⚠️  Quadras: ${semPoly} sem polígono válido — descartadas`);
 
   await clearTable('quadras');
-  if (dados.length) await insertBatch('quadras', dados as any[]);
+  await insertBatch('quadras', dados);
 }
 
-async function importEnderecos() {
+// ============================================================================
+// 3. Locais + Unidades (agrupa Dados Brutos por logradouro+numero+quadra)
+// + mescla overlay de Predios.csv e PrediosAptos.csv
+// ============================================================================
+interface UnidadeStaged {
+  legacy_row: number;
+  complemento: string | null;
+  ordem: number | null;
+  nota: string | null;
+  nao_visitar: boolean;
+  tipo_unidade: string;
+}
+
+interface LocalStaged {
+  chave: string;                       // logradouro|numero
+  logradouro: string;
+  numero: string;
+  quadra_id: string | null;
+  setor: string | null;
+  quadra_ibge: string | null;
+  face_ibge: string | null;
+  lat: number | null;
+  lng: number | null;
+  unidades: UnidadeStaged[];
+}
+
+async function importLocaisEUnidades() {
   const csv = readCSV('Dados Brutos.csv');
-  if (!csv) return;
+  if (!csv) return { mapaUnidades: new Map<number, number>() };
+
   const { headers, rows } = csv;
   const c = {
     quadra: colIdx(headers, 'Quadra'),
@@ -258,163 +339,260 @@ async function importEnderecos() {
     ordem: colIdx(headers, 'Ordem')
   };
 
-  // legacy_row = índice 1-based no Sheets (linha 1 é header, dado começa em 2)
-  const dados = rows.map((r, i) => ({
-    legacy_row: i + 2,
-    quadra_id: toStrOrNull(r[c.quadra]),
-    setor: toStrOrNull(r[c.setor]),
-    quadra_ibge: toStrOrNull(r[c.qIbge]),
-    face_ibge: toStrOrNull(r[c.faceIbge]),
-    logradouro: toStr(r[c.logradouro]),
-    numero: toStr(r[c.numero]),
-    complemento: toStrOrNull(r[c.complemento]),
-    lat: toNum(r[c.lat]),
-    lng: toNum(r[c.lng]),
-    tipo: toStrOrNull(r[c.tipo]),
-    nome: toStrOrNull(r[c.nome]),
-    nota: toStrOrNull(r[c.nota]),
-    nao_visitar: toBool(r[c.naoVisitar]),
-    ordem: toInt(r[c.ordem])
-  }));
+  // -------- AGRUPA por (logradouro|numero, quadra) ---------
+  // Mesmo prédio em quadras diferentes (improvável mas possível) vira locais
+  // distintos por causa da unique(logradouro, numero, quadra_id).
+  const localPorChave = new Map<string, LocalStaged>();
+  const nomeEdifPorChave = new Map<string, string>();
 
-  await clearTable('enderecos');
-  if (dados.length) await insertBatch('enderecos', dados);
-}
+  rows.forEach((r, i) => {
+    const legacyRow = i + 2;  // linha 1 do sheet é header, dado começa em 2
+    const logradouro = toStr(r[c.logradouro]);
+    const numero = toStr(r[c.numero]);
+    if (!logradouro && !numero) return; // linha vazia
 
-// Carrega { legacy_row → id } pra resolver FKs das tabelas seguintes
-async function carregarMapaEnderecos(): Promise<Map<number, number>> {
-  console.log('🔗 Carregando mapa legacy_row → endereco_id...');
-  const mapa = new Map<number, number>();
+    const quadraId = toStrOrNull(r[c.quadra]);
+    const chaveBase = chaveLocal(logradouro, numero);
+    const chaveCompleta = chaveBase + '@' + (quadraId || '_');
+
+    let local = localPorChave.get(chaveCompleta);
+    if (!local) {
+      local = {
+        chave: chaveBase,
+        logradouro,
+        numero,
+        quadra_id: quadraId,
+        setor: toStrOrNull(r[c.setor]),
+        quadra_ibge: toStrOrNull(r[c.qIbge]),
+        face_ibge: toStrOrNull(r[c.faceIbge]),
+        lat: toNum(r[c.lat]),
+        lng: toNum(r[c.lng]),
+        unidades: []
+      };
+      localPorChave.set(chaveCompleta, local);
+    }
+
+    local.unidades.push({
+      legacy_row: legacyRow,
+      complemento: toStrOrNull(r[c.complemento]),
+      ordem: toInt(r[c.ordem]),
+      nota: toStrOrNull(r[c.nota]),
+      nao_visitar: toBool(r[c.naoVisitar]),
+      tipo_unidade: toStr(r[c.tipo])
+    });
+
+    const nomeEdif = toStr(r[c.nome]);
+    if (nomeEdif && !nomeEdifPorChave.has(chaveBase)) nomeEdifPorChave.set(chaveBase, nomeEdif);
+  });
+
+  // -------- Lê Predios.csv (overlay manual) ---------
+  type PredioOverlay = {
+    nome?: string;
+    irmao_mora?: boolean;
+    nome_irmao?: string;
+    notas?: string;
+    tipo_entrada?: string;
+    acesso_caixas?: boolean;
+    acesso_interfones?: boolean;
+    nao_eh_predio?: boolean;
+    ultima_carta?: string;
+  };
+  const overlayPredios = new Map<string, PredioOverlay>();
+  const predCsv = readCSV('Predios.csv');
+  if (predCsv) {
+    const pc = {
+      chave: colIdx(predCsv.headers, 'chave', 'Chave'),
+      nome: colIdx(predCsv.headers, 'nome', 'Nome'),
+      irmaoMora: colIdx(predCsv.headers, 'irmaoMora', 'irmao_mora'),
+      nomeIrmao: colIdx(predCsv.headers, 'nomeIrmao', 'nome_irmao'),
+      notas: colIdx(predCsv.headers, 'notas', 'Notas'),
+      tipoEntrada: colIdx(predCsv.headers, 'tipoEntrada', 'tipo_entrada'),
+      acessoCaixas: colIdx(predCsv.headers, 'acessoCaixas', 'acesso_caixas'),
+      acessoInterfones: colIdx(predCsv.headers, 'acessoInterfones', 'acesso_interfones'),
+      naoEhPredio: colIdx(predCsv.headers, 'naoEhPredio', 'nao_eh_predio'),
+      ultimaCarta: colIdx(predCsv.headers, 'ultimaCarta', 'ultima_carta')
+    };
+    for (const r of predCsv.rows) {
+      const k = toStr(r[pc.chave]).toLowerCase();
+      if (!k) continue;
+      overlayPredios.set(k, {
+        nome: toStrOrNull(r[pc.nome]) ?? undefined,
+        irmao_mora: toBool(r[pc.irmaoMora]),
+        nome_irmao: toStrOrNull(r[pc.nomeIrmao]) ?? undefined,
+        notas: toStrOrNull(r[pc.notas]) ?? undefined,
+        tipo_entrada: toStrOrNull(r[pc.tipoEntrada]) ?? undefined,
+        acesso_caixas: toBool(r[pc.acessoCaixas]),
+        acesso_interfones: toBool(r[pc.acessoInterfones]),
+        nao_eh_predio: toBool(r[pc.naoEhPredio]),
+        ultima_carta: toDate(r[pc.ultimaCarta]) ?? undefined
+      });
+    }
+  }
+
+  // -------- Insere LOCAIS ---------
+  // Estratégia: insere um-a-um por enquanto pra capturar o id retornado
+  // (bigserial). Otimização futura: batch insert + returning id.
+  await clearTable('locais');
+
+  const locaisParaInserir: any[] = [];
+  const ordemLocais: { chaveCompleta: string; chaveBase: string }[] = [];
+  for (const [chaveCompleta, local] of localPorChave) {
+    const overlay = overlayPredios.get(local.chave) ?? {};
+    const tipo = decidirTipoLocal(
+      local.unidades[0]?.tipo_unidade || '',
+      local.unidades.length,
+      false
+    );
+    const nomeEdif = overlay.nome ?? nomeEdifPorChave.get(local.chave) ?? null;
+    locaisParaInserir.push({
+      tipo,
+      logradouro: local.logradouro || '(sem nome)',
+      numero: local.numero || 's/n',
+      geo: latLngToWKT(local.lat, local.lng),
+      quadra_id: local.quadra_id,
+      setor: local.setor,
+      quadra_ibge: local.quadra_ibge,
+      face_ibge: local.face_ibge,
+      nome: nomeEdif,
+      irmao_mora: overlay.irmao_mora ?? false,
+      nome_irmao: overlay.nome_irmao ?? null,
+      notas: overlay.notas ?? null,
+      tipo_entrada: overlay.tipo_entrada ?? null,
+      acesso_caixas: overlay.acesso_caixas ?? false,
+      acesso_interfones: overlay.acesso_interfones ?? false,
+      nao_visitar: overlay.nao_eh_predio ?? false  // "naoEhPredio" → "nao_visitar" no novo modelo
+    });
+    ordemLocais.push({ chaveCompleta, chaveBase: local.chave });
+  }
+
+  // Insert + capture IDs via select pós-insert (mais simples que .insert().select()
+  // em chunks). Aqui usamos batch normal e depois fazemos um SELECT pra mapear.
+  await insertBatch('locais', locaisParaInserir);
+
+  // Mapeia chaveCompleta → local_id buscando pelo conjunto (logradouro, numero, quadra_id)
+  // que é UNIQUE. Carrega todos os locais inseridos numa pancada só.
+  console.log('🔗 Carregando local_ids...');
+  const { data: locaisInseridos, error: errLoc } = await db
+    .from('locais')
+    .select('id, logradouro, numero, quadra_id');
+  if (errLoc) throw errLoc;
+
+  const localIdPorUnique = new Map<string, number>();
+  for (const l of locaisInseridos ?? []) {
+    const key = chaveLocal(l.logradouro, l.numero) + '@' + (l.quadra_id || '_');
+    localIdPorUnique.set(key, l.id);
+  }
+
+  // -------- Insere UNIDADES + overlay PrediosAptos ---------
+  const aptoOverlayPorRow = new Map<number, { carta_escrita?: string; carta_entregue?: string; desocupado?: boolean; nao_escrever?: boolean }>();
+  const aptosCsv = readCSV('PrediosAptos.csv');
+  if (aptosCsv) {
+    const ac = {
+      row: colIdx(aptosCsv.headers, 'row', 'ROW', 'Row'),
+      cartaEscrita: colIdx(aptosCsv.headers, 'cartaEscrita', 'carta_escrita'),
+      cartaEntregue: colIdx(aptosCsv.headers, 'cartaEntregue', 'carta_entregue'),
+      desocupado: colIdx(aptosCsv.headers, 'desocupado'),
+      naoEscrever: colIdx(aptosCsv.headers, 'naoEscrever', 'nao_escrever')
+    };
+    for (const r of aptosCsv.rows) {
+      const oldRow = toInt(r[ac.row]);
+      if (oldRow == null) continue;
+      aptoOverlayPorRow.set(oldRow, {
+        carta_escrita: toDate(r[ac.cartaEscrita]) ?? undefined,
+        carta_entregue: toDate(r[ac.cartaEntregue]) ?? undefined,
+        desocupado: toBool(r[ac.desocupado]),
+        nao_escrever: toBool(r[ac.naoEscrever])
+      });
+    }
+  }
+
+  const unidadesParaInserir: any[] = [];
+  for (const { chaveCompleta } of ordemLocais) {
+    const local = localPorChave.get(chaveCompleta)!;
+    const localId = localIdPorUnique.get(chaveCompleta);
+    if (!localId) { console.warn(`⚠️  local sem id: ${chaveCompleta}`); continue; }
+
+    for (const u of local.unidades) {
+      const overlay = aptoOverlayPorRow.get(u.legacy_row) ?? {};
+      unidadesParaInserir.push({
+        local_id: localId,
+        complemento: u.complemento,
+        ordem: u.ordem,
+        nota: u.nota,
+        legacy_row: u.legacy_row,
+        carta_escrita: overlay.carta_escrita ?? null,
+        carta_entregue: overlay.carta_entregue ?? null,
+        desocupado: overlay.desocupado ?? false,
+        nao_escrever: overlay.nao_escrever ?? false
+      });
+    }
+  }
+
+  await clearTable('unidades');
+  await insertBatch('unidades', unidadesParaInserir);
+
+  // -------- Mapa legacy_row → unidade_id pra Registros e TCEs ---------
+  console.log('🔗 Carregando mapa legacy_row → unidade_id...');
+  const mapaUnidades = new Map<number, number>();
   let from = 0;
   const pageSize = 1000;
   while (true) {
     const { data, error } = await db
-      .from('enderecos')
+      .from('unidades')
       .select('id, legacy_row')
+      .not('legacy_row', 'is', null)
       .range(from, from + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    for (const row of data) {
-      if (row.legacy_row != null) mapa.set(row.legacy_row, row.id);
+    for (const u of data) {
+      if (u.legacy_row != null) mapaUnidades.set(u.legacy_row, u.id);
     }
     if (data.length < pageSize) break;
     from += pageSize;
   }
-  console.log(`🔗 Mapa: ${mapa.size} endereços`);
-  return mapa;
+  console.log(`🔗 Mapa: ${mapaUnidades.size} unidades`);
+  return { mapaUnidades };
 }
 
-async function importRegistros(mapa: Map<number, number>) {
+// ============================================================================
+// 4. Registros (FK: unidade_id via legacy_row)
+// ============================================================================
+async function importRegistros(mapaUnidades: Map<number, number>) {
   const csv = readCSV('Registros.csv');
   if (!csv) return;
   const { headers, rows } = csv;
-  const id = colIdx(headers, 'ID', 'Id');  // row de Dados Brutos
-  const data = colIdx(headers, 'Data');
-  const tipo = colIdx(headers, 'Tipo');
-  const ts = colIdx(headers, 'TS', 'Timestamp');
+  const c = {
+    id: colIdx(headers, 'ID', 'Id'),
+    data: colIdx(headers, 'Data'),
+    tipo: colIdx(headers, 'Tipo'),
+    ts: colIdx(headers, 'TS', 'Timestamp')
+  };
 
   let semFk = 0;
   const dados = rows
     .map((r) => {
-      const oldRow = toInt(r[id]);
+      const oldRow = toInt(r[c.id]);
       if (oldRow == null) return null;
-      const newId = mapa.get(oldRow);
-      if (newId == null) { semFk++; return null; }
+      const unidadeId = mapaUnidades.get(oldRow);
+      if (unidadeId == null) { semFk++; return null; }
       return {
-        endereco_id: newId,
-        tipo: toStr(r[tipo]) || 'manual',
-        data: toDate(r[data]),
-        ts: toTs(r[ts]) || new Date().toISOString()
+        unidade_id: unidadeId,
+        tipo: toStr(r[c.tipo]) || 'manual',
+        ts: toTs(r[c.ts]) || new Date().toISOString(),
+        dados: c.data >= 0 && toDate(r[c.data]) ? { data: toDate(r[c.data]) } : null
       };
     })
     .filter(Boolean);
 
-  if (semFk > 0) console.warn(`⚠️  Registros: ${semFk} linhas sem FK válido (endereço apagado?)`);
+  if (semFk > 0) console.warn(`⚠️  Registros: ${semFk} linhas sem FK válido (unidade apagada?)`);
   await clearTable('registros');
-  if (dados.length) await insertBatch('registros', dados as any[]);
+  await insertBatch('registros', dados as any[]);
 }
 
-async function importPredios() {
-  const csv = readCSV('Predios.csv');
-  if (!csv) return;
-  const { headers, rows } = csv;
-  const c = {
-    chave: colIdx(headers, 'chave', 'Chave'),
-    nome: colIdx(headers, 'nome', 'Nome'),
-    irmaoMora: colIdx(headers, 'irmaoMora', 'irmao_mora'),
-    nomeIrmao: colIdx(headers, 'nomeIrmao', 'nome_irmao'),
-    ultimaCarta: colIdx(headers, 'ultimaCarta', 'ultima_carta'),
-    notas: colIdx(headers, 'notas', 'Notas'),
-    acessoInterfone: colIdx(headers, 'acessoInterfone', 'acesso_interfone'),
-    naoEhPredio: colIdx(headers, 'naoEhPredio', 'nao_eh_predio'),
-    tipoEntrada: colIdx(headers, 'tipoEntrada', 'tipo_entrada'),
-    acessoCaixas: colIdx(headers, 'acessoCaixas', 'acesso_caixas'),
-    acessoInterfones: colIdx(headers, 'acessoInterfones', 'acesso_interfones'),
-    atualizado: colIdx(headers, 'atualizado')
-  };
-
-  const dados = rows
-    .map((r) => {
-      const chave = toStr(r[c.chave]).toLowerCase();
-      if (!chave) return null;
-      return {
-        chave,
-        nome: toStrOrNull(r[c.nome]),
-        irmao_mora: toBool(r[c.irmaoMora]),
-        nome_irmao: toStrOrNull(r[c.nomeIrmao]),
-        ultima_carta: toDate(r[c.ultimaCarta]),
-        notas: toStrOrNull(r[c.notas]),
-        acesso_interfone: toStrOrNull(r[c.acessoInterfone]),
-        nao_eh_predio: toBool(r[c.naoEhPredio]),
-        tipo_entrada: toStrOrNull(r[c.tipoEntrada]),
-        acesso_caixas: toBool(r[c.acessoCaixas]),
-        acesso_interfones: toBool(r[c.acessoInterfones]),
-        atualizado_em: toTs(r[c.atualizado]) || new Date().toISOString()
-      };
-    })
-    .filter(Boolean);
-
-  await clearTable('predios');
-  if (dados.length) await insertBatch('predios', dados as any[]);
-}
-
-async function importPrediosAptos(mapa: Map<number, number>) {
-  const csv = readCSV('PrediosAptos.csv');
-  if (!csv) return;
-  const { headers, rows } = csv;
-  const c = {
-    row: colIdx(headers, 'row', 'ROW', 'Row'),
-    cartaEscrita: colIdx(headers, 'cartaEscrita', 'carta_escrita'),
-    cartaEntregue: colIdx(headers, 'cartaEntregue', 'carta_entregue'),
-    desocupado: colIdx(headers, 'desocupado'),
-    naoEscrever: colIdx(headers, 'naoEscrever', 'nao_escrever'),
-    atualizado: colIdx(headers, 'atualizado')
-  };
-
-  let semFk = 0;
-  const dados = rows
-    .map((r) => {
-      const oldRow = toInt(r[c.row]);
-      if (oldRow == null) return null;
-      const newId = mapa.get(oldRow);
-      if (newId == null) { semFk++; return null; }
-      return {
-        endereco_id: newId,
-        carta_escrita: toDate(r[c.cartaEscrita]),
-        carta_entregue: toDate(r[c.cartaEntregue]),
-        desocupado: toBool(r[c.desocupado]),
-        nao_escrever: toBool(r[c.naoEscrever]),
-        atualizado_em: toTs(r[c.atualizado]) || new Date().toISOString()
-      };
-    })
-    .filter(Boolean);
-
-  if (semFk > 0) console.warn(`⚠️  PrediosAptos: ${semFk} linhas sem FK válido`);
-  await clearTable('predios_aptos');
-  if (dados.length) await insertBatch('predios_aptos', dados as any[]);
-}
-
-async function importTCEs(mapa: Map<number, number>) {
+// ============================================================================
+// 5. TCEs + tce_unidades (FK via legacy_row)
+// ============================================================================
+async function importTCEs(mapaUnidades: Map<number, number>) {
   const csv = readCSV('TerritoriosEspeciais.csv');
   if (!csv) return;
   const { headers, rows } = csv;
@@ -432,32 +610,39 @@ async function importTCEs(mapa: Map<number, number>) {
     notas: colIdx(headers, 'notas')
   };
 
-  const dados = rows
-    .map((r) => {
-      const id = toStr(r[c.id]);
-      if (!id) return null;
-      const oldRows = toStr(r[c.rows]).split(',').map((s) => toInt(s.trim())).filter((n): n is number => n != null);
-      const endereco_ids = oldRows.map((or) => mapa.get(or)).filter((x): x is number => x != null);
-      return {
-        id,
-        nome: toStr(r[c.nome]) || id,
-        tipo: toStr(r[c.tipo]) || 'comercial',
-        endereco_ids,
-        poly_string: toStrOrNull(r[c.poly]),
-        publicador_id: null,  // publicador era nome livre — não mapeia pra uuid
-        prazo: toDate(r[c.prazo]),
-        status: toStr(r[c.status]) || 'aberto',
-        criado_em: toTs(r[c.criado]) || new Date().toISOString(),
-        data_conclusao: toDate(r[c.dataConc]),
-        notas: toStrOrNull(r[c.notas])
-      };
-    })
-    .filter(Boolean);
+  const tces: any[] = [];
+  const junctions: { tce_id: string; unidade_id: number }[] = [];
 
+  for (const r of rows) {
+    const id = toStr(r[c.id]);
+    if (!id) continue;
+    const oldRows = toStr(r[c.rows]).split(',').map((s) => toInt(s.trim())).filter((n): n is number => n != null);
+    const unidadeIds = oldRows.map((or) => mapaUnidades.get(or)).filter((x): x is number => x != null);
+
+    tces.push({
+      id,
+      nome: toStr(r[c.nome]) || id,
+      tipo: toStr(r[c.tipo]) || 'comercial',
+      poly: polyStringToWKT(toStr(r[c.poly])),
+      publicador_id: null,  // publicador era nome livre — não mapeia pra uuid
+      prazo: toDate(r[c.prazo]),
+      status: toStr(r[c.status]) || 'aberto',
+      criado_em: toTs(r[c.criado]) || new Date().toISOString(),
+      data_conclusao: toDate(r[c.dataConc]),
+      notas: toStrOrNull(r[c.notas])
+    });
+    for (const uid of unidadeIds) junctions.push({ tce_id: id, unidade_id: uid });
+  }
+
+  await clearJunctionTable('tce_unidades', 'tce_id');
   await clearTable('tces');
-  if (dados.length) await insertBatch('tces', dados as any[]);
+  await insertBatch('tces', tces);
+  await insertBatch('tce_unidades', junctions as any[]);
 }
 
+// ============================================================================
+// 6. Designações + junção
+// ============================================================================
 async function importDesignacoes() {
   const csv = readCSV('Designacoes.csv');
   if (!csv) return;
@@ -472,28 +657,42 @@ async function importDesignacoes() {
     notas: colIdx(headers, 'notas')
   };
 
-  // publicador era nome livre — não mapeia pra uuid. Deixamos null
-  // e admin re-atribui no app novo, ou descartamos histórico de designações
-  // antigas (geralmente OK porque designações antigas já encerraram).
-  const dados = rows
-    .map((r) => {
-      const idsTxt = toStr(r[c.ids]);
-      if (!idsTxt) return null;
-      return {
+  await clearJunctionTable('designacao_quadras', 'designacao_id');
+  await clearTable('designacoes');
+
+  // Insert designações uma por vez pra capturar o id retornado
+  let inseridas = 0;
+  for (const r of rows) {
+    const idsTxt = toStr(r[c.ids]);
+    if (!idsTxt) continue;
+    const idsQuadras = idsTxt.split(',').map((s) => s.trim()).filter(Boolean);
+    if (idsQuadras.length === 0) continue;
+
+    const { data, error } = await db
+      .from('designacoes')
+      .insert({
         publicador_id: null,
-        quadras_ids: idsTxt.split(',').map((s) => s.trim()).filter(Boolean),
         criada_em: toTs(r[c.criada]) || new Date().toISOString(),
         prazo: toDate(r[c.prazo]),
         status: toStr(r[c.status]) || 'aberta',
         notas: toStrOrNull(r[c.notas])
-      };
-    })
-    .filter(Boolean);
-
-  await clearTable('designacoes');
-  if (dados.length) await insertBatch('designacoes', dados as any[]);
+      } as any)
+      .select('id')
+      .single();
+    if (error || !data) {
+      console.warn(`⚠️  Designação não inserida: ${error?.message}`);
+      continue;
+    }
+    const junctions = idsQuadras.map((q) => ({ designacao_id: data.id, quadra_id: q }));
+    await insertBatch('designacao_quadras', junctions);
+    inseridas++;
+  }
+  console.log(`✅ designacoes: ${inseridas}`);
 }
 
+// ============================================================================
+// 7. Campanha
+// ============================================================================
 async function importCampanha() {
   const csv = readCSV('Campanha.csv');
   if (!csv) return;
@@ -531,7 +730,7 @@ async function importCampanha() {
     .filter(Boolean);
 
   await clearTable('campanha');
-  if (dados.length) await insertBatch('campanha', dados as any[]);
+  await insertBatch('campanha', dados as any[]);
 }
 
 // ============================================================================
@@ -544,21 +743,23 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('🚀 Iniciando migração CSV → Postgres');
+  console.log('🚀 Iniciando migração CSV → Postgres (modelo locais+unidades)');
   console.log(`📁 Lendo de: ${DATA_DIR}\n`);
 
   await importTerritorios();
   await importQuadras();
-  await importEnderecos();
-  const mapaEnderecos = await carregarMapaEnderecos();
-  await importPredios();
-  await importPrediosAptos(mapaEnderecos);
-  await importRegistros(mapaEnderecos);
-  await importTCEs(mapaEnderecos);
+  const { mapaUnidades } = await importLocaisEUnidades();
+  await importRegistros(mapaUnidades);
+  await importTCEs(mapaUnidades);
   await importDesignacoes();
   await importCampanha();
 
   console.log('\n🎉 Migração concluída!');
+  console.log('\nVerificação sugerida (rode no SQL Editor):');
+  console.log(`  select tipo, count(*) from locais group by tipo;`);
+  console.log(`  select count(*) from unidades;`);
+  console.log(`  select count(*) from registros where unidade_id is null;  -- deve ser 0`);
+  console.log(`  select count(*) from audit_log where tabela='locais' and acao='INSERT';`);
 }
 
 main().catch((e) => {
