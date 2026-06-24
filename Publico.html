@@ -775,6 +775,9 @@
     // Especial. Se presente, o publicador vê SÓ os endereços do TCE
     // em vez da estrutura por quadra.
     var TE_ID = "<?= te ?>";
+    // IDs via template server-side (não google.script.url.getLocation que
+    // falha silenciosamente em iOS Safari por postMessage de origem errada)
+    var IDS_PUB = "<?= ids ?>";
 
     // Lógica de Cores e Ícones
     function getVisualPorTipo(tipo) {
@@ -819,72 +822,107 @@
        });
     };
 
+    // Cache POR QUADRA — chave: publico_quadra_v1_<ID>. TTL 48h.
+    // Vantagem vs cache por designação inteira:
+    //   - Cada quadra que o publicador já viu fica salva pra sempre
+    //   - Próximo link com IDs DIFERENTES reusa as quadras já vistas
+    //   - 1ª carga visualmente instantânea pras quadras já cacheadas
+    var TTL_QUADRA_MS = 48 * 60 * 60 * 1000;
+    function _keyQuadra(id) { return 'publico_quadra_v1_' + id; }
+    function lerCacheQuadra(id) {
+      try {
+        var raw = localStorage.getItem(_keyQuadra(id));
+        if (!raw) return null;
+        var env = JSON.parse(raw);
+        if (env && env.t && env.d && (Date.now() - env.t) < TTL_QUADRA_MS) return env.d;
+      } catch(e) {}
+      return null;
+    }
+    function salvarCacheQuadra(quadra) {
+      if (!quadra || !quadra.id) return;
+      var env = { t: Date.now(), d: quadra };
+      try { localStorage.setItem(_keyQuadra(quadra.id), JSON.stringify(env)); return; }
+      catch(e) {
+        // Quota cheia: limpa quadras cacheadas mais antigas e tenta de novo
+        _limparQuadrasAntigas();
+        try { localStorage.setItem(_keyQuadra(quadra.id), JSON.stringify(env)); }
+        catch(e2) { /* desisto silenciosamente */ }
+      }
+    }
+    function _limparQuadrasAntigas() {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('publico_quadra_v1_') === 0) {
+          try {
+            var env = JSON.parse(localStorage.getItem(k));
+            keys.push({ k: k, t: env && env.t || 0 });
+          } catch(e) {}
+        }
+      }
+      keys.sort(function(a, b){ return a.t - b.t; });
+      // Remove a metade mais antiga
+      var rem = Math.floor(keys.length / 2);
+      for (var j = 0; j < rem; j++) {
+        try { localStorage.removeItem(keys[j].k); } catch(e) {}
+      }
+    }
+
     function carregarDados() {
         // Caso TCE: usa fluxo separado (lista de endereços, sem quadras)
         if (TE_ID) { carregarTCE(); return; }
 
-        google.script.url.getLocation(function(location) {
-             var ids = location.parameter.ids;
-             if(!ids) { window.toast && window.toast("Link inválido (sem IDs).", "warn"); return; }
+        var ids = IDS_PUB;
+        if (!ids) { window.toast && window.toast("Link inválido (sem IDs).", "warn"); return; }
+        var idsArr = ids.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
 
-             // v3: cache com TTL — payload+timestamp serializados juntos.
-             // Cache válido por 24h; depois exige nova busca pra evitar
-             // que o publicador veja designação obsoleta indefinidamente
-             // se o backend estiver fora do ar.
-             var TTL_MS = 24 * 60 * 60 * 1000;
-             var cacheKey = 'publico_dados_v3_' + ids;
-             var cachedPayload = null;
-             var cachedStr = '';
-             try {
-               var raw = localStorage.getItem(cacheKey);
-               if (raw) {
-                 var env = JSON.parse(raw);
-                 if (env && env.t && env.d && (Date.now() - env.t) < TTL_MS) {
-                   cachedPayload = env.d;
-                   cachedStr = JSON.stringify(env.d);
-                 }
-               }
-             } catch(e) {}
+        function aplicar(payload) {
+          dadosGerais = payload.designadas || [];
+          contextoPolys = payload.contexto || [];
+          // Sincroniza estado de carta vindo do servidor com localStorage.
+          dadosGerais.forEach(function(q){
+            (q.itens || []).forEach(function(it){
+              if (it.cartaEntregue && localStorage.getItem('carta_' + it.row) !== 'true') {
+                try { localStorage.setItem('carta_' + it.row, 'true'); } catch(e) {}
+              }
+            });
+          });
+          mostrarApp();
+        }
 
-             function aplicar(payload) {
-               dadosGerais = payload.designadas || [];
-               contextoPolys = payload.contexto || [];
-               // Sincroniza estado de carta vindo do servidor com localStorage.
-               // Se o arranjo de cartas marcou apto X como entregue, o
-               // publicador vê ✉ ligado mesmo sem ter clicado.
-               dadosGerais.forEach(function(q){
-                 (q.itens || []).forEach(function(it){
-                   if (it.cartaEntregue && localStorage.getItem('carta_' + it.row) !== 'true') {
-                     try { localStorage.setItem('carta_' + it.row, 'true'); } catch(e) {}
-                   }
-                 });
-               });
-               mostrarApp();
-             }
-
-             // Stale-while-revalidate: mostra cache (se válido) e busca frescos
-             if (cachedPayload) aplicar(cachedPayload);
-
-             google.script.run
-                .withSuccessHandler(function(data) {
-                    if(!data || !data.designadas || data.designadas.length === 0) {
-                      if (!cachedPayload) window.toast && window.toast("Nenhum dado encontrado.", "warn");
-                      return;
-                    }
-                    var novoStr = JSON.stringify(data);
-                    // Renova o timestamp do cache mesmo se conteúdo não mudou.
-                    // Em QuotaExceededError: limpa caches v3 antigos e tenta de novo.
-                    salvarCachePublico(cacheKey, { t: Date.now(), d: data });
-                    if (novoStr !== cachedStr) aplicar(data);
-                })
-                .withFailureHandler(function(e) {
-                    if (!cachedPayload) {
-                      document.getElementById('loader').innerHTML =
-                        '<div class="text-danger px-3">Sem conexão e sem dados salvos. Tente novamente quando estiver online.</div>';
-                    }
-                })
-                .getDadosComContexto(ids);
+        // PASSO 1: monta dadosGerais imediato com cache por quadra (se houver)
+        var cachedDesignadas = [];
+        idsArr.forEach(function(id){
+          var c = lerCacheQuadra(id);
+          if (c) cachedDesignadas.push(c);
         });
+        var temCache = cachedDesignadas.length > 0;
+        if (temCache) {
+          aplicar({ designadas: cachedDesignadas, contexto: [] });
+        }
+
+        // PASSO 2: busca tudo do servidor (designadas + contexto) e atualiza
+        google.script.run
+            .withSuccessHandler(function(data) {
+                if (!data || !data.designadas || data.designadas.length === 0) {
+                  if (!temCache) window.toast && window.toast("Nenhum dado encontrado.", "warn");
+                  return;
+                }
+                // Atualiza cache POR QUADRA com os dados frescos
+                data.designadas.forEach(salvarCacheQuadra);
+                aplicar(data);
+            })
+            .withFailureHandler(function(e) {
+                if (!temCache) {
+                  document.getElementById('loader').innerHTML =
+                    '<div class="text-danger px-3 text-center">' +
+                      '<i class="fa-solid fa-circle-xmark fa-2x mb-3"></i>' +
+                      '<div>Sem conexão e sem dados salvos.</div>' +
+                      '<button class="btn btn-sm btn-outline-primary mt-3" onclick="location.reload()">Tentar de novo</button>' +
+                    '</div>';
+                }
+            })
+            .getDadosComContexto(ids);
     }
 
     // Modo TCE: trata endereços como uma "pseudo-quadra" pra reusar
@@ -1540,21 +1578,17 @@
           .getDadosTCE(TE_ID);
         return;
       }
-      google.script.url.getLocation(function(location){
-        var ids = location.parameter.ids;
-        if (!ids) { finalizar(); return; }
-        google.script.run
-          .withSuccessHandler(function(data){
-            if (data && data.designadas) {
-              try {
-                localStorage.setItem('publico_dados_v3_' + ids, JSON.stringify({ t: Date.now(), d: data }));
-              } catch(e) {}
-              aplicar(data.designadas, data.contexto || []);
-            } else { finalizar(); }
-          })
-          .withFailureHandler(finalizar)
-          .getDadosComContexto(ids);
-      });
+      var ids = IDS_PUB;
+      if (!ids) { finalizar(); return; }
+      google.script.run
+        .withSuccessHandler(function(data){
+          if (data && data.designadas) {
+            data.designadas.forEach(salvarCacheQuadra);
+            aplicar(data.designadas, data.contexto || []);
+          } else { finalizar(); }
+        })
+        .withFailureHandler(finalizar)
+        .getDadosComContexto(ids);
     };
 
     function _atualizarBrisaSync() {
