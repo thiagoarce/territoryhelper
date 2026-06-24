@@ -2350,21 +2350,23 @@ function criarItemHtml(item, isInsideGroup) {
     function atualizarStatusSync() {
       var q;
       try { q = JSON.parse(localStorage.getItem('syncQueue') || '[]'); } catch(e) { q = []; }
+      var emVoo = (typeof _criandoEnderecos === 'number' ? _criandoEnderecos : 0);
+      var total = q.length + emVoo;
       // Banner detalhado dentro do modo avançado
       var el = document.getElementById('statusSync');
       if (el) {
-        if (q.length === 0) { el.classList.add('d-none'); }
+        if (total === 0) { el.classList.add('d-none'); }
         else {
           el.classList.remove('d-none');
           el.innerHTML = (!navigator.onLine ? '<i class="fa-solid fa-cloud-arrow-up me-1"></i>' : '<i class="fa-solid fa-rotate me-1 fa-spin"></i>') +
-                         q.length + ' marcação(ões) pendente(s) ' +
+                         total + ' operação(ões) pendente(s) ' +
                          (!navigator.onLine ? '(sem rede)' : '(sincronizando…)');
         }
       }
       // Indicador global no canto superior esquerdo (sempre visível)
       var pill = document.getElementById('indicadorFila');
       if (pill) {
-        if (q.length === 0 && navigator.onLine) {
+        if (total === 0 && navigator.onLine) {
           pill.classList.add('d-none');
         } else {
           pill.classList.remove('d-none');
@@ -2372,11 +2374,11 @@ function criarItemHtml(item, isInsideGroup) {
             pill.style.background = '#dc2626';
             pill.style.color = '#fff';
             pill.innerHTML = '<i class="fa-solid fa-wifi-slash me-1"></i>Offline' +
-                             (q.length > 0 ? ' · ' + q.length + ' na fila' : '');
+                             (total > 0 ? ' · ' + total + ' na fila' : '');
           } else {
             pill.style.background = '#f59e0b';
             pill.style.color = '#1a1a1a';
-            pill.innerHTML = '<i class="fa-solid fa-rotate me-1 fa-spin"></i>Sincronizando ' + q.length;
+            pill.innerHTML = '<i class="fa-solid fa-rotate me-1 fa-spin"></i>Sincronizando ' + total;
           }
         }
       }
@@ -2609,10 +2611,53 @@ function criarItemHtml(item, isInsideGroup) {
         : 'Preencha andares e aptos por andar.';
     }
 
+    // Contador de criações em voo (não foram pra syncQueue por serem high-stakes,
+    // mas alimentam o pill "Sincronizando" pro usuário ver feedback visual).
+    var _criandoEnderecos = 0;
+
+    // Constrói um item compatível com dadosGerais[*].itens a partir do payload
+    // do form. Usado pro optimistic update — UI mostra o endereço novo
+    // imediatamente; servidor confirma em background.
+    function _itemOtimista(payload, rowReal) {
+      return {
+        row: rowReal,
+        quadra: payload.quadraId,
+        face: payload.face || '',
+        faceIBGE: payload.faceIBGE || '',
+        logradouro: payload.logradouro || '',
+        numero: payload.numero || '',
+        complemento: payload.complemento || '',
+        lat: parseFloat(payload.lat) || null,
+        lng: parseFloat(payload.lng) || null,
+        tipo: payload.tipo || '',
+        nome: payload.nome || '',
+        nota: payload.nota || '',
+        naoVisitar: !!payload.naoVisitar,
+        ordem: payload.ordem || null,
+        ultimaVisita: '',
+        ultimoTipo: '', ultimoDataStr: '',
+        cartaEntregue: false
+      };
+    }
+
+    function _inserirOtimista(quadraId, item) {
+      var q = (dadosGerais || []).find(function(x){ return x.id === quadraId; });
+      if (!q) return false;
+      q.itens = q.itens || [];
+      q.itens.push(item);
+      return true;
+    }
+
+    function _removerOtimista(quadraId, row) {
+      var q = (dadosGerais || []).find(function(x){ return x.id === quadraId; });
+      if (!q || !q.itens) return;
+      q.itens = q.itens.filter(function(it){ return it.row !== row; });
+    }
+
     function salvarFormulario() {
-        var row = document.getElementById('editRow').value; 
+        var row = document.getElementById('editRow').value;
         var aplicarMassa = document.getElementById('checkAplicarMassa').checked;
-        
+
         var payload = {
             row: row,
             quadraId: document.getElementById('editQuadraId').value,
@@ -2622,16 +2667,16 @@ function criarItemHtml(item, isInsideGroup) {
             lat: document.getElementById('editLat').value,
             lng: document.getElementById('editLng').value,
             ordem: document.getElementById('editOrdem').value,
-            
+
             nome: document.getElementById('inputNome').value, // Col M
             nota: document.getElementById('inputNota').value, // Col N
             tipo: document.getElementById('inputTipo').value, // Col L
             naoVisitar: document.getElementById('checkNaoVisitar').checked,
-            
+
             logradouro: document.getElementById('inputLogradouro').value,
             numero: document.getElementById('inputNumero').value,
             complemento: document.getElementById('inputComplemento').value,
-            
+
             modoMassa: aplicarMassa
         };
 
@@ -2645,23 +2690,99 @@ function criarItemHtml(item, isInsideGroup) {
                           document.getElementById('checkCriarPredio') &&
                           document.getElementById('checkCriarPredio').checked;
 
+        // OPTIMISTIC UPDATE pra adicionar endereço novo (single ou prédio em massa):
+        // - Insere já em dadosGerais com row temporário (negativo p/ não colidir).
+        // - Re-renderiza imediatamente — endereço aparece na posição certa pela
+        //   lat/lng (ordenarItensPorAngulo) ou complemento (agruparItens).
+        // - Pill "Sincronizando" mostra que tem op em voo.
+        // - On success: substitui row temp pelos rows reais do backend + salva cache.
+        // - On failure: remove o item + mostra erro de conexão.
+        var ehNovo = !row;
+        var tempRows = []; // rows temporárias inseridas (negativas)
+        if (ehNovo) {
+          if (criarPredio) {
+            var andA = parseInt(document.getElementById('inputAndares').value, 10) || 0;
+            var aptA = parseInt(document.getElementById('inputAptosPorAndar').value, 10) || 0;
+            if (andA >= 1 && aptA >= 1) {
+              for (var a = 1; a <= andA; a++) {
+                for (var p = 1; p <= aptA; p++) {
+                  var num = (a * 100 + p);
+                  var tmpRow = -(Date.now() + tempRows.length);
+                  var it = _itemOtimista(Object.assign({}, payload, {
+                    complemento: 'APARTAMENTO ' + num,
+                    tipo: 'Domicílio particular Apartamento'
+                  }), tmpRow);
+                  if (_inserirOtimista(payload.quadraId, it)) tempRows.push(tmpRow);
+                }
+              }
+            }
+          } else {
+            var tmpRow1 = -Date.now();
+            var it1 = _itemOtimista(payload, tmpRow1);
+            if (_inserirOtimista(payload.quadraId, it1)) tempRows.push(tmpRow1);
+          }
+          if (tempRows.length > 0) {
+            _criandoEnderecos++;
+            atualizarStatusSync();
+            modalEdicao.hide();
+            btn.innerText = txtOriginal; btn.disabled = false;
+            renderizarLista();
+          }
+        }
+
         var runner = google.script.run
             .withSuccessHandler(function(r){
-                modalEdicao.hide();
-                btn.innerText = txtOriginal; btn.disabled = false;
+                if (ehNovo) _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
+                atualizarStatusSync();
+
+                // Substitui rows temporárias pelos rows reais retornados
+                if (ehNovo && tempRows.length > 0 && r) {
+                  var q = (dadosGerais || []).find(function(x){ return x.id === payload.quadraId; });
+                  if (q && q.itens) {
+                    if (criarPredio && r.primeiraRow) {
+                      // Mapeia 1-pra-1: tempRows[i] → primeiraRow+i
+                      tempRows.forEach(function(tmp, idx){
+                        var it = q.itens.find(function(x){ return x.row === tmp; });
+                        if (it) it.row = r.primeiraRow + idx;
+                      });
+                    } else if (r.row) {
+                      var it = q.itens.find(function(x){ return x.row === tempRows[0]; });
+                      if (it) it.row = r.row;
+                    }
+                    salvarCacheQuadra(q);
+                  }
+                }
+
+                if (!ehNovo) {
+                  modalEdicao.hide();
+                  btn.innerText = txtOriginal; btn.disabled = false;
+                }
                 if (criarPredio && r && r.qtdCriada) {
                     window.toast && window.toast(
                         'Prédio criado: ' + r.qtdCriada + ' aptos', 'success', 4000);
-                } else if (!row) {
+                } else if (ehNovo) {
                     window.toast && window.toast('Endereço adicionado', 'success');
                 } else {
                     window.toast && window.toast('Salvo', 'success');
                 }
-                carregarDados();
+                if (!ehNovo) carregarDados();
             })
             .withFailureHandler(function(e){
-                window.toast && window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000);
-                btn.innerText = txtOriginal; btn.disabled = false;
+                if (ehNovo) _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
+                atualizarStatusSync();
+
+                // Reverte optimistic: tira os itens temporários, re-renderiza
+                if (ehNovo && tempRows.length > 0) {
+                  tempRows.forEach(function(tmp){ _removerOtimista(payload.quadraId, tmp); });
+                  renderizarLista();
+                  var msg = navigator.onLine
+                    ? 'Erro ao salvar — tente de novo'
+                    : 'Sem conexão — endereço não foi enviado. Conecte a internet e tente de novo.';
+                  window.toast && window.toast(msg, 'error', 6000);
+                } else {
+                  window.toast && window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000);
+                  btn.innerText = txtOriginal; btn.disabled = false;
+                }
             });
 
         // Decide qual função chamar
@@ -2670,6 +2791,12 @@ function criarItemHtml(item, isInsideGroup) {
             var aptosPorAndar = parseInt(document.getElementById('inputAptosPorAndar').value, 10) || 0;
             if (andares < 1 || aptosPorAndar < 1) {
                 window.toast && window.toast('Preencha andares e aptos por andar', 'warn');
+                if (tempRows.length > 0) {
+                  tempRows.forEach(function(tmp){ _removerOtimista(payload.quadraId, tmp); });
+                  _criandoEnderecos = Math.max(0, _criandoEnderecos - 1);
+                  atualizarStatusSync();
+                  renderizarLista();
+                }
                 btn.innerText = txtOriginal; btn.disabled = false;
                 return;
             }

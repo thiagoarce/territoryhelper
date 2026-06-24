@@ -995,14 +995,20 @@ function salvarOrdemEmMassa(listaOrdenada) {
   return "Ordem atualizada!";
 }
 
-// Cria novo endereço respeitando sua estrutura de colunas
+// Cria novo endereço respeitando sua estrutura de colunas.
+// Retorna `row` (linha em Dados Brutos) pro frontend fazer optimistic update.
+// IMPORTANTE: usa appendRow (insere no fim). NÃO inserir no meio: PrediosAptos.row
+// e Registros.ID são foreign keys pra linha — shift +1 quebraria todas elas.
+// A ordem visual da lista no publicador é feita por ângulo em volta do centroide
+// da quadra, então o endereço novo aparece na posição certa pela lat/lng.
 function salvarNovoEnderecoPublico(dados) {
   return withLock_(function(){
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
     var novaLinha = _montarLinhaEndereco_(dados);
     sheet.appendRow(novaLinha);
+    var row = sheet.getLastRow();
     _invalidar();
-    return { ok: true, status: 'Criado' };
+    return { ok: true, status: 'Criado', row: row };
   });
 }
 
