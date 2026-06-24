@@ -2655,21 +2655,26 @@ function criarItemHtml(item, isInsideGroup) {
       var rowStr = document.getElementById('editRow').value;
       if (!rowStr) return;
       var rowNum = parseInt(rowStr, 10);
-      var qid = document.getElementById('editQuadraId').value;
       var btn = document.getElementById('btnConfirmExcluirEndereco');
       var txt = btn.innerHTML;
 
       // OPTIMISTIC: remove o item da memória e re-renderiza ANTES da
       // resposta do servidor — quadra continua visível, só sem o item.
       // Snapshot do item original pra reverter se o servidor falhar.
-      var quadraRef = (dadosGerais || []).find(function(x){ return x.id === qid; });
-      var idxOriginal = -1, itemOriginal = null;
-      if (quadraRef && quadraRef.itens) {
-        idxOriginal = quadraRef.itens.findIndex(function(it){ return Number(it.row) === rowNum; });
-        if (idxOriginal >= 0) {
-          itemOriginal = quadraRef.itens[idxOriginal];
-          quadraRef.itens.splice(idxOriginal, 1);
+      // Busca em TODAS as quadras pelo row (não confia em editQuadraId
+      // exato — type mismatch silencioso já mordeu antes).
+      var quadraRef = null, idxOriginal = -1, itemOriginal = null;
+      (dadosGerais || []).forEach(function(q){
+        if (quadraRef || !q.itens) return;
+        var idx = q.itens.findIndex(function(it){ return Number(it.row) === rowNum; });
+        if (idx >= 0) {
+          quadraRef = q;
+          idxOriginal = idx;
+          itemOriginal = q.itens[idx];
         }
+      });
+      if (quadraRef && idxOriginal >= 0) {
+        quadraRef.itens.splice(idxOriginal, 1);
       }
       // Atualiza cache POR QUADRA com a versão sem o item (preserva quadra
       // no localStorage — se usuário recarregar página, quadra continua lá).
@@ -2796,7 +2801,10 @@ function criarItemHtml(item, isInsideGroup) {
     }
 
     function _inserirOtimista(quadraId, item) {
-      var q = (dadosGerais || []).find(function(x){ return x.id === quadraId; });
+      // String coercion pra evitar mismatch silencioso (input value sempre
+      // é string, q.id pode ser string ou number conforme o backend serializa)
+      var qIdStr = String(quadraId);
+      var q = (dadosGerais || []).find(function(x){ return String(x.id) === qIdStr; });
       if (!q) return false;
       q.itens = q.itens || [];
       q.itens.push(item);
@@ -2804,7 +2812,8 @@ function criarItemHtml(item, isInsideGroup) {
     }
 
     function _removerOtimista(quadraId, row) {
-      var q = (dadosGerais || []).find(function(x){ return x.id === quadraId; });
+      var qIdStr = String(quadraId);
+      var q = (dadosGerais || []).find(function(x){ return String(x.id) === qIdStr; });
       if (!q || !q.itens) return;
       q.itens = q.itens.filter(function(it){ return it.row !== row; });
     }
