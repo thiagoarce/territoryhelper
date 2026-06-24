@@ -997,30 +997,86 @@ function salvarOrdemEmMassa(listaOrdenada) {
 
 // Cria novo endereço respeitando sua estrutura de colunas
 function salvarNovoEnderecoPublico(dados) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+  return withLock_(function(){
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+    var novaLinha = _montarLinhaEndereco_(dados);
+    sheet.appendRow(novaLinha);
+    _invalidar();
+    return { ok: true, status: 'Criado' };
+  });
+}
 
+// Helper: monta linha de Dados Brutos a partir do payload do publicador.
+// Sanitiza strings pra evitar formula injection.
+function _montarLinhaEndereco_(dados) {
   var novaLinha = new Array(18).fill("");
+  novaLinha[0] = sanitizar_(dados.quadraId);
+  novaLinha[1] = sanitizar_(dados.setor || "");
+  novaLinha[2] = sanitizar_(dados.face || "");
+  novaLinha[5] = sanitizar_(dados.logradouro);
+  novaLinha[6] = sanitizar_(dados.numero);
+  novaLinha[8] = sanitizar_(dados.complemento || "");
+  novaLinha[9] = dados.lat;
+  novaLinha[10] = dados.lng;
+  novaLinha[11] = sanitizar_(dados.tipo);
+  novaLinha[12] = sanitizar_(dados.nome || "");
+  novaLinha[13] = sanitizar_(dados.nota || "");
+  novaLinha[14] = dados.naoVisitar === true || dados.naoVisitar === 'true';
+  novaLinha[17] = dados.ordem || "";
+  return novaLinha;
+}
 
-  novaLinha[0] = dados.quadraId;  // A
-  novaLinha[1] = dados.setor || "";
-  novaLinha[2] = dados.face;      // C (Face herdada do vizinho)
-
-  novaLinha[5] = dados.logradouro;// F
-  novaLinha[6] = dados.numero;    // G
-  novaLinha[8] = dados.complemento;// I
-
-  // Coordenadas (IMPORTANTE PARA O MAPA)
-  novaLinha[9] = dados.lat;       // J (Latitude)
-  novaLinha[10] = dados.lng;      // K (Longitude)
-
-  novaLinha[11] = dados.tipo;     // L
-  novaLinha[12] = dados.nome;     // M (Nome Estabelecimento/Edificio)
-  novaLinha[13] = dados.nota;     // N
-  novaLinha[14] = dados.naoVisitar;// O
-  novaLinha[17] = dados.ordem;    // R (Ordem calculada)
-
-  sheet.appendRow(novaLinha);
-  return "Criado";
+// Cria prédio com N andares × M aptos por andar. Gera as linhas em
+// Dados Brutos automaticamente — publicador não precisa adicionar 1×1.
+// Numeração: padrão "andar*100 + apto" (101, 102, 201, 202...). Pode ser
+// alterada via prefixoComplemento (ex: 'Apto ' → 'Apto 101').
+function criarPredioEmMassa(payload) {
+  if (!payload || !payload.logradouro || !payload.numero) {
+    return { ok: false, erro: 'logradouro e numero obrigatórios' };
+  }
+  var andares = parseInt(payload.andares, 10) || 0;
+  var aptosPorAndar = parseInt(payload.aptosPorAndar, 10) || 0;
+  if (andares < 1 || aptosPorAndar < 1) {
+    return { ok: false, erro: 'andares e aptosPorAndar >= 1' };
+  }
+  if (andares * aptosPorAndar > 500) {
+    return { ok: false, erro: 'Limite de 500 aptos por prédio' };
+  }
+  var prefixo = payload.prefixoComplemento != null ? String(payload.prefixoComplemento) : '';
+  // Se já existem aptos nesse mesmo logradouro+número, perguntar?
+  // Por simplicidade: cria todos. Frontend deve avisar antes.
+  return withLock_(function(){
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dados Brutos");
+    if (!sheet) return { ok: false, erro: 'Aba Dados Brutos não encontrada' };
+    var linhas = [];
+    for (var andar = 1; andar <= andares; andar++) {
+      for (var apto = 1; apto <= aptosPorAndar; apto++) {
+        // Numeração tradicional: 101 (1º andar apto 1), 102, 201, etc.
+        // Se predio tiver térreo, andar=1 vira 01, 02; usuário ajusta depois
+        var num = (andar * 100 + apto);
+        var compl = prefixo + num;
+        linhas.push(_montarLinhaEndereco_({
+          quadraId: payload.quadraId,
+          face: payload.face,
+          logradouro: payload.logradouro,
+          numero: payload.numero,
+          complemento: compl,
+          lat: payload.lat,
+          lng: payload.lng,
+          tipo: 'Domicílio particular Apartamento',
+          nome: payload.nome || '',
+          nota: '',
+          naoVisitar: false,
+          ordem: ''
+        }));
+      }
+    }
+    // appendRows é mais rápido que loop de appendRow
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, linhas.length, linhas[0].length).setValues(linhas);
+    _invalidar();
+    return { ok: true, qtdCriada: linhas.length, primeiraRow: startRow };
+  });
 }
 
 /**

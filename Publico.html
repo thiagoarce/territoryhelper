@@ -636,6 +636,31 @@
              </label>
           </div>
 
+          <!-- Bloco "Criar prédio inteiro" — só aparece quando NOVO endereço
+               + tipo Apartamento. Cria N andares × M aptos por andar em massa
+               com complementos 101, 102, 201, etc. -->
+          <div class="d-none mb-3 p-3 border border-primary rounded" id="divCriarPredio" style="background:#f0f7ff">
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" id="checkCriarPredio">
+              <label class="form-check-label fw-bold text-primary" for="checkCriarPredio">
+                <i class="fa-solid fa-building me-1"></i> Criar prédio inteiro de uma vez
+              </label>
+            </div>
+            <div id="boxAptosMassa" class="d-none">
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label small">Nº de andares</label>
+                  <input type="number" class="form-control form-control-sm" id="inputAndares" min="1" max="50" value="4">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small">Aptos por andar</label>
+                  <input type="number" class="form-control form-control-sm" id="inputAptosPorAndar" min="1" max="20" value="4">
+                </div>
+              </div>
+              <div class="small text-muted" id="previewAptos">Vai criar 16 apartamentos (101 até 404).</div>
+            </div>
+          </div>
+
           <hr>
           <p class="small text-muted mb-2">Endereço Físico</p>
           <div class="row g-2">
@@ -1050,6 +1075,17 @@
       });
     }
 
+    // Ordena aptos dentro de um prédio por complemento alfanumérico
+    // crescente: 101, 102, 201, 202... ou "Apto 1", "Apto 2"...
+    function _ordenarAptos(aptos) {
+      return aptos.slice().sort(function(a, b){
+        return String(a.complemento || '').localeCompare(
+          String(b.complemento || ''),
+          'pt-BR', { numeric: true, sensitivity: 'base' }
+        );
+      });
+    }
+
     function _paradasDeFace(q, face) {
       var itens = (q.itens || []).filter(function(it){
         if (it.naoVisitar) return false;
@@ -1068,7 +1104,7 @@
         var g = grupos[k];
         return g.aptos.length === 1
           ? { tipo:'item', item: g.aptos[0] }
-          : { tipo:'predio', logradouro: g.logradouro, numero: g.numero, aptos: g.aptos };
+          : { tipo:'predio', logradouro: g.logradouro, numero: g.numero, aptos: _ordenarAptos(g.aptos) };
       });
     }
 
@@ -1915,7 +1951,14 @@ function renderizarLista() {
                 
                 // Cria grupo se tiver mais de 1 item OU se tiver nome definido (para ficar bonito)
                 if(lista.length > 1 || primeiro.nome) {
-                    resultado.push({ tipo: 'grupo', id: key, titulo: titulo, itens: lista });
+                    // Ordena aptos por complemento alfanumérico (101 antes de 102)
+                    var itensOrdenados = lista.slice().sort(function(a,b){
+                      return String(a.complemento || '').localeCompare(
+                        String(b.complemento || ''),
+                        'pt-BR', { numeric: true, sensitivity: 'base' }
+                      );
+                    });
+                    resultado.push({ tipo: 'grupo', id: key, titulo: titulo, itens: itensOrdenados });
                 } else {
                     resultado.push({ tipo: 'unico', item: primeiro });
                 }
@@ -2304,11 +2347,45 @@ function criarItemHtml(item, isInsideGroup) {
         // Apto ou Alojamento permite edição em massa
         var isApt = tipo.includes('apartamento') || tipo.includes('coletivo') || tipo.includes('vila');
         var divMassa = document.getElementById('divCheckMassa');
-        
+
         if(divMassa) {
             divMassa.classList.toggle('d-none', !isApt);
             document.getElementById('checkAplicarMassa').checked = false;
         }
+
+        // "Criar prédio inteiro" só faz sentido em endereço NOVO + tipo Apartamento
+        var rowVazio = !document.getElementById('editRow').value;
+        var divCriar = document.getElementById('divCriarPredio');
+        if (divCriar) {
+            divCriar.classList.toggle('d-none', !(rowVazio && isApt));
+            var ck = document.getElementById('checkCriarPredio');
+            if (ck) ck.checked = false;
+            var box = document.getElementById('boxAptosMassa');
+            if (box) box.classList.add('d-none');
+        }
+    }
+
+    // Wire-up: liga/desliga box de andares/aptos e atualiza preview
+    document.addEventListener('change', function(ev){
+      if (ev.target && ev.target.id === 'checkCriarPredio') {
+        document.getElementById('boxAptosMassa').classList.toggle('d-none', !ev.target.checked);
+        _atualizarPreviewPredio();
+      }
+    });
+    document.addEventListener('input', function(ev){
+      if (ev.target && (ev.target.id === 'inputAndares' || ev.target.id === 'inputAptosPorAndar')) {
+        _atualizarPreviewPredio();
+      }
+    });
+    function _atualizarPreviewPredio() {
+      var a = parseInt(document.getElementById('inputAndares').value, 10) || 0;
+      var p = parseInt(document.getElementById('inputAptosPorAndar').value, 10) || 0;
+      var total = a * p;
+      var ultimo = a > 0 && p > 0 ? (a * 100 + p) : 0;
+      var el = document.getElementById('previewAptos');
+      if (el) el.textContent = total > 0
+        ? 'Vai criar ' + total + ' apartamentos (101 até ' + ultimo + ').'
+        : 'Preencha andares e aptos por andar.';
     }
 
     function salvarFormulario() {
@@ -2341,16 +2418,51 @@ function criarItemHtml(item, isInsideGroup) {
         btn.innerText = "Salvando...";
         btn.disabled = true;
 
+        // Verifica se o usuário pediu "criar prédio inteiro"
+        var criarPredio = !row &&
+                          document.getElementById('checkCriarPredio') &&
+                          document.getElementById('checkCriarPredio').checked;
+
         var runner = google.script.run
-            .withSuccessHandler(() => {
+            .withSuccessHandler(function(r){
                 modalEdicao.hide();
                 btn.innerText = txtOriginal; btn.disabled = false;
+                if (criarPredio && r && r.qtdCriada) {
+                    window.toast && window.toast(
+                        'Prédio criado: ' + r.qtdCriada + ' aptos', 'success', 4000);
+                } else if (!row) {
+                    window.toast && window.toast('Endereço adicionado', 'success');
+                } else {
+                    window.toast && window.toast('Salvo', 'success');
+                }
                 carregarDados();
             })
-            .withFailureHandler(e => { window.toast && window.toast("Erro: " + e, "error"); btn.innerText = txtOriginal; btn.disabled = false; });
+            .withFailureHandler(function(e){
+                window.toast && window.toast("Erro: " + (e && e.message ? e.message : e), "error", 6000);
+                btn.innerText = txtOriginal; btn.disabled = false;
+            });
 
         // Decide qual função chamar
-        if(!row) {
+        if (criarPredio) {
+            var andares = parseInt(document.getElementById('inputAndares').value, 10) || 0;
+            var aptosPorAndar = parseInt(document.getElementById('inputAptosPorAndar').value, 10) || 0;
+            if (andares < 1 || aptosPorAndar < 1) {
+                window.toast && window.toast('Preencha andares e aptos por andar', 'warn');
+                btn.innerText = txtOriginal; btn.disabled = false;
+                return;
+            }
+            runner.criarPredioEmMassa({
+                quadraId: payload.quadraId,
+                face: payload.face,
+                logradouro: payload.logradouro,
+                numero: payload.numero,
+                lat: payload.lat,
+                lng: payload.lng,
+                nome: payload.nome,
+                andares: andares,
+                aptosPorAndar: aptosPorAndar
+            });
+        } else if(!row) {
             runner.salvarNovoEnderecoPublico(payload);
         } else if(aplicarMassa) {
             runner.salvarNotaEmMassa(payload);
