@@ -2681,7 +2681,6 @@ function toggleVisita(row, el) {
         google.script.run
           .withSuccessHandler(function(){
             if (window.toast) window.toast("Registrado!", "success");
-            else if (window.toast) window.toast("Registrado!", "success");
             carregarDados();
           })
           .withFailureHandler(function(e){

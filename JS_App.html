@@ -765,14 +765,17 @@ window.carregarEditorDados = function() {
       showLoading(true, "Salvando território...");
       
       google.script.run.withSuccessHandler(function() {
+          showLoading(false);
           window.toast("Território atualizado!", "success");
           isEditingTerritory = false;
-          
-          // Esconde painel de edição e volta botoes
+
           document.getElementById('divEditandoTerritorio').classList.add('d-none');
           document.getElementById('barraBotoesPadrao').classList.remove('d-none');
-          
+
           (window.invalidarCacheMapa(), window.carregarEditorDados());
+      }).withFailureHandler(function(e) {
+          showLoading(false);
+          window.toast("Erro ao atualizar território: " + (e && e.message ? e.message : e), "error", 6000);
       }).salvarLoteTerritorios(up);
   };
   
@@ -805,10 +808,14 @@ window.carregarEditorDados = function() {
              l.pm.disable();
              showLoading(true);
              google.script.run.withSuccessHandler(function() {
+                 showLoading(false);
                  window.toast("Salvo!", "success");
                  (window.invalidarCacheMapa(), window.carregarEditorDados());
+             }).withFailureHandler(function(e) {
+                 showLoading(false);
+                 window.toast("Erro ao salvar polígono: " + (e && e.message ? e.message : e), "error", 6000);
              }).salvarLoteTerritorios(up);
-         } 
+         }
       });
   };
 
@@ -908,12 +915,24 @@ window.carregarEditorDados = function() {
           var pointsB = allPoints.slice(end).concat(allPoints.slice(0, start + 1));
           if(pointsA.length < 3 || pointsB.length < 3) throw "Corte inválido.";
           
-          var idA = prompt("ID Parte 1:", currentEditLayer.metaData.id); if(!idA) { window.carregarEditorDados(); return; }
+          var idA = prompt("ID Parte 1:", currentEditLayer.metaData.id); if(!idA || !idA.trim()) { window.carregarEditorDados(); return; }
           var idB = prompt("ID Parte 2:", currentEditLayer.metaData.id + "-B");
+          if (!idB || !idB.trim()) { window.toast("ID da parte 2 é obrigatório.", "warn"); window.carregarEditorDados(); return; }
           var polyStrA = window.latLngsToString(pointsA); var polyStrB = window.latLngsToString(pointsB);
-          
+
           showLoading(true);
-          google.script.run.withSuccessHandler(() => { window.toast("Quadra dividida!", "success"); (window.invalidarCacheMapa(), window.carregarEditorDados()); }).salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB, polyB: polyStrB });
+          google.script.run
+            .withSuccessHandler(function() {
+              showLoading(false);
+              window.toast("Quadra dividida!", "success");
+              window.invalidarCacheMapa();
+              window.carregarEditorDados();
+            })
+            .withFailureHandler(function(e) {
+              showLoading(false);
+              window.toast("Erro ao dividir quadra: " + (e && e.message ? e.message : e), "error", 6000);
+            })
+            .salvarNovaQuadraDividida({ idA: currentEditLayer.metaData.id, polyA: polyStrA, idB: idB.trim(), polyB: polyStrB });
       } catch(e) { window.toast && window.toast(e, "error"); window.carregarEditorDados(); }
   };
 
@@ -1057,10 +1076,12 @@ window.converterGeoJsonParaString = function(geometry) {
   window.abrirModalSalvarTerritorio=function(){ document.getElementById('lblCountTerritorio').innerText=selectedQuadras.length; modalNovoTerritorio.show(); };
 
   window.confirmarSalvarTerritorio = function() {
-      var nome = document.getElementById('newTerritoryName').value; 
-      if(!nome) window.toast("Digite um nome para o território.", "warn"); return;
-      
-      modalNovoTerritorio.hide(); 
+      var nome = document.getElementById('newTerritoryName').value;
+      // Bug crítico: sem chaves, o `return` executava SEMPRE — função nunca
+      // salvava território novo. Toast aparecia mas modal não fechava.
+      if(!nome || !nome.trim()) { window.toast("Digite um nome para o território.", "warn"); return; }
+
+      modalNovoTerritorio.hide();
       showLoading(true, "Criando território...");
       
       var ids = selectedQuadras.map(function(q){ return q.id; }); 
@@ -1086,9 +1107,13 @@ window.converterGeoJsonParaString = function(geometry) {
       }];
       
       google.script.run.withSuccessHandler(function() {
+          showLoading(false);
           window.toast("Território criado!", "success");
-          window.alternarModoSelecao(false); 
+          window.alternarModoSelecao(false);
           (window.invalidarCacheMapa(), window.carregarEditorDados());
+      }).withFailureHandler(function(e) {
+          showLoading(false);
+          window.toast("Erro ao criar território: " + (e && e.message ? e.message : e), "error", 6000);
       }).salvarLoteTerritorios(up);
   };
 
@@ -2403,7 +2428,10 @@ window.confirmarAssociacao = function(layerQuadra) {
       .withSuccessHandler(function(r){
         if (r && r.ok) {
           bootstrap.Modal.getInstance(document.getElementById('modalObjetivo')).hide();
+          window.toast && window.toast('Objetivo removido', 'success');
           window.carregarObjetivosCampanha();
+        } else {
+          window.toast && window.toast('Erro: ' + (r && r.erro || '?'), 'error');
         }
       })
       .withFailureHandler(function(e){ window.toast && window.toast('Erro: ' + (e && e.message ? e.message : e), "error"); })
