@@ -1,0 +1,17 @@
+#:schema node_modules/wrangler/config-schema.json
+# Config do Cloudflare Workers + Static Assets pro SvelteKit.
+# Gerado pelo @sveltejs/adapter-cloudflare em .svelte-kit/cloudflare/.
+
+name = "territoryhelper"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets servidos pelo Workers (CSS, JS, imagens, favicon).
+[assets]
+binding = "ASSETS"
+directory = ".svelte-kit/cloudflare"
+
+# Logs no painel Cloudflare pra debug em produção.
+[observability]
+enabled = true
