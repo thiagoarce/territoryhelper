@@ -17,19 +17,29 @@ const supabase: Handle = async ({ event, resolve }) => {
     }
   });
 
-  // safeGetSession valida o JWT chamando getUser() (server-side) em vez de
-  // confiar no payload do cookie (que o cliente poderia forjar).
+  // safeGetSession: pega a sessão do cookie. Tenta validar via getUser() pra
+  // garantir que o JWT não foi forjado, mas se a chamada falhar (problema
+  // de rede em Workers, latência alta, etc) cai pra session.user em vez de
+  // retornar null — senão o user fica preso num loop /login → / → /login.
   event.locals.safeGetSession = async () => {
     const {
       data: { session }
     } = await event.locals.supabase.auth.getSession();
     if (!session) return { session: null, user: null };
-    const {
-      data: { user },
-      error
-    } = await event.locals.supabase.auth.getUser();
-    if (error) return { session: null, user: null };
-    return { session, user };
+    try {
+      const {
+        data: { user },
+        error
+      } = await event.locals.supabase.auth.getUser();
+      if (error) {
+        console.error('[safeGetSession] getUser error:', error.message);
+        return { session, user: session.user };
+      }
+      return { session, user };
+    } catch (e) {
+      console.error('[safeGetSession] getUser threw:', e);
+      return { session, user: session.user };
+    }
   };
 
   return resolve(event, {
@@ -40,6 +50,8 @@ const supabase: Handle = async ({ event, resolve }) => {
 };
 
 // 2. Carrega o profile do usuário logado e injeta em locals.profile.
+// Loga erros pra ficar visível na Observability do Cloudflare se algo
+// der errado (RLS bloqueando, profile inexistente, etc).
 const profile: Handle = async ({ event, resolve }) => {
   const { session, user } = await event.locals.safeGetSession();
   event.locals.session = session;
@@ -47,12 +59,18 @@ const profile: Handle = async ({ event, resolve }) => {
   event.locals.profile = null;
 
   if (user) {
-    const { data } = await event.locals.supabase
+    const { data, error } = await event.locals.supabase
       .from('profiles')
-      .select('id, nome, role, ativo, criado_em')
+      .select('id, nome, role, ativo, criado_em, atualizado_em')
       .eq('id', user.id)
       .single();
-    if (data) event.locals.profile = data as Profile;
+    if (error) {
+      console.error('[profile load] error for user', user.id, ':', error.message);
+    } else if (data) {
+      event.locals.profile = data as Profile;
+    } else {
+      console.warn('[profile load] user', user.id, 'has no profile row');
+    }
   }
 
   return resolve(event);
