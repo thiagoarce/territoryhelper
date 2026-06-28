@@ -6,16 +6,28 @@
 <p class="mt-2 text-slate-600">Olá, {data.profile.nome}.</p>
 
 <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  <a href="/admin/quadras" class="rounded-lg border border-slate-200 bg-white p-4 hover:shadow">
+    <div class="font-semibold">Quadras</div>
+    <div class="mt-1 text-sm text-slate-500">Ver lista, status, contagem de locais.</div>
+  </a>
+  <a href="/admin/designacoes" class="rounded-lg border border-slate-200 bg-white p-4 hover:shadow">
+    <div class="font-semibold">Designações</div>
+    <div class="mt-1 text-sm text-slate-500">Atribuir quadras pros publicadores.</div>
+  </a>
   <a href="/admin/usuarios" class="rounded-lg border border-slate-200 bg-white p-4 hover:shadow">
     <div class="font-semibold">Usuários</div>
     <div class="mt-1 text-sm text-slate-500">Adicionar, remover, atribuir papéis.</div>
   </a>
   <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-400">
-    <div class="font-semibold">Quadras &amp; Territórios</div>
+    <div class="font-semibold">Mapa (Visão geral)</div>
+    <div class="mt-1 text-sm">Em breve — depende de PostGIS render.</div>
+  </div>
+  <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-400">
+    <div class="font-semibold">Cartas</div>
     <div class="mt-1 text-sm">Em breve</div>
   </div>
   <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-400">
-    <div class="font-semibold">Designações</div>
+    <div class="font-semibold">Campanha</div>
     <div class="mt-1 text-sm">Em breve</div>
   </div>
 </div>
