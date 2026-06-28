@@ -10,8 +10,11 @@
 
   // Links da sidebar — cada um marca quais roles podem ver.
   const links = [
-    { href: '/admin', label: 'Admin', roles: ['admin'] },
+    { href: '/admin', label: 'Painel', roles: ['admin'] },
+    { href: '/admin/quadras', label: 'Quadras', roles: ['admin'] },
+    { href: '/admin/designacoes', label: 'Designações', roles: ['admin'] },
     { href: '/admin/usuarios', label: 'Usuários', roles: ['admin'] },
+    { href: '/admin/dev/sql', label: '⚙ SQL (dev)', roles: ['admin'] },
     { href: '/dirigente', label: 'Dirigente', roles: ['admin', 'dirigente'] },
     { href: '/publicador', label: 'Publicador', roles: ['admin', 'dirigente', 'publicador'] }
   ];
