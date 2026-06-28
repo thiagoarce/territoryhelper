@@ -8,3 +8,5 @@ build/
 *.log
 .vercel/
 .wrangler/
+# Dados reais da congregação (endereços, lat/lng, históricos) — nunca commitar
+migration-data/

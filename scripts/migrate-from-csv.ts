@@ -86,6 +86,27 @@ function readCSV(filename: string): { headers: string[]; rows: string[][] } | nu
   return { headers, rows };
 }
 
+// Registros.csv do GAS antigo NÃO tem header — primeira linha já é dado.
+// Colunas conhecidas: ID, Data, Tipo, TS.
+function readRegistrosCSV(filename: string): { headers: string[]; rows: string[][] } | null {
+  const path = join(DATA_DIR, filename);
+  if (!existsSync(path)) {
+    console.warn(`⚠️  ${filename} não encontrado — pulando.`);
+    return null;
+  }
+  const text = readFileSync(path, 'utf8');
+  const rows = parseCSV(text).filter((r) => r.some((c) => c.trim() !== ''));
+  const headers = ['ID', 'Data', 'Tipo', 'TS'];
+  console.log(`📄 ${filename}: ${rows.length} linhas (sem header)`);
+  return { headers, rows };
+}
+
+// Normaliza status PT-BR ("Concluído", "Pendente", "Inativa") pra slug minúsculo
+function normalizarStatus(s: string): string {
+  const norm = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  return norm || 'pendente';
+}
+
 // ============================================================================
 // Helpers de coerção
 // ============================================================================
@@ -194,19 +215,13 @@ async function insertBatch(table: string, rows: Record<string, unknown>[], chunk
   console.log(`✅ ${table}: ${rows.length} linhas`);
 }
 
-async function clearTable(table: string) {
-  // Workaround pra "delete all" via REST: cria filtro que sempre casa
-  const { error } = await db.from(table).delete().not('id', 'is', null);
-  if (error) {
-    // tenta alternativa pra tabelas sem `id` (junção)
-    const alt = await db.rpc('exec_sql' as any, { sql: `delete from ${table}` }).catch(() => null);
-    if (!alt || alt.error) {
-      console.warn(`⚠️  ${table}: não consegui limpar via REST (${error.message}). Continuando.`);
-    }
-  }
+async function clearTable(table: string, pkCol = 'id') {
+  // Service role bypassa RLS. Filtro neq impossível pra matar todas as linhas.
+  const { error } = await db.from(table).delete().neq(pkCol, '__never_match_this__');
+  if (error) console.warn(`⚠️  ${table}: ${error.message} — continuando.`);
 }
 
-// Junction tables: deletam tudo via .neq numa coluna any
+// Junction tables: deletam tudo via filtro sempre-verdadeiro numa coluna any
 async function clearJunctionTable(table: string, anyCol: string) {
   const { error } = await db.from(table).delete().not(anyCol, 'is', null);
   if (error) console.warn(`⚠️  ${table}: ${error.message}`);
@@ -223,9 +238,9 @@ async function importTerritorios() {
     nome: colIdx(headers, 'Nome'),
     cor: colIdx(headers, 'Cor'),
     labelPos: colIdx(headers, 'label_pos', 'labelPos'),
-    labelType: colIdx(headers, 'label_type', 'labelType'),
-    status: colIdx(headers, 'Status'),
-    dataConc: colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao')
+    labelType: colIdx(headers, 'label_type', 'labelType', 'labelVisibility'),
+    status: colIdx(headers, 'Status', 'Situação', 'Situacao'),
+    dataConc: colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao', 'Data de Conclusão', 'Data de Conclusao')
   };
 
   const dados = rows
@@ -243,7 +258,7 @@ async function importTerritorios() {
         cor: toStr(r[c.cor]) || '#3388ff',
         label_pos: labelPosObj,
         label_type: toStrOrNull(r[c.labelType]),
-        status: toStr(r[c.status]) || 'pendente',
+        status: normalizarStatus(toStr(r[c.status])),
         data_conclusao: toDate(r[c.dataConc])
       };
     })
@@ -261,12 +276,12 @@ async function importQuadras() {
   if (!csv) return;
   const { headers, rows } = csv;
   const c = {
-    id: colIdx(headers, 'ID', 'Id', 'id'),
-    poly: colIdx(headers, 'polyString', 'poly_string', 'poly'),
+    id: colIdx(headers, 'ID', 'Id', 'id', 'ID Quadra'),
+    poly: colIdx(headers, 'polyString', 'poly_string', 'poly', 'Polígono', 'Poligono'),
     color: colIdx(headers, 'Color', 'Cor'),
     territorio: colIdx(headers, 'Territorio', 'Território', 'territorio'),
-    status: colIdx(headers, 'Status'),
-    dataConc: colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao')
+    status: colIdx(headers, 'Status', 'Situação', 'Situacao'),
+    dataConc: colIdx(headers, 'Data conclusao', 'dataConclusao', 'data_conclusao', 'Data de Conclusão', 'Data de Conclusao')
   };
 
   const dados: Record<string, unknown>[] = [];
@@ -281,7 +296,7 @@ async function importQuadras() {
       poly: wkt,
       color: toStr(r[c.color]) || '#3388ff',
       territorio_id: toStrOrNull(r[c.territorio]),
-      status: toStr(r[c.status]) || 'pendente',
+      status: normalizarStatus(toStr(r[c.status])),
       data_conclusao: toDate(r[c.dataConc])
     });
   }
@@ -558,7 +573,7 @@ async function importLocaisEUnidades() {
 // 4. Registros (FK: unidade_id via legacy_row)
 // ============================================================================
 async function importRegistros(mapaUnidades: Map<number, number>) {
-  const csv = readCSV('Registros.csv');
+  const csv = readRegistrosCSV('Registros.csv');
   if (!csv) return;
   const { headers, rows } = csv;
   const c = {
