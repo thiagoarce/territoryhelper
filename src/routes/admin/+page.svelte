@@ -63,6 +63,10 @@
   const dirigentes = $derived(data.publicadores.filter((p) => p.role === 'dirigente' || p.role === 'admin'));
 
   function onClickQuadra(q: QuadraGeo, multi: boolean) {
+    if (q.status === 'inativa') {
+      toast.info(`Quadra ${q.id} está inativa — edita em Polígonos pra reativar`);
+      return;
+    }
     if (selecionadas.has(q.id)) selecionadas.delete(q.id);
     else selecionadas.add(q.id);
     selecionadas = new Set(selecionadas);
