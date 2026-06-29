@@ -29,6 +29,11 @@ export const load: PageServerLoad = async ({ locals }) => {
       .order('quadra_ibge', { nullsFirst: false })
   );
 
+  // Quadras pra UI de renomeio
+  const { data: todasQuadrasFull } = await locals.supabase
+    .from('quadras').select('id, color, status').order('id');
+  const quadrasParaRenomear = (todasQuadrasFull ?? []) as { id: string; color: string; status: string }[];
+
   // Distribuição setor|quadra_ibge por quadra (pra detectar inconsistências).
   // Paginado obrigatório — 2774 locais > 1000 limit.
   const porQuadra = await selectAll<{ quadra_id: string | null; setor: string | null; quadra_ibge: string | null }>(
@@ -65,7 +70,8 @@ export const load: PageServerLoad = async ({ locals }) => {
   return {
     semQuadra,
     quadrasMultiCluster,
-    quadrasVazias
+    quadrasVazias,
+    quadrasParaRenomear
   };
 };
 

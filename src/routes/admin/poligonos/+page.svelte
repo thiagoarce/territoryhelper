@@ -12,6 +12,12 @@
   let renomeando: string | null = $state(null);
   let sheetRenomeio = $state(false);
   let salvando = $state(false);
+  let buscaRenomear = $state('');
+
+  const quadrasFiltradas = $derived(
+    !buscaRenomear.trim() ? data.quadrasParaRenomear
+    : data.quadrasParaRenomear.filter((q: any) => q.id.toLowerCase().includes(buscaRenomear.toLowerCase()))
+  );
 
   function abrirRenomeio(id: string) {
     renomeando = id;
@@ -161,19 +167,36 @@
 
 <!-- Renomear -->
 {#if aba === 'renomear'}
-  <div class="mt-4 space-y-2">
+  <div class="mt-4 space-y-3">
     <Card padding="md">
       <div class="text-sm">
         Renomear uma quadra propaga o novo ID em <strong>locais</strong> e <strong>designacao_quadras</strong>.
-        Use pra padronizar (ex: <code>10A</code> → <code>Q-10A</code>).
+        Use pra padronizar (ex: <code class="bg-slate-100 px-1 rounded">10A</code> → <code class="bg-slate-100 px-1 rounded">Q-10A</code>).
       </div>
     </Card>
-    <div class="text-sm text-slate-500">Clica na quadra pra renomear:</div>
-    <!-- Lista de quadras renomeáveis (pega via outra query depois — por ora link da lista de quadras) -->
-    <Card padding="md">
-      <a href="/admin/quadras" class="text-primary-700 hover:underline">→ Ir pra lista completa de quadras</a>
-      <p class="text-sm text-slate-500 mt-1">Lá tem cada quadra com botão de renomear (em construção).</p>
-    </Card>
+
+    <input
+      type="search"
+      bind:value={buscaRenomear}
+      placeholder="Buscar quadra..."
+      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+    />
+
+    <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
+      {#each quadrasFiltradas as q}
+        <button
+          type="button"
+          onclick={() => abrirRenomeio(q.id)}
+          class="px-2 py-2 rounded border border-slate-200 hover:border-primary-500 hover:bg-primary-50 text-left transition-colors"
+        >
+          <div class="flex items-center gap-1">
+            <span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>
+            <span class="font-mono font-semibold text-sm">{q.id}</span>
+          </div>
+          <div class="text-xs text-slate-400">{q.status}</div>
+        </button>
+      {/each}
+    </div>
   </div>
 {/if}
 

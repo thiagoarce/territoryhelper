@@ -17,6 +17,7 @@
 
   let quadraSelecionada: QuadraGeo | null = $state(null);
   let sheetOpen = $state(false);
+  let densidade = $state(false);
 
   function quadraClicada(q: QuadraGeo) {
     quadraSelecionada = q;
@@ -69,15 +70,27 @@
 
 <!-- Mapa -->
 <div class="mt-4">
-  <AdminMapa quadras={data.quadras} altura={580} onQuadraClick={quadraClicada} />
+  <AdminMapa quadras={data.quadras} altura={580} onQuadraClick={quadraClicada} {densidade} />
 </div>
 
-<!-- Legenda -->
-<div class="mt-3 flex gap-4 flex-wrap text-xs">
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span> Pendente</span>
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span> Concluída</span>
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-slate-400/60"></span> Inativa</span>
-  <span class="text-slate-500 ml-auto">Click numa quadra pra ver detalhes</span>
+<!-- Legenda + toggle -->
+<div class="mt-3 flex gap-3 flex-wrap text-xs items-center">
+  <label class="flex items-center gap-1.5 cursor-pointer">
+    <input type="checkbox" bind:checked={densidade} class="w-4 h-4 rounded" />
+    <span>Colorir por densidade de locais</span>
+  </label>
+  <span class="mx-2 text-slate-300">|</span>
+  {#if densidade}
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-100"></span> 0</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-300"></span> 15</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-500"></span> 30</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-red-600"></span> 60+</span>
+  {:else}
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span> Pendente</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span> Concluída</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-slate-400/60"></span> Inativa</span>
+  {/if}
+  <span class="text-slate-500 ml-auto">Click numa quadra pra detalhes</span>
 </div>
 
 <!-- Bottom sheet com detalhes da quadra clicada -->

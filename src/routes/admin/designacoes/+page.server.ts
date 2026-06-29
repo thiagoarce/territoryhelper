@@ -45,6 +45,33 @@ export const actions: Actions = {
     return { ok: true, msg: `Designação criada (${quadrasIds.length} quadra(s))` };
   },
 
+  // Atualiza publicador / prazo / notas / quadras de uma designação existente.
+  // Pra reatribuir designações antigas (importadas com publicador NULL).
+  atualizar: async ({ request, locals }) => {
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const publicadorId = String(fd.get('publicador_id') ?? '').trim() || null;
+    const prazo = String(fd.get('prazo') ?? '').trim() || null;
+    const notas = String(fd.get('notas') ?? '').trim() || null;
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+
+    const { error: errUp } = await locals.supabase
+      .from('designacoes')
+      .update({ publicador_id: publicadorId, prazo, notas })
+      .eq('id', id);
+    if (errUp) return fail(400, { erro: errUp.message });
+
+    // Atualiza junção: deleta tudo + insere de novo (atomicidade não crítica aqui)
+    if (quadrasIds.length > 0) {
+      await locals.supabase.from('designacao_quadras').delete().eq('designacao_id', id);
+      const linhas = quadrasIds.map((qid) => ({ designacao_id: id, quadra_id: qid }));
+      const { error: errIns } = await locals.supabase.from('designacao_quadras').insert(linhas);
+      if (errIns) return fail(400, { erro: 'Quadras: ' + errIns.message });
+    }
+    return { ok: true, msg: 'Atualizada' };
+  },
+
   // Muda status da designação (concluir / cancelar / reabrir)
   mudarStatus: async ({ request, locals }) => {
     const fd = await request.formData();

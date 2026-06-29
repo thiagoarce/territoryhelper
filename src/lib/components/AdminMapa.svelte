@@ -5,11 +5,13 @@
   let {
     quadras,
     altura = 600,
-    onQuadraClick
+    onQuadraClick,
+    densidade = false
   }: {
     quadras: QuadraGeo[];
     altura?: number;
     onQuadraClick?: (q: QuadraGeo) => void;
+    densidade?: boolean;
   } = $props();
 
   let container: HTMLDivElement;
@@ -54,7 +56,8 @@
             id: q.id,
             color: q.color,
             status: q.status,
-            territorio_id: q.territorio_id
+            territorio_id: q.territorio_id,
+            qtd_locais: q.qtd_locais
           }
         }));
 
@@ -63,21 +66,30 @@
         data: { type: 'FeatureCollection', features } as any
       });
 
-      // Fill com cor do status (semi-transparente)
-      mapa.addLayer({
-        id: 'quadras-fill',
-        type: 'fill',
-        source: 'quadras',
-        paint: {
-          'fill-color': [
+      // Fill: por status OU por densidade (interpola amarelo→vermelho)
+      const fillColor: any = densidade
+        ? [
+            'interpolate',
+            ['linear'],
+            ['get', 'qtd_locais'],
+            0, '#fef3c7',
+            5, '#fde68a',
+            15, '#fcd34d',
+            30, '#f59e0b',
+            60, '#dc2626'
+          ]
+        : [
             'match',
             ['get', 'status'],
             'concluido', STATUS_COLORS.concluido,
             'inativa', STATUS_COLORS.inativa,
             STATUS_COLORS.pendente
-          ],
-          'fill-opacity': 0.4
-        }
+          ];
+      mapa.addLayer({
+        id: 'quadras-fill',
+        type: 'fill',
+        source: 'quadras',
+        paint: { 'fill-color': fillColor, 'fill-opacity': 0.45 }
       });
 
       // Borda com cor própria da quadra

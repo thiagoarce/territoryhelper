@@ -16,6 +16,18 @@
   let editandoLocal: LocalComUnidades | null = $state(null);
   let sheetEditar = $state(false);
   let sheetAdd = $state(false);
+
+  // Modo simples: botões gigantes, sem mapa nem ações de edição.
+  // Persistido em localStorage por usuário.
+  let modoSimples = $state(false);
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try { modoSimples = localStorage.getItem('modo_pub') === 'simples'; } catch {}
+  });
+  function alternarModo() {
+    modoSimples = !modoSimples;
+    try { localStorage.setItem('modo_pub', modoSimples ? 'simples' : 'avancado'); } catch {}
+  }
   function abrirEditar(l: LocalComUnidades) {
     editandoLocal = l;
     sheetEditar = true;
@@ -121,23 +133,30 @@
       <div class="text-sm text-slate-500">Território {data.quadra.territorio_nome}</div>
     {/if}
   </div>
-  <div class="text-sm text-slate-600">
-    <div>
-      <strong>{feitasUnidades}</strong> de <strong>{totalUnidades}</strong> unidade(s)
+  <div class="flex items-center gap-3">
+    <div class="text-sm text-slate-600 text-right">
+      <div><strong>{feitasUnidades}</strong> de <strong>{totalUnidades}</strong></div>
+      <div class="text-xs text-slate-400">{data.locais.length} local(is)</div>
     </div>
-    <div class="text-xs text-slate-400">{data.locais.length} local(is)</div>
+    <button
+      onclick={alternarModo}
+      class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100"
+      title={modoSimples ? 'Voltar ao modo avançado' : 'Modo simples (botões grandes)'}
+    >{modoSimples ? '🔍 Avançado' : 'ⓢ Simples'}</button>
   </div>
 </div>
 
-<!-- Mapa -->
-<div class="mt-4">
-  <QuadraMap
-    quadraGeo={data.quadra.poly_geojson}
-    quadraColor={data.quadra.color}
-    locais={data.locais}
-    altura={240}
-  />
-</div>
+<!-- Mapa (escondido no modo simples) -->
+{#if !modoSimples}
+  <div class="mt-4">
+    <QuadraMap
+      quadraGeo={data.quadra.poly_geojson}
+      quadraColor={data.quadra.color}
+      locais={data.locais}
+      altura={240}
+    />
+  </div>
+{/if}
 
 <!-- Filtros -->
 <div class="mt-4 flex gap-2">
@@ -279,7 +298,7 @@
 
 {#snippet botoes(u: UnidadeEnriquecida)}
   {@const cartaMarcada = !!u.carta_entregue}
-  <div class="flex gap-1 flex-wrap">
+  <div class="flex gap-1 flex-wrap" class:grid={modoSimples} class:grid-cols-2={modoSimples} class:gap-2={modoSimples}>
     {#each [
       { tipo: 'naoAtendeu', icon: '🚪', label: 'Não atendeu' },
       { tipo: 'semConversa', icon: '📞', label: 'Sem palestra' },
@@ -296,14 +315,9 @@
         <button
           type="submit"
           title={opt.label}
-          class="px-3 py-1.5 rounded text-sm border transition-colors"
-          class:bg-primary-600={ativo}
-          class:text-white={ativo}
-          class:border-primary-600={ativo}
-          class:hover:bg-slate-100={!ativo}
-          class:border-slate-300={!ativo}
+          class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {ativo ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-100'}"
         >
-          {opt.icon} <span class="hidden sm:inline">{opt.label}</span>
+          {opt.icon} <span class={modoSimples ? '' : 'hidden sm:inline'}>{opt.label}</span>
         </button>
       </form>
     {/each}
@@ -317,14 +331,9 @@
       <button
         type="submit"
         title="Carta entregue"
-        class="px-3 py-1.5 rounded text-sm border transition-colors"
-        class:bg-purple-600={cartaMarcada}
-        class:text-white={cartaMarcada}
-        class:border-purple-600={cartaMarcada}
-        class:hover:bg-slate-100={!cartaMarcada}
-        class:border-slate-300={!cartaMarcada}
+        class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {cartaMarcada ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-300 hover:bg-slate-100'}"
       >
-        ✉ <span class="hidden sm:inline">Carta</span>
+        ✉ <span class={modoSimples ? '' : 'hidden sm:inline'}>Carta</span>
       </button>
     </form>
   </div>
