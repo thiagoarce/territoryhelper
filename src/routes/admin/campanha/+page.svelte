@@ -183,24 +183,26 @@
         {editando ? 'Salvar' : 'Criar'}
       </Button>
     </div>
-
-    {#if editando}
-      <form
-        method="POST"
-        action="?/excluir"
-        use:enhance={() => async ({ result, update }) => {
-          await update();
-          if (result.type === 'success') {
-            toast.success('Excluído');
-            sheetOpen = false;
-            await invalidateAll();
-          }
-        }}
-        onsubmit={(e) => { if (!confirm('Excluir esse objetivo?')) e.preventDefault(); }}
-      >
-        <input type="hidden" name="id" value={editando.id} />
-        <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Excluir</button>
-      </form>
-    {/if}
   </form>
+
+  <!-- Form de excluir fora do form principal (HTML não permite nested forms) -->
+  {#if editando}
+    <form
+      method="POST"
+      action="?/excluir"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') {
+          toast.success('Excluído');
+          sheetOpen = false;
+          await invalidateAll();
+        }
+      }}
+      onsubmit={(e) => { if (!confirm('Excluir esse objetivo?')) e.preventDefault(); }}
+      class="mt-3"
+    >
+      <input type="hidden" name="id" value={editando.id} />
+      <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Excluir</button>
+    </form>
+  {/if}
 </BottomSheet>

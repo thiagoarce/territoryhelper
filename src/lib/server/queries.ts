@@ -3,6 +3,43 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Quadra, Territorio, Profile, Designacao, Local, Unidade, TipoRegistro } from '$lib/types';
 
+// ============================================================================
+// IMPORTANTE: Supabase tem limite default de 1000 rows por query.
+// Em tabelas grandes (locais, unidades, registros) sempre use selectAll
+// pra evitar bug silencioso onde só os primeiros 1000 retornam.
+// ============================================================================
+
+const PAGE = 1000;
+
+export async function selectAll<T = unknown>(
+  query: any
+): Promise<T[]> {
+  const out: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  return out;
+}
+
+// Conta locais por quadra (paginado pra evitar bug do limite 1000).
+export async function contarLocaisPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
+  const linhas = await selectAll<{ quadra_id: string | null }>(
+    supabase.from('locais').select('quadra_id')
+  );
+  const mapa = new Map<string, number>();
+  for (const l of linhas) {
+    if (!l.quadra_id) continue;
+    mapa.set(l.quadra_id, (mapa.get(l.quadra_id) ?? 0) + 1);
+  }
+  return mapa;
+}
+
 export interface QuadraEnriquecida extends Quadra {
   territorio_nome: string | null;
   qtd_locais: number;
@@ -17,22 +54,15 @@ export async function listarQuadrasComContagem(
   // PostgREST não faz GROUP BY nativo — usamos a view ou contamos no FE.
   // Como ainda não criamos view materializada, fazemos 2 queries paralelas
   // e juntamos. Pra <500 quadras isso ainda é <100ms.
-  const [quadrasRes, locaisRes] = await Promise.all([
+  const [quadrasRes, locaisPorQuadra] = await Promise.all([
     supabase
       .from('quadras')
       .select('id, color, territorio_id, status, data_conclusao, notas, criado_em, atualizado_em, territorios(nome)')
       .order('id'),
-    supabase.from('locais').select('id, quadra_id')
+    contarLocaisPorQuadra(supabase)
   ]);
 
   if (quadrasRes.error) throw quadrasRes.error;
-  if (locaisRes.error) throw locaisRes.error;
-
-  const locaisPorQuadra = new Map<string, number>();
-  for (const l of locaisRes.data ?? []) {
-    if (!l.quadra_id) continue;
-    locaisPorQuadra.set(l.quadra_id, (locaisPorQuadra.get(l.quadra_id) ?? 0) + 1);
-  }
 
   return (quadrasRes.data ?? []).map((q: any) => ({
     ...q,
@@ -51,23 +81,17 @@ export interface QuadraGeo extends QuadraEnriquecida {
 export async function listarQuadrasComGeo(
   supabase: SupabaseClient
 ): Promise<QuadraGeo[]> {
-  const [qRes, locRes, terrRes] = await Promise.all([
+  const [qRes, locaisPorQuadra, terrRes] = await Promise.all([
     supabase
       .from('quadras_geo')
       .select('id, color, territorio_id, status, data_conclusao, notas, poly_geojson')
       .order('id'),
-    supabase.from('locais').select('id, quadra_id'),
+    contarLocaisPorQuadra(supabase),
     supabase.from('territorios').select('id, nome')
   ]);
   if (qRes.error) throw qRes.error;
-  if (locRes.error) throw locRes.error;
   if (terrRes.error) throw terrRes.error;
 
-  const locaisPorQuadra = new Map<string, number>();
-  for (const l of locRes.data ?? []) {
-    if (!l.quadra_id) continue;
-    locaisPorQuadra.set(l.quadra_id, (locaisPorQuadra.get(l.quadra_id) ?? 0) + 1);
-  }
   const territorioNomePorId = new Map((terrRes.data ?? []).map((t) => [t.id, t.nome]));
   return (qRes.data ?? []).map((q: any) => ({
     ...q,
@@ -97,22 +121,24 @@ export interface PredioListado {
 }
 
 export async function listarPredios(supabase: SupabaseClient): Promise<PredioListado[]> {
-  const [predRes, uniRes] = await Promise.all([
-    supabase
-      .from('locais')
-      .select('id, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora')
-      .eq('tipo', 'predio')
-      .order('logradouro'),
-    supabase
-      .from('unidades')
-      .select('local_id, carta_entregue, desocupado, nao_escrever')
+  // Paginação obrigatória pra unidades (19k+ no banco) e pra prédios
+  // (potencialmente 2774 — passa do limite default).
+  const [predios, unidades] = await Promise.all([
+    selectAll<any>(
+      supabase
+        .from('locais')
+        .select('id, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora')
+        .eq('tipo', 'predio')
+        .order('logradouro')
+    ),
+    selectAll<{ local_id: number; carta_entregue: string | null; desocupado: boolean; nao_escrever: boolean }>(
+      supabase.from('unidades').select('local_id, carta_entregue, desocupado, nao_escrever')
+    )
   ]);
-  if (predRes.error) throw predRes.error;
-  if (uniRes.error) throw uniRes.error;
 
   type Counts = { qtd: number; carta: number; desoc: number; naoescr: number };
   const porLocal = new Map<number, Counts>();
-  for (const u of uniRes.data ?? []) {
+  for (const u of unidades) {
     const c = porLocal.get(u.local_id) ?? { qtd: 0, carta: 0, desoc: 0, naoescr: 0 };
     c.qtd++;
     if (u.carta_entregue) c.carta++;
@@ -120,7 +146,7 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
     if (u.nao_escrever) c.naoescr++;
     porLocal.set(u.local_id, c);
   }
-  return (predRes.data ?? []).map((p: any) => {
+  return predios.map((p: any) => {
     const c = porLocal.get(p.id) ?? { qtd: 0, carta: 0, desoc: 0, naoescr: 0 };
     return {
       ...p,
@@ -263,7 +289,6 @@ export async function carregarQuadraComLocais(
   quadraId: string
 ): Promise<DadosQuadraTrabalho | null> {
   // Pega quadra do BASE table (sem view) — mais resiliente.
-  // Geo + locais via views (graceful degradation se views não existirem).
   const [qBase, profRes, terrRes] = await Promise.all([
     supabase
       .from('quadras')
@@ -274,27 +299,54 @@ export async function carregarQuadraComLocais(
     supabase.from('territorios').select('id, nome')
   ]);
 
-  if (qBase.error) throw qBase.error;
-  if (!qBase.data) return null;
+  if (qBase.error) {
+    console.error('[carregarQuadraComLocais] erro buscando quadra:', quadraId, qBase.error.message);
+    throw qBase.error;
+  }
+  if (!qBase.data) {
+    console.warn('[carregarQuadraComLocais] quadra não encontrada:', quadraId);
+    return null;
+  }
   if (profRes.error) throw profRes.error;
   if (terrRes.error) throw terrRes.error;
 
-  // Geo + locais (views) — falha silenciosa retorna sem mapa
-  const [geoRes, locRes] = await Promise.all([
-    supabase.from('quadras_geo').select('poly_geojson').eq('id', quadraId).maybeSingle(),
-    supabase.from('locais_geo').select('*').eq('quadra_id', quadraId).order('id')
-  ]);
-  if (geoRes.error) console.warn('[quadras_geo] erro:', geoRes.error.message);
-  if (locRes.error) console.warn('[locais_geo] erro:', locRes.error.message);
+  // Geo da quadra (view) — graceful degradation se view não existe
+  let polyGeoJson: unknown = null;
+  try {
+    const { data: geoData, error: geoErr } = await supabase
+      .from('quadras_geo')
+      .select('poly_geojson')
+      .eq('id', quadraId)
+      .maybeSingle();
+    if (geoErr) {
+      console.warn('[quadras_geo] erro:', geoErr.message);
+    } else {
+      polyGeoJson = geoData?.poly_geojson ?? null;
+    }
+  } catch (e) {
+    console.warn('[quadras_geo] exception:', e);
+  }
+
+  // Locais da quadra (paginado pra evitar limite 1000)
+  let locais: Local[] = [];
+  try {
+    locais = await selectAll<Local>(
+      supabase.from('locais_geo').select('*').eq('quadra_id', quadraId).order('id')
+    );
+  } catch (e) {
+    console.warn('[locais_geo] exception, fallback pra tabela base:', e);
+    locais = await selectAll<Local>(
+      supabase.from('locais').select('*').eq('quadra_id', quadraId).order('id')
+    );
+  }
 
   const territorioNomePorId = new Map((terrRes.data ?? []).map((t) => [t.id, t.nome]));
 
-  const locais = (locRes.data ?? []) as Local[];
   if (locais.length === 0) {
     return {
       quadra: {
         ...(qBase.data as any),
-        poly_geojson: geoRes.data?.poly_geojson ?? null,
+        poly_geojson: polyGeoJson,
         territorio_nome: qBase.data.territorio_id ? territorioNomePorId.get(qBase.data.territorio_id) ?? null : null
       },
       locais: []
@@ -302,26 +354,27 @@ export async function carregarQuadraComLocais(
   }
 
   const localIds = locais.map((l) => l.id);
-  const { data: unidadesData, error: errUni } = await supabase
-    .from('unidades')
-    .select('*')
-    .in('local_id', localIds)
-    .order('ordem', { ascending: true, nullsFirst: false })
-    .order('complemento');
-  if (errUni) throw errUni;
-  const unidades = (unidadesData ?? []) as Unidade[];
+  // Unidades paginadas (em quadras grandes pode passar de 1000)
+  const unidades = await selectAll<Unidade>(
+    supabase
+      .from('unidades')
+      .select('*')
+      .in('local_id', localIds)
+      .order('ordem', { ascending: true, nullsFirst: false })
+      .order('complemento')
+  );
 
-  // Último registro por unidade (1 query, ordena DESC, dedup client-side)
+  // Registros paginados
   const unidadeIds = unidades.map((u) => u.id);
   let registros: { unidade_id: number; tipo: string; ts: string; publicador_id: string | null }[] = [];
   if (unidadeIds.length > 0) {
-    const { data: regData, error: errReg } = await supabase
-      .from('registros')
-      .select('unidade_id, tipo, ts, publicador_id')
-      .in('unidade_id', unidadeIds)
-      .order('ts', { ascending: false });
-    if (errReg) throw errReg;
-    registros = regData ?? [];
+    registros = await selectAll(
+      supabase
+        .from('registros')
+        .select('unidade_id, tipo, ts, publicador_id')
+        .in('unidade_id', unidadeIds)
+        .order('ts', { ascending: false })
+    );
   }
 
   const ultimoPorUnidade = new Map<number, { tipo: string; ts: string; publicador_id: string | null }>();
@@ -363,7 +416,7 @@ export async function carregarQuadraComLocais(
   return {
     quadra: {
       ...(qBase.data as any),
-      poly_geojson: geoRes.data?.poly_geojson ?? null,
+      poly_geojson: polyGeoJson,
       territorio_nome: qBase.data.territorio_id ? territorioNomePorId.get(qBase.data.territorio_id) ?? null : null
     },
     locais: locaisEnriquecidos

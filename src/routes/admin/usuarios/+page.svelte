@@ -7,11 +7,11 @@
     data,
     form
   }: {
-    data: { usuarios: UsuarioComEmail[] };
+    data: { usuarios: UsuarioComEmail[]; convites: any[] };
     form: any;
   } = $props();
 
-  let abaAtiva: 'lista' | 'criar' | 'lote' = $state('lista');
+  let abaAtiva: 'lista' | 'criar' | 'convite' | 'lote' = $state('lista');
   let usuarioEditando: UsuarioComEmail | null = $state(null);
   let busca = $state('');
 
@@ -38,8 +38,8 @@
 </div>
 
 <!-- Abas -->
-<div class="mt-4 flex gap-2 border-b border-slate-200">
-  {#each [['lista', 'Lista'], ['criar', 'Adicionar 1'], ['lote', 'Adicionar em lote']] as [k, label]}
+<div class="mt-4 flex gap-2 border-b border-slate-200 flex-wrap">
+  {#each [['lista', 'Lista'], ['criar', '+ 1 usuário'], ['convite', '🔗 Convite'], ['lote', 'Em lote']] as [k, label]}
     <button
       onclick={() => (abaAtiva = k as any)}
       class="border-b-2 px-3 py-2 text-sm font-medium"
@@ -164,6 +164,86 @@
       Criar usuário
     </button>
   </form>
+{/if}
+
+{#if abaAtiva === 'convite'}
+  <div class="mt-4 space-y-4">
+    <form
+      method="POST"
+      action="?/criarConvite"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        await invalidateAll();
+        if (result.type === 'success') {
+          const tok = (result.data as any)?.token;
+          const url = `${window.location.origin}/convite/${tok}`;
+          try { await navigator.clipboard.writeText(url); } catch {}
+          alert('Convite criado! Link copiado:\n' + url);
+        }
+      }}
+      class="max-w-md space-y-3 rounded-lg border border-slate-200 bg-white p-4"
+    >
+      <h3 class="font-semibold">Gerar convite</h3>
+      <p class="text-xs text-slate-500">Cria um link único pro irmão definir a própria senha. Não precisa enviar senha por chat.</p>
+      <div>
+        <label for="conv-nome" class="block text-sm font-medium mb-1">Nome</label>
+        <input id="conv-nome" name="nome" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label for="conv-email" class="block text-sm font-medium mb-1">Email</label>
+        <input id="conv-email" name="email" type="email" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label for="conv-role" class="block text-sm font-medium mb-1">Papel</label>
+        <select id="conv-role" name="role" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="publicador">Publicador</option>
+          <option value="dirigente">Dirigente</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <button class="w-full rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">
+        Gerar link de convite
+      </button>
+    </form>
+
+    {#if data.convites.length > 0}
+      <div>
+        <h3 class="text-sm font-semibold mb-2 text-slate-700">Convites recentes</h3>
+        <div class="space-y-1">
+          {#each data.convites as c (c.id)}
+            <div class="rounded-lg border border-slate-200 bg-white p-3 flex items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="font-medium text-sm">{c.nome} <span class="text-xs text-slate-500">({c.role})</span></div>
+                <div class="text-xs text-slate-500 truncate">{c.email}</div>
+                <div class="text-xs mt-1">
+                  {#if c.usado_em}
+                    <span class="text-green-700">✓ Usado em {new Date(c.usado_em).toLocaleDateString('pt-BR')}</span>
+                  {:else if c.expira_em && new Date(c.expira_em) < new Date()}
+                    <span class="text-red-700">⏱ Expirado</span>
+                  {:else}
+                    <button
+                      type="button"
+                      onclick={async () => {
+                        const url = `${window.location.origin}/convite/${c.token}`;
+                        try { await navigator.clipboard.writeText(url); alert('Link copiado'); } catch { alert(url); }
+                      }}
+                      class="text-primary-700 hover:underline"
+                    >📋 Copiar link</button>
+                  {/if}
+                </div>
+              </div>
+              {#if !c.usado_em}
+                <form method="POST" action="?/revogarConvite" use:enhance={() => async ({ update }) => { await update(); await invalidateAll(); }}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <button class="text-xs text-red-700 hover:underline">Revogar</button>
+                </form>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if abaAtiva === 'lote'}

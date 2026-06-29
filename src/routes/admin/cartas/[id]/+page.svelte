@@ -2,20 +2,22 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
+  import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { PredioDetalhado } from '$lib/server/queries';
 
   let { data, form }: { data: { predio: PredioDetalhado }; form: any } = $props();
 
-  const geo: any = data.predio.geo_geojson;
-  const lat = geo?.coordinates?.[1];
-  const lng = geo?.coordinates?.[0];
-  const mapsHref = lat && lng
+  // Derivados pra ser reativo se data mudar (post-invalidate)
+  const geo = $derived<any>(data.predio.geo_geojson);
+  const lat = $derived(geo?.coordinates?.[1]);
+  const lng = $derived(geo?.coordinates?.[0]);
+  const mapsHref = $derived(lat && lng
     ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.predio.logradouro + ', ' + data.predio.numero)}`;
-  const svHref = lat && lng
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.predio.logradouro + ', ' + data.predio.numero)}`);
+  const svHref = $derived(lat && lng
     ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`
-    : null;
+    : null);
 
   function statusApto(u: any): 'entregue' | 'desocupado' | 'naoescrever' | 'pendente' {
     if (u.nao_escrever) return 'naoescrever';
@@ -50,6 +52,30 @@
   {#if data.predio.notas}
     <p class="mt-3 text-sm text-slate-600 italic border-l-2 border-slate-300 pl-3">{data.predio.notas}</p>
   {/if}
+
+  <!-- Gerar link público pra arranjo trabalhar -->
+  <form
+    method="POST"
+    action="?/gerarLinkPublico"
+    use:enhance={() => async ({ result, update }) => {
+      await update();
+      if (result.type === 'success') {
+        const tok = (result.data as any)?.token;
+        const url = `${window.location.origin}/cartas/${tok}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success('Link copiado: ' + url, 8000);
+        } catch {
+          toast.success('Link: ' + url, 8000);
+        }
+      } else if (result.type === 'failure') {
+        toast.error(String((result.data as any)?.erro || 'Falhou'));
+      }
+    }}
+    class="mt-3"
+  >
+    <Button variant="secondary" size="sm" type="submit">🔗 Gerar link público (arranjo)</Button>
+  </form>
 </Card>
 
 <!-- Stats -->

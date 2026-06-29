@@ -17,6 +17,7 @@
     { href: '/admin/designacoes', label: 'Designar', icon: '✎', roles: ['admin'], group: 'main' },
     { href: '/admin/registro', label: 'Registro', icon: '✓', roles: ['admin'], group: 'main' },
     { href: '/admin/poligonos', label: 'Polígonos', icon: '◇', roles: ['admin'], group: 'main' },
+    { href: '/admin/tces', label: 'TCEs', icon: '★', roles: ['admin'], group: 'main' },
     { href: '/admin/cartas', label: 'Cartas', icon: '✉', roles: ['admin'], group: 'main' },
     { href: '/admin/campanha', label: 'Campanha', icon: '★', roles: ['admin'], group: 'main' },
     { href: '/admin/usuarios', label: 'Usuários', icon: '◉', roles: ['admin'], group: 'tools' },

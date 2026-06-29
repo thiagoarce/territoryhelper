@@ -17,8 +17,15 @@
   } = $props();
 
   let mostrarNovo = $state(false);
+  let editando: DesignacaoEnriquecida | null = $state(null);
   let buscaQuadra = $state('');
   let quadrasSelecionadas = $state<Set<string>>(new Set());
+
+  function abrirEditar(d: DesignacaoEnriquecida) {
+    editando = d;
+    quadrasSelecionadas = new Set(d.quadras_ids);
+    mostrarNovo = true;
+  }
 
   const quadrasFiltradas = $derived(
     !buscaQuadra.trim()
@@ -37,6 +44,7 @@
 
   function resetForm() {
     mostrarNovo = false;
+    editando = null;
     quadrasSelecionadas = new Set();
     buscaQuadra = '';
   }
@@ -61,7 +69,7 @@
     <p class="text-sm text-slate-500 mt-1">{data.designacoes.length} total</p>
   </div>
   <button
-    onclick={() => (mostrarNovo = !mostrarNovo)}
+    onclick={() => (mostrarNovo ? resetForm() : (mostrarNovo = true))}
     class="rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
   >
     {mostrarNovo ? 'Cancelar' : '+ Nova designação'}
@@ -75,11 +83,11 @@
   <div class="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{form.msg}</div>
 {/if}
 
-<!-- Form de nova designação -->
+<!-- Form de nova/editar designação -->
 {#if mostrarNovo}
   <form
     method="POST"
-    action="?/criar"
+    action={editando ? '?/atualizar' : '?/criar'}
     use:enhance={() => async ({ update }) => {
       await update();
       await invalidateAll();
@@ -87,18 +95,22 @@
     }}
     class="mt-4 rounded-lg border border-slate-200 bg-white p-4 space-y-4"
   >
+    {#if editando}
+      <input type="hidden" name="id" value={editando.id} />
+      <div class="text-xs text-slate-500">Editando designação #{editando.id}</div>
+    {/if}
     <div class="grid gap-4 md:grid-cols-2">
       <div>
         <label for="publicador_id" class="mb-1 block text-sm font-medium">Publicador</label>
         <select
           id="publicador_id"
           name="publicador_id"
-          required
+          required={!editando}
           class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         >
           <option value="">— escolha —</option>
           {#each data.publicadores as p}
-            <option value={p.id}>{p.nome} ({p.role})</option>
+            <option value={p.id} selected={editando?.publicador_id === p.id}>{p.nome} ({p.role})</option>
           {/each}
         </select>
       </div>
@@ -108,6 +120,7 @@
           id="prazo"
           name="prazo"
           type="date"
+          value={editando?.prazo ?? ''}
           class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         />
       </div>
@@ -121,7 +134,7 @@
         rows="2"
         placeholder="Ex: começar pelo prédio Solar"
         class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-      ></textarea>
+      >{editando?.notas ?? ''}</textarea>
     </div>
 
     <div>
@@ -178,7 +191,7 @@
         disabled={quadrasSelecionadas.size === 0}
         class="rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
       >
-        Criar designação
+        {editando ? 'Salvar' : 'Criar designação'}
       </button>
     </div>
   </form>
@@ -227,6 +240,7 @@
           </div>
         </div>
         <div class="flex flex-col gap-1 text-sm">
+          <button onclick={() => abrirEditar(d)} class="text-primary-700 hover:underline">✎ Editar</button>
           {#if d.status === 'aberta'}
             <form method="POST" action="?/mudarStatus" use:enhance={() => async ({ update }) => { await update(); await invalidateAll(); }}>
               <input type="hidden" name="id" value={d.id} />

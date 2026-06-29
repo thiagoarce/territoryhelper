@@ -15,10 +15,37 @@
   } = $props();
 
   let salvando = $state(false);
+  let uploadingFoto = $state(false);
 
   // Estado controlado pra dar feedback visual reativo
   let irmaoMora = $state(false);
   $effect(() => { if (local) irmaoMora = local.irmao_mora; });
+
+  async function uploadFoto(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || !local) return;
+    uploadingFoto = true;
+    const fd = new FormData();
+    fd.append('local_id', String(local.id));
+    fd.append('foto', file);
+    try {
+      const res = await fetch('?/uploadFoto', { method: 'POST', body: fd });
+      const json = await res.json();
+      const parsed = json.data ? JSON.parse(json.data) : null;
+      if (json.status === 200 || parsed?.ok) {
+        toast.success('Foto enviada');
+        await invalidateAll();
+      } else {
+        toast.error(parsed?.erro || 'Falhou enviar foto');
+      }
+    } catch (e: any) {
+      toast.error('Erro: ' + (e?.message || e));
+    } finally {
+      uploadingFoto = false;
+      input.value = '';
+    }
+  }
 </script>
 
 <BottomSheet bind:open title={local ? `Editar ${local.tipo === 'predio' ? 'prédio' : 'endereço'}` : ''}>
@@ -48,6 +75,31 @@
         {local.logradouro}, {local.numero}
         {#if local.unidades.length > 1}<span>· {local.unidades.length} unidades</span>{/if}
       </div>
+
+      <!-- Foto -->
+      {#if local.foto_url}
+        <div class="relative">
+          <img src={local.foto_url} alt="Foto do local" class="w-full h-40 object-cover rounded-lg" />
+          <form
+            method="POST"
+            action="?/removerFoto"
+            use:enhance={() => async ({ update }) => {
+              await update();
+              toast.info('Foto removida');
+              await invalidateAll();
+            }}
+            class="absolute top-2 right-2"
+          >
+            <input type="hidden" name="local_id" value={local.id} />
+            <button class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">Remover</button>
+          </form>
+        </div>
+      {:else}
+        <label class="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
+          📷 {uploadingFoto ? 'Enviando...' : 'Adicionar foto'}
+          <input type="file" accept="image/*" onchange={uploadFoto} class="hidden" disabled={uploadingFoto} />
+        </label>
+      {/if}
 
       <div>
         <label for="nome" class="block text-sm font-medium text-slate-700 mb-1">

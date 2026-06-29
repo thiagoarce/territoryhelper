@@ -28,14 +28,24 @@ npm install
 # IMPORTANTE: rode primeiro 'create extension if not exists postgis;'
 # (Supabase free tier suporta).
 # Depois cole e rode na ORDEM:
-#   001_profiles_and_auth.sql
-#   002_geografia.sql       (territorios, quadras, locais, unidades + PostGIS)
-#   003_pessoas.sql         (convites, arranjos)
-#   004_designacoes.sql     (designacoes + junção, tces + junção)
-#   005_eventos.sql         (registros)
-#   006_conteudo.sql        (campanha)
-#   007_auditoria.sql       (audit_log + triggers automáticas)
-#   008_rls.sql             (todas as Row Level Security policies)
+#   001_profiles_and_auth.sql      (auth + role + RLS profile)
+#   002_geografia.sql              (territorios, quadras, locais, unidades + PostGIS)
+#   003_pessoas.sql                (convites, arranjos)
+#   004_designacoes.sql            (designacoes + junção, tces + junção)
+#   005_eventos.sql                (registros)
+#   006_conteudo.sql               (campanha)
+#   007_auditoria.sql              (audit_log + triggers automáticas)
+#   008_rls.sql                    (todas as Row Level Security policies)
+#   009_fix_profiles_rls.sql       (fix recursão infinita em RLS)
+#   010_fix_search_path_e_service_role.sql (fix search_path + bypass)
+#   011_exec_sql.sql               (função pra upload de SQL via app)
+#   012_geojson_views.sql          (views PostGIS → GeoJSON pro mapa)
+#   013_auto_vincular.sql          (auto-vincular endereços via ST_Contains)
+#   014_link_publico_cartas.sql    (token público pra trabalho de cartas)
+#   015_storage_fotos.sql          (bucket de fotos dos prédios)
+#
+# ALTERNATIVA: depois de 011, usa /admin/dev/sql no app pra upload em
+# massa dos restantes (drag-drop dos .sql).
 
 # 4. Criar o primeiro admin (no SQL Editor do Supabase):
 # Crie o usuário via dashboard de Auth (insira email+senha manualmente).
