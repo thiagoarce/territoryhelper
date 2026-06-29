@@ -172,30 +172,34 @@ function decidirTipoLocal(
   marcadoComoPredio: boolean
 ): string {
   if (marcadoComoPredio) return 'predio';
-  if (qtdUnidades >= 2) return 'predio';
   const t = tipoUnidade.toLowerCase();
   const n = (notaIbge || '').toLowerCase();
-  // Casos óbvios pela coluna Tipo
+
+  // 1. Sinais inequívocos da col Tipo
   if (t.includes('apartamento')) return 'predio';
-  if (t.includes('estabelecimento') || t.includes('comercio') || t.includes('comércio') || t.includes('comercial')) return 'comercio';
+  if (t.includes('estabelecimento') || t.includes('comercio') || t.includes('comércio') || t.includes('comercial')) {
+    return 'comercio';
+  }
   if (t.includes('coletivo') || t.includes('alojamento') || t.includes('asilo')) return 'coletivo';
   if (t.includes('construção') || t.includes('construcao') || t.includes('reforma')) return 'terreno';
   if (t.includes('terreno') || t.includes('lote')) return 'terreno';
-  // Refinamento pela Nota quando Tipo for ambíguo ("Domicílio particular" sem mais info):
-  // "Única construção e de fim Residencial" → casa
-  // "Única construção e de fim Não residencial" → comercio
-  // "Construção Múltipla, com X unidades e de fim Residencial" → predio
-  // "Construção Múltipla, com X unidades e de fim Misto" → predio + tem comercio (vira predio)
-  // "Construção Múltipla, ...e de fim Não residencial" → comercio (galeria/centro comercial)
-  if (n.includes('construção múltipla') || n.includes('construcao multipla') || n.includes('múltiplas construções')) {
-    if (n.includes('não residencial') || n.includes('nao residencial')) return 'comercio';
-    return 'predio';
-  }
+
+  // 2. Nota IBGE vence o heuristic "qtdUnidades>=2 = predio" — galerias comerciais
+  //    têm múltiplas unidades mas são comércio.
   if (n.includes('múltiplos estabelecimentos') || n.includes('multiplos estabelecimentos')) return 'comercio';
   if (n.includes('único estabelecimento') || n.includes('unico estabelecimento')) return 'comercio';
-  if (n.includes('única construção') || n.includes('unica construcao')) {
-    if (n.includes('não residencial') || n.includes('nao residencial')) return 'comercio';
+  const naoResidencial = n.includes('não residencial') || n.includes('nao residencial');
+  if (n.includes('construção múltipla') || n.includes('construcao multipla') || n.includes('múltiplas construções')) {
+    if (naoResidencial) return 'comercio';
+    return 'predio'; // Residencial ou Misto → predio
   }
+  if (n.includes('única construção') || n.includes('unica construcao')) {
+    if (naoResidencial) return 'comercio';
+    // Residencial: deixa o fallback de qtdUnidades decidir
+  }
+
+  // 3. Fallback estrutural: >= 2 unidades sem nota contrária → predio
+  if (qtdUnidades >= 2) return 'predio';
   // Default = casa
   return 'casa';
 }

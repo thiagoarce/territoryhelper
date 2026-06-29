@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -15,6 +15,8 @@
   let basemap = $state<'positron' | 'liberty' | 'bright'>('positron');
   let sheetDetalhe = $state(false);
   let quadraDetalhe = $state<QuadraGeo | null>(null);
+  let historicoQuadra = $state<{ data_conclusao: string; marcado_em: string; nome: string | null }[]>([]);
+  let carregandoHistorico = $state(false);
   let salvando = $state(false);
 
   function onClickQuadra(q: QuadraGeo) {
@@ -23,9 +25,26 @@
     selecionadas = new Set(selecionadas);
   }
 
-  function onLongPress(q: QuadraGeo) {
+  async function onLongPress(q: QuadraGeo) {
     quadraDetalhe = q;
+    historicoQuadra = [];
     sheetDetalhe = true;
+    carregandoHistorico = true;
+    try {
+      const fd = new FormData();
+      fd.append('id', q.id);
+      const res = await fetch('?/historico', { method: 'POST', body: fd });
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success' && result.data?.historico) {
+        historicoQuadra = result.data.historico.map((h: any) => ({
+          data_conclusao: h.data_conclusao,
+          marcado_em: h.marcado_em,
+          nome: h.profiles?.nome ?? null
+        }));
+      }
+    } finally {
+      carregandoHistorico = false;
+    }
   }
 
   function limpar() { selecionadas = new Set(); }
@@ -172,6 +191,25 @@
           <span class="text-xs text-slate-400 ml-1">({dias}d atrás)</span>
         {:else}
           <span class="font-medium text-slate-400">nunca</span>
+        {/if}
+      </div>
+
+      <!-- Histórico -->
+      <div class="mt-3 border-t border-slate-100 pt-2">
+        <div class="text-xs font-semibold text-slate-600 mb-1">Histórico</div>
+        {#if carregandoHistorico}
+          <div class="text-xs text-slate-400">carregando...</div>
+        {:else if historicoQuadra.length === 0}
+          <div class="text-xs text-slate-400">Nenhuma conclusão registrada ainda.</div>
+        {:else}
+          <ul class="text-xs space-y-1">
+            {#each historicoQuadra as h}
+              <li class="flex items-center justify-between">
+                <span class="font-mono">{h.data_conclusao}</span>
+                <span class="text-slate-500">{h.nome ?? '(sem autor)'}</span>
+              </li>
+            {/each}
+          </ul>
         {/if}
       </div>
       {#if quadraDetalhe.notas}
