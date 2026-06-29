@@ -34,6 +34,65 @@ export const actions: Actions = {
     return { ok: true };
   },
 
+  // Atualiza overlay de um local (prédio/casa). Campos permitidos:
+  // nome, irmao_mora, nome_irmao, notas, tipo_entrada, acesso_caixas,
+  // acesso_interfones, nao_visitar. Bloqueia mudança em geo/logradouro/etc.
+  atualizarLocal: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar'];
+    const patch: Record<string, unknown> = {};
+    for (const k of permitidos) {
+      if (!fd.has(k)) continue;
+      const v = fd.get(k);
+      if (k === 'irmao_mora' || k === 'acesso_caixas' || k === 'acesso_interfones' || k === 'nao_visitar') {
+        patch[k] = v === 'on' || v === 'true';
+      } else {
+        const s = String(v ?? '').trim();
+        patch[k] = s === '' ? null : s;
+      }
+    }
+    const { error: err } = await locals.supabase.from('locais').update(patch).eq('id', id);
+    if (err) return fail(400, { erro: err.message });
+    return { ok: true, msg: 'Local atualizado' };
+  },
+
+  // Atualiza overlay de uma unidade. Campos: complemento, nota,
+  // desocupado, nao_escrever.
+  atualizarUnidade: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const permitidos = ['complemento', 'nota', 'desocupado', 'nao_escrever'];
+    const patch: Record<string, unknown> = {};
+    for (const k of permitidos) {
+      if (!fd.has(k)) continue;
+      const v = fd.get(k);
+      if (k === 'desocupado' || k === 'nao_escrever') patch[k] = v === 'on' || v === 'true';
+      else {
+        const s = String(v ?? '').trim();
+        patch[k] = s === '' ? null : s;
+      }
+    }
+    const { error: err } = await locals.supabase.from('unidades').update(patch).eq('id', id);
+    if (err) return fail(400, { erro: err.message });
+    return { ok: true, msg: 'Unidade atualizada' };
+  },
+
+  // Exclui unidade (cascade limpa registros dela). Irreversível.
+  excluirUnidade: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error: err } = await locals.supabase.from('unidades').delete().eq('id', id);
+    if (err) return fail(400, { erro: err.message });
+    return { ok: true, msg: 'Unidade excluída' };
+  },
+
   // Marca/desmarca carta entregue. Atualiza unidades.carta_entregue (date)
   // E insere em registros pra trilha histórica.
   toggleCarta: async ({ request, locals }) => {

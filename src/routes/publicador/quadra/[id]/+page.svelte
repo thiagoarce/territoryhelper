@@ -3,8 +3,16 @@
   import { invalidateAll } from '$app/navigation';
   import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/server/queries';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
+  import EditarLocalSheet from '$lib/components/EditarLocalSheet.svelte';
+  import { toast } from '$lib/ui/toast.svelte';
 
   let { data }: { data: DadosQuadraTrabalho } = $props();
+  let editandoLocal: LocalComUnidades | null = $state(null);
+  let sheetAberto = $state(false);
+  function abrirEditar(l: LocalComUnidades) {
+    editandoLocal = l;
+    sheetAberto = true;
+  }
 
   // Agrupa locais por face IBGE pra mostrar separados (cada face é um trecho da quadra)
   const porFace = $derived.by(() => {
@@ -126,20 +134,34 @@
             <div id="local-{l.id}" class="rounded-lg border border-slate-200 bg-white transition-all">
               {#if ehPredio}
                 <!-- Header clicável do prédio -->
-                <button
-                  type="button"
-                  onclick={() => togglePredio(l.id)}
-                  class="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-50"
-                >
-                  <span class="text-xl">🏢</span>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-semibold truncate">{l.nome || `${l.logradouro}, ${l.numero}`}</div>
-                    <div class="text-xs text-slate-500">
-                      {l.logradouro}, {l.numero} · {l.unidades.length} unidades · {l.unidades.filter(unidadeFeita).length} feitas
+                <div class="flex items-stretch">
+                  <button
+                    type="button"
+                    onclick={() => togglePredio(l.id)}
+                    class="flex-1 px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-50"
+                  >
+                    <span class="text-xl">🏢</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-semibold truncate flex items-center gap-1">
+                        {l.nome || `${l.logradouro}, ${l.numero}`}
+                        {#if l.tipo_entrada === 'porteiro'}<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Porteiro</span>{/if}
+                        {#if l.tipo_entrada === 'eletronica'}<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Eletrônica</span>{/if}
+                        {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-xs">👤</span>{/if}
+                        {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
+                      </div>
+                      <div class="text-xs text-slate-500">
+                        {l.logradouro}, {l.numero} · {l.unidades.length} unidades · {l.unidades.filter(unidadeFeita).length} feitas
+                      </div>
                     </div>
-                  </div>
-                  <span class="text-slate-400 text-lg">{abertos.has(l.id) ? '▼' : '▶'}</span>
-                </button>
+                    <span class="text-slate-400 text-lg">{abertos.has(l.id) ? '▼' : '▶'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onclick={() => abrirEditar(l)}
+                    aria-label="Editar prédio"
+                    class="px-3 text-slate-400 hover:text-primary-600 hover:bg-slate-50 border-l border-slate-100"
+                  >✎</button>
+                </div>
                 {#if abertos.has(l.id)}
                   <div class="border-t border-slate-100">
                     {#each visUnidades as u (u.id)}
@@ -166,19 +188,29 @@
                   <div class="p-3">
                     <div class="flex items-center justify-between gap-2 mb-2">
                       <div class="flex-1 min-w-0">
-                        <div class="font-semibold truncate">
+                        <div class="font-semibold truncate flex items-center gap-1">
                           {l.nome || `${l.logradouro}, ${l.numero}`}
+                          {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm">👤</span>{/if}
+                          {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
                           {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue">✉</span>{/if}
                         </div>
                         <div class="text-xs text-slate-500">
                           {l.tipo} · {l.logradouro}, {l.numero}{u.complemento ? ' · ' + u.complemento : ''}
                         </div>
                       </div>
-                      {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
-                        <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
-                          {u.ultimo_tipo}
-                        </span>
-                      {/if}
+                      <div class="flex items-center gap-1">
+                        {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
+                          <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
+                            {u.ultimo_tipo}
+                          </span>
+                        {/if}
+                        <button
+                          type="button"
+                          onclick={() => abrirEditar(l)}
+                          aria-label="Editar"
+                          class="text-slate-400 hover:text-primary-600 px-1"
+                        >✎</button>
+                      </div>
                     </div>
                     {@render botoes(u)}
                   </div>
@@ -195,6 +227,8 @@
     </div>
   {/each}
 </div>
+
+<EditarLocalSheet bind:open={sheetAberto} local={editandoLocal} />
 
 {#snippet botoes(u: UnidadeEnriquecida)}
   {@const cartaMarcada = !!u.carta_entregue}
