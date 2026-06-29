@@ -74,16 +74,20 @@ export interface DesignacaoEnriquecida extends Designacao {
 export async function listarDesignacoes(
   supabase: SupabaseClient
 ): Promise<DesignacaoEnriquecida[]> {
-  const [desRes, dqRes] = await Promise.all([
-    supabase
-      .from('designacoes')
-      .select('*, profiles(nome)')
-      .order('criada_em', { ascending: false }),
-    supabase.from('designacao_quadras').select('designacao_id, quadra_id')
+  // 3 queries paralelas:
+  // 1. designacoes (sem join — designacoes tem 2 FKs pra profiles
+  //    [publicador_id + criado_por], que confunde o auto-detect do PostgREST)
+  // 2. designacao_quadras (junção)
+  // 3. profiles ativos pra resolver nome (memo client-side)
+  const [desRes, dqRes, profRes] = await Promise.all([
+    supabase.from('designacoes').select('*').order('criada_em', { ascending: false }),
+    supabase.from('designacao_quadras').select('designacao_id, quadra_id'),
+    supabase.from('profiles').select('id, nome')
   ]);
 
   if (desRes.error) throw desRes.error;
   if (dqRes.error) throw dqRes.error;
+  if (profRes.error) throw profRes.error;
 
   const quadrasPorDesignacao = new Map<number, string[]>();
   for (const dq of dqRes.data ?? []) {
@@ -92,9 +96,11 @@ export async function listarDesignacoes(
     quadrasPorDesignacao.set(dq.designacao_id, lista);
   }
 
+  const nomePorId = new Map((profRes.data ?? []).map((p) => [p.id, p.nome]));
+
   return (desRes.data ?? []).map((d: any) => ({
     ...d,
-    publicador_nome: d.profiles?.nome ?? null,
+    publicador_nome: d.publicador_id ? nomePorId.get(d.publicador_id) ?? null : null,
     quadras_ids: (quadrasPorDesignacao.get(d.id) ?? []).sort()
   })) as DesignacaoEnriquecida[];
 }

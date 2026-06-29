@@ -219,7 +219,7 @@ function genTerritorios(): string {
       sqlDate(toDate(r[c.dataConc]))
     ]);
   }
-  return `-- ====================\n-- Territorios (${linhas.length})\n-- ====================\nDELETE FROM territorios;\n\n${chunkedInsert('territorios', cols, linhas)}`;
+  return `-- ====================\n-- Territorios (${linhas.length})\n-- ====================\nTRUNCATE TABLE territorios RESTART IDENTITY CASCADE;\n\n${chunkedInsert('territorios', cols, linhas)}`;
 }
 
 // ============================================================================
@@ -255,7 +255,7 @@ function genQuadras(): string {
     ]);
   }
   if (semPoly > 0) console.log(`  ⚠️  ${semPoly} quadras sem polígono — descartadas`);
-  return `-- ====================\n-- Quadras (${linhas.length})\n-- ====================\nDELETE FROM quadras;\n\n${chunkedInsert('quadras', cols, linhas)}`;
+  return `-- ====================\n-- Quadras (${linhas.length})\n-- ====================\nTRUNCATE TABLE quadras RESTART IDENTITY CASCADE;\n\n${chunkedInsert('quadras', cols, linhas)}`;
 }
 
 // ============================================================================
@@ -476,8 +476,8 @@ function genLocaisEUnidades(): { sqlLocais: string; sqlUnidades: string } {
     }
   }
 
-  const sqlLocais = `-- ====================\n-- Locais (${linhasLocais.length} agrupados de Dados Brutos)\n-- ====================\nDELETE FROM locais;\n\n${chunkedInsert('locais', colsLocais, linhasLocais, 300)}\n\nSELECT setval('locais_id_seq', GREATEST(1, (SELECT MAX(id) FROM locais)), true);\n`;
-  const sqlUnidades = `-- ====================\n-- Unidades (${linhasUnidades.length})\n-- ====================\nDELETE FROM unidades;\n\n${chunkedInsert('unidades', colsUnidades, linhasUnidades, 500)}\n\nSELECT setval('unidades_id_seq', GREATEST(1, (SELECT MAX(id) FROM unidades)), true);\n`;
+  const sqlLocais = `-- ====================\n-- Locais (${linhasLocais.length} agrupados de Dados Brutos)\n-- ====================\nTRUNCATE TABLE locais RESTART IDENTITY CASCADE;\n\n${chunkedInsert('locais', colsLocais, linhasLocais, 300)}\n\nSELECT setval('locais_id_seq', GREATEST(1, (SELECT MAX(id) FROM locais)), true);\n`;
+  const sqlUnidades = `-- ====================\n-- Unidades (${linhasUnidades.length})\n-- ====================\nTRUNCATE TABLE unidades RESTART IDENTITY CASCADE;\n\n${chunkedInsert('unidades', colsUnidades, linhasUnidades, 500)}\n\nSELECT setval('unidades_id_seq', GREATEST(1, (SELECT MAX(id) FROM unidades)), true);\n`;
   return { sqlLocais, sqlUnidades };
 }
 
@@ -506,7 +506,7 @@ function genRegistros(): string {
     ]);
   }
   if (semFk > 0) console.log(`  ⚠️  Registros: ${semFk} pulados (ID não bate com unidade)`);
-  return `-- ====================\n-- Registros (${linhas.length})\n-- ====================\nDELETE FROM registros;\n\n${chunkedInsert('registros', cols, linhas, 500)}\n\nSELECT setval('registros_id_seq', GREATEST(1, (SELECT MAX(id) FROM registros)), true);\n`;
+  return `-- ====================\n-- Registros (${linhas.length})\n-- ====================\nTRUNCATE TABLE registros RESTART IDENTITY CASCADE;\n\n${chunkedInsert('registros', cols, linhas, 500)}\n\nSELECT setval('registros_id_seq', GREATEST(1, (SELECT MAX(id) FROM registros)), true);\n`;
 }
 
 // ============================================================================
@@ -553,7 +553,7 @@ function genTCEs(): string {
     ]);
     for (const uid of unidadeIds) junctions.push({ tce_id: id, unidade_id: uid });
   }
-  const sqlTces = `-- ====================\n-- TCEs (${linhasTces.length}) + tce_unidades (${junctions.length})\n-- ====================\nDELETE FROM tce_unidades;\nDELETE FROM tces;\n\n${chunkedInsert('tces', colsTces, linhasTces)}\n${junctions.length > 0 ? chunkedInsert('tce_unidades', ['tce_id', 'unidade_id'], junctions.map((j) => [sqlStr(j.tce_id), sqlNum(j.unidade_id)])) : ''}`;
+  const sqlTces = `-- ====================\n-- TCEs (${linhasTces.length}) + tce_unidades (${junctions.length})\n-- ====================\nTRUNCATE TABLE tces RESTART IDENTITY CASCADE;\n\n${chunkedInsert('tces', colsTces, linhasTces)}\n${junctions.length > 0 ? chunkedInsert('tce_unidades', ['tce_id', 'unidade_id'], junctions.map((j) => [sqlStr(j.tce_id), sqlNum(j.unidade_id)])) : ''}`;
   return sqlTces;
 }
 
@@ -579,8 +579,7 @@ function genDesignacoes(): string {
     '-- Designacoes + designacao_quadras',
     '-- (publicador antigo era nome string — fica NULL; admin reatribui no app novo)',
     '-- ====================',
-    'DELETE FROM designacao_quadras;',
-    'DELETE FROM designacoes;',
+    'TRUNCATE TABLE designacoes RESTART IDENTITY CASCADE;',
     ''
   ];
   let designacaoId = 1;
@@ -659,7 +658,7 @@ function genCampanha(): string {
       sqlTs(toTs(r[c.criado]) || new Date(2026, 0, 1).toISOString())
     ]);
   }
-  return `-- ====================\n-- Campanha (${linhas.length})\n-- ====================\nDELETE FROM campanha;\n\n${chunkedInsert('campanha', cols, linhas)}`;
+  return `-- ====================\n-- Campanha (${linhas.length})\n-- ====================\nTRUNCATE TABLE campanha RESTART IDENTITY CASCADE;\n\n${chunkedInsert('campanha', cols, linhas)}`;
 }
 
 // ============================================================================
