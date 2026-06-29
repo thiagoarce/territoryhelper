@@ -379,6 +379,7 @@
 
       let popup: any = null;
       let popupClicado = false; // popup do click persiste até outro click ou esc
+      let popupQuadraId: string | null = null; // qual quadra o popup tá mostrando agora
       function mostrarPopup(q: any, lngLat: any, fromClick: boolean) {
         if (popup) popup.remove();
         popup = new maplibre.Popup({
@@ -387,8 +388,9 @@
           offset: 8
         }).setLngLat(lngLat).setHTML(buildPopupHtml(q)).addTo(mapa);
         popupClicado = fromClick;
+        popupQuadraId = q.id;
         if (fromClick) {
-          popup.on('close', () => { popupClicado = false; popup = null; });
+          popup.on('close', () => { popupClicado = false; popup = null; popupQuadraId = null; });
         }
       }
 
@@ -400,12 +402,25 @@
         const q = quadras.find((x) => x.id === props.id);
         if (q) mostrarPopup(q, e.lngLat, false);
       });
+      // Mousemove dentro da camada — troca o conteúdo quando o cursor passa
+      // de uma quadra pra outra (mouseenter/mouseleave são por LAYER, não por feature)
       mapa.on('mousemove', 'quadras-fill', (e: any) => {
-        if (popup && !popupClicado) popup.setLngLat(e.lngLat);
+        if (popupClicado) return;
+        const props = e.features?.[0]?.properties;
+        if (!props) return;
+        if (props.id !== popupQuadraId) {
+          // Mudou de quadra → atualiza HTML
+          const q = quadras.find((x) => x.id === props.id);
+          if (q && popup) {
+            popup.setHTML(buildPopupHtml(q));
+            popupQuadraId = q.id;
+          }
+        }
+        if (popup) popup.setLngLat(e.lngLat);
       });
       mapa.on('mouseleave', 'quadras-fill', () => {
         mapa.getCanvas().style.cursor = '';
-        if (popup && !popupClicado) { popup.remove(); popup = null; }
+        if (popup && !popupClicado) { popup.remove(); popup = null; popupQuadraId = null; }
       });
 
       // Fit bounds em todas
