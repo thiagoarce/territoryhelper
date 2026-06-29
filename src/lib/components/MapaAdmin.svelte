@@ -330,34 +330,82 @@
         if (!props) return;
         const q = quadras.find((x) => x.id === props.id);
         if (!q) return;
+        // Mostra popup persistente (com X pra fechar) — útil em mobile sem hover
+        mostrarPopup(q, e.lngLat, true);
         const multi = !!e.originalEvent?.shiftKey || !!e.originalEvent?.metaKey || selecionadas.size > 0;
         if (onClick) onClick(q, multi);
       });
-      // Tooltip de hover: ID + última conclusão
+      // Tooltip com ID + território + última conclusão (humanizada)
+      function dataBR(s: string): string {
+        const [y, m, d] = s.split('-');
+        return d && m && y ? `${d}/${m}/${y}` : s;
+      }
+      function tempoRelativo(dias: number): string {
+        if (dias === 0) return 'hoje';
+        if (dias === 1) return 'ontem';
+        if (dias < 30) return `há ${dias} dias`;
+        if (dias < 60) return 'há 1 mês';
+        if (dias < 365) return `há ${Math.round(dias / 30)} meses`;
+        const anos = Math.floor(dias / 365);
+        return anos === 1 ? 'há 1 ano' : `há ${anos} anos`;
+      }
+      function corDias(dias: number | null): string {
+        if (dias == null) return '#64748b';
+        if (dias < 30) return '#16a34a';
+        if (dias < 90) return '#ca8a04';
+        if (dias < 180) return '#ea580c';
+        return '#dc2626';
+      }
+      function buildPopupHtml(q: any): string {
+        const dias = q.data_conclusao
+          ? Math.floor((Date.now() - new Date(q.data_conclusao + 'T12:00:00').getTime()) / 86400000)
+          : null;
+        const territorioLabel = q.territorio_nome
+          ? (/^\d+$/.test(q.territorio_nome) ? `Território ${q.territorio_nome}` : q.territorio_nome)
+          : null;
+        return `<div style="font:13px system-ui; min-width:160px;">
+          <div style="font-weight:700; font-size:15px; margin-bottom:2px;">${q.id}</div>
+          ${territorioLabel ? `<div style="color:#64748b; font-size:11px;">${territorioLabel}</div>` : ''}
+          <div style="color:#475569; font-size:11px; margin-top:2px;">📍 ${q.qtd_locais} endereço${q.qtd_locais === 1 ? '' : 's'}</div>
+          <div style="margin-top:6px; padding-top:6px; border-top:1px solid #e2e8f0;">
+            ${dias == null
+              ? `<div style="color:#94a3b8; font-size:11px; font-style:italic;">nunca concluída</div>`
+              : `<div style="color:${corDias(dias)}; font-size:12px; font-weight:600;">${tempoRelativo(dias)}</div>
+                 <div style="color:#94a3b8; font-size:10px;">${dataBR(q.data_conclusao!)}</div>`
+            }
+          </div>
+        </div>`;
+      }
+
       let popup: any = null;
+      let popupClicado = false; // popup do click persiste até outro click ou esc
+      function mostrarPopup(q: any, lngLat: any, fromClick: boolean) {
+        if (popup) popup.remove();
+        popup = new maplibre.Popup({
+          closeButton: fromClick,
+          closeOnClick: false,
+          offset: 8
+        }).setLngLat(lngLat).setHTML(buildPopupHtml(q)).addTo(mapa);
+        popupClicado = fromClick;
+        if (fromClick) {
+          popup.on('close', () => { popupClicado = false; popup = null; });
+        }
+      }
+
       mapa.on('mouseenter', 'quadras-fill', (e: any) => {
         mapa.getCanvas().style.cursor = 'pointer';
+        if (popupClicado) return; // não substitui popup pinado por click
         const props = e.features?.[0]?.properties;
         if (!props) return;
         const q = quadras.find((x) => x.id === props.id);
-        if (!q) return;
-        const dias = q.data_conclusao ? Math.floor((Date.now() - new Date(q.data_conclusao + 'T12:00:00').getTime()) / 86400000) : null;
-        const idadeLabel = dias == null ? 'nunca concluída' : (dias === 0 ? 'hoje' : `${dias} dia(s) atrás`);
-        const html = `<div style="font:13px system-ui; padding:2px 4px;">
-          <div style="font-weight:600;">${q.id}</div>
-          <div style="color:#64748b; font-size:11px;">${q.territorio_nome || '—'} · ${q.qtd_locais} endereço(s)</div>
-          <div style="color:#64748b; font-size:11px;">Última: ${q.data_conclusao || '—'} ${dias != null ? `(${idadeLabel})` : ''}</div>
-        </div>`;
-        if (popup) popup.remove();
-        popup = new maplibre.Popup({ closeButton: false, closeOnClick: false, offset: 8 })
-          .setLngLat(e.lngLat).setHTML(html).addTo(mapa);
+        if (q) mostrarPopup(q, e.lngLat, false);
       });
       mapa.on('mousemove', 'quadras-fill', (e: any) => {
-        if (popup) popup.setLngLat(e.lngLat);
+        if (popup && !popupClicado) popup.setLngLat(e.lngLat);
       });
       mapa.on('mouseleave', 'quadras-fill', () => {
         mapa.getCanvas().style.cursor = '';
-        if (popup) { popup.remove(); popup = null; }
+        if (popup && !popupClicado) { popup.remove(); popup = null; }
       });
 
       // Fit bounds em todas

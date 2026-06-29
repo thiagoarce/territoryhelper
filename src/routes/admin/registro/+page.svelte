@@ -129,10 +129,14 @@
 
 <!-- Barra inferior quando tem seleção -->
 {#if selecionadas.size > 0}
-  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
-    <div class="text-sm font-medium">
-      <strong>{selecionadas.size}</strong> selecionada(s)
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex flex-col gap-2">
+    <div class="flex items-center gap-1 overflow-x-auto pb-1">
+      <span class="text-xs font-medium text-slate-500 whitespace-nowrap mr-1">{selecionadas.size}:</span>
+      {#each [...selecionadas] as qid}
+        <span class="text-[10px] font-mono bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded whitespace-nowrap">{qid}</span>
+      {/each}
     </div>
+    <div class="flex items-center gap-2 flex-wrap">
     <form
       method="POST"
       action="?/marcarConcluidas"
@@ -193,6 +197,7 @@
       <Button variant="ghost" size="sm" type="submit" title="APAGA todo histórico e marca como pendente">🗑 Limpar</Button>
     </form>
     <Button variant="ghost" size="sm" onclick={limpar}>Cancelar</Button>
+    </div>
   </div>
 {/if}
 

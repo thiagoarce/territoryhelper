@@ -158,13 +158,23 @@
 
 <!-- Barra inferior de ações em massa -->
 {#if selecionadas.size > 0}
-  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex flex-col gap-2">
+    <!-- Linha 1: chips com IDs (scroll horizontal se muitas) -->
+    <div class="flex items-center gap-1 overflow-x-auto pb-1">
+      <span class="text-xs font-medium text-slate-500 whitespace-nowrap mr-1">{selecionadas.size}:</span>
+      {#each [...selecionadas] as qid}
+        <span class="text-[10px] font-mono bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded whitespace-nowrap">{qid}</span>
+      {/each}
+    </div>
+    <!-- Linha 2: ações -->
+    <div class="flex items-center gap-2 flex-wrap">
     <div class="text-sm font-medium">
       <strong>{selecionadas.size}</strong> quadra(s) selecionada(s)
     </div>
     <div class="flex gap-2 ml-auto">
       <Button variant="primary" size="sm" onclick={() => (sheetDesignar = true)}>📤 Designar</Button>
       <Button variant="secondary" size="sm" onclick={limparSelecao}>Limpar</Button>
+    </div>
     </div>
   </div>
 {/if}
