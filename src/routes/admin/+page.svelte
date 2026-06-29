@@ -23,7 +23,7 @@
 
   // Estado
   let colorirPor = $state<'status' | 'territorio' | 'densidade'>('status');
-  let basemap = $state<'positron' | 'liberty' | 'bright'>('positron');
+  let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');

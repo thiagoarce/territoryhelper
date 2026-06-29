@@ -12,7 +12,7 @@
   let selecionadas = $state<Set<string>>(new Set());
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let mostrarRotulos = $state(true);
-  let basemap = $state<'positron' | 'liberty' | 'bright'>('positron');
+  let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let sheetDetalhe = $state(false);
   let quadraDetalhe = $state<QuadraGeo | null>(null);
   let historicoQuadra = $state<{ data_conclusao: string; marcado_em: string; nome: string | null }[]>([]);

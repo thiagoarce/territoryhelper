@@ -20,7 +20,7 @@
     filtroVinculo = 'ambos',
     quadraDestaque = null,
     selecionadosLocais = $bindable(new Set<number>()),
-    basemap = $bindable<Basemap>('positron'),
+    basemap = $bindable<Basemap>('bright'),
     onClickQuadra,
     onClickLocal
   }: {

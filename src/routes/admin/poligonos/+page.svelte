@@ -27,7 +27,7 @@
   let filtroTipo = $state<'dom' | 'com' | 'ambos'>('ambos');
   let filtroVinculo = $state<'vinculados' | 'sem' | 'ambos'>('ambos');
   let mostrarRotulos = $state(true);
-  let basemap = $state<'positron' | 'liberty' | 'bright'>('positron');
+  let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let selecionadosLocais = $state<Set<number>>(new Set());
   let quadraDestaque = $state<string | null>(null);
   let salvando = $state(false);

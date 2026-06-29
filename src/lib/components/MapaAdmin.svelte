@@ -19,7 +19,7 @@
     mostrarTerritorios = false,
     quadrasAlocadas = [],
     selecionadas = $bindable(new Set<string>()),
-    basemap = $bindable<Basemap>('positron'),
+    basemap = $bindable<Basemap>('bright'),
     onClick,
     onLongPress
   }: {
