@@ -383,12 +383,13 @@ async function importLocaisEUnidades() {
   const { headers, rows } = csv;
   const c = {
     quadra: colIdx(headers, 'Quadra'),
-    setor: colIdx(headers, 'Setor'),
-    qIbge: colIdx(headers, 'QIBGE', 'Quadra IBGE'),
-    faceIbge: colIdx(headers, 'FaceIBGE', 'Face IBGE'),
+    setor: colIdx(headers, 'Setor', 'Setor IBGE'),
+    qIbge: colIdx(headers, 'QIBGE', 'Quadra IBGE', 'Quadra-IBGE'),
+    faceIbge: colIdx(headers, 'FaceIBGE', 'Face IBGE', 'Face-IBGE'),
     logradouro: colIdx(headers, 'Logradouro'),
     numero: colIdx(headers, 'Numero', 'Número'),
-    complemento: colIdx(headers, 'Comp', 'Complemento'),
+    // "Comp. Num." (número do apto) tem prioridade sobre "Complemento" (texto livre)
+    complemento: colIdx(headers, 'Comp. Num.', 'Comp Num', 'Comp', 'Complemento'),
     lat: colIdx(headers, 'Lat', 'Latitude', 'latitude', 'LAT'),
     lng: colIdx(headers, 'Lng', 'Lon', 'Long', 'Longitude', 'longitude', 'LNG'),
     tipo: colIdx(headers, 'Tipo'),
@@ -397,8 +398,9 @@ async function importLocaisEUnidades() {
     // Coluna IBGE com a classificação detalhada (Único Estabelecimento /
     // Construção Múltipla com X unidades / Interfone individual / Portaria presencial...)
     nota: colIdx(headers, 'Nota'),
-    naoVisitar: colIdx(headers, 'NaoVisitar', 'Não Visitar', 'nao_visitar'),
-    ordem: colIdx(headers, 'Ordem')
+    naoVisitar: colIdx(headers, 'NaoVisitar', 'Não Visitar', 'Nao Visitar', 'nao_visitar'),
+    // Ordem Personalizada (manualmente setada) ganha; Ordem é fallback
+    ordem: colIdx(headers, 'Ordem Personalizada', 'OrdemPersonalizada', 'Ordem')
   };
   if (c.lat < 0 || c.lng < 0) {
     console.warn(`⚠️  Lat/Lng não encontrados! Cabeçalhos: ${headers.join(', ')}`);
