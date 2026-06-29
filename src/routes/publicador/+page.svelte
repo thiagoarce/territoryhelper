@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { DesignacaoEnriquecida, QuadraEnriquecida } from '$lib/server/queries';
+  import AdminMapa from '$lib/components/AdminMapa.svelte';
+  import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/server/queries';
 
   let {
     data
@@ -7,13 +8,21 @@
     data: {
       abertas: DesignacaoEnriquecida[];
       concluidas: DesignacaoEnriquecida[];
-      quadrasMap: Record<string, QuadraEnriquecida>;
+      quadrasMap: Record<string, QuadraGeo>;
+      cobertura: Record<string, CoberturaQuadra>;
       minhaRole: string | undefined;
     };
   } = $props();
 
   let aba: 'abertas' | 'concluidas' = $state('abertas');
   const lista = $derived(aba === 'abertas' ? data.abertas : data.concluidas);
+
+  // Quadras envolvidas nas designações abertas — pro mini-mapa
+  const quadrasMapa = $derived.by(() => {
+    const ids = new Set<string>();
+    for (const d of data.abertas) for (const q of d.quadras_ids) ids.add(q);
+    return [...ids].map((id) => data.quadrasMap[id]).filter(Boolean);
+  });
 
   function diasAteOuApos(dataStr: string | null): string {
     if (!dataStr) return '';
@@ -43,6 +52,12 @@
   </p>
 </div>
 
+{#if quadrasMapa.length > 0 && aba === 'abertas'}
+  <div class="mt-4">
+    <AdminMapa quadras={quadrasMapa} altura={220} onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))} />
+  </div>
+{/if}
+
 <div class="mt-4 flex gap-2">
   {#each [['abertas', 'Abertas', data.abertas.length], ['concluidas', 'Concluídas', data.concluidas.length]] as [k, label, n]}
     <button
@@ -71,18 +86,22 @@
             <div class="text-sm font-medium text-primary-700">{d.publicador_nome}</div>
           {/if}
           <div class="mt-2 text-sm font-semibold">{d.quadras_ids.length} quadra(s)</div>
-          <div class="mt-1 flex flex-wrap gap-1">
+          <div class="mt-2 flex flex-wrap gap-1.5">
             {#each d.quadras_ids as qid}
               {@const q = data.quadrasMap[qid]}
+              {@const cov = data.cobertura[qid]}
               <a
                 href="/publicador/quadra/{encodeURIComponent(qid)}"
-                class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono border border-slate-200 hover:bg-slate-100 hover:border-primary-500"
+                class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-slate-200 hover:bg-slate-100 hover:border-primary-500 transition-colors"
               >
                 <span
                   class="inline-block w-2 h-2 rounded"
                   style:background-color={q?.color ?? '#999'}
                 ></span>
-                {qid}
+                <span>{qid}</span>
+                {#if cov && cov.total > 0}
+                  <span class="text-[10px] text-slate-500">{cov.feitas}/{cov.total}</span>
+                {/if}
               </a>
             {/each}
           </div>

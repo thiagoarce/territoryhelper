@@ -102,6 +102,79 @@ export async function listarQuadrasComGeo(
   })) as QuadraGeo[];
 }
 
+// Cobertura por quadra: { quadra_id → {total, feitas, %} }
+// Feita = última desfecho da unidade != desfeito/carta_undo + recente
+// (consideramos qualquer desfecho no último ano como "feita").
+export interface CoberturaQuadra {
+  total: number;
+  feitas: number;
+  pct: number;
+}
+
+export async function calcularCoberturaPorQuadra(
+  supabase: SupabaseClient,
+  quadrasIds?: string[]
+): Promise<Map<string, CoberturaQuadra>> {
+  // Locais → quadras (filtra se passado quadrasIds)
+  let qLocais = supabase.from('locais').select('id, quadra_id');
+  if (quadrasIds && quadrasIds.length > 0) qLocais = qLocais.in('quadra_id', quadrasIds);
+  const locais = await selectAll<{ id: number; quadra_id: string | null }>(qLocais);
+  const quadraPorLocal = new Map<number, string>();
+  const totalPorQuadra = new Map<string, number>();
+  for (const l of locais) {
+    if (!l.quadra_id) continue;
+    quadraPorLocal.set(l.id, l.quadra_id);
+  }
+
+  // Unidades dos locais filtrados
+  const localIds = locais.map((l) => l.id);
+  if (localIds.length === 0) return new Map();
+  const unidades = await selectAll<{ id: number; local_id: number }>(
+    supabase.from('unidades').select('id, local_id').in('local_id', localIds)
+  );
+  const quadraPorUnidade = new Map<number, string>();
+  for (const u of unidades) {
+    const q = quadraPorLocal.get(u.local_id);
+    if (!q) continue;
+    quadraPorUnidade.set(u.id, q);
+    totalPorQuadra.set(q, (totalPorQuadra.get(q) ?? 0) + 1);
+  }
+
+  // Registros recentes (último ano) — usa MAX(ts) por unidade
+  const unidadeIds = [...quadraPorUnidade.keys()];
+  if (unidadeIds.length === 0) return new Map();
+  const umAnoAtras = new Date();
+  umAnoAtras.setFullYear(umAnoAtras.getFullYear() - 1);
+  const registros = await selectAll<{ unidade_id: number; tipo: string; ts: string }>(
+    supabase
+      .from('registros')
+      .select('unidade_id, tipo, ts')
+      .in('unidade_id', unidadeIds)
+      .gte('ts', umAnoAtras.toISOString())
+      .order('ts', { ascending: false })
+  );
+
+  const ultimoPorUnidade = new Map<number, string>();
+  for (const r of registros) {
+    if (!ultimoPorUnidade.has(r.unidade_id)) ultimoPorUnidade.set(r.unidade_id, r.tipo);
+  }
+
+  const feitasPorQuadra = new Map<string, number>();
+  for (const [uid, q] of quadraPorUnidade) {
+    const tipo = ultimoPorUnidade.get(uid);
+    if (tipo && tipo !== 'desfeito' && tipo !== 'carta_undo') {
+      feitasPorQuadra.set(q, (feitasPorQuadra.get(q) ?? 0) + 1);
+    }
+  }
+
+  const result = new Map<string, CoberturaQuadra>();
+  for (const [q, total] of totalPorQuadra) {
+    const feitas = feitasPorQuadra.get(q) ?? 0;
+    result.set(q, { total, feitas, pct: total === 0 ? 0 : Math.round((feitas / total) * 100) });
+  }
+  return result;
+}
+
 // Lista de prédios (locais tipo='predio') com contagens.
 // Usado pelas telas de Cartas.
 export interface PredioListado {
