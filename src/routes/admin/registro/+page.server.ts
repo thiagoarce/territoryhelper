@@ -20,7 +20,37 @@ export const actions: Actions = {
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
     const data = String(fd.get('data') ?? '').trim() || new Date().toISOString().substring(0, 10);
+    // modo: 'normal' (detecta conflito) | 'substituir' (troca a mais recente) | 'historico' (só adiciona)
+    const modo = String(fd.get('modo') ?? 'normal');
     if (ids.length === 0) return fail(400, { erro: 'Selecione ao menos 1 quadra' });
+
+    // Em modo 'normal' — detecta se a data sendo marcada é ANTERIOR à mais recente
+    // no histórico de alguma das quadras selecionadas. Se sim, devolve conflito
+    // pra UI pedir confirmação (erro / substituir / só histórico).
+    if (modo === 'normal') {
+      const { data: hist } = await locals.supabase
+        .from('quadras_conclusoes')
+        .select('quadra_id, data_conclusao')
+        .in('quadra_id', ids)
+        .order('data_conclusao', { ascending: false });
+      const ultimaPorQuadra = new Map<string, string>();
+      for (const h of hist ?? []) {
+        if (!ultimaPorQuadra.has(h.quadra_id)) ultimaPorQuadra.set(h.quadra_id, h.data_conclusao);
+      }
+      const conflitos = ids.filter((qid) => {
+        const ult = ultimaPorQuadra.get(qid);
+        return ult && ult > data;
+      });
+      if (conflitos.length > 0) {
+        return {
+          ok: false,
+          conflito: true,
+          ids: conflitos,
+          data,
+          ultimas: conflitos.map((qid) => ({ id: qid, ultima: ultimaPorQuadra.get(qid)! }))
+        };
+      }
+    }
 
     // 0. SELF-HEAL: pra cada quadra com data_conclusao atual mas SEM histórico,
     //    cria entrada de backfill primeiro. Cobre dados vindos do CSV onde a
@@ -44,20 +74,45 @@ export const actions: Actions = {
       }
     }
 
-    // 1. Atualiza quadras
-    const { error: err } = await locals.supabase
-      .from('quadras')
-      .update({ status: 'concluido', data_conclusao: data })
-      .in('id', ids);
-    if (err) return fail(400, { erro: err.message });
+    // Modo 'substituir' — remove a entrada mais recente do histórico de cada quadra
+    if (modo === 'substituir') {
+      for (const qid of ids) {
+        const { data: ult } = await locals.supabase
+          .from('quadras_conclusoes')
+          .select('id')
+          .eq('quadra_id', qid)
+          .order('data_conclusao', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(1);
+        if (ult && ult[0]) {
+          await locals.supabase.from('quadras_conclusoes').delete().eq('id', ult[0].id);
+        }
+      }
+    }
 
-    // 2. Loga no histórico (uma linha por quadra)
+    // 1. Loga no histórico (uma linha por quadra)
     const linhas = ids.map((qid) => ({
       quadra_id: qid,
       data_conclusao: data,
       marcado_por: locals.user!.id
     }));
     await locals.supabase.from('quadras_conclusoes').insert(linhas);
+
+    // 2. Atualiza quadras — quadra.data_conclusao recebe a MAIOR data do histórico
+    //    (em modo 'historico' isso garante que adicionar uma data antiga não derruba a atual)
+    for (const qid of ids) {
+      const { data: max } = await locals.supabase
+        .from('quadras_conclusoes')
+        .select('data_conclusao')
+        .eq('quadra_id', qid)
+        .order('data_conclusao', { ascending: false })
+        .limit(1);
+      const maiorData = max?.[0]?.data_conclusao ?? data;
+      await locals.supabase
+        .from('quadras')
+        .update({ status: 'concluido', data_conclusao: maiorData })
+        .eq('id', qid);
+    }
 
     // Fechar designações cujas quadras estão TODAS concluídas
     const { data: dqLinhas } = await locals.supabase

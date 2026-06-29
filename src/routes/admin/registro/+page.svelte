@@ -19,6 +19,32 @@
   let carregandoHistorico = $state(false);
   let salvando = $state(false);
 
+  // Conflito de data anterior
+  let conflito = $state<{ ids: string[]; data: string; ultimas: { id: string; ultima: string }[] } | null>(null);
+
+  async function reSubmeter(modo: 'substituir' | 'historico') {
+    if (!conflito) return;
+    salvando = true;
+    try {
+      const fd = new FormData();
+      for (const id of conflito.ids) fd.append('ids', id);
+      fd.append('data', conflito.data);
+      fd.append('modo', modo);
+      const res = await fetch('?/marcarConcluidas', { method: 'POST', body: fd });
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success') {
+        toast.success(modo === 'substituir' ? 'Substituída' : 'Adicionada ao histórico');
+        conflito = null;
+        limpar();
+        await invalidateAll();
+      } else {
+        toast.error('Falhou');
+      }
+    } finally {
+      salvando = false;
+    }
+  }
+
   function onClickQuadra(q: QuadraGeo) {
     if (selecionadas.has(q.id)) selecionadas.delete(q.id);
     else selecionadas.add(q.id);
@@ -146,7 +172,13 @@
           await update();
           salvando = false;
           if (result.type === 'success') {
-            toast.success((result.data as any)?.msg || 'Concluídas');
+            const d = result.data as any;
+            // Server devolve { ok:false, conflito:true, ... } como success normal
+            if (d?.conflito) {
+              conflito = { ids: d.ids, data: d.data, ultimas: d.ultimas };
+              return;
+            }
+            toast.success(d?.msg || 'Concluídas');
             limpar();
             await invalidateAll();
           } else if (result.type === 'failure') {
@@ -240,6 +272,41 @@
       {#if quadraDetalhe.notas}
         <div><span class="text-slate-500">Notas:</span> <span class="italic">{quadraDetalhe.notas}</span></div>
       {/if}
+    </div>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet: conflito de data anterior -->
+<BottomSheet open={conflito !== null} title="⚠ Data anterior detectada">
+  {#if conflito}
+    <div class="space-y-3 text-sm">
+      <p class="text-slate-600">
+        Você está marcando <strong>{conflito.ids.length} quadra(s)</strong> como concluídas em
+        <strong class="font-mono">{conflito.data}</strong>,
+        mas essas quadras já têm conclusão mais recente:
+      </p>
+      <ul class="text-xs space-y-1 max-h-32 overflow-y-auto bg-slate-50 rounded p-2">
+        {#each conflito.ultimas as u}
+          <li class="flex justify-between">
+            <span class="font-mono font-semibold">{u.id}</span>
+            <span class="text-slate-500">última: {u.ultima}</span>
+          </li>
+        {/each}
+      </ul>
+      <p class="text-xs text-slate-500">O que fazer?</p>
+      <div class="flex flex-col gap-2">
+        <Button variant="primary" onclick={() => reSubmeter('historico')} loading={salvando}>
+          📜 Só adicionar ao histórico
+          <span class="block text-xs font-normal opacity-70">Mantém a última como atual</span>
+        </Button>
+        <Button variant="secondary" onclick={() => reSubmeter('substituir')} loading={salvando}>
+          🔄 Substituir a última
+          <span class="block text-xs font-normal opacity-70">Apaga a última e usa essa</span>
+        </Button>
+        <Button variant="ghost" onclick={() => (conflito = null)}>
+          ❌ Cancelar (foi erro)
+        </Button>
+      </div>
     </div>
   {/if}
 </BottomSheet>
