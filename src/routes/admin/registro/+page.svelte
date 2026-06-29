@@ -12,6 +12,7 @@
   let selecionadas = $state<Set<string>>(new Set());
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let mostrarRotulos = $state(true);
+  let basemap = $state<'positron' | 'liberty' | 'bright'>('positron');
   let sheetDetalhe = $state(false);
   let quadraDetalhe = $state<QuadraGeo | null>(null);
   let salvando = $state(false);
@@ -55,10 +56,17 @@
       <h1 class="text-2xl font-bold">Registro</h1>
       <p class="text-sm text-slate-500">Click numa quadra pra selecionar. Long-press abre detalhes.</p>
     </div>
-    <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-      <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
-      Rótulos
-    </label>
+    <div class="flex items-center gap-2">
+      <select bind:value={basemap} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Mapa base">
+        <option value="positron">Cinza</option>
+        <option value="liberty">Colorido</option>
+        <option value="bright">Brilhante</option>
+      </select>
+      <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+        <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
+        Rótulos
+      </label>
+    </div>
   </div>
 
   <!-- Legenda gradient -->
@@ -94,6 +102,7 @@
     {mostrarRotulos}
     quadrasAlocadas={data.quadrasAlocadas}
     bind:selecionadas
+    bind:basemap
     onClick={onClickQuadra}
     {onLongPress}
   />

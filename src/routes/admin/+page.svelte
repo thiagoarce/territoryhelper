@@ -22,6 +22,7 @@
 
   // Estado
   let colorirPor = $state<'status' | 'territorio' | 'densidade'>('status');
+  let basemap = $state<'positron' | 'liberty' | 'bright'>('positron');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
@@ -66,6 +67,12 @@
       <option value="densidade">Cor por densidade</option>
     </select>
 
+    <select bind:value={basemap} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Mapa base">
+      <option value="positron">Cinza</option>
+      <option value="liberty">Colorido</option>
+      <option value="bright">Brilhante</option>
+    </select>
+
     <label class="flex items-center gap-1.5 text-sm cursor-pointer ml-auto">
       <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
       Rótulos
@@ -100,6 +107,7 @@
     {mostrarRotulos}
     quadrasAlocadas={data.quadrasAlocadas}
     bind:selecionadas
+    bind:basemap
     onClick={onClickQuadra}
   />
 

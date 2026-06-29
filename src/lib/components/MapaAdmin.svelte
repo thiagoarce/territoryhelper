@@ -3,6 +3,13 @@
   import type { QuadraGeo } from '$lib/server/queries';
 
   type ColorirPor = 'status' | 'territorio' | 'densidade' | 'idade';
+  type Basemap = 'positron' | 'liberty' | 'bright';
+
+  const BASEMAPS: Record<Basemap, string> = {
+    positron: 'https://tiles.openfreemap.org/styles/positron',
+    liberty: 'https://tiles.openfreemap.org/styles/liberty',
+    bright: 'https://tiles.openfreemap.org/styles/bright'
+  };
 
   let {
     quadras,
@@ -12,6 +19,7 @@
     mostrarTerritorios = false,
     quadrasAlocadas = [],
     selecionadas = $bindable(new Set<string>()),
+    basemap = $bindable<Basemap>('positron'),
     onClick,
     onLongPress
   }: {
@@ -22,6 +30,7 @@
     mostrarTerritorios?: boolean;
     quadrasAlocadas?: string[];
     selecionadas?: Set<string>;
+    basemap?: Basemap;
     onClick?: (q: QuadraGeo, multi: boolean) => void;
     onLongPress?: (q: QuadraGeo) => void;
   } = $props();
@@ -49,10 +58,15 @@
     mapa.setLayoutProperty('quadras-label', 'visibility', mostrarRotulos ? 'visible' : 'none');
   });
 
+  let basemapAtual: Basemap | null = null;
+  $effect(() => {
+    if (!mapa) return;
+    if (basemapAtual === basemap) return;
+    basemapAtual = basemap;
+    try { mapa.setStyle(BASEMAPS[basemap]); } catch {}
+  });
+
   function buildFillExpr(modo: ColorirPor, sel: Set<string>, alocadas: Set<string>): any {
-    // Selecionadas sempre destacam (azul forte)
-    const matchSel: any[] = ['match', ['get', 'id']];
-    for (const id of sel) { matchSel.push(id); matchSel.push('#4f46e5'); }
     // Default por modo
     let defaultColor: any;
     if (modo === 'status') {
@@ -87,6 +101,10 @@
     } else {
       defaultColor = 'rgba(148,163,184,0.3)';
     }
+    // Selecionadas sempre destacam (azul forte) — match exige >=1 par, então só usa quando tem
+    if (sel.size === 0) return defaultColor;
+    const matchSel: any[] = ['match', ['get', 'id']];
+    for (const id of sel) { matchSel.push(id); matchSel.push('#4f46e5'); }
     matchSel.push(defaultColor);
     return matchSel;
   }
@@ -104,7 +122,7 @@
 
     mapa = new maplibre.Map({
       container,
-      style: 'https://tiles.openfreemap.org/styles/positron',
+      style: BASEMAPS[basemap] ?? BASEMAPS.positron,
       center: [-34.863, -7.115],
       zoom: 14,
       attributionControl: { compact: true } as any,
@@ -112,7 +130,8 @@
     });
     mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
 
-    mapa.on('load', () => {
+    function setupCamadas() {
+      if (mapa.getLayer('quadras-fill')) return; // já setupado
       const hoje = Date.now();
       const features = quadras
         .filter((q) => q.poly_geojson)
@@ -199,6 +218,12 @@
           'text-allow-overlap': true
         }
       });
+    }
+
+    // Re-setup das camadas após cada troca de style (incluindo a primeira)
+    mapa.on('style.load', setupCamadas);
+
+    mapa.on('load', () => {
 
       // Click — multi-seleção se shift/ctrl, ou se já tem seleção
       let pressStart: number | null = null;
