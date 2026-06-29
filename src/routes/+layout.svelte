@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import type { Snippet } from 'svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
+  import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 
   let { data, children }: { data: { profile: any }; children: Snippet } = $props();
 
@@ -37,6 +38,7 @@
 </script>
 
 <Toaster />
+<InstallPrompt />
 
 {#if isLogin || !data.profile}
   {@render children()}

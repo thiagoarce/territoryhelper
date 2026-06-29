@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="36" fill="#4f46e5"/>
+  <g fill="white">
+    <!-- Simple map pin + grid icon -->
+    <path d="M96 38c-18.78 0-34 14.93-34 33.34 0 25.51 34 60.66 34 60.66s34-35.15 34-60.66C130 52.93 114.78 38 96 38z"/>
+    <circle cx="96" cy="71" r="12" fill="#4f46e5"/>
+    <rect x="48" y="138" width="20" height="20" rx="3"/>
+    <rect x="76" y="138" width="20" height="20" rx="3"/>
+    <rect x="104" y="138" width="20" height="20" rx="3"/>
+    <rect x="132" y="138" width="20" height="20" rx="3"/>
+  </g>
+</svg>
