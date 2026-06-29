@@ -31,7 +31,14 @@ export const load: PageServerLoad = async () => {
     };
   });
   usuarios.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  return { usuarios };
+
+  const { data: convites } = await supabaseAdmin
+    .from('convites')
+    .select('id, email, nome, role, token, expira_em, usado_em, criado_em')
+    .order('criado_em', { ascending: false })
+    .limit(50);
+
+  return { usuarios, convites: convites ?? [] };
 };
 
 export const actions: Actions = {
@@ -82,6 +89,33 @@ export const actions: Actions = {
     if (error) return fail(400, { erro: error.message });
 
     return { ok: true, msg: 'Atualizado' };
+  },
+
+  // Cria um convite — gera token único, irmão acessa /convite/[token] pra
+  // definir email+senha.
+  criarConvite: async ({ request, locals }) => {
+    const fd = await request.formData();
+    const email = String(fd.get('email') ?? '').trim().toLowerCase();
+    const nome = String(fd.get('nome') ?? '').trim();
+    const role = String(fd.get('role') ?? 'publicador') as Role;
+    if (!email || !nome) return fail(400, { erro: 'email e nome obrigatórios' });
+    if (!ROLES_VALIDAS.includes(role)) return fail(400, { erro: 'Role inválida' });
+    const { data, error } = await supabaseAdmin
+      .from('convites')
+      .insert({ email, nome, role, criado_por: locals.user?.id ?? null })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Convite criado', token: data.token };
+  },
+
+  revogarConvite: async ({ request }) => {
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await supabaseAdmin.from('convites').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Convite revogado' };
   },
 
   // Exclui usuário (auth + profile via CASCADE).

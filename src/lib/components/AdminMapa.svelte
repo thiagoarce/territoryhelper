@@ -19,6 +19,18 @@
   let userMarker: any = null;
   let watchId: number | null = null;
 
+  // Expõe o canvas pra screenshot. Chamado de fora via bind:this.
+  export function exportarPng(): string | null {
+    if (!mapa) return null;
+    try {
+      const canvas = mapa.getCanvas();
+      return canvas.toDataURL('image/png');
+    } catch (e) {
+      console.warn('exportar png falhou:', e);
+      return null;
+    }
+  }
+
   const STATUS_COLORS: Record<string, string> = {
     pendente: 'rgba(245, 158, 11, 0.6)',   // amber
     concluido: 'rgba(34, 197, 94, 0.6)',   // green
@@ -41,7 +53,8 @@
       style: 'https://tiles.openfreemap.org/styles/positron',
       center: [-34.863, -7.115],
       zoom: 14,
-      attributionControl: { compact: true } as any
+      attributionControl: { compact: true } as any,
+      preserveDrawingBuffer: true // habilita screenshot via toDataURL
     });
     mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
 

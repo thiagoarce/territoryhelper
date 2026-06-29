@@ -15,8 +15,36 @@
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvando = $state(false);
 
+  let mapaRef: { exportarPng: () => string | null } | null = $state(null);
+
+  function exportarMapa() {
+    const png = mapaRef?.exportarPng();
+    if (!png) {
+      toast.warn('Não foi possível exportar');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = png;
+    a.download = `mapa-${new Date().toISOString().substring(0, 10)}.png`;
+    a.click();
+    toast.success('PNG baixado');
+  }
+
   let buscandoPOIs = $state(false);
   let pois: { id: string; lat: number; lng: number; nome: string; categoria: CategoriaPOI; distancia: number }[] = $state([]);
+
+  let visao: 'mapa' | 'lista' = $state('mapa');
+  let buscaLista = $state('');
+  let filtroStatusLista = $state<'todos' | 'pendente' | 'concluido' | 'inativa'>('pendente');
+
+  const quadrasFiltradas = $derived(
+    data.quadras.filter((q) => {
+      if (filtroStatusLista !== 'todos' && q.status !== filtroStatusLista) return false;
+      if (buscaLista.trim() && !q.id.toLowerCase().includes(buscaLista.toLowerCase()))
+        return false;
+      return true;
+    })
+  );
 
   async function buscarEstacionamentos() {
     if (!quadraSel?.poly_geojson) {
@@ -71,14 +99,69 @@
 
 <div class="flex items-end justify-between flex-wrap gap-3">
   <div>
-    <h1 class="text-2xl font-bold">Mapa do dirigente</h1>
-    <p class="text-sm text-slate-500 mt-1">Click numa quadra pra concluir ou ver detalhes</p>
+    <h1 class="text-2xl font-bold">Dirigente</h1>
+    <p class="text-sm text-slate-500 mt-1">Concluir quadras + estacionamento + visão geral</p>
+  </div>
+  <div class="flex gap-2">
+    <div class="flex border border-slate-300 rounded-lg overflow-hidden text-sm">
+      <button onclick={() => (visao = 'mapa')} class="px-3 py-1.5 {visao === 'mapa' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}">🗺 Mapa</button>
+      <button onclick={() => (visao = 'lista')} class="px-3 py-1.5 {visao === 'lista' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}">☰ Lista</button>
+    </div>
+    {#if visao === 'mapa'}
+      <Button variant="secondary" size="sm" onclick={exportarMapa}>📸 PNG</Button>
+    {/if}
   </div>
 </div>
 
-<div class="mt-4">
-  <AdminMapa quadras={data.quadras} altura={620} onQuadraClick={abrirQuadra} />
-</div>
+{#if visao === 'mapa'}
+  <div class="mt-4">
+    <AdminMapa bind:this={mapaRef} quadras={data.quadras} altura={620} onQuadraClick={abrirQuadra} />
+  </div>
+{:else}
+  <!-- Lista -->
+  <div class="mt-4 flex gap-2 flex-wrap">
+    <input
+      type="search"
+      bind:value={buscaLista}
+      placeholder="Buscar quadra..."
+      class="rounded-lg border border-slate-300 px-3 py-2 text-sm w-48"
+    />
+    <div class="flex gap-1">
+      {#each [['todos', 'Todos'], ['pendente', 'Pendentes'], ['concluido', 'Concluídas'], ['inativa', 'Inativas']] as [k, l]}
+        <button
+          onclick={() => (filtroStatusLista = k as any)}
+          class="px-3 py-1.5 text-sm rounded border"
+          class:bg-primary-100={filtroStatusLista === k}
+          class:border-primary-500={filtroStatusLista === k}
+          class:text-primary-700={filtroStatusLista === k}
+          class:border-slate-200={filtroStatusLista !== k}
+        >{l}</button>
+      {/each}
+    </div>
+    <div class="ml-auto text-sm text-slate-500">{quadrasFiltradas.length} quadra(s)</div>
+  </div>
+  <div class="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+    {#each quadrasFiltradas as q (q.id)}
+      <button
+        type="button"
+        onclick={() => abrirQuadra(q)}
+        class="text-left p-2 rounded-lg border-2 border-transparent hover:border-primary-500 hover:bg-primary-50 transition-colors"
+        class:bg-amber-50={q.status === 'pendente'}
+        class:bg-green-50={q.status === 'concluido'}
+        class:bg-slate-100={q.status === 'inativa'}
+      >
+        <div class="flex items-center gap-1 mb-1">
+          <span class="inline-block w-3 h-3 rounded" style:background-color={q.color}></span>
+          <span class="font-mono font-semibold text-sm">{q.id}</span>
+        </div>
+        <div class="text-xs text-slate-500 truncate">{q.territorio_nome ?? '—'}</div>
+        {#if q.status === 'concluido' && q.data_conclusao}
+          <div class="text-[10px] text-green-600 mt-1">✓ {q.data_conclusao}</div>
+        {/if}
+      </button>
+    {/each}
+  </div>
+{/if}
 
 <!-- Legenda -->
 <div class="mt-3 flex gap-4 flex-wrap text-xs">
