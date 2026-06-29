@@ -189,38 +189,49 @@
       <div>
         <span class="block text-sm font-medium mb-2">Entrada do prédio</span>
         <div class="grid grid-cols-3 gap-2">
-          {#each [{ v: 'porteiro', l: 'Porteiro' }, { v: 'eletronica', l: 'Eletrônica' }, { v: 'sem', l: 'Sem' }] as opt}
+          {#each [{ v: 'porteiro', l: 'Porteiro', icon: '👮' }, { v: 'eletronica', l: 'Eletrônica', icon: '🔘' }, { v: 'sem', l: 'Sem portaria', icon: '🚪' }] as opt}
             <label class="cursor-pointer">
               <input type="radio" name="tipo_entrada" value={opt.v} checked={predioSel.tipo_entrada === opt.v} class="peer sr-only" />
-              <div class="text-center text-sm px-3 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">{opt.l}</div>
+              <div class="text-center text-sm px-3 py-3 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">
+                <div class="text-xl mb-0.5">{opt.icon}</div>
+                <div class="text-xs">{opt.l}</div>
+              </div>
             </label>
           {/each}
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-3">
-        <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+      <div class="grid grid-cols-2 gap-2">
+        <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
           <input type="checkbox" name="acesso_caixas" checked={predioSel.acesso_caixas} class="w-4 h-4 rounded" />
-          <span class="text-sm">Acesso caixas</span>
+          <span class="text-sm flex items-center gap-1">📬 Acesso caixas</span>
         </label>
-        <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+        <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
           <input type="checkbox" name="acesso_interfones" checked={predioSel.acesso_interfones} class="w-4 h-4 rounded" />
-          <span class="text-sm">Acesso interfones</span>
+          <span class="text-sm flex items-center gap-1">📞 Interfones</span>
         </label>
       </div>
 
-      <div class="rounded-lg bg-slate-50 p-3">
+      <div class="rounded-lg bg-amber-50 border border-amber-200 p-3">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" name="irmao_mora" bind:checked={irmaoMora} class="w-4 h-4 rounded" />
-          <span class="text-sm font-medium">Irmão mora aqui</span>
+          <span class="text-sm font-medium flex items-center gap-1">👤 Irmão mora aqui</span>
         </label>
         {#if irmaoMora}
           <input name="nome_irmao" value={predioSel.nome_irmao ?? ''} placeholder="Nome do irmão" class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         {/if}
       </div>
 
+      <div class="rounded-lg border border-slate-200 p-3">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="nao_eh_predio" checked={(predioSel as any).nao_eh_predio ?? false} class="w-4 h-4 rounded" />
+          <span class="text-sm flex items-center gap-1">🚫 Não é prédio (vila / casas geminadas)</span>
+        </label>
+        <p class="text-xs text-slate-500 mt-1 ml-6">Marque pra remover da lista de prédios</p>
+      </div>
+
       <div>
-        <label for="notas" class="block text-sm font-medium mb-1">Notas</label>
+        <label for="notas" class="block text-sm font-medium mb-1">📝 Notas</label>
         <textarea id="notas" name="notas" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{predioSel.notas ?? ''}</textarea>
       </div>
 

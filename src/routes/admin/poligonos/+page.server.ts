@@ -14,6 +14,17 @@ export interface LocalComGeo {
   lng: number | null;
 }
 
+interface LocalDaView {
+  id: number;
+  tipo: string;
+  logradouro: string;
+  numero: string;
+  setor: string | null;
+  quadra_ibge: string | null;
+  quadra_id: string | null;
+  geo_geojson: { coordinates: [number, number] } | null;
+}
+
 interface QuadraEstatisticaIbge {
   quadra_id: string;
   cluster: string;        // setor|quadra_ibge
@@ -21,14 +32,27 @@ interface QuadraEstatisticaIbge {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // TODOS os locais com lat/lng pra renderizar no mapa
-  const locais = await selectAll<LocalComGeo>(
+  // TODOS os locais com geo (extrai lat/lng do geo_geojson da view)
+  const linhas = await selectAll<LocalDaView>(
     locals.supabase
-      .from('locais')
-      .select('id, tipo, logradouro, numero, setor, quadra_ibge, quadra_id, lat, lng')
-      .not('lat', 'is', null)
-      .not('lng', 'is', null)
+      .from('locais_geo')
+      .select('id, tipo, logradouro, numero, setor, quadra_ibge, quadra_id, geo_geojson')
+      .not('geo_geojson', 'is', null)
   );
+  const locais: LocalComGeo[] = linhas.map((l) => {
+    const c = l.geo_geojson?.coordinates;
+    return {
+      id: l.id,
+      tipo: l.tipo,
+      logradouro: l.logradouro,
+      numero: l.numero,
+      setor: l.setor,
+      quadra_ibge: l.quadra_ibge,
+      quadra_id: l.quadra_id,
+      lat: c ? c[1] : null,
+      lng: c ? c[0] : null
+    };
+  }).filter((l) => l.lat != null && l.lng != null);
 
   const quadras = await listarQuadrasComGeo(locals.supabase);
 

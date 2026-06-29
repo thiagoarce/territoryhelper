@@ -46,8 +46,13 @@
     try { return mapa.getCanvas().toDataURL('image/png'); } catch { return null; }
   }
 
-  // Recalcula fill quando muda colorirPor, selecionadas, alocadas
+  // Keys primitivos pro $effect rastrear mudança (Svelte 5 não detecta mutação de Set)
+  const selKey = $derived([...selecionadas].sort().join('|'));
+  const alocadasKey = $derived([...quadrasAlocadas].sort().join('|'));
+
   $effect(() => {
+    // dependências explícitas
+    selKey; alocadasKey; colorirPor;
     if (!mapa || !mapa.getLayer('quadras-fill')) return;
     const expr = buildFillExpr(colorirPor, selecionadas, new Set(quadrasAlocadas));
     mapa.setPaintProperty('quadras-fill', 'fill-color', expr);

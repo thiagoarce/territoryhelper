@@ -90,7 +90,9 @@
     ];
   }
 
+  const selKey = $derived([...selecionadosLocais].sort().join('|'));
   $effect(() => {
+    selKey;
     if (!mapa || !mapa.getLayer('locais-points')) return;
     mapa.setPaintProperty('locais-points', 'circle-color', buildPointColor(selecionadosLocais));
     mapa.setPaintProperty('locais-points', 'circle-radius', buildPointRadius(selecionadosLocais));

@@ -200,8 +200,9 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
     selectAll<any>(
       supabase
         .from('locais')
-        .select('id, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora')
+        .select('id, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora, nao_eh_predio')
         .eq('tipo', 'predio')
+        .eq('nao_eh_predio', false)
         .order('logradouro')
     ),
     selectAll<{ local_id: number; carta_entregue: string | null; desocupado: boolean; nao_escrever: boolean }>(

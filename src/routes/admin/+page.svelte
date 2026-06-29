@@ -32,6 +32,12 @@
   let sheetDesignacoes = $state(false);
   let sheetDesignar = $state(false);
 
+  // Estado do form de designar
+  let tipoDesignacao = $state<'pessoal' | 'arranjo'>('pessoal');
+  let publicadoresSel = $state<Set<string>>(new Set());
+
+  const dirigentes = $derived(data.publicadores.filter((p) => p.role === 'dirigente' || p.role === 'admin'));
+
   function onClickQuadra(q: QuadraGeo, multi: boolean) {
     if (selecionadas.has(q.id)) selecionadas.delete(q.id);
     else selecionadas.add(q.id);
@@ -39,6 +45,12 @@
   }
 
   function limparSelecao() { selecionadas = new Set(); }
+
+  function togglePub(id: string) {
+    if (publicadoresSel.has(id)) publicadoresSel.delete(id);
+    else publicadoresSel.add(id);
+    publicadoresSel = new Set(publicadoresSel);
+  }
 
   const stats = $derived.by(() => {
     const total = data.quadras.length;
@@ -133,7 +145,7 @@
   </div>
 {/if}
 
-<!-- Sheet: lista designações ativas -->
+<!-- Sheet: lista designações ativas (com editar/encerrar) -->
 <BottomSheet bind:open={sheetDesignacoes} title="Designações ativas">
   {#if data.designacoesAbertas.length === 0}
     <div class="text-center py-10 text-slate-400">Nenhuma designação aberta.</div>
@@ -141,12 +153,36 @@
     <ul class="space-y-2">
       {#each data.designacoesAbertas as d}
         <li class="rounded-lg border border-slate-200 p-3">
-          <div class="font-medium">{d.publicador_nome ?? '(sem publicador)'}</div>
-          <div class="text-xs text-slate-500 mt-0.5">
-            {d.quadras_ids.length} quadra(s) · {d.quadras_ids.join(', ')}
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium flex items-center gap-2">
+                {d.publicador_nome ?? '(sem publicador)'}
+                {#if (d as any).tipo === 'arranjo'}<span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">arranjo</span>{/if}
+              </div>
+              <div class="text-xs text-slate-500 mt-0.5">
+                {d.quadras_ids.length} quadra(s) · {d.quadras_ids.join(', ')}
+              </div>
+              {#if d.prazo}<div class="text-xs text-amber-700 mt-1">prazo: {d.prazo}</div>{/if}
+              {#if d.notas}<div class="text-xs text-slate-500 italic mt-1">{d.notas}</div>{/if}
+            </div>
+            <div class="flex flex-col gap-1">
+              <form
+                method="POST"
+                action="?/encerrarDesignacao"
+                use:enhance={() => async ({ result, update }) => {
+                  await update();
+                  if (result.type === 'success') {
+                    toast.success('Encerrada');
+                    await invalidateAll();
+                  }
+                }}
+                onsubmit={(e) => { if (!confirm(`Encerrar designação de ${d.publicador_nome ?? '?'}?`)) e.preventDefault(); }}
+              >
+                <input type="hidden" name="id" value={d.id} />
+                <button type="submit" class="text-[11px] text-red-700 hover:underline">Encerrar</button>
+              </form>
+            </div>
           </div>
-          {#if d.prazo}<div class="text-xs text-amber-700 mt-1">prazo: {d.prazo}</div>{/if}
-          {#if d.notas}<div class="text-xs text-slate-500 italic mt-1">{d.notas}</div>{/if}
         </li>
       {/each}
     </ul>
@@ -167,6 +203,7 @@
           toast.success((result.data as any)?.msg || 'Criada');
           sheetDesignar = false;
           limparSelecao();
+          publicadoresSel = new Set();
           await invalidateAll();
         } else if (result.type === 'failure') {
           toast.error(String((result.data as any)?.erro || 'Falhou'));
@@ -176,21 +213,65 @@
     class="space-y-3"
   >
     {#each [...selecionadas] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+    <input type="hidden" name="tipo" value={tipoDesignacao} />
 
     <div class="rounded-lg bg-slate-50 p-3 text-sm">
       <div class="font-medium mb-1">{selecionadas.size} quadra(s)</div>
       <div class="text-xs text-slate-500 font-mono">{[...selecionadas].join(', ')}</div>
     </div>
 
+    <!-- Tipo: pessoal (publicador trabalha) vs arranjo (dirigente coordena) -->
     <div>
-      <label for="publicador_id" class="block text-sm font-medium mb-1">Publicador</label>
-      <select id="publicador_id" name="publicador_id" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-        <option value="">— escolha —</option>
-        {#each data.publicadores as p}
-          <option value={p.id}>{p.nome} ({p.role})</option>
-        {/each}
-      </select>
+      <span class="block text-sm font-medium mb-2">Tipo</span>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" onclick={() => (tipoDesignacao = 'pessoal')}
+          class="text-left px-3 py-2 border rounded-lg transition-colors"
+          class:bg-primary-50={tipoDesignacao === 'pessoal'}
+          class:border-primary-500={tipoDesignacao === 'pessoal'}
+          class:border-slate-300={tipoDesignacao !== 'pessoal'}
+        >
+          <div class="font-medium text-sm">📍 Pessoal</div>
+          <div class="text-xs text-slate-500">Publicador trabalha</div>
+        </button>
+        <button type="button" onclick={() => (tipoDesignacao = 'arranjo')}
+          class="text-left px-3 py-2 border rounded-lg transition-colors"
+          class:bg-primary-50={tipoDesignacao === 'arranjo'}
+          class:border-primary-500={tipoDesignacao === 'arranjo'}
+          class:border-slate-300={tipoDesignacao !== 'arranjo'}
+        >
+          <div class="font-medium text-sm">👥 Arranjo</div>
+          <div class="text-xs text-slate-500">Dirigente coordena</div>
+        </button>
+      </div>
     </div>
+
+    {#if tipoDesignacao === 'arranjo'}
+      <div>
+        <label for="dirigente_id" class="block text-sm font-medium mb-1">Dirigente responsável</label>
+        <select id="dirigente_id" name="dirigente_id" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">— escolha —</option>
+          {#each dirigentes as p}
+            <option value={p.id}>{p.nome} ({p.role})</option>
+          {/each}
+        </select>
+        <p class="text-xs text-slate-500 mt-1">Ele convida os publicadores depois.</p>
+      </div>
+    {:else}
+      <div>
+        <span class="block text-sm font-medium mb-1">Publicadores (≥1, primeiro é líder)</span>
+        <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.publicadores as p}
+            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="checkbox" checked={publicadoresSel.has(p.id)} onchange={() => togglePub(p.id)} class="w-4 h-4 rounded" />
+              <span class="flex-1">{p.nome}</span>
+              <span class="text-xs text-slate-400">{p.role}</span>
+            </label>
+          {/each}
+        </div>
+        {#each [...publicadoresSel] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
+        <p class="text-xs text-slate-500 mt-1">{publicadoresSel.size} selecionado(s)</p>
+      </div>
+    {/if}
 
     <div>
       <label for="prazo" class="block text-sm font-medium mb-1">Prazo (opcional)</label>

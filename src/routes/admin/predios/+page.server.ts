@@ -23,20 +23,42 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
-    const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar'];
+    const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar', 'nao_eh_predio'];
+    const booleanos = new Set(['irmao_mora', 'acesso_caixas', 'acesso_interfones', 'nao_visitar', 'nao_eh_predio']);
     const patch: Record<string, unknown> = {};
     for (const k of permitidos) {
+      if (k === 'nao_eh_predio') {
+        // Sempre seta esse — vem com 'on' se marcado, ausente se desmarcado
+        patch[k] = fd.get(k) === 'on';
+        continue;
+      }
       if (!fd.has(k)) continue;
       const v = fd.get(k);
-      if (k === 'irmao_mora' || k === 'acesso_caixas' || k === 'acesso_interfones' || k === 'nao_visitar') {
+      if (booleanos.has(k)) {
         patch[k] = v === 'on' || v === 'true';
       } else {
         const s = String(v ?? '').trim();
         patch[k] = s === '' ? null : s;
       }
     }
-    const { error } = await locals.supabase.from('locais').update(patch).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
+
+    // "Não é prédio" propaga pra todas as unidades do mesmo agrupamento (logradouro+numero)
+    if ('nao_eh_predio' in patch) {
+      const { data: base } = await locals.supabase.from('locais').select('logradouro, numero').eq('id', id).maybeSingle();
+      if (base) {
+        await locals.supabase
+          .from('locais')
+          .update({ nao_eh_predio: patch.nao_eh_predio })
+          .eq('logradouro', base.logradouro)
+          .eq('numero', base.numero);
+      }
+      delete patch.nao_eh_predio;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      const { error } = await locals.supabase.from('locais').update(patch).eq('id', id);
+      if (error) return fail(400, { erro: error.message });
+    }
     return { ok: true, msg: 'Atualizado' };
   },
 
