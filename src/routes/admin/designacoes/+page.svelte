@@ -272,8 +272,10 @@
       </div>
     </div>
   {:else}
-    <div class="text-center text-slate-400 py-10">
-      Nenhuma designação ainda. Clica "+ Nova designação" pra criar a primeira.
+    <div class="flex flex-col items-center text-center py-10 px-4">
+      <div class="text-5xl mb-3 opacity-60">📋</div>
+      <div class="text-base font-medium text-slate-700">Nenhuma designação ainda</div>
+      <div class="text-sm text-slate-500 mt-1">Clica em "+ Nova designação" pra atribuir quadras a um publicador.</div>
     </div>
   {/each}
 </div>

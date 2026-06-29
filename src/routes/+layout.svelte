@@ -108,18 +108,19 @@
     </aside>
 
     <!-- Header mobile -->
-    <header class="md:hidden sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-      <div>
-        <div class="font-bold text-primary-700">Territory Helper</div>
-        <a href="/perfil" class="text-xs text-slate-500 hover:text-primary-700">
+    <header class="md:hidden sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-2">
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-primary-700 text-sm">Territory Helper</div>
+        <a href="/perfil" class="text-xs text-slate-500 hover:text-primary-700 truncate block">
           {data.profile.nome} · {data.profile.role}
         </a>
       </div>
+      <a href="/buscar" aria-label="Buscar" class="text-slate-500 hover:text-primary-700 p-2 text-lg">🔍</a>
       <form action="/logout" method="POST">
         <button
           type="submit"
           aria-label="Sair"
-          class="text-slate-500 hover:text-slate-700 p-2"
+          class="text-slate-500 hover:text-slate-700 p-2 text-sm"
         >Sair</button>
       </form>
     </header>
