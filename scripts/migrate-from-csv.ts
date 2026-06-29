@@ -247,10 +247,16 @@ async function insertBatch(table: string, rows: Record<string, unknown>[], chunk
   console.log(`✅ ${table}: ${rows.length} linhas`);
 }
 
-async function clearTable(table: string, pkCol = 'id') {
-  // Service role bypassa RLS. Filtro neq impossível pra matar todas as linhas.
-  const { error } = await db.from(table).delete().neq(pkCol, '__never_match_this__');
-  if (error) console.warn(`⚠️  ${table}: ${error.message} — continuando.`);
+async function clearTable(table: string, _pkCol = 'id') {
+  // Usa TRUNCATE via exec_sql (migration 011) — mais rápido e funciona pra
+  // qualquer tipo de PK. CASCADE pra resetar FKs.
+  const sql = `truncate table ${table} restart identity cascade`;
+  const { error } = await db.rpc('exec_sql' as any, { query: sql } as any);
+  if (error) {
+    // Fallback: DELETE pra casos onde exec_sql não existe / sem permissão
+    const { error: errDel } = await db.from(table).delete().gte('id', '0');
+    if (errDel) console.warn(`⚠️  ${table}: ${error.message} / ${errDel.message} — continuando.`);
+  }
 }
 
 // Junction tables: deletam tudo via filtro sempre-verdadeiro numa coluna any
