@@ -49,7 +49,7 @@ security definer
 set search_path = public
 as $$
   select exists (
-    select 1 from profiles where id = auth.uid() and role in ('dirigente','admin','super_admin')
+    select 1 from profiles where id = auth.uid() and role in ('dirigente','admin')
   );
 $$;
 

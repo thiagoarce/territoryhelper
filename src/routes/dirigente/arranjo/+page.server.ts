@@ -19,7 +19,7 @@ export interface ArranjoLinha {
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) return { arranjos: [], dirigenteNomes: {}, publicadores: [], quadrasPorArranjo: {}, participantesPorArranjo: {}, podeCoordenar: false };
 
-  const podeCoordenar = ['dirigente', 'admin', 'super_admin'].includes(locals.profile?.role ?? '');
+  const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
   const arranjos = await selectAll<ArranjoLinha>(
     locals.supabase
