@@ -23,7 +23,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   ]);
   const objetivos = (objRes.data ?? []) as Campanha[];
   const periodos = (periodosRes.data ?? []) as CampanhaPeriodo[];
-  const ativa = periodos.find((p) => p.ativa) ?? null;
+  // Mostra a marcada como ativa; senão, cai pra mais recente (prazo passou mas ninguém desativou).
+  // Pra "esconder", o user clica em Desativar explicitamente, que apaga todos os ativos.
+  const ativa = periodos.find((p) => p.ativa) ?? periodos[0] ?? null;
 
   // Conclusões POR SEMANA durante o período ativo (pra gráfico)
   let conclusoesSemana: { semana: string; qtd: number }[] = [];
@@ -118,9 +120,11 @@ export const actions: Actions = {
         .eq('id', id);
       if (error) return fail(400, { erro: error.message });
     } else {
+      // Nova campanha vira ativa por default. Desativa outras antes (unique partial index).
+      await locals.supabase.from('campanhas').update({ ativa: false }).eq('ativa', true);
       const { error } = await locals.supabase
         .from('campanhas')
-        .insert({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal });
+        .insert({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal, ativa: true });
       if (error) return fail(400, { erro: error.message });
     }
     return { ok: true, msg: 'Período salvo' };

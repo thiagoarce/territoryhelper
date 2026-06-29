@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
@@ -32,20 +32,18 @@
   let salvando = $state(false);
 
   async function abrirEditar(predioId: number) {
-    const fd = new FormData();
-    fd.append('id', String(predioId));
-    const res = await fetch('?/detalhe', { method: 'POST', body: fd });
-    const json = await res.json();
     try {
-      const parsed = JSON.parse(json.data);
-      if (parsed?.predio) {
-        // parsed.predio é deserializado como array no SvelteKit — usa o objeto resolvido
-        const obj = Array.isArray(parsed.predio) ? parsed.predio[0] : parsed.predio;
-        // SvelteKit serializa Date e geo como índices — pega o objeto inteiro via outra forma
-        predioSel = obj as PredioDetalhado;
-        irmaoMora = obj.irmao_mora;
+      const fd = new FormData();
+      fd.append('id', String(predioId));
+      const res = await fetch('?/detalhe', { method: 'POST', body: fd });
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success' && result.data?.predio) {
+        predioSel = result.data.predio as PredioDetalhado;
+        irmaoMora = predioSel.irmao_mora;
         sheetEditar = true;
+        return;
       }
+      throw new Error(result.data?.erro || 'sem dados');
     } catch (e) {
       // Fallback: usa o predio listado básico
       const p = data.predios.find((p) => p.id === predioId);
@@ -59,22 +57,25 @@
         } as any;
         irmaoMora = p.irmao_mora;
         sheetEditar = true;
+      } else {
+        toast.error('Não consegui abrir o prédio');
       }
     }
   }
 
   async function compartilharWhatsApp(predioId: number, nome: string | null, logradouro: string, numero: string) {
-    const fd = new FormData();
-    fd.append('id', String(predioId));
-    const res = await fetch('?/gerarLink', { method: 'POST', body: fd });
-    const json = await res.json();
     try {
-      const parsed = JSON.parse(json.data);
-      if (parsed?.token) {
-        const url = `${window.location.origin}/cartas/${parsed.token}`;
+      const fd = new FormData();
+      fd.append('id', String(predioId));
+      const res = await fetch('?/gerarLink', { method: 'POST', body: fd });
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success' && result.data?.token) {
+        const url = `${window.location.origin}/cartas/${result.data.token}`;
         const msg = `Trabalho de cartas — *${nome || logradouro + ', ' + numero}*\n\n${url}`;
         window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+        return;
       }
+      throw new Error(result.data?.erro || 'sem token');
     } catch {
       toast.error('Não consegui gerar o link');
     }

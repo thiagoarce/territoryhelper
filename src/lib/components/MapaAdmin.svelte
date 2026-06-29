@@ -131,6 +131,7 @@
     mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
 
     function setupCamadas() {
+      if (!mapa.getStyle()) return; // style ainda não pronto
       if (mapa.getLayer('quadras-fill')) return; // já setupado
       const hoje = Date.now();
       const features = quadras
@@ -220,10 +221,14 @@
       });
     }
 
-    // Re-setup das camadas após cada troca de style (incluindo a primeira)
+    // Re-setup das camadas após cada troca de style (incluindo a primeira).
+    // Se o style já tá carregado quando registramos, dispara manualmente.
     mapa.on('style.load', setupCamadas);
+    if (mapa.isStyleLoaded()) setupCamadas();
 
     mapa.on('load', () => {
+      // garantia adicional caso 'style.load' tenha sido perdido
+      setupCamadas();
 
       // Click — multi-seleção se shift/ctrl, ou se já tem seleção
       let pressStart: number | null = null;
@@ -281,17 +286,16 @@
 
       // Fit bounds em todas
       try {
-        if (features.length > 0) {
-          let bounds: any = null;
-          for (const f of features) {
-            const coords = (f.geometry as any).coordinates?.[0] || [];
-            for (const c of coords) {
-              if (!bounds) bounds = new maplibre.LngLatBounds(c as any, c as any);
-              else bounds.extend(c as any);
-            }
+        let bounds: any = null;
+        for (const q of quadras) {
+          if (!q.poly_geojson) continue;
+          const coords = (q.poly_geojson as any).coordinates?.[0] || [];
+          for (const c of coords) {
+            if (!bounds) bounds = new maplibre.LngLatBounds(c as any, c as any);
+            else bounds.extend(c as any);
           }
-          if (bounds) mapa.fitBounds(bounds, { padding: 30, duration: 0 });
         }
+        if (bounds) mapa.fitBounds(bounds, { padding: 30, duration: 0 });
       } catch {}
 
       // GPS
