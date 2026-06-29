@@ -1,7 +1,7 @@
 // Helpers de query que reusam padrões comuns. Mantém os +page.server.ts
 // finos e centralizam o tratamento de erro/tipos.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Quadra, Territorio, Profile, Designacao } from '$lib/types';
+import type { Quadra, Territorio, Profile, Designacao, Local, Unidade, TipoRegistro } from '$lib/types';
 
 export interface QuadraEnriquecida extends Quadra {
   territorio_nome: string | null;
@@ -103,4 +103,124 @@ export async function listarDesignacoes(
     publicador_nome: d.publicador_id ? nomePorId.get(d.publicador_id) ?? null : null,
     quadras_ids: (quadrasPorDesignacao.get(d.id) ?? []).sort()
   })) as DesignacaoEnriquecida[];
+}
+
+// ============================================================================
+// Dados pra tela de trabalho da quadra (publicador)
+// ============================================================================
+
+export interface UnidadeEnriquecida extends Unidade {
+  ultimo_tipo: TipoRegistro | string | null;
+  ultimo_ts: string | null;
+  ultimo_publicador_nome: string | null;
+}
+
+export interface LocalComUnidades extends Local {
+  unidades: UnidadeEnriquecida[];
+}
+
+export interface DadosQuadraTrabalho {
+  quadra: Pick<Quadra, 'id' | 'color' | 'territorio_id' | 'status'> & { territorio_nome: string | null };
+  locais: LocalComUnidades[];
+}
+
+export async function carregarQuadraComLocais(
+  supabase: SupabaseClient,
+  quadraId: string
+): Promise<DadosQuadraTrabalho | null> {
+  // Em paralelo: quadra (com territorio) + locais (com FK quadra) + unidades.
+  // Registros: pegamos os MAIS RECENTES por unidade (limitado, depois reduce client-side).
+  const [qRes, locRes, profRes] = await Promise.all([
+    supabase
+      .from('quadras')
+      .select('id, color, territorio_id, status, territorios(nome)')
+      .eq('id', quadraId)
+      .maybeSingle(),
+    supabase
+      .from('locais')
+      .select('*')
+      .eq('quadra_id', quadraId)
+      .order('id'),
+    supabase.from('profiles').select('id, nome')
+  ]);
+
+  if (qRes.error) throw qRes.error;
+  if (!qRes.data) return null;
+  if (locRes.error) throw locRes.error;
+  if (profRes.error) throw profRes.error;
+
+  const locais = (locRes.data ?? []) as Local[];
+  if (locais.length === 0) {
+    return {
+      quadra: { ...(qRes.data as any), territorio_nome: (qRes.data as any).territorios?.nome ?? null },
+      locais: []
+    };
+  }
+
+  const localIds = locais.map((l) => l.id);
+  const { data: unidadesData, error: errUni } = await supabase
+    .from('unidades')
+    .select('*')
+    .in('local_id', localIds)
+    .order('ordem', { ascending: true, nullsFirst: false })
+    .order('complemento');
+  if (errUni) throw errUni;
+  const unidades = (unidadesData ?? []) as Unidade[];
+
+  // Último registro por unidade (1 query, ordena DESC, dedup client-side)
+  const unidadeIds = unidades.map((u) => u.id);
+  let registros: { unidade_id: number; tipo: string; ts: string; publicador_id: string | null }[] = [];
+  if (unidadeIds.length > 0) {
+    const { data: regData, error: errReg } = await supabase
+      .from('registros')
+      .select('unidade_id, tipo, ts, publicador_id')
+      .in('unidade_id', unidadeIds)
+      .order('ts', { ascending: false });
+    if (errReg) throw errReg;
+    registros = regData ?? [];
+  }
+
+  const ultimoPorUnidade = new Map<number, { tipo: string; ts: string; publicador_id: string | null }>();
+  for (const r of registros) {
+    if (!ultimoPorUnidade.has(r.unidade_id)) ultimoPorUnidade.set(r.unidade_id, r);
+  }
+
+  const nomePorId = new Map((profRes.data ?? []).map((p) => [p.id, p.nome]));
+
+  const unidadesPorLocal = new Map<number, UnidadeEnriquecida[]>();
+  for (const u of unidades) {
+    const ult = ultimoPorUnidade.get(u.id);
+    const enriq: UnidadeEnriquecida = {
+      ...u,
+      ultimo_tipo: ult?.tipo ?? null,
+      ultimo_ts: ult?.ts ?? null,
+      ultimo_publicador_nome: ult?.publicador_id ? nomePorId.get(ult.publicador_id) ?? null : null
+    };
+    const arr = unidadesPorLocal.get(u.local_id) ?? [];
+    arr.push(enriq);
+    unidadesPorLocal.set(u.local_id, arr);
+  }
+
+  const locaisEnriquecidos: LocalComUnidades[] = locais.map((l) => ({
+    ...l,
+    unidades: unidadesPorLocal.get(l.id) ?? []
+  }));
+
+  // Ordena por face IBGE (numérico se possível)
+  locaisEnriquecidos.sort((a, b) => {
+    const fa = parseInt(a.face_ibge || '999', 10);
+    const fb = parseInt(b.face_ibge || '999', 10);
+    if (isNaN(fa) && isNaN(fb)) return (a.face_ibge || '').localeCompare(b.face_ibge || '');
+    if (isNaN(fa)) return 1;
+    if (isNaN(fb)) return -1;
+    return fa - fb;
+  });
+
+  return {
+    quadra: {
+      ...(qRes.data as any),
+      territorio_nome: (qRes.data as any).territorios?.nome ?? null
+    },
+    locais: locaisEnriquecidos
+  };
 }

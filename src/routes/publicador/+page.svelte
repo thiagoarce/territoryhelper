@@ -74,15 +74,16 @@
           <div class="mt-1 flex flex-wrap gap-1">
             {#each d.quadras_ids as qid}
               {@const q = data.quadrasMap[qid]}
-              <span
-                class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono border border-slate-200"
+              <a
+                href="/publicador/quadra/{encodeURIComponent(qid)}"
+                class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono border border-slate-200 hover:bg-slate-100 hover:border-primary-500"
               >
                 <span
                   class="inline-block w-2 h-2 rounded"
                   style:background-color={q?.color ?? '#999'}
                 ></span>
                 {qid}
-              </span>
+              </a>
             {/each}
           </div>
           {#if d.notas}
