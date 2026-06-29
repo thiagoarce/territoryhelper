@@ -1,15 +1,17 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { selectAll } from '$lib/server/queries';
+import { selectAll, listarQuadrasComGeo } from '$lib/server/queries';
 
-interface LocalSemQuadra {
+export interface LocalComGeo {
   id: number;
   tipo: string;
   logradouro: string;
   numero: string;
   setor: string | null;
   quadra_ibge: string | null;
-  geo_geojson: unknown | null;
+  quadra_id: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 interface QuadraEstatisticaIbge {
@@ -19,36 +21,29 @@ interface QuadraEstatisticaIbge {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // Locais sem quadra (paginado) — pode passar de 1000 numa cidade grande
-  const semQuadra = await selectAll<LocalSemQuadra>(
+  // TODOS os locais com lat/lng pra renderizar no mapa
+  const locais = await selectAll<LocalComGeo>(
     locals.supabase
-      .from('locais_geo')
-      .select('id, tipo, logradouro, numero, setor, quadra_ibge, geo_geojson')
-      .is('quadra_id', null)
-      .order('setor', { nullsFirst: false })
-      .order('quadra_ibge', { nullsFirst: false })
+      .from('locais')
+      .select('id, tipo, logradouro, numero, setor, quadra_ibge, quadra_id, lat, lng')
+      .not('lat', 'is', null)
+      .not('lng', 'is', null)
   );
+
+  const quadras = await listarQuadrasComGeo(locals.supabase);
 
   // Quadras pra UI de renomeio
-  const { data: todasQuadrasFull } = await locals.supabase
-    .from('quadras').select('id, color, status').order('id');
-  const quadrasParaRenomear = (todasQuadrasFull ?? []) as { id: string; color: string; status: string }[];
+  const quadrasParaRenomear = quadras.map((q) => ({ id: q.id, color: q.color, status: q.status }));
 
-  // Distribuição setor|quadra_ibge por quadra (pra detectar inconsistências).
-  // Paginado obrigatório — 2774 locais > 1000 limit.
-  const porQuadra = await selectAll<{ quadra_id: string | null; setor: string | null; quadra_ibge: string | null }>(
-    locals.supabase.from('locais').select('quadra_id, setor, quadra_ibge')
-  );
-
+  // Distribuição setor|quadra_ibge por quadra (pra detectar inconsistências)
   const clusterPorQuadra = new Map<string, Map<string, number>>();
-  for (const l of porQuadra ?? []) {
+  for (const l of locais) {
     if (!l.quadra_id) continue;
     const cluster = `${l.setor || ''}|${l.quadra_ibge || ''}`;
     if (!clusterPorQuadra.has(l.quadra_id)) clusterPorQuadra.set(l.quadra_id, new Map());
     const m = clusterPorQuadra.get(l.quadra_id)!;
     m.set(cluster, (m.get(cluster) || 0) + 1);
   }
-  // Quadras com >1 cluster (potencial erro)
   const quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number }[] }[] = [];
   for (const [qid, m] of clusterPorQuadra) {
     if (m.size > 1) {
@@ -60,15 +55,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
   quadrasMultiCluster.sort((a, b) => a.quadra_id.localeCompare(b.quadra_id));
 
-  // Quadras vazias (sem nenhum local vinculado)
-  const { data: todasQuadras } = await locals.supabase.from('quadras').select('id, status');
   const idsComLocais = new Set(clusterPorQuadra.keys());
-  const quadrasVazias = (todasQuadras ?? [])
+  const quadrasVazias = quadras
     .filter((q) => !idsComLocais.has(q.id) && q.status !== 'inativa')
     .map((q) => q.id);
 
   return {
-    semQuadra,
+    locais,
+    quadras,
     quadrasMultiCluster,
     quadrasVazias,
     quadrasParaRenomear
@@ -87,12 +81,12 @@ export const actions: Actions = {
   vincularManual: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
-    const localId = Number(fd.get('local_id') ?? 0);
+    const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
     const quadraId = String(fd.get('quadra_id') ?? '');
-    if (!localId || !quadraId) return fail(400, { erro: 'local_id e quadra_id obrigatórios' });
-    const { error } = await locals.supabase.from('locais').update({ quadra_id: quadraId }).eq('id', localId);
+    if (localIds.length === 0 || !quadraId) return fail(400, { erro: 'local_ids e quadra_id obrigatórios' });
+    const { error } = await locals.supabase.from('locais').update({ quadra_id: quadraId }).in('id', localIds);
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Vinculado' };
+    return { ok: true, msg: `${localIds.length} endereço(s) vinculado(s) a ${quadraId}` };
   },
 
   // Renomeia uma quadra propagando o id em CASCADE (FK ON UPDATE):
