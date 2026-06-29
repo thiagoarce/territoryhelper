@@ -46,6 +46,10 @@
   }
 
   function onClickQuadra(q: QuadraGeo) {
+    if (q.status === 'inativa') {
+      toast.info(`Quadra ${q.id} está inativa — edita pelo Polígonos pra reativar`);
+      return;
+    }
     if (selecionadas.has(q.id)) selecionadas.delete(q.id);
     else selecionadas.add(q.id);
     selecionadas = new Set(selecionadas);

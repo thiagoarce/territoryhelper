@@ -139,6 +139,22 @@ export const actions: Actions = {
     return { ok: true, msg: `${localIds.length} endereço(s) desvinculado(s)` };
   },
 
+  // Muda status da quadra (pendente / concluido / inativa)
+  alterarStatusQuadra: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const status = String(fd.get('status') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    if (!['pendente', 'concluido', 'inativa'].includes(status)) return fail(400, { erro: 'status inválido' });
+    const patch: any = { status };
+    // Voltar pra pendente ou inativa zera data_conclusao
+    if (status !== 'concluido') patch.data_conclusao = null;
+    const { error } = await locals.supabase.from('quadras').update(patch).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${id} → ${status}` };
+  },
+
   // Renomeia uma quadra propagando o id em CASCADE (FK ON UPDATE):
   // - quadras.id → designacao_quadras.quadra_id, locais.quadra_id seguem auto.
   // Mas como nossas FKs estão como ON DELETE SET NULL/CASCADE e não ON UPDATE,

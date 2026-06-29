@@ -19,9 +19,11 @@
     form: any;
   } = $props();
 
-  type Modo = 'vincular' | 'renomear' | 'auditar';
+  type Modo = 'vincular' | 'renomear' | 'auditar' | 'status';
 
   let modo = $state<Modo>('vincular');
+  let sheetStatus = $state(false);
+  let quadraStatusEdit = $state<QuadraGeo | null>(null);
   let filtroTipo = $state<'dom' | 'com' | 'ambos'>('ambos');
   let filtroVinculo = $state<'vinculados' | 'sem' | 'ambos'>('ambos');
   let mostrarRotulos = $state(true);
@@ -45,6 +47,11 @@
     if (modo === 'renomear') {
       renomeando = q.id;
       sheetRenomeio = true;
+      return;
+    }
+    if (modo === 'status') {
+      quadraStatusEdit = q;
+      sheetStatus = true;
       return;
     }
     if (modo === 'vincular' && selecionadosLocais.size > 0) {
@@ -86,7 +93,7 @@
   <!-- Toolbar topo -->
   <div class="flex items-center gap-2 flex-wrap">
     <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5">
-      {#each [['vincular', 'Vincular'], ['renomear', 'Renomear'], ['auditar', 'Auditar']] as [k, l]}
+      {#each [['vincular', 'Vincular'], ['renomear', 'Renomear'], ['status', 'Status'], ['auditar', 'Auditar']] as [k, l]}
         <button
           onclick={() => (modo = k as Modo)}
           class="px-3 py-1 text-sm rounded transition-colors"
@@ -208,6 +215,8 @@
       {/if}
     {:else if modo === 'renomear'}
       Click numa quadra no mapa pra renomear.
+    {:else if modo === 'status'}
+      Click numa quadra pra mudar status (pendente / concluído / inativa).
     {:else}
       Click num item da lista pra destacar a quadra no mapa.
     {/if}
@@ -317,5 +326,51 @@
         <Button variant="primary" type="submit" loading={salvando} class="flex-1">Renomear</Button>
       </div>
     </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet: alterar status da quadra -->
+<BottomSheet bind:open={sheetStatus} title={quadraStatusEdit ? `Status — ${quadraStatusEdit.id}` : ''}>
+  {#if quadraStatusEdit}
+    <div class="space-y-2 text-sm">
+      <div class="text-xs text-slate-500">Status atual: <strong class="capitalize">{quadraStatusEdit.status}</strong></div>
+      {#each [
+        { v: 'pendente', label: '⏳ Pendente', desc: 'A trabalhar' },
+        { v: 'concluido', label: '✓ Concluído', desc: 'Marca como feita hoje' },
+        { v: 'inativa', label: '∅ Inativa', desc: 'Esconde do Registro, não conta na Campanha' }
+      ] as opt}
+        <form
+          method="POST"
+          action="?/alterarStatusQuadra"
+          use:enhance={() => {
+            salvando = true;
+            return async ({ result, update }) => {
+              await update();
+              salvando = false;
+              if (result.type === 'success') {
+                toast.success((result.data as any)?.msg || 'OK');
+                sheetStatus = false;
+                await invalidateAll();
+              } else if (result.type === 'failure') {
+                toast.error(String((result.data as any)?.erro || 'Falhou'));
+              }
+            };
+          }}
+        >
+          <input type="hidden" name="id" value={quadraStatusEdit.id} />
+          <input type="hidden" name="status" value={opt.v} />
+          <button type="submit"
+            class="w-full text-left px-3 py-2 border rounded-lg hover:bg-slate-50 transition-colors"
+            class:bg-primary-50={quadraStatusEdit.status === opt.v}
+            class:border-primary-500={quadraStatusEdit.status === opt.v}
+            class:border-slate-300={quadraStatusEdit.status !== opt.v}
+          >
+            <div class="font-medium">{opt.label}</div>
+            <div class="text-xs text-slate-500">{opt.desc}</div>
+          </button>
+        </form>
+      {/each}
+      <Button variant="ghost" onclick={() => (sheetStatus = false)} class="w-full mt-2">Cancelar</Button>
+    </div>
   {/if}
 </BottomSheet>
