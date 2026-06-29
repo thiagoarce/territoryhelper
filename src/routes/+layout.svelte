@@ -20,18 +20,18 @@
     : 'admin'
   );
 
-  // Itens do bottom nav (publicador/dirigente)
+  // Itens do bottom nav (publicador/dirigente) — mesma estrutura, contextos diferentes
   const bottomNavPublicador = [
-    { href: '/publicador', label: 'Início', icon: 'home' },
-    { href: '/publicador/relatorio', label: 'Relatório', icon: 'report' },
-    { href: '/publicador/cartas', label: 'Cartas', icon: 'envelope' },
-    { href: '/publicador/perfil', label: 'Perfil', icon: 'user' }
+    { href: '/publicador', label: 'Designações', icon: 'home' },
+    { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
+    { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' },
+    { href: '/perfil', label: 'Perfil', icon: 'user' }
   ];
   const bottomNavDirigente = [
-    { href: '/dirigente', label: 'Mapa', icon: 'map' },
-    { href: '/dirigente/designacoes', label: 'Designações', icon: 'clipboard' },
-    { href: '/dirigente/cartas', label: 'Cartas', icon: 'envelope' },
-    { href: '/dirigente/perfil', label: 'Perfil', icon: 'user' }
+    { href: '/dirigente', label: 'Designações', icon: 'home' },
+    { href: '/dirigente/arranjo', label: 'Arranjo', icon: 'clipboard' },
+    { href: '/dirigente/campanha', label: 'Campanha', icon: 'chart' },
+    { href: '/perfil', label: 'Perfil', icon: 'user' }
   ];
   const bottomNav = $derived(modoAtual === 'publicador' ? bottomNavPublicador : bottomNavDirigente);
 
@@ -211,6 +211,8 @@
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 7 6-3 6 3 6-3v13l-6 3-6-3-6 3V7zM9 4v17M15 7v17"/></svg>
             {:else if t.icon === 'clipboard'}
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="4" width="12" height="18" rx="2"/><path d="M9 2h6v4H9z"/></svg>
+            {:else if t.icon === 'chart'}
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke-linecap="round"/></svg>
             {/if}
           </span>
           <span class="text-[10px]">{t.label}</span>
