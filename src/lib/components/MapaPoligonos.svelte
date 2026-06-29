@@ -38,7 +38,7 @@
   } = $props();
 
   let container: HTMLDivElement;
-  let mapa: any = null;
+  let mapa = $state<any>(null);
   let maplibre: any = null;
 
   function buildPointColor(sel: Set<number>): any {
@@ -92,33 +92,63 @@
 
   const selKey = $derived([...selecionadosLocais].sort().join('|'));
   $effect(() => {
-    selKey;
+    void selKey;
     if (!mapa || !mapa.getLayer('locais-points')) return;
     mapa.setPaintProperty('locais-points', 'circle-color', buildPointColor(selecionadosLocais));
     mapa.setPaintProperty('locais-points', 'circle-radius', buildPointRadius(selecionadosLocais));
   });
 
   $effect(() => {
+    const t = filtroTipo, v = filtroVinculo; void t; void v;
     if (!mapa || !mapa.getLayer('locais-points')) return;
     mapa.setFilter('locais-points', buildPointFilter());
   });
 
   $effect(() => {
+    const d = quadraDestaque; void d;
     if (!mapa || !mapa.getLayer('quadras-fill')) return;
     mapa.setPaintProperty('quadras-fill', 'fill-color', buildFillExpr(quadraDestaque));
   });
 
   $effect(() => {
+    const v = mostrarRotulos;
     if (!mapa || !mapa.getLayer('quadras-label')) return;
-    mapa.setLayoutProperty('quadras-label', 'visibility', mostrarRotulos ? 'visible' : 'none');
+    mapa.setLayoutProperty('quadras-label', 'visibility', v ? 'visible' : 'none');
   });
 
   let basemapAtual: Basemap | null = null;
   $effect(() => {
+    const b = basemap;
     if (!mapa) return;
-    if (basemapAtual === basemap) return;
-    basemapAtual = basemap;
-    try { mapa.setStyle(BASEMAPS[basemap]); } catch {}
+    if (basemapAtual === b) return;
+    basemapAtual = b;
+    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+  });
+
+  // Atualizar GeoJSON quando locais/quadras mudam (vincular muda has_quadra)
+  $effect(() => {
+    void locais; void quadras;
+    if (!mapa || !mapa.getSource('locais') || !mapa.getSource('quadras')) return;
+    const locFeatures = locais
+      .filter((l) => l.lat != null && l.lng != null)
+      .map((l) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point', coordinates: [l.lng!, l.lat!] } as any,
+        properties: {
+          id: l.id, tipo: l.tipo, has_quadra: !!l.quadra_id,
+          logradouro: l.logradouro, numero: l.numero
+        }
+      }));
+    mapa.getSource('locais').setData({ type: 'FeatureCollection', features: locFeatures } as any);
+
+    const qFeatures = quadras
+      .filter((q) => q.poly_geojson)
+      .map((q) => ({
+        type: 'Feature' as const,
+        geometry: q.poly_geojson as any,
+        properties: { id: q.id, color: q.color, status: q.status }
+      }));
+    mapa.getSource('quadras').setData({ type: 'FeatureCollection', features: qFeatures } as any);
   });
 
   onMount(async () => {

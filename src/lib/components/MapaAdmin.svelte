@@ -36,7 +36,7 @@
   } = $props();
 
   let container: HTMLDivElement;
-  let mapa: any = null;
+  let mapa = $state<any>(null);
   let userMarker: any = null;
   let watchId: number | null = null;
 
@@ -50,25 +50,72 @@
   const selKey = $derived([...selecionadas].sort().join('|'));
   const alocadasKey = $derived([...quadrasAlocadas].sort().join('|'));
 
+  // CRÍTICO: leia TODAS as deps reativas ANTES de qualquer guard.
+  // Senão o early-return na 1ª execução (mapa=null) impede o tracking.
   $effect(() => {
-    // dependências explícitas
-    selKey; alocadasKey; colorirPor;
+    const k = selKey + alocadasKey + colorirPor; // força tracking
+    void k;
     if (!mapa || !mapa.getLayer('quadras-fill')) return;
     const expr = buildFillExpr(colorirPor, selecionadas, new Set(quadrasAlocadas));
     mapa.setPaintProperty('quadras-fill', 'fill-color', expr);
   });
 
   $effect(() => {
+    const v = mostrarRotulos; // tracking explícito
     if (!mapa || !mapa.getLayer('quadras-label')) return;
-    mapa.setLayoutProperty('quadras-label', 'visibility', mostrarRotulos ? 'visible' : 'none');
+    mapa.setLayoutProperty('quadras-label', 'visibility', v ? 'visible' : 'none');
   });
 
   let basemapAtual: Basemap | null = null;
   $effect(() => {
+    const b = basemap; // tracking explícito antes do guard
     if (!mapa) return;
-    if (basemapAtual === basemap) return;
-    basemapAtual = basemap;
-    try { mapa.setStyle(BASEMAPS[basemap]); } catch {}
+    if (basemapAtual === b) return;
+    basemapAtual = b;
+    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+  });
+
+  // Quando os dados (quadras / alocadas) mudam, atualiza a fonte GeoJSON.
+  // Sem isso, "Concluir quadra" não repintava nada no mapa.
+  $effect(() => {
+    void quadras; void quadrasAlocadas;
+    if (!mapa || !mapa.getSource || !mapa.getSource('quadras')) return;
+    const hoje = Date.now();
+    const features = quadras
+      .filter((q) => q.poly_geojson)
+      .map((q) => {
+        let dias = -1;
+        if (q.data_conclusao) {
+          const d = new Date(q.data_conclusao + 'T12:00:00').getTime();
+          dias = Math.floor((hoje - d) / (1000 * 60 * 60 * 24));
+        }
+        return {
+          type: 'Feature' as const,
+          geometry: q.poly_geojson as any,
+          properties: {
+            id: q.id,
+            color: q.color,
+            status: q.status,
+            territorio_id: q.territorio_id,
+            qtd_locais: q.qtd_locais,
+            data_conclusao: q.data_conclusao,
+            dias_concluido: dias
+          }
+        };
+      });
+    mapa.getSource('quadras').setData({ type: 'FeatureCollection', features } as any);
+
+    if (mapa.getSource('alocadas')) {
+      const alSet = new Set(quadrasAlocadas);
+      const alFeatures = quadras
+        .filter((q) => q.poly_geojson && alSet.has(q.id))
+        .map((q) => ({
+          type: 'Feature' as const,
+          geometry: q.poly_geojson as any,
+          properties: { id: q.id }
+        }));
+      mapa.getSource('alocadas').setData({ type: 'FeatureCollection', features: alFeatures } as any);
+    }
   });
 
   function buildFillExpr(modo: ColorirPor, sel: Set<string>, alocadas: Set<string>): any {
@@ -286,8 +333,32 @@
         const multi = !!e.originalEvent?.shiftKey || !!e.originalEvent?.metaKey || selecionadas.size > 0;
         if (onClick) onClick(q, multi);
       });
-      mapa.on('mouseenter', 'quadras-fill', () => { mapa.getCanvas().style.cursor = 'pointer'; });
-      mapa.on('mouseleave', 'quadras-fill', () => { mapa.getCanvas().style.cursor = ''; });
+      // Tooltip de hover: ID + última conclusão
+      let popup: any = null;
+      mapa.on('mouseenter', 'quadras-fill', (e: any) => {
+        mapa.getCanvas().style.cursor = 'pointer';
+        const props = e.features?.[0]?.properties;
+        if (!props) return;
+        const q = quadras.find((x) => x.id === props.id);
+        if (!q) return;
+        const dias = q.data_conclusao ? Math.floor((Date.now() - new Date(q.data_conclusao + 'T12:00:00').getTime()) / 86400000) : null;
+        const idadeLabel = dias == null ? 'nunca concluída' : (dias === 0 ? 'hoje' : `${dias} dia(s) atrás`);
+        const html = `<div style="font:13px system-ui; padding:2px 4px;">
+          <div style="font-weight:600;">${q.id}</div>
+          <div style="color:#64748b; font-size:11px;">${q.territorio_nome || '—'} · ${q.qtd_locais} endereço(s)</div>
+          <div style="color:#64748b; font-size:11px;">Última: ${q.data_conclusao || '—'} ${dias != null ? `(${idadeLabel})` : ''}</div>
+        </div>`;
+        if (popup) popup.remove();
+        popup = new maplibre.Popup({ closeButton: false, closeOnClick: false, offset: 8 })
+          .setLngLat(e.lngLat).setHTML(html).addTo(mapa);
+      });
+      mapa.on('mousemove', 'quadras-fill', (e: any) => {
+        if (popup) popup.setLngLat(e.lngLat);
+      });
+      mapa.on('mouseleave', 'quadras-fill', () => {
+        mapa.getCanvas().style.cursor = '';
+        if (popup) { popup.remove(); popup = null; }
+      });
 
       // Fit bounds em todas
       try {
