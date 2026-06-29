@@ -531,18 +531,26 @@ async function importLocaisEUnidades() {
   await insertBatch('locais', locaisParaInserir);
 
   // Mapeia chaveCompleta → local_id buscando pelo conjunto (logradouro, numero, quadra_id)
-  // que é UNIQUE. Carrega todos os locais inseridos numa pancada só.
+  // PAGINADO — passa de 1000 locais facilmente, default do PostgREST cortaria.
   console.log('🔗 Carregando local_ids...');
-  const { data: locaisInseridos, error: errLoc } = await db
-    .from('locais')
-    .select('id, logradouro, numero, quadra_id');
-  if (errLoc) throw errLoc;
-
   const localIdPorUnique = new Map<string, number>();
-  for (const l of locaisInseridos ?? []) {
-    const key = chaveLocal(l.logradouro, l.numero) + '@' + (l.quadra_id || '_');
-    localIdPorUnique.set(key, l.id);
+  let pgFrom = 0;
+  const pgSize = 1000;
+  while (true) {
+    const { data, error: errLoc } = await db
+      .from('locais')
+      .select('id, logradouro, numero, quadra_id')
+      .range(pgFrom, pgFrom + pgSize - 1);
+    if (errLoc) throw errLoc;
+    if (!data || data.length === 0) break;
+    for (const l of data) {
+      const key = chaveLocal(l.logradouro, l.numero) + '@' + (l.quadra_id || '_');
+      localIdPorUnique.set(key, l.id);
+    }
+    if (data.length < pgSize) break;
+    pgFrom += pgSize;
   }
+  console.log(`🔗 ${localIdPorUnique.size} locais mapeados`);
 
   // -------- Insere UNIDADES + overlay PrediosAptos ---------
   const aptoOverlayPorRow = new Map<number, { carta_escrita?: string; carta_entregue?: string; desocupado?: boolean; nao_escrever?: boolean }>();
