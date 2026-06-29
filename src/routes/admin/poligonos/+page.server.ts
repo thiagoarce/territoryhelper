@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
+import { selectAll } from '$lib/server/queries';
 
 interface LocalSemQuadra {
   id: number;
@@ -18,20 +19,21 @@ interface QuadraEstatisticaIbge {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // Locais sem quadra
-  const { data: semQuadra, error: e1 } = await locals.supabase
-    .from('locais_geo')
-    .select('id, tipo, logradouro, numero, setor, quadra_ibge, geo_geojson')
-    .is('quadra_id', null)
-    .order('setor', { nullsFirst: false })
-    .order('quadra_ibge', { nullsFirst: false });
-  if (e1) throw e1;
+  // Locais sem quadra (paginado) — pode passar de 1000 numa cidade grande
+  const semQuadra = await selectAll<LocalSemQuadra>(
+    locals.supabase
+      .from('locais_geo')
+      .select('id, tipo, logradouro, numero, setor, quadra_ibge, geo_geojson')
+      .is('quadra_id', null)
+      .order('setor', { nullsFirst: false })
+      .order('quadra_ibge', { nullsFirst: false })
+  );
 
-  // Distribuição setor|quadra_ibge por quadra (pra detectar inconsistências)
-  const { data: porQuadra, error: e2 } = await locals.supabase
-    .from('locais')
-    .select('quadra_id, setor, quadra_ibge');
-  if (e2) throw e2;
+  // Distribuição setor|quadra_ibge por quadra (pra detectar inconsistências).
+  // Paginado obrigatório — 2774 locais > 1000 limit.
+  const porQuadra = await selectAll<{ quadra_id: string | null; setor: string | null; quadra_ibge: string | null }>(
+    locals.supabase.from('locais').select('quadra_id, setor, quadra_ibge')
+  );
 
   const clusterPorQuadra = new Map<string, Map<string, number>>();
   for (const l of porQuadra ?? []) {
@@ -61,7 +63,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     .map((q) => q.id);
 
   return {
-    semQuadra: (semQuadra ?? []) as LocalSemQuadra[],
+    semQuadra,
     quadrasMultiCluster,
     quadrasVazias
   };

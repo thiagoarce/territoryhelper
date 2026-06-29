@@ -1,6 +1,10 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { onMount, onDestroy } from 'svelte';
+  import { page } from '$app/stores';
+  import { createBrowserClient } from '@supabase/ssr';
+  import { env } from '$env/dynamic/public';
   import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/server/queries';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
   import EditarLocalSheet from '$lib/components/EditarLocalSheet.svelte';
@@ -13,6 +17,37 @@
     editandoLocal = l;
     sheetAberto = true;
   }
+
+  // Realtime: escuta INSERTs em registros e UPDATEs em unidades pra esta quadra.
+  // Quando outro publicador marca algo, invalida e re-fetch os dados.
+  let realtimeChannel: any = null;
+  onMount(() => {
+    if (!env.PUBLIC_SUPABASE_URL || !env.PUBLIC_SUPABASE_ANON_KEY) return;
+    const supa = createBrowserClient(env.PUBLIC_SUPABASE_URL, env.PUBLIC_SUPABASE_ANON_KEY);
+    const unidadeIds = new Set(data.locais.flatMap((l) => l.unidades.map((u) => u.id)));
+    let timer: any = null;
+    function debouncedInvalidate() {
+      clearTimeout(timer);
+      timer = setTimeout(() => invalidateAll(), 800);
+    }
+    realtimeChannel = supa
+      .channel('quadra-' + data.quadra.id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'registros' }, (payload: any) => {
+        if (unidadeIds.has(payload.new?.unidade_id)) debouncedInvalidate();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'unidades' }, (payload: any) => {
+        if (unidadeIds.has(payload.new?.id)) debouncedInvalidate();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'locais' }, (payload: any) => {
+        if (payload.new?.quadra_id === data.quadra.id) debouncedInvalidate();
+      })
+      .subscribe();
+  });
+  onDestroy(() => {
+    if (realtimeChannel) {
+      try { realtimeChannel.unsubscribe(); } catch {}
+    }
+  });
 
   // Agrupa locais por face IBGE pra mostrar separados (cada face é um trecho da quadra)
   const porFace = $derived.by(() => {

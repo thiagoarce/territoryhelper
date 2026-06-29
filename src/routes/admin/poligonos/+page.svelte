@@ -48,36 +48,52 @@
 <!-- Vincular -->
 {#if aba === 'vincular'}
   <div class="mt-4 space-y-4">
-    <Card padding="md">
-      <div class="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div class="font-semibold">Auto-vincular automático</div>
-          <div class="text-sm text-slate-500">PostGIS encontra endereços dentro dos polígonos via ST_Contains</div>
+    {#if data.semQuadra.length === 0}
+      <Card padding="md">
+        <div class="flex items-start gap-3">
+          <div class="text-2xl">✓</div>
+          <div>
+            <div class="font-semibold text-green-700">Tudo vinculado!</div>
+            <div class="text-sm text-slate-600 mt-1">
+              Todos os endereços estão associados a uma quadra. O trabalho que foi feito na planilha original
+              foi preservado na migração.
+            </div>
+            <div class="text-xs text-slate-500 mt-2">
+              O <strong>auto-vincular</strong> só roda em endereços NOVOS sem quadra (não sobrescreve trabalho manual).
+              Útil quando: você cadastra endereços novos sem quadra, ou importa endereços do IBGE.
+            </div>
+          </div>
         </div>
-        <form
-          method="POST"
-          action="?/autoVincular"
-          use:enhance={() => {
-            salvando = true;
-            return async ({ result, update }) => {
-              await update();
-              salvando = false;
-              if (result.type === 'success') {
-                toast.success((result.data as any)?.msg || 'OK');
-                await invalidateAll();
-              } else if (result.type === 'failure') {
-                toast.error(String((result.data as any)?.erro || 'Falhou'));
-              }
-            };
-          }}
-        >
-          <Button variant="primary" type="submit" loading={salvando}>⚡ Auto-vincular</Button>
-        </form>
-      </div>
-    </Card>
+      </Card>
+    {:else}
+      <Card padding="md">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div class="flex-1">
+            <div class="font-semibold">{data.semQuadra.length} endereço(s) sem quadra</div>
+            <div class="text-sm text-slate-500">Auto-vincular usa PostGIS pra detectar a quadra que contém cada ponto (não sobrescreve vinculações existentes)</div>
+          </div>
+          <form
+            method="POST"
+            action="?/autoVincular"
+            use:enhance={() => {
+              salvando = true;
+              return async ({ result, update }) => {
+                await update();
+                salvando = false;
+                if (result.type === 'success') {
+                  toast.success((result.data as any)?.msg || 'OK');
+                  await invalidateAll();
+                } else if (result.type === 'failure') {
+                  toast.error(String((result.data as any)?.erro || 'Falhou'));
+                }
+              };
+            }}
+          >
+            <Button variant="primary" type="submit" loading={salvando}>⚡ Auto-vincular</Button>
+          </form>
+        </div>
+      </Card>
 
-    {#if data.semQuadra.length > 0}
-      <div class="text-sm text-slate-500">{data.semQuadra.length} endereço(s) sem quadra vinculada</div>
       <div class="space-y-1 max-h-[60vh] overflow-y-auto">
         {#each data.semQuadra as l (l.id)}
           <Card padding="sm">
@@ -95,8 +111,6 @@
           </Card>
         {/each}
       </div>
-    {:else}
-      <div class="text-center text-slate-400 py-8">✓ Todos os endereços com coordenadas estão vinculados</div>
     {/if}
   </div>
 {/if}
