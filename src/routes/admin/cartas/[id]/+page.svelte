@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
+  import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { PredioDetalhado } from '$lib/server/queries';
 
@@ -50,6 +51,30 @@
   {#if data.predio.notas}
     <p class="mt-3 text-sm text-slate-600 italic border-l-2 border-slate-300 pl-3">{data.predio.notas}</p>
   {/if}
+
+  <!-- Gerar link público pra arranjo trabalhar -->
+  <form
+    method="POST"
+    action="?/gerarLinkPublico"
+    use:enhance={() => async ({ result, update }) => {
+      await update();
+      if (result.type === 'success') {
+        const tok = (result.data as any)?.token;
+        const url = `${window.location.origin}/cartas/${tok}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success('Link copiado: ' + url, 8000);
+        } catch {
+          toast.success('Link: ' + url, 8000);
+        }
+      } else if (result.type === 'failure') {
+        toast.error(String((result.data as any)?.erro || 'Falhou'));
+      }
+    }}
+    class="mt-3"
+  >
+    <Button variant="secondary" size="sm" type="submit">🔗 Gerar link público (arranjo)</Button>
+  </form>
 </Card>
 
 <!-- Stats -->

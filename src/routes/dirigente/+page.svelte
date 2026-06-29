@@ -5,6 +5,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { buscarPOIs, categoriaLabel, categoriaEmoji, type CategoriaPOI } from '$lib/utils/overpass';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
 
   let { data, form }: { data: { quadras: QuadraGeo[]; designacoesAbertas: DesignacaoEnriquecida[] }; form: any } = $props();
@@ -14,10 +15,51 @@
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvando = $state(false);
 
+  let buscandoPOIs = $state(false);
+  let pois: { id: string; lat: number; lng: number; nome: string; categoria: CategoriaPOI; distancia: number }[] = $state([]);
+
+  async function buscarEstacionamentos() {
+    if (!quadraSel?.poly_geojson) {
+      toast.warn('Quadra sem polígono');
+      return;
+    }
+    // Centroide aproximado do polígono
+    const coords: any[] = (quadraSel.poly_geojson as any).coordinates?.[0] ?? [];
+    if (coords.length === 0) return;
+    const sumLat = coords.reduce((s: number, c: number[]) => s + c[1], 0);
+    const sumLng = coords.reduce((s: number, c: number[]) => s + c[0], 0);
+    const centerLat = sumLat / coords.length;
+    const centerLng = sumLng / coords.length;
+    buscandoPOIs = true;
+    pois = [];
+    try {
+      const raw = await buscarPOIs(centerLat, centerLng, 500, ['parking', 'pharmacy', 'square']);
+      pois = raw.map((p) => ({
+        ...p,
+        distancia: Math.round(distanciaMetros(centerLat, centerLng, p.lat, p.lng))
+      })).sort((a, b) => a.distancia - b.distancia);
+      if (pois.length === 0) toast.info('Nenhum POI encontrado em 500m');
+    } catch (e: any) {
+      toast.error('Overpass falhou: ' + (e?.message || e));
+    } finally {
+      buscandoPOIs = false;
+    }
+  }
+
+  // Haversine simplificado pra distância em metros entre 2 pontos
+  function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const φ1 = (lat1 * Math.PI) / 180, φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180, Δλ = ((lng2 - lng1) * Math.PI) / 180;
+    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   function abrirQuadra(q: QuadraGeo) {
     quadraSel = q;
     sheetOpen = true;
     dataConclusao = new Date().toISOString().substring(0, 10);
+    pois = [];
   }
 
   const designacoesQuadra = $derived(
@@ -83,6 +125,32 @@
           </ul>
         </div>
       {/if}
+
+      <!-- Estacionar perto -->
+      <div class="rounded-lg border border-slate-200 p-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium">Estacionar perto</span>
+          <Button variant="ghost" size="sm" onclick={buscarEstacionamentos} loading={buscandoPOIs}>
+            🅿️ Buscar
+          </Button>
+        </div>
+        {#if pois.length > 0}
+          <ul class="space-y-1 max-h-40 overflow-y-auto text-sm">
+            {#each pois.slice(0, 8) as p}
+              <li class="flex items-center gap-2">
+                <span>{categoriaEmoji(p.categoria)}</span>
+                <a
+                  href="https://www.google.com/maps/dir/?api=1&destination={p.lat},{p.lng}"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-primary-700 hover:underline flex-1 truncate"
+                >{p.nome}</a>
+                <span class="text-xs text-slate-500">{p.distancia}m</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
 
       {#if quadraSel.status === 'concluido'}
         <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm">

@@ -9,6 +9,18 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 };
 
 export const actions: Actions = {
+  // Gera novo link público pra este prédio. Retorna o token.
+  gerarLinkPublico: async ({ locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const { data, error } = await locals.supabase
+      .from('cartas_tokens')
+      .insert({ local_id: Number(params.id), criado_por: locals.user.id })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, token: data.token };
+  },
+
   // Marca/desmarca um dos 4 toggles per-unidade pra cartas
   toggleApto: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });

@@ -8,14 +8,17 @@
   import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/server/queries';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
   import EditarLocalSheet from '$lib/components/EditarLocalSheet.svelte';
+  import AdicionarLocalSheet from '$lib/components/AdicionarLocalSheet.svelte';
+  import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
 
   let { data }: { data: DadosQuadraTrabalho } = $props();
   let editandoLocal: LocalComUnidades | null = $state(null);
-  let sheetAberto = $state(false);
+  let sheetEditar = $state(false);
+  let sheetAdd = $state(false);
   function abrirEditar(l: LocalComUnidades) {
     editandoLocal = l;
-    sheetAberto = true;
+    sheetEditar = true;
   }
 
   // Realtime: escuta INSERTs em registros e UPDATEs em unidades pra esta quadra.
@@ -263,7 +266,16 @@
   {/each}
 </div>
 
-<EditarLocalSheet bind:open={sheetAberto} local={editandoLocal} />
+<EditarLocalSheet bind:open={sheetEditar} local={editandoLocal} />
+<AdicionarLocalSheet bind:open={sheetAdd} />
+
+<!-- FAB Adicionar -->
+<button
+  type="button"
+  onclick={() => (sheetAdd = true)}
+  aria-label="Adicionar endereço"
+  class="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-30 bg-primary-600 text-white rounded-full w-14 h-14 shadow-lg flex items-center justify-center text-3xl hover:bg-primary-700 transition-colors"
+>+</button>
 
 {#snippet botoes(u: UnidadeEnriquecida)}
   {@const cartaMarcada = !!u.carta_entregue}
