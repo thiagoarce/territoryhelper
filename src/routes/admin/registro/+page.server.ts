@@ -22,6 +22,28 @@ export const actions: Actions = {
     const data = String(fd.get('data') ?? '').trim() || new Date().toISOString().substring(0, 10);
     if (ids.length === 0) return fail(400, { erro: 'Selecione ao menos 1 quadra' });
 
+    // 0. SELF-HEAL: pra cada quadra com data_conclusao atual mas SEM histórico,
+    //    cria entrada de backfill primeiro. Cobre dados vindos do CSV onde a
+    //    user não rodou o insert manual de quadras_conclusoes.
+    const { data: estado } = await locals.supabase
+      .from('quadras')
+      .select('id, data_conclusao')
+      .in('id', ids)
+      .not('data_conclusao', 'is', null);
+    if (estado && estado.length > 0) {
+      const { data: jaTemHist } = await locals.supabase
+        .from('quadras_conclusoes')
+        .select('quadra_id')
+        .in('quadra_id', estado.map((q) => q.id));
+      const idsComHist = new Set((jaTemHist ?? []).map((h) => h.quadra_id));
+      const backfill = estado
+        .filter((q) => !idsComHist.has(q.id))
+        .map((q) => ({ quadra_id: q.id, data_conclusao: q.data_conclusao }));
+      if (backfill.length > 0) {
+        await locals.supabase.from('quadras_conclusoes').insert(backfill);
+      }
+    }
+
     // 1. Atualiza quadras
     const { error: err } = await locals.supabase
       .from('quadras')
