@@ -21,8 +21,11 @@ on conflict (designacao_id, publicador_id) do nothing;
 
 -- 2) Tipo de designação: pessoal (publicador trabalha sozinho/em dupla) vs arranjo (saída em grupo)
 alter table designacoes add column if not exists tipo text not null default 'pessoal';
-alter table designacoes add constraint designacoes_tipo_check
-  check (tipo in ('pessoal', 'arranjo')) not valid;
+do $$ begin
+  alter table designacoes add constraint designacoes_tipo_check
+    check (tipo in ('pessoal', 'arranjo')) not valid;
+exception when duplicate_object then null;
+end $$;
 
 -- 3) Detalhes de arranjo (quando designacoes.tipo = 'arranjo')
 --    Dia/hora/ponto de encontro. Dirigentes coordenam isso.
