@@ -166,13 +166,33 @@
       action="?/reverter"
       use:enhance={() => async ({ result, update }) => {
         await update();
-        if (result.type === 'success') { toast.info('Revertidas'); limpar(); await invalidateAll(); }
+        if (result.type === 'success') {
+          toast.info(String((result.data as any)?.msg || 'Revertidas'));
+          limpar();
+          await invalidateAll();
+        }
       }}
     >
       {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
-      <Button variant="secondary" size="sm" type="submit">↻ Reverter</Button>
+      <Button variant="secondary" size="sm" type="submit" title="Desfaz a última conclusão e volta pra penúltima">↻ Reverter</Button>
     </form>
-    <Button variant="ghost" size="sm" onclick={limpar}>Limpar</Button>
+    <form
+      method="POST"
+      action="?/limparConclusao"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') {
+          toast.warn(String((result.data as any)?.msg || 'Limpa(s)'));
+          limpar();
+          await invalidateAll();
+        }
+      }}
+      onsubmit={(e) => { if (!confirm(`Apagar TODO o histórico de ${selecionadas.size} quadra(s)? Não dá pra desfazer.`)) e.preventDefault(); }}
+    >
+      {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
+      <Button variant="ghost" size="sm" type="submit" title="APAGA todo histórico e marca como pendente">🗑 Limpar</Button>
+    </form>
+    <Button variant="ghost" size="sm" onclick={limpar}>Cancelar</Button>
   </div>
 {/if}
 

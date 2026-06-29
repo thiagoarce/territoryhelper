@@ -57,15 +57,18 @@ export const actions: Actions = {
     return { ok: true, msg: `${ids.length} quadra(s) marcada(s) como concluída(s)` };
   },
 
-  // Reverter agora restaura a PENÚLTIMA conclusão (se houver) em vez de zerar
+  // Reverter restaura a PENÚLTIMA conclusão. Se não houver penúltima
+  // (só 1 ou 0 entradas no histórico), NÃO apaga — só avisa.
+  // Nunca destrói dado sem ter alternativa pra mostrar.
   reverter: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
     if (ids.length === 0) return fail(400, { erro: 'Selecione ao menos 1 quadra' });
 
+    let revertidas = 0;
+    let semHistorico = 0;
     for (const qid of ids) {
-      // Pega as 2 conclusões mais recentes (descendente)
       const { data: hist } = await locals.supabase
         .from('quadras_conclusoes')
         .select('id, data_conclusao')
@@ -74,22 +77,43 @@ export const actions: Actions = {
         .order('id', { ascending: false })
         .limit(2);
 
-      if (hist && hist.length > 0) {
-        // Remove a última (a atual)
-        await locals.supabase.from('quadras_conclusoes').delete().eq('id', hist[0].id);
+      // Só reverte se houver penúltima — caso contrário deixa como está
+      if (!hist || hist.length < 2) {
+        semHistorico++;
+        continue;
       }
-      const penultima = hist?.[1]?.data_conclusao ?? null;
-      // Se tem penúltima, restaura — senão volta pra pendente sem data
+
+      // Remove a última (atual) e restaura a penúltima
+      await locals.supabase.from('quadras_conclusoes').delete().eq('id', hist[0].id);
       await locals.supabase
         .from('quadras')
-        .update({
-          status: penultima ? 'concluido' : 'pendente',
-          data_conclusao: penultima
-        })
+        .update({ status: 'concluido', data_conclusao: hist[1].data_conclusao })
         .eq('id', qid);
+      revertidas++;
     }
 
-    return { ok: true, msg: `${ids.length} revertida(s)` };
+    let msg = '';
+    if (revertidas > 0) msg += `${revertidas} revertida(s)`;
+    if (semHistorico > 0) {
+      if (msg) msg += '. ';
+      msg += `${semHistorico} sem conclusão anterior (não revertida — long-press pra ver histórico)`;
+    }
+    return { ok: true, msg };
+  },
+
+  // Limpar conclusão (botão explícito, destrutivo) — apaga TODO o histórico e data
+  limparConclusao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
+    if (ids.length === 0) return fail(400, { erro: 'Selecione ao menos 1 quadra' });
+    await locals.supabase.from('quadras_conclusoes').delete().in('quadra_id', ids);
+    const { error } = await locals.supabase
+      .from('quadras')
+      .update({ status: 'pendente', data_conclusao: null })
+      .in('id', ids);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${ids.length} limpa(s) (histórico apagado)` };
   },
 
   // Histórico de conclusões de uma quadra (pro long-press / detalhe)
