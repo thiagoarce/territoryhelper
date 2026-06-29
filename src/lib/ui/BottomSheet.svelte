@@ -15,6 +15,22 @@
   } = $props();
 
   function fechar() { open = false; }
+
+  // Scroll lock no body quando sheet aberto + ESC fecha
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    if (open) {
+      document.body.style.overflow = 'hidden';
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') fechar(); };
+      window.addEventListener('keydown', onKey);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', onKey);
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+  });
 </script>
 
 {#if open}

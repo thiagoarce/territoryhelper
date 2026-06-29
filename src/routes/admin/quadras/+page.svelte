@@ -98,13 +98,17 @@
           </td>
           <td class="px-3 py-2 text-right">{q.qtd_locais}</td>
           <td class="px-3 py-2 text-slate-500">{q.data_conclusao ?? '—'}</td>
-          <td class="px-3 py-2 text-right">
+          <td class="px-3 py-2 text-right whitespace-nowrap">
             <a
-              href="/admin/quadras/{encodeURIComponent(q.id)}"
-              class="text-sm text-primary-700 hover:underline"
-            >
-              Abrir
-            </a>
+              href="/publicador/quadra/{encodeURIComponent(q.id)}"
+              class="text-sm text-primary-700 hover:underline mr-3"
+              title="Ver endereços"
+            >📋 Ver</a>
+            <a
+              href="/dirigente"
+              class="text-sm text-slate-500 hover:underline"
+              title="Mapa do dirigente"
+            >🗺</a>
           </td>
         </tr>
       {:else}
