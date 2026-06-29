@@ -16,7 +16,6 @@
 
   let container: HTMLDivElement;
   let mapa: any = null;
-  let layerPontos: any = null;
   let userMarker: any = null;
   let watchId: number | null = null;
 
@@ -29,87 +28,142 @@
   }
 
   onMount(async () => {
-    // Import dinâmico — Leaflet só carrega no client
-    const L = (await import('leaflet')).default;
-    // CSS via CDN (mais leve que importar)
-    if (!document.querySelector('link[data-leaflet-css]')) {
+    // MapLibre + Protomaps via import dinâmico (não carrega no SSR)
+    const maplibreModule = await import('maplibre-gl');
+    const maplibre = maplibreModule.default ?? maplibreModule;
+    const { Protocol } = await import('pmtiles');
+
+    // CSS via CDN — economiza ~80KB no bundle
+    if (!document.querySelector('link[data-maplibre-css]')) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      link.setAttribute('data-leaflet-css', '');
+      link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+      link.setAttribute('data-maplibre-css', '');
       document.head.appendChild(link);
     }
 
-    mapa = L.map(container, { zoomControl: true, attributionControl: false }).setView([-7.115, -34.863], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(mapa);
+    // Registra protocolo pmtiles (caso queira self-host depois)
+    const protocol = new Protocol();
+    maplibre.addProtocol('pmtiles', protocol.tile.bind(protocol) as any);
 
-    // Desenha polígono da quadra
-    if (quadraGeo) {
-      try {
-        const layer = L.geoJSON(quadraGeo as any, {
-          style: {
-            color: quadraColor,
-            weight: 3,
-            fillOpacity: 0.15,
-            fillColor: quadraColor
+    // OpenFreeMap — vector tiles 100% free, sem API key, sem limites.
+    // Estilos disponíveis: liberty (colorido), bright, positron (cinza claro).
+    // Pra mudar: troca 'positron' por 'liberty' ou 'bright'.
+    const style = 'https://tiles.openfreemap.org/styles/positron';
+
+    mapa = new maplibre.Map({
+      container,
+      style: style as any,
+      center: [-34.863, -7.115],
+      zoom: 15,
+      attributionControl: { compact: true } as any
+    });
+
+    mapa.addControl(new maplibre.NavigationControl({ visualizePitch: false }), 'top-right');
+
+    mapa.on('load', () => {
+      // Polígono da quadra
+      if (quadraGeo) {
+        mapa.addSource('quadra', {
+          type: 'geojson',
+          data: { type: 'Feature', geometry: quadraGeo, properties: {} } as any
+        });
+        mapa.addLayer({
+          id: 'quadra-fill',
+          type: 'fill',
+          source: 'quadra',
+          paint: { 'fill-color': quadraColor, 'fill-opacity': 0.18 }
+        });
+        mapa.addLayer({
+          id: 'quadra-line',
+          type: 'line',
+          source: 'quadra',
+          paint: { 'line-color': quadraColor, 'line-width': 3 }
+        });
+        // Fit bounds
+        try {
+          const coords = (quadraGeo as any).coordinates?.[0] || [];
+          if (coords.length > 0) {
+            const bounds = coords.reduce(
+              (b: any, c: number[]) => b.extend(c as any),
+              new maplibre.LngLatBounds(coords[0], coords[0])
+            );
+            mapa.fitBounds(bounds, { padding: 40, duration: 0 });
           }
-        }).addTo(mapa);
-        try { mapa.fitBounds(layer.getBounds(), { padding: [20, 20] }); } catch {}
-      } catch (e) {
-        console.error('Polígono inválido', e);
-      }
-    }
-
-    // Pins dos locais
-    layerPontos = L.layerGroup().addTo(mapa);
-    for (const l of locais) {
-      const geo: any = (l as any).geo_geojson;
-      if (!geo || !geo.coordinates) continue;
-      const [lng, lat] = geo.coordinates;
-      const emoji = pontoEmojiPorTipo(l.tipo);
-      const icon = L.divIcon({
-        className: 'pin-local',
-        html: `<div style="background:white;border:2px solid ${quadraColor};border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.2)">${emoji}</div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      });
-      const titulo = l.nome || `${l.logradouro}, ${l.numero}`;
-      const sub = l.tipo === 'predio' ? `${l.unidades.length} apto(s)` : l.tipo;
-      const m = L.marker([lat, lng], { icon }).addTo(layerPontos);
-      m.bindTooltip(`<strong>${titulo}</strong><br>${sub}`, { direction: 'top', offset: [0, -10] });
-      m.on('click', () => {
-        const el = document.getElementById('local-' + l.id);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('ring-2', 'ring-primary-500');
-          setTimeout(() => el.classList.remove('ring-2', 'ring-primary-500'), 1500);
+        } catch (e) {
+          console.warn('fit bounds:', e);
         }
-      });
-    }
+      }
 
-    // GPS do publicador (azul)
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude: lat, longitude: lng } = pos.coords;
-          if (!userMarker) {
-            const dotIcon = L.divIcon({
-              className: 'pin-user',
-              html: `<div style="width:18px;height:18px;background:#2563eb;border:3px solid white;border-radius:50%;box-shadow:0 0 0 2px rgba(37,99,235,.4)"></div>`,
-              iconSize: [18, 18],
-              iconAnchor: [9, 9]
-            });
-            userMarker = L.marker([lat, lng], { icon: dotIcon, interactive: false }).addTo(mapa);
-          } else {
-            userMarker.setLatLng([lat, lng]);
+      // Pins dos locais (via HTML markers — emoji custom)
+      for (const l of locais) {
+        const geo: any = (l as any).geo_geojson;
+        if (!geo || !geo.coordinates) continue;
+        const [lng, lat] = geo.coordinates;
+        const el = document.createElement('div');
+        el.style.cssText = `
+          background:white;
+          border:2px solid ${quadraColor};
+          border-radius:50%;
+          width:30px;height:30px;
+          display:flex;align-items:center;justify-content:center;
+          font-size:14px;
+          box-shadow:0 2px 4px rgba(0,0,0,.15);
+          cursor:pointer;
+          transition:transform .15s;
+        `;
+        el.textContent = pontoEmojiPorTipo(l.tipo);
+        el.onmouseenter = () => (el.style.transform = 'scale(1.15)');
+        el.onmouseleave = () => (el.style.transform = '');
+        el.onclick = () => {
+          const card = document.getElementById('local-' + l.id);
+          if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.add('ring-2', 'ring-primary-500');
+            setTimeout(() => card.classList.remove('ring-2', 'ring-primary-500'), 1500);
           }
-        },
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-      );
-    }
+        };
+        const popup = new maplibre.Popup({ offset: 18, closeButton: false })
+          .setHTML(
+            `<div style="font-size:13px"><strong>${l.nome || l.logradouro + ', ' + l.numero}</strong><br><span style="color:#666">${l.tipo === 'predio' ? l.unidades.length + ' apto(s)' : l.tipo}</span></div>`
+          );
+        new maplibre.Marker({ element: el })
+          .setLngLat([lng, lat])
+          .setPopup(popup)
+          .addTo(mapa);
+      }
+
+      // GPS publicador (ponto azul pulsando)
+      if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            if (!userMarker) {
+              const el = document.createElement('div');
+              el.style.cssText = `
+                width:18px;height:18px;
+                background:#2563eb;
+                border:3px solid white;
+                border-radius:50%;
+                box-shadow:0 0 0 4px rgba(37,99,235,.3);
+                animation:user-pulse 2s ease-in-out infinite;
+              `;
+              const keyframes = document.createElement('style');
+              keyframes.textContent = `@keyframes user-pulse{0%,100%{box-shadow:0 0 0 4px rgba(37,99,235,.3)}50%{box-shadow:0 0 0 10px rgba(37,99,235,.1)}}`;
+              if (!document.querySelector('style[data-user-pulse]')) {
+                keyframes.setAttribute('data-user-pulse', '');
+                document.head.appendChild(keyframes);
+              }
+              userMarker = new maplibre.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(mapa);
+            } else {
+              userMarker.setLngLat([longitude, latitude]);
+            }
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+        );
+      }
+    });
   });
 
   onDestroy(() => {
@@ -125,6 +179,6 @@
 
 <div
   bind:this={container}
-  class="rounded-lg overflow-hidden border border-slate-200 shadow-sm"
+  class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
   style:height={altura + 'px'}
 ></div>
