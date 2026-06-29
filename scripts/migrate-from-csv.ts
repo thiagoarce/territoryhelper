@@ -230,9 +230,11 @@ function polyStringToWKT(polyString: string): string | null {
   return `SRID=4326;POLYGON((${wkt}))`;
 }
 
-function latLngToWKT(lat: number | null, lng: number | null): string | null {
+function latLngToGeo(lat: number | null, lng: number | null): any {
   if (lat == null || lng == null) return null;
-  return `SRID=4326;POINT(${lng} ${lat})`;
+  // PostGIS via PostgREST aceita GeoJSON em colunas geometry — WKT plain
+  // não passa o coerce. Formato: { type, coordinates: [lng, lat] }.
+  return { type: 'Point', coordinates: [lng, lat] };
 }
 
 // ============================================================================
@@ -387,8 +389,8 @@ async function importLocaisEUnidades() {
     logradouro: colIdx(headers, 'Logradouro'),
     numero: colIdx(headers, 'Numero', 'Número'),
     complemento: colIdx(headers, 'Comp', 'Complemento'),
-    lat: colIdx(headers, 'Lat'),
-    lng: colIdx(headers, 'Lng', 'Lon', 'Long'),
+    lat: colIdx(headers, 'Lat', 'Latitude', 'latitude', 'LAT'),
+    lng: colIdx(headers, 'Lng', 'Lon', 'Long', 'Longitude', 'longitude', 'LNG'),
     tipo: colIdx(headers, 'Tipo'),
     // Coluna IBGE com o nome (KASA DECOR / RESIDENCIAL FRIDA KAHLO / etc)
     nome: colIdx(headers, 'Nome Estabelecimento', 'NomeEstabelecimento', 'Nome'),
@@ -398,6 +400,11 @@ async function importLocaisEUnidades() {
     naoVisitar: colIdx(headers, 'NaoVisitar', 'Não Visitar', 'nao_visitar'),
     ordem: colIdx(headers, 'Ordem')
   };
+  if (c.lat < 0 || c.lng < 0) {
+    console.warn(`⚠️  Lat/Lng não encontrados! Cabeçalhos: ${headers.join(', ')}`);
+  } else {
+    console.log(`📍 Lat coluna ${c.lat} (${headers[c.lat]}), Lng coluna ${c.lng} (${headers[c.lng]})`);
+  }
 
   // -------- AGRUPA por (logradouro|numero, quadra) ---------
   // Mesmo prédio em quadras diferentes (improvável mas possível) vira locais
@@ -513,7 +520,7 @@ async function importLocaisEUnidades() {
       tipo,
       logradouro: local.logradouro || '(sem nome)',
       numero: local.numero || 's/n',
-      geo: latLngToWKT(local.lat, local.lng),
+      geo: latLngToGeo(local.lat, local.lng),
       quadra_id: local.quadra_id,
       setor: local.setor,
       quadra_ibge: local.quadra_ibge,
