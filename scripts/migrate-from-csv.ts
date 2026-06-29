@@ -348,6 +348,17 @@ async function importQuadras() {
 
   await clearTable('quadras');
   await insertBatch('quadras', dados);
+
+  // Backfill quadras_conclusoes: cria 1 entrada de histórico por quadra
+  // que tem data_conclusao. Necessário pra Reverter conseguir restaurar
+  // a "penúltima" (se houver) em vez de zerar.
+  const conclusoes = dados
+    .filter((d) => d.data_conclusao)
+    .map((d) => ({ quadra_id: d.id, data_conclusao: d.data_conclusao }));
+  if (conclusoes.length > 0) {
+    await clearTable('quadras_conclusoes');
+    await insertBatch('quadras_conclusoes', conclusoes);
+  }
 }
 
 // ============================================================================
