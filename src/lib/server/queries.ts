@@ -205,6 +205,7 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
         .in('tipo', ['predio', 'comercio'])
         .eq('nao_eh_predio', false)
         .order('logradouro')
+              .order('id')  // tiebreaker estável pra paginação não duplicar/pular linhas
     ),
     selectAll<{ local_id: number; carta_entregue: string | null; desocupado: boolean; nao_escrever: boolean }>(
       supabase.from('unidades').select('local_id, carta_entregue, desocupado, nao_escrever')
