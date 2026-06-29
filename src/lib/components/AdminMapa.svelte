@@ -54,7 +54,8 @@
       center: [-34.863, -7.115],
       zoom: 14,
       attributionControl: { compact: true } as any,
-      preserveDrawingBuffer: true // habilita screenshot via toDataURL
+      // habilita screenshot via toDataURL (perf negligível pra este uso)
+      ...({ preserveDrawingBuffer: true } as any)
     });
     mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
 

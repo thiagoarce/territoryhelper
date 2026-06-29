@@ -27,7 +27,8 @@ export const load: PageServerLoad = async () => {
       nome: p?.nome ?? '',
       role: (p?.role ?? 'publicador') as Role,
       ativo: p?.ativo ?? true,
-      criado_em: p?.criado_em ?? u.created_at
+      criado_em: p?.criado_em ?? u.created_at,
+      atualizado_em: (p as any)?.atualizado_em ?? p?.criado_em ?? u.created_at
     };
   });
   usuarios.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));

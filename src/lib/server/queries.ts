@@ -416,7 +416,7 @@ export async function carregarQuadraComLocais(
   return {
     quadra: {
       ...(qBase.data as any),
-      poly_geojson: geoRes.data?.poly_geojson ?? null,
+      poly_geojson: polyGeoJson,
       territorio_nome: qBase.data.territorio_id ? territorioNomePorId.get(qBase.data.territorio_id) ?? null : null
     },
     locais: locaisEnriquecidos

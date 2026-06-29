@@ -8,15 +8,16 @@
 
   let { data, form }: { data: { predio: PredioDetalhado }; form: any } = $props();
 
-  const geo: any = data.predio.geo_geojson;
-  const lat = geo?.coordinates?.[1];
-  const lng = geo?.coordinates?.[0];
-  const mapsHref = lat && lng
+  // Derivados pra ser reativo se data mudar (post-invalidate)
+  const geo = $derived<any>(data.predio.geo_geojson);
+  const lat = $derived(geo?.coordinates?.[1]);
+  const lng = $derived(geo?.coordinates?.[0]);
+  const mapsHref = $derived(lat && lng
     ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.predio.logradouro + ', ' + data.predio.numero)}`;
-  const svHref = lat && lng
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.predio.logradouro + ', ' + data.predio.numero)}`);
+  const svHref = $derived(lat && lng
     ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`
-    : null;
+    : null);
 
   function statusApto(u: any): 'entregue' | 'desocupado' | 'naoescrever' | 'pendente' {
     if (u.nao_escrever) return 'naoescrever';

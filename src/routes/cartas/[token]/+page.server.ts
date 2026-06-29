@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
   const supa = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
       getAll: () => cookies.getAll(),
-      setAll: (toSet) => toSet.forEach((c: any) => cookies.set(c.name, c.value, { ...c.options, path: '/' }))
+      setAll: (toSet: any[]) => toSet.forEach((c: any) => cookies.set(c.name, c.value, { ...c.options, path: '/' }))
     }
   });
 
@@ -47,7 +47,7 @@ export const actions: Actions = {
     const supa = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
       cookies: {
         getAll: () => cookies.getAll(),
-        setAll: (toSet) => toSet.forEach((c: any) => cookies.set(c.name, c.value, { ...c.options, path: '/' }))
+        setAll: (toSet: any[]) => toSet.forEach((c: any) => cookies.set(c.name, c.value, { ...c.options, path: '/' }))
       }
     });
     const fd = await request.formData();

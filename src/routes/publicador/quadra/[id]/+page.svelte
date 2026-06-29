@@ -4,7 +4,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { createBrowserClient } from '@supabase/ssr';
-  import { env } from '$env/dynamic/public';
+  import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
   import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/server/queries';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
   import EditarLocalSheet from '$lib/components/EditarLocalSheet.svelte';
@@ -37,8 +37,8 @@
   // Quando outro publicador marca algo, invalida e re-fetch os dados.
   let realtimeChannel: any = null;
   onMount(() => {
-    if (!env.PUBLIC_SUPABASE_URL || !env.PUBLIC_SUPABASE_ANON_KEY) return;
-    const supa = createBrowserClient(env.PUBLIC_SUPABASE_URL, env.PUBLIC_SUPABASE_ANON_KEY);
+    if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) return;
+    const supa = createBrowserClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY);
     const unidadeIds = new Set(data.locais.flatMap((l) => l.unidades.map((u) => u.id)));
     let timer: any = null;
     function debouncedInvalidate() {
