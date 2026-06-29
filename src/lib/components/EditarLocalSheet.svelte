@@ -19,7 +19,21 @@
 
   // Estado controlado pra dar feedback visual reativo
   let irmaoMora = $state(false);
-  $effect(() => { if (local) irmaoMora = local.irmao_mora; });
+  let tipoSel = $state<'casa' | 'predio' | 'comercio' | 'coletivo' | 'terreno'>('casa');
+  $effect(() => {
+    if (local) {
+      irmaoMora = local.irmao_mora;
+      tipoSel = (local.tipo as any) ?? 'casa';
+    }
+  });
+
+  const TIPOS = [
+    { v: 'casa', label: 'Casa', icon: '🏠' },
+    { v: 'predio', label: 'Prédio', icon: '🏢' },
+    { v: 'comercio', label: 'Comércio', icon: '🏪' },
+    { v: 'coletivo', label: 'Coletivo', icon: '🏨' },
+    { v: 'terreno', label: 'Terreno', icon: '🟫' }
+  ] as const;
 
   async function uploadFoto(ev: Event) {
     const input = ev.target as HTMLInputElement;
@@ -101,80 +115,97 @@
         </label>
       {/if}
 
+      <!-- Tipo do local -->
+      <div>
+        <span class="block text-sm font-medium text-slate-700 mb-2">Tipo</span>
+        <div class="grid grid-cols-5 gap-1">
+          {#each TIPOS as t}
+            <label class="cursor-pointer">
+              <input type="radio" name="tipo" value={t.v} bind:group={tipoSel} class="peer sr-only" />
+              <div class="text-center px-1 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">
+                <div class="text-xl">{t.icon}</div>
+                <div class="text-[10px]">{t.label}</div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      </div>
+
       <div>
         <label for="nome" class="block text-sm font-medium text-slate-700 mb-1">
-          Nome do edifício / estabelecimento
+          {tipoSel === 'comercio' ? '🏪 Nome do estabelecimento' : '🏢 Nome do edifício'}
         </label>
         <input
           id="nome"
           name="nome"
           value={local.nome || ''}
-          placeholder="Ex: Edif. Solar, Farmácia X"
+          placeholder={tipoSel === 'comercio' ? 'Ex: Farmácia X, Bar Y' : 'Ex: Edif. Solar'}
           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         />
       </div>
 
       <!-- Tipo de entrada (só pra prédios) -->
-      {#if local.tipo === 'predio'}
+      {#if tipoSel === 'predio'}
         <div>
           <span class="block text-sm font-medium text-slate-700 mb-2">Entrada do prédio</span>
           <div class="grid grid-cols-3 gap-2">
             {#each [
-              { v: 'porteiro', label: 'Porteiro' },
-              { v: 'eletronica', label: 'Eletrônica' },
-              { v: 'sem', label: 'Sem' }
+              { v: 'porteiro', label: 'Porteiro', icon: '👮' },
+              { v: 'eletronica', label: 'Eletrônica', icon: '🔘' },
+              { v: 'sem', label: 'Sem portaria', icon: '🚪' }
             ] as opt}
               <label class="cursor-pointer">
                 <input type="radio" name="tipo_entrada" value={opt.v} checked={local.tipo_entrada === opt.v} class="peer sr-only" />
-                <div class="text-center text-sm px-3 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 hover:bg-slate-50">
-                  {opt.label}
+                <div class="text-center text-sm px-3 py-3 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 hover:bg-slate-50">
+                  <div class="text-xl mb-0.5">{opt.icon}</div>
+                  <div class="text-xs">{opt.label}</div>
                 </div>
               </label>
             {/each}
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-50">
-            <input type="checkbox" name="acesso_caixas" checked={local.acesso_caixas} class="w-4 h-4 rounded text-primary-600" />
-            <span class="text-sm">Acesso às caixas</span>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" name="acesso_caixas" checked={local.acesso_caixas} class="w-4 h-4 rounded" />
+            <span class="text-sm">📬 Acesso caixas</span>
           </label>
-          <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-50">
-            <input type="checkbox" name="acesso_interfones" checked={local.acesso_interfones} class="w-4 h-4 rounded text-primary-600" />
-            <span class="text-sm">Acesso aos interfones</span>
+          <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" name="acesso_interfones" checked={local.acesso_interfones} class="w-4 h-4 rounded" />
+            <span class="text-sm">📞 Interfones</span>
           </label>
         </div>
       {/if}
 
       <!-- Irmão mora -->
-      <div class="rounded-lg bg-slate-50 p-3">
+      <div class="rounded-lg bg-amber-50 border border-amber-200 p-3">
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" name="irmao_mora" bind:checked={irmaoMora} class="w-4 h-4 rounded text-primary-600" />
-          <span class="text-sm font-medium">Irmão mora aqui</span>
+          <input type="checkbox" name="irmao_mora" bind:checked={irmaoMora} class="w-4 h-4 rounded" />
+          <span class="text-sm font-medium">👤 Irmão mora aqui</span>
         </label>
         {#if irmaoMora}
           <input
             name="nome_irmao"
             value={local.nome_irmao || ''}
             placeholder="Nome do irmão"
-            class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         {/if}
       </div>
 
-      <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-50">
-        <input type="checkbox" name="nao_visitar" checked={local.nao_visitar} class="w-4 h-4 rounded text-red-600" />
-        <span class="text-sm font-medium text-red-700">Não visitar</span>
+      <label class="flex items-center gap-2 p-3 border border-red-200 bg-red-50 rounded-lg cursor-pointer">
+        <input type="checkbox" name="nao_visitar" checked={local.nao_visitar} class="w-4 h-4 rounded" />
+        <span class="text-sm font-medium text-red-700">🚫 Não visitar</span>
       </label>
 
       <div>
-        <label for="notas" class="block text-sm font-medium text-slate-700 mb-1">Notas</label>
+        <label for="notas" class="block text-sm font-medium text-slate-700 mb-1">📝 Notas</label>
         <textarea
           id="notas"
           name="notas"
           rows="2"
           placeholder="Ex: portaria fechada 12-14h"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         >{local.notas || ''}</textarea>
       </div>
 

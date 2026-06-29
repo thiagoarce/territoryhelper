@@ -77,13 +77,18 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
-    const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar'];
+    const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar', 'tipo'];
+    const booleanos = new Set(['irmao_mora', 'acesso_caixas', 'acesso_interfones', 'nao_visitar']);
+    const tiposValidos = new Set(['casa', 'predio', 'comercio', 'coletivo', 'terreno']);
     const patch: Record<string, unknown> = {};
     for (const k of permitidos) {
       if (!fd.has(k)) continue;
       const v = fd.get(k);
-      if (k === 'irmao_mora' || k === 'acesso_caixas' || k === 'acesso_interfones' || k === 'nao_visitar') {
+      if (booleanos.has(k)) {
         patch[k] = v === 'on' || v === 'true';
+      } else if (k === 'tipo') {
+        const s = String(v ?? '').trim();
+        if (tiposValidos.has(s)) patch[k] = s;
       } else {
         const s = String(v ?? '').trim();
         patch[k] = s === '' ? null : s;

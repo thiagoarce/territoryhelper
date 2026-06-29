@@ -168,11 +168,18 @@ function decidirTipoLocal(tipoUnidade: string, qtdUnidades: number, marcadoComoP
   if (marcadoComoPredio) return 'predio';
   if (qtdUnidades >= 2) return 'predio';
   const t = tipoUnidade.toLowerCase();
-  if (t.includes('apartamento')) return 'predio';   // single apto solto = ainda prédio
-  if (t.includes('comercio') || t.includes('comércio') || t.includes('comercial')) return 'comercio';
+  // IBGE tem 7 valores principais:
+  //   "Domicílio particular Casa" / "Casa de vila ou em condomínio" / "Domicílio particular [N]" → casa
+  //   "Domicílio particular Apartamento" → predio
+  //   "Domicílio coletivo" → coletivo
+  //   "Estabelecimento de outras finalidades / saúde / religioso / ensino" → comercio
+  //   "Edificação em construção ou reforma" → terreno (não habitável)
+  if (t.includes('apartamento')) return 'predio';
+  if (t.includes('estabelecimento') || t.includes('comercio') || t.includes('comércio') || t.includes('comercial')) return 'comercio';
   if (t.includes('coletivo') || t.includes('alojamento') || t.includes('asilo')) return 'coletivo';
+  if (t.includes('construção') || t.includes('construcao') || t.includes('reforma')) return 'terreno';
   if (t.includes('terreno') || t.includes('lote')) return 'terreno';
-  // Default = casa (cobre "Domicílio particular Casa", "Domicílio particular", etc)
+  // Default = casa (cobre "Domicílio particular Casa", "Casa de vila", "Domicílio particular", etc)
   return 'casa';
 }
 
