@@ -230,11 +230,51 @@
 
 <!-- Barra inferior quando há seleção -->
 {#if modo === 'vincular' && selecionadosLocais.size > 0}
-  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2">
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
     <div class="text-sm font-medium">
       <strong>{selecionadosLocais.size}</strong> selecionado(s)
     </div>
-    <p class="text-xs text-slate-500 hidden sm:block">click numa quadra pra vincular</p>
+    <p class="text-xs text-slate-500 hidden sm:block">click numa quadra pra vincular · ou:</p>
+
+    <form
+      method="POST"
+      action="?/desvincular"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') { toast.success('Desvinculados'); limparSelecao(); await invalidateAll(); }
+      }}
+      onsubmit={(e) => { if (!confirm(`Remover quadra de ${selecionadosLocais.size} endereço(s)?`)) e.preventDefault(); }}
+    >
+      {#each [...selecionadosLocais] as id}<input type="hidden" name="local_ids" value={id} />{/each}
+      <Button variant="ghost" size="sm" type="submit">↺ Desvincular</Button>
+    </form>
+
+    <form
+      method="POST"
+      action="?/toggleAtivacao"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') { toast.success((result.data as any)?.msg || 'OK'); limparSelecao(); await invalidateAll(); }
+      }}
+    >
+      {#each [...selecionadosLocais] as id}<input type="hidden" name="local_ids" value={id} />{/each}
+      <input type="hidden" name="ativar" value="false" />
+      <Button variant="ghost" size="sm" type="submit">∅ Desativar</Button>
+    </form>
+
+    <form
+      method="POST"
+      action="?/toggleAtivacao"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') { toast.success((result.data as any)?.msg || 'OK'); limparSelecao(); await invalidateAll(); }
+      }}
+    >
+      {#each [...selecionadosLocais] as id}<input type="hidden" name="local_ids" value={id} />{/each}
+      <input type="hidden" name="ativar" value="true" />
+      <Button variant="ghost" size="sm" type="submit">✓ Ativar</Button>
+    </form>
+
     <Button variant="ghost" size="sm" onclick={limparSelecao} class="ml-auto">Limpar</Button>
   </div>
 {/if}

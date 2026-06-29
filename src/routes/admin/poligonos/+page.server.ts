@@ -113,6 +113,32 @@ export const actions: Actions = {
     return { ok: true, msg: `${localIds.length} endereço(s) vinculado(s) a ${quadraId}` };
   },
 
+  // Marca/desmarca endereços como "não visitar" — esconde do publicador
+  toggleAtivacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
+    const ativar = fd.get('ativar') === 'true';
+    if (localIds.length === 0) return fail(400, { erro: 'Sem endereços' });
+    // ativar=true → nao_visitar=false (volta a ser endereço ativo)
+    const { error } = await locals.supabase
+      .from('locais').update({ nao_visitar: !ativar }).in('id', localIds);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${localIds.length} endereço(s) ${ativar ? 'ativado(s)' : 'desativado(s)'}` };
+  },
+
+  // Remove vínculo (volta pra "sem quadra")
+  desvincular: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
+    if (localIds.length === 0) return fail(400, { erro: 'Sem endereços' });
+    const { error } = await locals.supabase
+      .from('locais').update({ quadra_id: null }).in('id', localIds);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${localIds.length} endereço(s) desvinculado(s)` };
+  },
+
   // Renomeia uma quadra propagando o id em CASCADE (FK ON UPDATE):
   // - quadras.id → designacao_quadras.quadra_id, locais.quadra_id seguem auto.
   // Mas como nossas FKs estão como ON DELETE SET NULL/CASCADE e não ON UPDATE,

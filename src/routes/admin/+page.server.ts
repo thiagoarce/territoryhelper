@@ -12,11 +12,28 @@ export const load: PageServerLoad = async ({ locals }) => {
   const quadrasAlocadas = new Set<string>();
   for (const d of abertas) for (const q of d.quadras_ids) quadrasAlocadas.add(q);
 
+  // Participantes por designação (multi-publicador)
+  const participantesPorDesignacao: Record<number, string[]> = {};
+  if (abertas.length > 0) {
+    const { data: parts } = await locals.supabase
+      .from('designacao_publicadores')
+      .select('designacao_id, publicador_id, papel')
+      .in('designacao_id', abertas.map((d) => d.id));
+    for (const p of parts ?? []) {
+      const arr = participantesPorDesignacao[p.designacao_id] ?? [];
+      // Líder primeiro
+      if (p.papel === 'lider') arr.unshift(p.publicador_id);
+      else arr.push(p.publicador_id);
+      participantesPorDesignacao[p.designacao_id] = arr;
+    }
+  }
+
   return {
     quadras,
     designacoesAbertas: abertas,
     publicadores,
-    quadrasAlocadas: [...quadrasAlocadas]
+    quadrasAlocadas: [...quadrasAlocadas],
+    participantesPorDesignacao
   };
 };
 
@@ -82,5 +99,39 @@ export const actions: Actions = {
       .from('designacoes').update({ status: 'concluida' }).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Encerrada' };
+  },
+
+  editarDesignacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+
+    const prazo = String(fd.get('prazo') ?? '').trim() || null;
+    const notas = String(fd.get('notas') ?? '').trim() || null;
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+
+    const { error: errU } = await locals.supabase
+      .from('designacoes').update({ prazo, notas }).eq('id', id);
+    if (errU) return fail(400, { erro: errU.message });
+
+    if (quadrasIds.length > 0) {
+      await locals.supabase.from('designacao_quadras').delete().eq('designacao_id', id);
+      const linhas = quadrasIds.map((qid) => ({ designacao_id: id, quadra_id: qid }));
+      const { error: errQ } = await locals.supabase.from('designacao_quadras').insert(linhas);
+      if (errQ) return fail(400, { erro: 'Falhou ao trocar quadras: ' + errQ.message });
+    }
+
+    if (publicadorIds.length > 0) {
+      await locals.supabase.from('designacao_publicadores').delete().eq('designacao_id', id);
+      const part = publicadorIds.map((pid, i) => ({
+        designacao_id: id, publicador_id: pid, papel: i === 0 ? 'lider' : 'participante'
+      }));
+      await locals.supabase.from('designacao_publicadores').insert(part);
+      // Mantém o primeiro como publicador_id principal
+      await locals.supabase.from('designacoes').update({ publicador_id: publicadorIds[0] }).eq('id', id);
+    }
+    return { ok: true, msg: 'Designação atualizada' };
   }
 };

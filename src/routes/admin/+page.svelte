@@ -16,6 +16,7 @@
       designacoesAbertas: DesignacaoEnriquecida[];
       publicadores: { id: string; nome: string; role: string }[];
       quadrasAlocadas: string[];
+      participantesPorDesignacao: Record<number, string[]>;
     };
     form: any;
   } = $props();
@@ -31,10 +32,33 @@
   // Sheets
   let sheetDesignacoes = $state(false);
   let sheetDesignar = $state(false);
+  let sheetEditarDesignacao = $state(false);
+  let editandoDesignacao = $state<DesignacaoEnriquecida | null>(null);
+  let editPublicadoresSel = $state<Set<string>>(new Set());
+  let editQuadrasSel = $state<Set<string>>(new Set());
 
   // Estado do form de designar
   let tipoDesignacao = $state<'pessoal' | 'arranjo'>('pessoal');
   let publicadoresSel = $state<Set<string>>(new Set());
+
+  function abrirEditarDesignacao(d: DesignacaoEnriquecida) {
+    editandoDesignacao = d;
+    editQuadrasSel = new Set(d.quadras_ids);
+    editPublicadoresSel = new Set(data.participantesPorDesignacao[d.id] ?? (d.publicador_id ? [d.publicador_id] : []));
+    sheetDesignacoes = false;
+    sheetEditarDesignacao = true;
+  }
+
+  function toggleEditQuadra(id: string) {
+    if (editQuadrasSel.has(id)) editQuadrasSel.delete(id);
+    else editQuadrasSel.add(id);
+    editQuadrasSel = new Set(editQuadrasSel);
+  }
+  function toggleEditPub(id: string) {
+    if (editPublicadoresSel.has(id)) editPublicadoresSel.delete(id);
+    else editPublicadoresSel.add(id);
+    editPublicadoresSel = new Set(editPublicadoresSel);
+  }
 
   const dirigentes = $derived(data.publicadores.filter((p) => p.role === 'dirigente' || p.role === 'admin'));
 
@@ -166,6 +190,7 @@
               {#if d.notas}<div class="text-xs text-slate-500 italic mt-1">{d.notas}</div>{/if}
             </div>
             <div class="flex flex-col gap-1">
+              <button onclick={() => abrirEditarDesignacao(d)} class="text-[11px] text-primary-700 hover:underline">Editar</button>
               <form
                 method="POST"
                 action="?/encerrarDesignacao"
@@ -288,4 +313,79 @@
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Designar</Button>
     </div>
   </form>
+</BottomSheet>
+
+<!-- Sheet: Editar designação existente -->
+<BottomSheet bind:open={sheetEditarDesignacao} title={editandoDesignacao ? `Editar — ${editandoDesignacao.publicador_nome ?? 'designação'}` : ''}>
+  {#if editandoDesignacao}
+    <form
+      method="POST"
+      action="?/editarDesignacao"
+      use:enhance={() => {
+        salvando = true;
+        return async ({ result, update }) => {
+          await update();
+          salvando = false;
+          if (result.type === 'success') {
+            toast.success('Atualizada');
+            sheetEditarDesignacao = false;
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="space-y-3"
+    >
+      <input type="hidden" name="id" value={editandoDesignacao.id} />
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Quadras ({editQuadrasSel.size})</span>
+        <div class="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 flex flex-wrap gap-1">
+          {#each data.quadras as q}
+            <button type="button"
+              onclick={() => toggleEditQuadra(q.id)}
+              class="text-xs font-mono px-2 py-0.5 rounded border"
+              class:bg-primary-100={editQuadrasSel.has(q.id)}
+              class:border-primary-500={editQuadrasSel.has(q.id)}
+              class:text-primary-700={editQuadrasSel.has(q.id)}
+              class:border-slate-200={!editQuadrasSel.has(q.id)}
+              class:text-slate-500={!editQuadrasSel.has(q.id)}
+            >{q.id}</button>
+          {/each}
+        </div>
+        {#each [...editQuadrasSel] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Publicadores</span>
+        <div class="max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.publicadores as p}
+            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="checkbox" checked={editPublicadoresSel.has(p.id)} onchange={() => toggleEditPub(p.id)} class="w-4 h-4 rounded" />
+              <span class="flex-1">{p.nome}</span>
+              <span class="text-xs text-slate-400">{p.role}</span>
+            </label>
+          {/each}
+        </div>
+        {#each [...editPublicadoresSel] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
+        <p class="text-xs text-slate-500 mt-1">{editPublicadoresSel.size} selecionado(s) · primeiro vira líder</p>
+      </div>
+
+      <div>
+        <label for="edit_prazo" class="block text-sm font-medium mb-1">Prazo</label>
+        <input id="edit_prazo" name="prazo" type="date" value={editandoDesignacao.prazo ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+
+      <div>
+        <label for="edit_notas" class="block text-sm font-medium mb-1">Notas</label>
+        <textarea id="edit_notas" name="notas" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{editandoDesignacao.notas ?? ''}</textarea>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <Button variant="secondary" onclick={() => (sheetEditarDesignacao = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={salvando} class="flex-1">Salvar</Button>
+      </div>
+    </form>
+  {/if}
 </BottomSheet>
