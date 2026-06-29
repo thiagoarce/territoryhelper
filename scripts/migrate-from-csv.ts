@@ -160,27 +160,52 @@ function chaveLocal(logradouro: string, numero: string): string {
   return logradouro.trim().toLowerCase() + '|' + numero.trim().toLowerCase();
 }
 
-// Decide tipo do local. Prioridade:
-//   1. Se foi explicitamente marcado como prédio no Predios.csv → predio
-//   2. Se ≥2 unidades no mesmo logradouro+numero → predio
-//   3. Senão deriva de "Tipo" do CSV (Dados Brutos coluna L)
-function decidirTipoLocal(tipoUnidade: string, qtdUnidades: number, marcadoComoPredio: boolean): string {
+// Decide tipo do local usando 3 sinais (em ordem de prioridade):
+//   1. Predios.csv (overlay manual marcando como prédio)
+//   2. ≥2 unidades no mesmo logradouro+numero → predio
+//   3. Coluna "Tipo" IBGE (col L)
+//   4. Coluna "Nota" IBGE (col N) — refina quando Tipo for ambíguo
+function decidirTipoLocal(
+  tipoUnidade: string,
+  notaIbge: string,
+  qtdUnidades: number,
+  marcadoComoPredio: boolean
+): string {
   if (marcadoComoPredio) return 'predio';
   if (qtdUnidades >= 2) return 'predio';
   const t = tipoUnidade.toLowerCase();
-  // IBGE tem 7 valores principais:
-  //   "Domicílio particular Casa" / "Casa de vila ou em condomínio" / "Domicílio particular [N]" → casa
-  //   "Domicílio particular Apartamento" → predio
-  //   "Domicílio coletivo" → coletivo
-  //   "Estabelecimento de outras finalidades / saúde / religioso / ensino" → comercio
-  //   "Edificação em construção ou reforma" → terreno (não habitável)
+  const n = (notaIbge || '').toLowerCase();
+  // Casos óbvios pela coluna Tipo
   if (t.includes('apartamento')) return 'predio';
   if (t.includes('estabelecimento') || t.includes('comercio') || t.includes('comércio') || t.includes('comercial')) return 'comercio';
   if (t.includes('coletivo') || t.includes('alojamento') || t.includes('asilo')) return 'coletivo';
   if (t.includes('construção') || t.includes('construcao') || t.includes('reforma')) return 'terreno';
   if (t.includes('terreno') || t.includes('lote')) return 'terreno';
-  // Default = casa (cobre "Domicílio particular Casa", "Casa de vila", "Domicílio particular", etc)
+  // Refinamento pela Nota quando Tipo for ambíguo ("Domicílio particular" sem mais info):
+  // "Única construção e de fim Residencial" → casa
+  // "Única construção e de fim Não residencial" → comercio
+  // "Construção Múltipla, com X unidades e de fim Residencial" → predio
+  // "Construção Múltipla, com X unidades e de fim Misto" → predio + tem comercio (vira predio)
+  // "Construção Múltipla, ...e de fim Não residencial" → comercio (galeria/centro comercial)
+  if (n.includes('construção múltipla') || n.includes('construcao multipla') || n.includes('múltiplas construções')) {
+    if (n.includes('não residencial') || n.includes('nao residencial')) return 'comercio';
+    return 'predio';
+  }
+  if (n.includes('múltiplos estabelecimentos') || n.includes('multiplos estabelecimentos')) return 'comercio';
+  if (n.includes('único estabelecimento') || n.includes('unico estabelecimento')) return 'comercio';
+  if (n.includes('única construção') || n.includes('unica construcao')) {
+    if (n.includes('não residencial') || n.includes('nao residencial')) return 'comercio';
+  }
+  // Default = casa
   return 'casa';
+}
+
+// Tipo de entrada inferido da Nota IBGE
+function decidirTipoEntrada(notaIbge: string): string | null {
+  const n = (notaIbge || '').toLowerCase();
+  if (n.includes('portaria presencial')) return 'porteiro';
+  if (n.includes('interfone individual') || n.includes('interfone')) return 'eletronica';
+  return null;
 }
 
 // Converte "lat,lng | lat,lng | ..." pra WKT Polygon WGS84.
@@ -355,7 +380,10 @@ async function importLocaisEUnidades() {
     lat: colIdx(headers, 'Lat'),
     lng: colIdx(headers, 'Lng', 'Lon', 'Long'),
     tipo: colIdx(headers, 'Tipo'),
-    nome: colIdx(headers, 'Nome'),
+    // Coluna IBGE com o nome (KASA DECOR / RESIDENCIAL FRIDA KAHLO / etc)
+    nome: colIdx(headers, 'Nome Estabelecimento', 'NomeEstabelecimento', 'Nome'),
+    // Coluna IBGE com a classificação detalhada (Único Estabelecimento /
+    // Construção Múltipla com X unidades / Interfone individual / Portaria presencial...)
     nota: colIdx(headers, 'Nota'),
     naoVisitar: colIdx(headers, 'NaoVisitar', 'Não Visitar', 'nao_visitar'),
     ordem: colIdx(headers, 'Ordem')
@@ -460,12 +488,17 @@ async function importLocaisEUnidades() {
   const ordemLocais: { chaveCompleta: string; chaveBase: string }[] = [];
   for (const [chaveCompleta, local] of localPorChave) {
     const overlay = overlayPredios.get(local.chave) ?? {};
+    // Pega a Nota mais informativa do grupo (a maioria das unidades repete)
+    const notaIbge = local.unidades.find((u) => u.nota)?.nota || '';
     const tipo = decidirTipoLocal(
       local.unidades[0]?.tipo_unidade || '',
+      notaIbge,
       local.unidades.length,
       false
     );
     const nomeEdif = overlay.nome ?? nomeEdifPorChave.get(local.chave) ?? null;
+    // tipo_entrada do overlay manual ganha; senão deriva da Nota IBGE
+    const tipoEntrada = overlay.tipo_entrada ?? decidirTipoEntrada(notaIbge);
     locaisParaInserir.push({
       tipo,
       logradouro: local.logradouro || '(sem nome)',
@@ -479,7 +512,7 @@ async function importLocaisEUnidades() {
       irmao_mora: overlay.irmao_mora ?? false,
       nome_irmao: overlay.nome_irmao ?? null,
       notas: overlay.notas ?? null,
-      tipo_entrada: overlay.tipo_entrada ?? null,
+      tipo_entrada: tipoEntrada,
       acesso_caixas: overlay.acesso_caixas ?? false,
       acesso_interfones: overlay.acesso_interfones ?? false,
       nao_visitar: overlay.nao_eh_predio ?? false  // "naoEhPredio" → "nao_visitar" no novo modelo
