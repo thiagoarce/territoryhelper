@@ -43,6 +43,38 @@ export async function listarQuadrasComContagem(
   })) as QuadraEnriquecida[];
 }
 
+// Mesma forma das quadras enriquecidas mas COM poly_geojson (pesado — só pra mapa)
+export interface QuadraGeo extends QuadraEnriquecida {
+  poly_geojson: unknown | null;
+}
+
+export async function listarQuadrasComGeo(
+  supabase: SupabaseClient
+): Promise<QuadraGeo[]> {
+  const [qRes, locRes] = await Promise.all([
+    supabase
+      .from('quadras_geo')
+      .select('id, color, territorio_id, status, data_conclusao, notas, poly_geojson, territorios(nome)')
+      .order('id'),
+    supabase.from('locais').select('id, quadra_id')
+  ]);
+  if (qRes.error) throw qRes.error;
+  if (locRes.error) throw locRes.error;
+
+  const locaisPorQuadra = new Map<string, number>();
+  for (const l of locRes.data ?? []) {
+    if (!l.quadra_id) continue;
+    locaisPorQuadra.set(l.quadra_id, (locaisPorQuadra.get(l.quadra_id) ?? 0) + 1);
+  }
+  return (qRes.data ?? []).map((q: any) => ({
+    ...q,
+    poly: null,
+    territorio_nome: q.territorios?.nome ?? null,
+    qtd_locais: locaisPorQuadra.get(q.id) ?? 0,
+    qtd_unidades: 0
+  })) as QuadraGeo[];
+}
+
 export async function listarTerritorios(supabase: SupabaseClient): Promise<Territorio[]> {
   const { data, error } = await supabase
     .from('territorios')
