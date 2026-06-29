@@ -139,20 +139,18 @@ export const actions: Actions = {
     return { ok: true, msg: `${localIds.length} endereço(s) desvinculado(s)` };
   },
 
-  // Muda status da quadra (pendente / concluido / inativa)
+  // Ativa/inativa a quadra. 'concluído' / 'pendente' são derivados de data_conclusao,
+  // não setados aqui.
   alterarStatusQuadra: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
-    const status = String(fd.get('status') ?? '');
+    const ativa = fd.get('ativa') === 'true';
     if (!id) return fail(400, { erro: 'id obrigatório' });
-    if (!['pendente', 'concluido', 'inativa'].includes(status)) return fail(400, { erro: 'status inválido' });
-    const patch: any = { status };
-    // Voltar pra pendente ou inativa zera data_conclusao
-    if (status !== 'concluido') patch.data_conclusao = null;
-    const { error } = await locals.supabase.from('quadras').update(patch).eq('id', id);
+    const { error } = await locals.supabase
+      .from('quadras').update({ ativa }).eq('id', id);
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: `${id} → ${status}` };
+    return { ok: true, msg: `${id} → ${ativa ? 'ativa' : 'inativa'}` };
   },
 
   // Renomeia uma quadra propagando o id em CASCADE (FK ON UPDATE):

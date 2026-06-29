@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   let quadrasConcluidasNoPeriodo: string[] = [];
   if (ativa) {
     for (const q of quadras) {
-      if (q.status === 'concluido' && q.data_conclusao
+      if (q.data_conclusao
           && q.data_conclusao >= ativa.data_inicio && q.data_conclusao <= ativa.data_alvo) {
         quadrasConcluidasNoPeriodo.push(q.id);
       }

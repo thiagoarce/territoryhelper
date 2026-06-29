@@ -46,7 +46,7 @@
   }
 
   function onClickQuadra(q: QuadraGeo) {
-    if (q.status === 'inativa') {
+    if (!q.ativa) {
       toast.info(`Quadra ${q.id} está inativa — edita pelo Polígonos pra reativar`);
       return;
     }

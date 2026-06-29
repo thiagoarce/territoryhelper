@@ -38,6 +38,8 @@ export interface Quadra {
   poly: unknown; // PostGIS geometry — chega como GeoJSON ou WKT dependendo da query
   color: string;
   territorio_id: string | null;
+  ativa: boolean;
+  /** @deprecated use `ativa`. Concluído/pendente são derivados de data_conclusao */
   status: string;
   data_conclusao: string | null;
   notas: string | null;

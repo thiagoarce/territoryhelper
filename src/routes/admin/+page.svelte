@@ -63,7 +63,7 @@
   const dirigentes = $derived(data.publicadores.filter((p) => p.role === 'dirigente' || p.role === 'admin'));
 
   function onClickQuadra(q: QuadraGeo, multi: boolean) {
-    if (q.status === 'inativa') {
+    if (!q.ativa) {
       toast.info(`Quadra ${q.id} está inativa — edita em Polígonos pra reativar`);
       return;
     }
@@ -82,8 +82,8 @@
 
   const stats = $derived.by(() => {
     const total = data.quadras.length;
-    const concluidas = data.quadras.filter((q) => q.status === 'concluido').length;
-    const inativas = data.quadras.filter((q) => q.status === 'inativa').length;
+    const concluidas = data.quadras.filter((q) => q.data_conclusao != null).length;
+    const inativas = data.quadras.filter((q) => !q.ativa).length;
     return { total, ativas: total - inativas, concluidas, alocadas: data.quadrasAlocadas.length, abertas: data.designacoesAbertas.length };
   });
 </script>

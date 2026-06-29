@@ -60,7 +60,7 @@
     const hoje = Date.now();
     const totalDias = Math.max(1, Math.ceil((alvo - inicio) / 86400000));
     const passados = Math.max(0, Math.min(totalDias, Math.ceil((hoje - inicio) / 86400000)));
-    const ativasNoMapa = data.quadras.filter((q) => q.status !== 'inativa').length;
+    const ativasNoMapa = data.quadras.filter((q) => q.ativa).length;
     const concluidas = data.quadrasConcluidasNoPeriodo.length;
     return {
       diasTotais: totalDias,
@@ -80,7 +80,7 @@
     return data.quadras.map((q) => ({
       ...q,
       // Substitui status pra que o MapaAdmin pinte verde apenas as do período
-      status: idsConcluidas.has(q.id) ? 'concluido' : (q.status === 'inativa' ? 'inativa' : 'pendente')
+      status: idsConcluidas.has(q.id) ? 'concluido' : (!q.ativa ? 'inativa' : 'pendente')
     })) as QuadraGeo[];
   });
 

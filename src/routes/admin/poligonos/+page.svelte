@@ -329,15 +329,20 @@
   {/if}
 </BottomSheet>
 
-<!-- Sheet: alterar status da quadra -->
-<BottomSheet bind:open={sheetStatus} title={quadraStatusEdit ? `Status — ${quadraStatusEdit.id}` : ''}>
+<!-- Sheet: ativar/inativar quadra -->
+<BottomSheet bind:open={sheetStatus} title={quadraStatusEdit ? `Quadra ${quadraStatusEdit.id}` : ''}>
   {#if quadraStatusEdit}
     <div class="space-y-2 text-sm">
-      <div class="text-xs text-slate-500">Status atual: <strong class="capitalize">{quadraStatusEdit.status}</strong></div>
+      <div class="text-xs text-slate-500">
+        Atualmente: <strong>{quadraStatusEdit.ativa ? 'ativa' : 'inativa'}</strong>
+        {#if quadraStatusEdit.data_conclusao}· Última: {quadraStatusEdit.data_conclusao}{/if}
+      </div>
+      <p class="text-xs text-slate-500">
+        Marcar como concluída é no Registro. Aqui só decide se a quadra está em rotação.
+      </p>
       {#each [
-        { v: 'pendente', label: '⏳ Pendente', desc: 'A trabalhar' },
-        { v: 'concluido', label: '✓ Concluído', desc: 'Marca como feita hoje' },
-        { v: 'inativa', label: '∅ Inativa', desc: 'Esconde do Registro, não conta na Campanha' }
+        { v: true, label: '✓ Ativa', desc: 'Aparece no Registro, conta na Campanha' },
+        { v: false, label: '∅ Inativa', desc: 'Esconde do Registro, não conta na Campanha' }
       ] as opt}
         <form
           method="POST"
@@ -358,12 +363,12 @@
           }}
         >
           <input type="hidden" name="id" value={quadraStatusEdit.id} />
-          <input type="hidden" name="status" value={opt.v} />
+          <input type="hidden" name="ativa" value={String(opt.v)} />
           <button type="submit"
             class="w-full text-left px-3 py-2 border rounded-lg hover:bg-slate-50 transition-colors"
-            class:bg-primary-50={quadraStatusEdit.status === opt.v}
-            class:border-primary-500={quadraStatusEdit.status === opt.v}
-            class:border-slate-300={quadraStatusEdit.status !== opt.v}
+            class:bg-primary-50={quadraStatusEdit.ativa === opt.v}
+            class:border-primary-500={quadraStatusEdit.ativa === opt.v}
+            class:border-slate-300={quadraStatusEdit.ativa !== opt.v}
           >
             <div class="font-medium">{opt.label}</div>
             <div class="text-xs text-slate-500">{opt.desc}</div>

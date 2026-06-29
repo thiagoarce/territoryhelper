@@ -335,12 +335,14 @@ async function importQuadras() {
     if (!qid) continue;
     const wkt = polyStringToWKT(toStr(r[c.poly]));
     if (!wkt) { semPoly++; continue; }
+    const statusNorm = normalizarStatus(toStr(r[c.status]));
     dados.push({
       id: qid,
       poly: wkt,
       color: toStr(r[c.color]) || '#3388ff',
       territorio_id: toStrOrNull(r[c.territorio]),
-      status: normalizarStatus(toStr(r[c.status])),
+      status: statusNorm,
+      ativa: statusNorm !== 'inativa',
       data_conclusao: toDate(r[c.dataConc])
     });
   }

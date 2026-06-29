@@ -22,7 +22,7 @@ export const actions: Actions = {
     if (!id) return fail(400, { erro: 'id obrigatório' });
     const { error: err } = await locals.supabase
       .from('quadras')
-      .update({ status: 'concluido', data_conclusao: data })
+      .update({ data_conclusao: data })
       .eq('id', id);
     if (err) return fail(400, { erro: err.message });
     return { ok: true, msg: 'Quadra concluída em ' + data };
@@ -36,7 +36,7 @@ export const actions: Actions = {
     if (!id) return fail(400, { erro: 'id obrigatório' });
     const { error: err } = await locals.supabase
       .from('quadras')
-      .update({ status: 'pendente', data_conclusao: null })
+      .update({ data_conclusao: null })
       .eq('id', id);
     if (err) return fail(400, { erro: err.message });
     return { ok: true, msg: 'Conclusão desfeita' };

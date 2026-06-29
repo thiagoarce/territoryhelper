@@ -110,7 +110,7 @@ export const actions: Actions = {
       const maiorData = max?.[0]?.data_conclusao ?? data;
       await locals.supabase
         .from('quadras')
-        .update({ status: 'concluido', data_conclusao: maiorData })
+        .update({ data_conclusao: maiorData })
         .eq('id', qid);
     }
 
@@ -123,9 +123,9 @@ export const actions: Actions = {
     for (const dId of designacoesIds) {
       const { data: todasLinhas } = await locals.supabase
         .from('designacao_quadras')
-        .select('quadra_id, quadras(status)')
+        .select('quadra_id, quadras(data_conclusao)')
         .eq('designacao_id', dId);
-      const todasConcluidas = (todasLinhas ?? []).every((l: any) => l.quadras?.status === 'concluido');
+      const todasConcluidas = (todasLinhas ?? []).every((l: any) => l.quadras?.data_conclusao != null);
       if (todasConcluidas && (todasLinhas?.length ?? 0) > 0) {
         await locals.supabase.from('designacoes').update({ status: 'concluida' }).eq('id', dId);
       }
@@ -164,7 +164,7 @@ export const actions: Actions = {
       await locals.supabase.from('quadras_conclusoes').delete().eq('id', hist[0].id);
       await locals.supabase
         .from('quadras')
-        .update({ status: 'concluido', data_conclusao: hist[1].data_conclusao })
+        .update({ data_conclusao: hist[1].data_conclusao })
         .eq('id', qid);
       revertidas++;
     }
@@ -187,7 +187,7 @@ export const actions: Actions = {
     await locals.supabase.from('quadras_conclusoes').delete().in('quadra_id', ids);
     const { error } = await locals.supabase
       .from('quadras')
-      .update({ status: 'pendente', data_conclusao: null })
+      .update({ data_conclusao: null })
       .in('id', ids);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `${ids.length} limpa(s) (histórico apagado)` };

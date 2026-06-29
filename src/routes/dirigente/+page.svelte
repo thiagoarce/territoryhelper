@@ -146,16 +146,16 @@
         type="button"
         onclick={() => abrirQuadra(q)}
         class="text-left p-2 rounded-lg border-2 border-transparent hover:border-primary-500 hover:bg-primary-50 transition-colors"
-        class:bg-amber-50={q.status === 'pendente'}
-        class:bg-green-50={q.status === 'concluido'}
-        class:bg-slate-100={q.status === 'inativa'}
+        class:bg-amber-50={q.ativa && !q.data_conclusao}
+        class:bg-green-50={q.ativa && q.data_conclusao}
+        class:bg-slate-100={!q.ativa}
       >
         <div class="flex items-center gap-1 mb-1">
           <span class="inline-block w-3 h-3 rounded" style:background-color={q.color}></span>
           <span class="font-mono font-semibold text-sm">{q.id}</span>
         </div>
         <div class="text-xs text-slate-500 truncate">{q.territorio_nome ?? '—'}</div>
-        {#if q.status === 'concluido' && q.data_conclusao}
+        {#if q.data_conclusao}
           <div class="text-[10px] text-green-600 mt-1">✓ {q.data_conclusao}</div>
         {/if}
       </button>
@@ -235,7 +235,7 @@
         {/if}
       </div>
 
-      {#if quadraSel.status === 'concluido'}
+      {#if quadraSel.data_conclusao}
         <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm">
           ✓ Concluída em <strong>{quadraSel.data_conclusao}</strong>
         </div>

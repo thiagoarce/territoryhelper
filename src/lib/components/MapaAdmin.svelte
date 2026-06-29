@@ -96,12 +96,13 @@
             id: q.id,
             color: q.color,
             status: q.status,
+            ativa: q.ativa,
             territorio_id: q.territorio_id,
             qtd_locais: q.qtd_locais,
             data_conclusao: q.data_conclusao,
             dias_concluido: dias
           }
-        };
+        } as any;
       });
     mapa.getSource('quadras').setData({ type: 'FeatureCollection', features } as any);
 
@@ -122,11 +123,13 @@
     // Default por modo
     let defaultColor: any;
     if (modo === 'status') {
+      // ativa=false → cinza (inativa)
+      // tem data_conclusao → verde (concluída)
+      // ativa=true e sem data → âmbar (pendente)
       defaultColor = [
-        'match',
-        ['get', 'status'],
-        'concluido', 'rgba(34,197,94,0.5)',
-        'inativa', 'rgba(148,163,184,0.25)',
+        'case',
+        ['==', ['get', 'ativa'], false], 'rgba(148,163,184,0.25)',
+        ['!=', ['get', 'data_conclusao'], null], 'rgba(34,197,94,0.5)',
         'rgba(245,158,11,0.5)'
       ];
     } else if (modo === 'territorio') {
@@ -201,8 +204,10 @@
               id: q.id,
               color: q.color,
               status: q.status,
+              ativa: q.ativa,
               territorio_id: q.territorio_id,
               qtd_locais: q.qtd_locais,
+              data_conclusao: q.data_conclusao,
               dias_concluido: dias
             }
           };

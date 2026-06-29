@@ -57,7 +57,7 @@ export async function listarQuadrasComContagem(
   const [quadrasRes, locaisPorQuadra] = await Promise.all([
     supabase
       .from('quadras')
-      .select('id, color, territorio_id, status, data_conclusao, notas, criado_em, atualizado_em, territorios(nome)')
+      .select('id, color, territorio_id, status, ativa, data_conclusao, notas, criado_em, atualizado_em, territorios(nome)')
       .order('id'),
     contarLocaisPorQuadra(supabase)
   ]);
@@ -84,7 +84,7 @@ export async function listarQuadrasComGeo(
   const [qRes, locaisPorQuadra, terrRes] = await Promise.all([
     supabase
       .from('quadras_geo')
-      .select('id, color, territorio_id, status, data_conclusao, notas, poly_geojson')
+      .select('id, color, territorio_id, status, ativa, data_conclusao, notas, poly_geojson')
       .order('id'),
     contarLocaisPorQuadra(supabase),
     supabase.from('territorios').select('id, nome')
