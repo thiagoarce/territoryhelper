@@ -333,7 +333,7 @@
         if (pressStart && Date.now() - pressStart > 500) return; // long-press handled
         const props = e.features?.[0]?.properties;
         if (!props) return;
-        const q = quadras.find((x) => x.id === props.id);
+        const q = (quadras ?? []).find((x) => x.id === props.id);
         if (!q) return;
         // Mostra popup persistente (com X pra fechar) — útil em mobile sem hover
         mostrarPopup(q, e.lngLat, true);
@@ -404,7 +404,7 @@
         if (popupClicado) return; // não substitui popup pinado por click
         const props = e.features?.[0]?.properties;
         if (!props) return;
-        const q = quadras.find((x) => x.id === props.id);
+        const q = (quadras ?? []).find((x) => x.id === props.id);
         if (q) mostrarPopup(q, e.lngLat, false);
       });
       // Mousemove dentro da camada — troca o conteúdo quando o cursor passa
@@ -415,7 +415,7 @@
         if (!props) return;
         if (props.id !== popupQuadraId) {
           // Mudou de quadra → atualiza HTML
-          const q = quadras.find((x) => x.id === props.id);
+          const q = (quadras ?? []).find((x) => x.id === props.id);
           if (q && popup) {
             popup.setHTML(buildPopupHtml(q));
             popupQuadraId = q.id;
