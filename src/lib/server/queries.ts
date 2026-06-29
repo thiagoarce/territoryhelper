@@ -262,37 +262,41 @@ export async function carregarQuadraComLocais(
   supabase: SupabaseClient,
   quadraId: string
 ): Promise<DadosQuadraTrabalho | null> {
-  // Em paralelo: quadra com geo (via view quadras_geo) + locais com geo +
-  // profiles pra resolver nomes em registros.
-  // Note: NÃO fazemos embedded join 'territorios(nome)' em quadras_geo —
-  // PostgREST não infere FK de views. Carregamos territorio separado.
-  const [qRes, locRes, profRes, terrRes] = await Promise.all([
+  // Pega quadra do BASE table (sem view) — mais resiliente.
+  // Geo + locais via views (graceful degradation se views não existirem).
+  const [qBase, profRes, terrRes] = await Promise.all([
     supabase
-      .from('quadras_geo')
-      .select('id, color, territorio_id, status, poly_geojson')
+      .from('quadras')
+      .select('id, color, territorio_id, status')
       .eq('id', quadraId)
       .maybeSingle(),
-    supabase
-      .from('locais_geo')
-      .select('*')
-      .eq('quadra_id', quadraId)
-      .order('id'),
     supabase.from('profiles').select('id, nome'),
     supabase.from('territorios').select('id, nome')
   ]);
 
-  if (qRes.error) throw qRes.error;
-  if (!qRes.data) return null;
-  if (locRes.error) throw locRes.error;
+  if (qBase.error) throw qBase.error;
+  if (!qBase.data) return null;
   if (profRes.error) throw profRes.error;
   if (terrRes.error) throw terrRes.error;
+
+  // Geo + locais (views) — falha silenciosa retorna sem mapa
+  const [geoRes, locRes] = await Promise.all([
+    supabase.from('quadras_geo').select('poly_geojson').eq('id', quadraId).maybeSingle(),
+    supabase.from('locais_geo').select('*').eq('quadra_id', quadraId).order('id')
+  ]);
+  if (geoRes.error) console.warn('[quadras_geo] erro:', geoRes.error.message);
+  if (locRes.error) console.warn('[locais_geo] erro:', locRes.error.message);
 
   const territorioNomePorId = new Map((terrRes.data ?? []).map((t) => [t.id, t.nome]));
 
   const locais = (locRes.data ?? []) as Local[];
   if (locais.length === 0) {
     return {
-      quadra: { ...(qRes.data as any), territorio_nome: (qRes.data as any).territorios?.nome ?? null },
+      quadra: {
+        ...(qBase.data as any),
+        poly_geojson: geoRes.data?.poly_geojson ?? null,
+        territorio_nome: qBase.data.territorio_id ? territorioNomePorId.get(qBase.data.territorio_id) ?? null : null
+      },
       locais: []
     };
   }
@@ -356,11 +360,11 @@ export async function carregarQuadraComLocais(
     return fa - fb;
   });
 
-  const q: any = qRes.data;
   return {
     quadra: {
-      ...q,
-      territorio_nome: q.territorio_id ? territorioNomePorId.get(q.territorio_id) ?? null : null
+      ...(qBase.data as any),
+      poly_geojson: geoRes.data?.poly_geojson ?? null,
+      territorio_nome: qBase.data.territorio_id ? territorioNomePorId.get(qBase.data.territorio_id) ?? null : null
     },
     locais: locaisEnriquecidos
   };
