@@ -9,12 +9,27 @@
   let { data, form }: { data: { predios: PredioListado[] }; form: any } = $props();
 
   let busca = $state('');
+  let filtroTipo = $state<'todos' | 'residencial' | 'comercial'>('todos');
+  let filtroPortaria = $state<'todos' | 'porteiro' | 'eletronica' | 'sem' | 'sem_info'>('todos');
   let soComIrmao = $state(false);
-  let mostrarNaoEhPredio = $state(false);
+  let soComCaixas = $state(false);
+  let soComInterfone = $state(false);
+  let mostrarFiltros = $state(false);
 
   const filtrados = $derived(
     data.predios.filter((p) => {
+      if (filtroTipo === 'residencial' && p.tipo !== 'predio') return false;
+      if (filtroTipo === 'comercial' && p.tipo !== 'comercio') return false;
+
+      if (filtroPortaria !== 'todos') {
+        if (filtroPortaria === 'sem_info' && p.tipo_entrada != null) return false;
+        else if (filtroPortaria !== 'sem_info' && p.tipo_entrada !== filtroPortaria) return false;
+      }
+
       if (soComIrmao && !p.irmao_mora) return false;
+      if (soComCaixas && !p.acesso_caixas) return false;
+      if (soComInterfone && !p.acesso_interfones) return false;
+
       if (busca.trim()) {
         const b = busca.toLowerCase();
         if (!((p.nome || '').toLowerCase().includes(b) ||
@@ -23,6 +38,28 @@
       }
       return true;
     })
+  );
+
+  const stats = $derived.by(() => ({
+    residencial: data.predios.filter((p) => p.tipo === 'predio').length,
+    comercial: data.predios.filter((p) => p.tipo === 'comercio').length,
+    comIrmao: data.predios.filter((p) => p.irmao_mora).length
+  }));
+
+  function limparFiltros() {
+    filtroTipo = 'todos';
+    filtroPortaria = 'todos';
+    soComIrmao = false;
+    soComCaixas = false;
+    soComInterfone = false;
+  }
+
+  const filtrosAtivos = $derived(
+    (filtroTipo !== 'todos' ? 1 : 0) +
+    (filtroPortaria !== 'todos' ? 1 : 0) +
+    (soComIrmao ? 1 : 0) +
+    (soComCaixas ? 1 : 0) +
+    (soComInterfone ? 1 : 0)
   );
 
   // Modal de editar
@@ -89,7 +126,9 @@
 <div class="p-4 space-y-3">
   <div>
     <h1 class="text-2xl font-bold">Prédios — Cartas</h1>
-    <p class="text-sm text-slate-500">{data.predios.length} prédio(s) detectado(s)</p>
+    <p class="text-sm text-slate-500">
+      {filtrados.length} de {data.predios.length} · 🏢 {stats.residencial} residenciais · 🏪 {stats.comercial} comerciais
+    </p>
   </div>
 
   <input
@@ -99,16 +138,68 @@
     class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
   />
 
-  <div class="flex gap-4 text-sm flex-wrap">
-    <label class="flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" bind:checked={soComIrmao} class="w-4 h-4 rounded" />
-      Só com irmão
-    </label>
-    <label class="flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" bind:checked={mostrarNaoEhPredio} class="w-4 h-4 rounded" />
-      Mostrar "não é prédio"
-    </label>
+  <!-- Tabs de tipo -->
+  <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5">
+    {#each [['todos', `Todos (${data.predios.length})`], ['residencial', `🏢 Residencial (${stats.residencial})`], ['comercial', `🏪 Comercial (${stats.comercial})`]] as [k, l]}
+      <button
+        onclick={() => (filtroTipo = k as any)}
+        class="flex-1 px-2 py-1.5 text-xs sm:text-sm rounded transition-colors"
+        class:bg-white={filtroTipo === k}
+        class:font-medium={filtroTipo === k}
+        class:shadow-sm={filtroTipo === k}
+        class:text-slate-500={filtroTipo !== k}
+      >{l}</button>
+    {/each}
   </div>
+
+  <!-- Botão de filtros avançados (mostra contador se ativos) -->
+  <div class="flex items-center gap-2">
+    <button
+      onclick={() => (mostrarFiltros = !mostrarFiltros)}
+      class="text-sm px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 flex items-center gap-1.5"
+    >
+      ⚙ Filtros{#if filtrosAtivos > 0}<span class="bg-primary-600 text-white text-[10px] px-1.5 rounded-full">{filtrosAtivos}</span>{/if}
+    </button>
+    {#if filtrosAtivos > 0}
+      <button onclick={limparFiltros} class="text-xs text-slate-500 hover:underline">Limpar filtros</button>
+    {/if}
+  </div>
+
+  {#if mostrarFiltros}
+    <div class="rounded-lg border border-slate-200 p-3 space-y-2 bg-slate-50">
+      <div>
+        <span class="block text-xs font-medium text-slate-600 mb-1">Portaria</span>
+        <div class="flex gap-1 flex-wrap">
+          {#each [['todos', 'Todos'], ['porteiro', '👮 Porteiro'], ['eletronica', '🔘 Eletrônica'], ['sem', '🚪 Sem'], ['sem_info', 'Sem info']] as [k, l]}
+            <button
+              onclick={() => (filtroPortaria = k as any)}
+              class="text-xs px-2 py-1 rounded border"
+              class:bg-primary-100={filtroPortaria === k}
+              class:border-primary-500={filtroPortaria === k}
+              class:text-primary-700={filtroPortaria === k}
+              class:border-slate-300={filtroPortaria !== k}
+              class:bg-white={filtroPortaria !== k}
+            >{l}</button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <label class="flex items-center gap-2 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg">
+          <input type="checkbox" bind:checked={soComIrmao} class="w-4 h-4 rounded" />
+          <span class="text-sm">👤 Só com irmão</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg">
+          <input type="checkbox" bind:checked={soComCaixas} class="w-4 h-4 rounded" />
+          <span class="text-sm">📬 Só com caixas</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg">
+          <input type="checkbox" bind:checked={soComInterfone} class="w-4 h-4 rounded" />
+          <span class="text-sm">📞 Só com interfone</span>
+        </label>
+      </div>
+    </div>
+  {/if}
 
   <div class="space-y-2">
     {#each filtrados as p (p.id)}
@@ -119,11 +210,12 @@
           class="flex-1 text-left min-w-0"
         >
           <div class="font-semibold truncate flex items-center gap-1.5">
+            <span title={p.tipo === 'comercio' ? 'Comercial' : 'Residencial'}>{p.tipo === 'comercio' ? '🏪' : '🏢'}</span>
             {p.nome || `${p.logradouro}, ${p.numero}`}
             {#if p.irmao_mora}<span title="Irmão mora">👤</span>{/if}
           </div>
           <div class="text-xs text-slate-500 truncate mt-0.5">
-            {p.logradouro}, {p.numero} · {p.qtd_aptos} apto(s)
+            {p.logradouro}, {p.numero} · {p.qtd_aptos} {p.tipo === 'comercio' ? 'unidade' : 'apto'}(s)
             {#if p.quadra_id}· Q{p.quadra_id}{/if}
           </div>
           <div class="mt-2 flex gap-1 flex-wrap">

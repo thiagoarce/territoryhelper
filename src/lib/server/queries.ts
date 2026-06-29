@@ -179,6 +179,7 @@ export async function calcularCoberturaPorQuadra(
 // Usado pelas telas de Cartas.
 export interface PredioListado {
   id: number;
+  tipo: string;
   logradouro: string;
   numero: string;
   nome: string | null;
@@ -200,8 +201,8 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
     selectAll<any>(
       supabase
         .from('locais')
-        .select('id, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora, nao_eh_predio')
-        .eq('tipo', 'predio')
+        .select('id, tipo, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora, nao_eh_predio')
+        .in('tipo', ['predio', 'comercio'])
         .eq('nao_eh_predio', false)
         .order('logradouro')
     ),
