@@ -86,6 +86,10 @@
       </Card>
     </a>
   {:else}
-    <div class="col-span-full text-center text-slate-400 py-10">Nenhum prédio bate.</div>
+    <div class="col-span-full flex flex-col items-center text-center py-10 px-4">
+      <div class="text-5xl mb-3 opacity-60">🏢</div>
+      <div class="text-base font-medium text-slate-700">Nenhum prédio bate</div>
+      <div class="text-sm text-slate-500 mt-1">Limpe os filtros pra ver mais.</div>
+    </div>
   {/each}
 </div>
