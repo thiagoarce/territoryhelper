@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/server/queries';
+  import QuadraMap from '$lib/components/QuadraMap.svelte';
 
   let { data }: { data: DadosQuadraTrabalho } = $props();
 
@@ -82,6 +83,16 @@
   </div>
 </div>
 
+<!-- Mapa -->
+<div class="mt-4">
+  <QuadraMap
+    quadraGeo={data.quadra.poly_geojson}
+    quadraColor={data.quadra.color}
+    locais={data.locais}
+    altura={240}
+  />
+</div>
+
 <!-- Filtros -->
 <div class="mt-4 flex gap-2">
   {#each [['todos', 'Todos'], ['pendentes', 'Pendentes'], ['feitos', 'Feitos']] as [k, label]}
@@ -112,7 +123,7 @@
           {#each visiveis as l (l.id)}
             {@const ehPredio = l.tipo === 'predio' && l.unidades.length >= 2}
             {@const visUnidades = l.unidades.filter(passaFiltro)}
-            <div class="rounded-lg border border-slate-200 bg-white">
+            <div id="local-{l.id}" class="rounded-lg border border-slate-200 bg-white transition-all">
               {#if ehPredio}
                 <!-- Header clicável do prédio -->
                 <button

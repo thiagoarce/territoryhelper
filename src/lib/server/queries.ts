@@ -120,7 +120,10 @@ export interface LocalComUnidades extends Local {
 }
 
 export interface DadosQuadraTrabalho {
-  quadra: Pick<Quadra, 'id' | 'color' | 'territorio_id' | 'status'> & { territorio_nome: string | null };
+  quadra: Pick<Quadra, 'id' | 'color' | 'territorio_id' | 'status'> & {
+    territorio_nome: string | null;
+    poly_geojson: unknown | null;
+  };
   locais: LocalComUnidades[];
 }
 
@@ -128,16 +131,16 @@ export async function carregarQuadraComLocais(
   supabase: SupabaseClient,
   quadraId: string
 ): Promise<DadosQuadraTrabalho | null> {
-  // Em paralelo: quadra (com territorio) + locais (com FK quadra) + unidades.
-  // Registros: pegamos os MAIS RECENTES por unidade (limitado, depois reduce client-side).
+  // Em paralelo: quadra com geo (via view quadras_geo) + locais com geo +
+  // profiles pra resolver nomes em registros.
   const [qRes, locRes, profRes] = await Promise.all([
     supabase
-      .from('quadras')
-      .select('id, color, territorio_id, status, territorios(nome)')
+      .from('quadras_geo')
+      .select('id, color, territorio_id, status, poly_geojson, territorios(nome)')
       .eq('id', quadraId)
       .maybeSingle(),
     supabase
-      .from('locais')
+      .from('locais_geo')
       .select('*')
       .eq('quadra_id', quadraId)
       .order('id'),
