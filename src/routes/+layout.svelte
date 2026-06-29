@@ -11,10 +11,12 @@
 
   type Link = { href: string; label: string; icon: string; roles: string[]; group?: 'main' | 'tools' };
   const links: Link[] = [
-    { href: '/admin', label: 'Painel', icon: '⌂', roles: ['admin'], group: 'main' },
+    { href: '/admin', label: 'Visão geral', icon: '◴', roles: ['admin'], group: 'main' },
     { href: '/admin/quadras', label: 'Quadras', icon: '▦', roles: ['admin'], group: 'main' },
-    { href: '/admin/designacoes', label: 'Designações', icon: '✎', roles: ['admin'], group: 'main' },
-    { href: '/admin/usuarios', label: 'Usuários', icon: '◉', roles: ['admin'], group: 'main' },
+    { href: '/admin/designacoes', label: 'Designar', icon: '✎', roles: ['admin'], group: 'main' },
+    { href: '/admin/cartas', label: 'Cartas', icon: '✉', roles: ['admin'], group: 'main' },
+    { href: '/admin/campanha', label: 'Campanha', icon: '★', roles: ['admin'], group: 'main' },
+    { href: '/admin/usuarios', label: 'Usuários', icon: '◉', roles: ['admin'], group: 'tools' },
     { href: '/dirigente', label: 'Dirigente', icon: '◈', roles: ['admin', 'dirigente'], group: 'main' },
     { href: '/publicador', label: 'Trabalhar', icon: '◎', roles: ['admin', 'dirigente', 'publicador'], group: 'main' },
     { href: '/admin/dev/sql', label: 'SQL (dev)', icon: '⚙', roles: ['admin'], group: 'tools' }

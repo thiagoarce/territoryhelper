@@ -43,6 +43,137 @@ export async function listarQuadrasComContagem(
   })) as QuadraEnriquecida[];
 }
 
+// Mesma forma das quadras enriquecidas mas COM poly_geojson (pesado — só pra mapa)
+export interface QuadraGeo extends QuadraEnriquecida {
+  poly_geojson: unknown | null;
+}
+
+export async function listarQuadrasComGeo(
+  supabase: SupabaseClient
+): Promise<QuadraGeo[]> {
+  const [qRes, locRes, terrRes] = await Promise.all([
+    supabase
+      .from('quadras_geo')
+      .select('id, color, territorio_id, status, data_conclusao, notas, poly_geojson')
+      .order('id'),
+    supabase.from('locais').select('id, quadra_id'),
+    supabase.from('territorios').select('id, nome')
+  ]);
+  if (qRes.error) throw qRes.error;
+  if (locRes.error) throw locRes.error;
+  if (terrRes.error) throw terrRes.error;
+
+  const locaisPorQuadra = new Map<string, number>();
+  for (const l of locRes.data ?? []) {
+    if (!l.quadra_id) continue;
+    locaisPorQuadra.set(l.quadra_id, (locaisPorQuadra.get(l.quadra_id) ?? 0) + 1);
+  }
+  const territorioNomePorId = new Map((terrRes.data ?? []).map((t) => [t.id, t.nome]));
+  return (qRes.data ?? []).map((q: any) => ({
+    ...q,
+    poly: null,
+    territorio_nome: q.territorio_id ? territorioNomePorId.get(q.territorio_id) ?? null : null,
+    qtd_locais: locaisPorQuadra.get(q.id) ?? 0,
+    qtd_unidades: 0
+  })) as QuadraGeo[];
+}
+
+// Lista de prédios (locais tipo='predio') com contagens.
+// Usado pelas telas de Cartas.
+export interface PredioListado {
+  id: number;
+  logradouro: string;
+  numero: string;
+  nome: string | null;
+  quadra_id: string | null;
+  tipo_entrada: string | null;
+  acesso_caixas: boolean;
+  acesso_interfones: boolean;
+  irmao_mora: boolean;
+  qtd_aptos: number;
+  qtd_carta_entregue: number;
+  qtd_desocupado: number;
+  qtd_nao_escrever: number;
+}
+
+export async function listarPredios(supabase: SupabaseClient): Promise<PredioListado[]> {
+  const [predRes, uniRes] = await Promise.all([
+    supabase
+      .from('locais')
+      .select('id, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora')
+      .eq('tipo', 'predio')
+      .order('logradouro'),
+    supabase
+      .from('unidades')
+      .select('local_id, carta_entregue, desocupado, nao_escrever')
+  ]);
+  if (predRes.error) throw predRes.error;
+  if (uniRes.error) throw uniRes.error;
+
+  type Counts = { qtd: number; carta: number; desoc: number; naoescr: number };
+  const porLocal = new Map<number, Counts>();
+  for (const u of uniRes.data ?? []) {
+    const c = porLocal.get(u.local_id) ?? { qtd: 0, carta: 0, desoc: 0, naoescr: 0 };
+    c.qtd++;
+    if (u.carta_entregue) c.carta++;
+    if (u.desocupado) c.desoc++;
+    if (u.nao_escrever) c.naoescr++;
+    porLocal.set(u.local_id, c);
+  }
+  return (predRes.data ?? []).map((p: any) => {
+    const c = porLocal.get(p.id) ?? { qtd: 0, carta: 0, desoc: 0, naoescr: 0 };
+    return {
+      ...p,
+      qtd_aptos: c.qtd,
+      qtd_carta_entregue: c.carta,
+      qtd_desocupado: c.desoc,
+      qtd_nao_escrever: c.naoescr
+    } as PredioListado;
+  });
+}
+
+export interface PredioDetalhado extends PredioListado {
+  nome_irmao: string | null;
+  notas: string | null;
+  geo_geojson: unknown | null;
+  unidades: Unidade[];
+}
+
+export async function carregarPredioDetalhado(
+  supabase: SupabaseClient,
+  predioId: number
+): Promise<PredioDetalhado | null> {
+  const [pRes, uRes] = await Promise.all([
+    supabase
+      .from('locais_geo')
+      .select('*')
+      .eq('id', predioId)
+      .eq('tipo', 'predio')
+      .maybeSingle(),
+    supabase
+      .from('unidades')
+      .select('*')
+      .eq('local_id', predioId)
+      .order('ordem', { ascending: true, nullsFirst: false })
+      .order('complemento')
+  ]);
+  if (pRes.error) throw pRes.error;
+  if (!pRes.data) return null;
+  if (uRes.error) throw uRes.error;
+  const p = pRes.data as any;
+  const unidades = (uRes.data ?? []) as Unidade[];
+  const stats = unidades.reduce(
+    (acc, u) => ({
+      qtd_aptos: acc.qtd_aptos + 1,
+      qtd_carta_entregue: acc.qtd_carta_entregue + (u.carta_entregue ? 1 : 0),
+      qtd_desocupado: acc.qtd_desocupado + (u.desocupado ? 1 : 0),
+      qtd_nao_escrever: acc.qtd_nao_escrever + (u.nao_escrever ? 1 : 0)
+    }),
+    { qtd_aptos: 0, qtd_carta_entregue: 0, qtd_desocupado: 0, qtd_nao_escrever: 0 }
+  );
+  return { ...p, ...stats, unidades } as PredioDetalhado;
+}
+
 export async function listarTerritorios(supabase: SupabaseClient): Promise<Territorio[]> {
   const { data, error } = await supabase
     .from('territorios')
@@ -133,10 +264,12 @@ export async function carregarQuadraComLocais(
 ): Promise<DadosQuadraTrabalho | null> {
   // Em paralelo: quadra com geo (via view quadras_geo) + locais com geo +
   // profiles pra resolver nomes em registros.
-  const [qRes, locRes, profRes] = await Promise.all([
+  // Note: NÃO fazemos embedded join 'territorios(nome)' em quadras_geo —
+  // PostgREST não infere FK de views. Carregamos territorio separado.
+  const [qRes, locRes, profRes, terrRes] = await Promise.all([
     supabase
       .from('quadras_geo')
-      .select('id, color, territorio_id, status, poly_geojson, territorios(nome)')
+      .select('id, color, territorio_id, status, poly_geojson')
       .eq('id', quadraId)
       .maybeSingle(),
     supabase
@@ -144,13 +277,17 @@ export async function carregarQuadraComLocais(
       .select('*')
       .eq('quadra_id', quadraId)
       .order('id'),
-    supabase.from('profiles').select('id, nome')
+    supabase.from('profiles').select('id, nome'),
+    supabase.from('territorios').select('id, nome')
   ]);
 
   if (qRes.error) throw qRes.error;
   if (!qRes.data) return null;
   if (locRes.error) throw locRes.error;
   if (profRes.error) throw profRes.error;
+  if (terrRes.error) throw terrRes.error;
+
+  const territorioNomePorId = new Map((terrRes.data ?? []).map((t) => [t.id, t.nome]));
 
   const locais = (locRes.data ?? []) as Local[];
   if (locais.length === 0) {
@@ -219,10 +356,11 @@ export async function carregarQuadraComLocais(
     return fa - fb;
   });
 
+  const q: any = qRes.data;
   return {
     quadra: {
-      ...(qRes.data as any),
-      territorio_nome: (qRes.data as any).territorios?.nome ?? null
+      ...q,
+      territorio_nome: q.territorio_id ? territorioNomePorId.get(q.territorio_id) ?? null : null
     },
     locais: locaisEnriquecidos
   };
