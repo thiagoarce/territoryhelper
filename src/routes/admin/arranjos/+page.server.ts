@@ -44,47 +44,58 @@ export interface PredioLite {
   nome_estabelecimento: string | null;
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { modalidades: [], arranjos: [], dirigentes: [], quadrasIds: [], predios: [] };
+async function safe<T>(label: string, p: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await p;
+  } catch (e) {
+    console.error(`[arranjos load] ${label} falhou:`, (e as any)?.message ?? e);
+    return fallback;
+  }
+}
 
-  const [modalidades, arranjos, { data: dirigentes }, { data: quadrasRaw }, predios] = await Promise.all([
-    selectAll<Modalidade>(
-      locals.supabase
-        .from('arranjo_modalidades')
-        .select('*')
-        .order('ordem')
-        .order('nome')
-    ),
-    selectAll<Arranjo>(
+export const load: PageServerLoad = async ({ locals }) => {
+  if (!locals.user) return { modalidades: [], arranjos: [], dirigentes: [], quadrasIds: [], predios: [], loadErro: null };
+
+  const [modalidades, arranjos, dirigRes, quadrasRes, predios] = await Promise.all([
+    safe('modalidades', selectAll<Modalidade>(
+      locals.supabase.from('arranjo_modalidades').select('*').order('ordem').order('nome')
+    ), [] as Modalidade[]),
+    safe('arranjos', selectAll<Arranjo>(
       locals.supabase
         .from('arranjos')
         .select('*')
         .order('dia_semana', { nullsFirst: false })
         .order('hora_inicio', { nullsFirst: false })
-    ),
-    locals.supabase
+        .order('id')
+    ), [] as Arranjo[]),
+    safe('dirigentes', locals.supabase
       .from('profiles')
       .select('id, nome')
       .in('role', ['dirigente', 'admin'])
       .eq('ativo', true)
       .order('nome'),
-    locals.supabase.from('quadras').select('id').eq('ativa', true).order('id'),
-    selectAll<PredioLite>(
+      { data: [] as { id: string; nome: string }[], error: null } as any
+    ),
+    safe('quadras', locals.supabase.from('quadras').select('id').eq('ativa', true).order('id'),
+      { data: [] as { id: string }[], error: null } as any),
+    safe('predios', selectAll<PredioLite>(
       locals.supabase
         .from('locais')
         .select('id, logradouro, numero, nome_estabelecimento')
         .eq('tipo', 'predio')
         .order('logradouro')
         .order('numero')
-    )
+        .order('id')
+    ), [] as PredioLite[])
   ]);
 
   return {
     modalidades,
     arranjos,
-    dirigentes: dirigentes ?? [],
-    quadrasIds: (quadrasRaw ?? []).map((q: any) => q.id as string),
-    predios
+    dirigentes: dirigRes?.data ?? [],
+    quadrasIds: (quadrasRes?.data ?? []).map((q: any) => q.id as string),
+    predios,
+    loadErro: null as string | null
   };
 };
 
