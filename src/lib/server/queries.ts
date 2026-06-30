@@ -14,6 +14,10 @@ const PAGE = 1000;
 export async function selectAll<T = unknown>(
   query: any
 ): Promise<T[]> {
+  // CUIDADO: paginação por offset SEM ordem 100% estável pode duplicar/pular
+  // linhas (ex: .order('logradouro') sozinho — ties geram ordens diferentes
+  // por página). Quem chama deve usar .order(...).order('id') quando possível.
+  // Como safety net, dedupamos por 'id' se existir.
   const out: T[] = [];
   let offset = 0;
   while (true) {
@@ -23,6 +27,15 @@ export async function selectAll<T = unknown>(
     out.push(...data);
     if (data.length < PAGE) break;
     offset += PAGE;
+  }
+  if (out.length > 0 && typeof (out[0] as any)?.id !== 'undefined') {
+    const seen = new Set<unknown>();
+    return out.filter((r) => {
+      const id = (r as any).id;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   }
   return out;
 }
