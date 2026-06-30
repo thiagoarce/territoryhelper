@@ -124,14 +124,21 @@
     // Default por modo
     let defaultColor: any;
     if (modo === 'status') {
-      // ativa=false → cinza (inativa); concluida → verde; pendente → âmbar.
-      // Usa booleano 'concluida' (calculado no JS) em vez de comparar
-      // data_conclusao com null no MapLibre (comparação null é frágil).
+      // Status real = ativa/inativa. Pra "feita ou não", usa a RECÊNCIA da
+      // conclusão (igual ao Registro): nunca = âmbar (a fazer), feita há pouco
+      // = verde, há muito = vermelho. Inativa = cinza escuro distinto.
       defaultColor = [
         'case',
-        ['!', ['get', 'ativa']], 'rgba(148,163,184,0.25)',
-        ['get', 'concluida'], 'rgba(34,197,94,0.5)',
-        'rgba(245,158,11,0.5)'
+        ['!', ['get', 'ativa']], 'rgba(100,116,139,0.4)',
+        ['<', ['get', 'dias_concluido'], 0], 'rgba(245,158,11,0.45)',
+        [
+          'interpolate', ['linear'], ['get', 'dias_concluido'],
+          0, 'rgba(34,197,94,0.55)',
+          15, 'rgba(132,204,22,0.55)',
+          30, 'rgba(250,204,21,0.55)',
+          60, 'rgba(249,115,22,0.55)',
+          90, 'rgba(220,38,38,0.6)'
+        ]
       ];
     } else if (modo === 'territorio') {
       defaultColor = ['get', 'color'];

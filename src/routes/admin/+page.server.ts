@@ -28,16 +28,44 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
+  // TCEs (criados em Polígonos; designados aqui no Visão Geral)
+  const { data: tceRows } = await locals.supabase
+    .from('tces')
+    .select('id, nome, tipo, status, prazo, publicador_id')
+    .in('status', ['aberto'])
+    .order('nome');
+  const nomePub = new Map(publicadores.map((p) => [p.id, p.nome]));
+  const tces = (tceRows ?? []).map((t: any) => ({
+    id: t.id, nome: t.nome, tipo: t.tipo, status: t.status, prazo: t.prazo,
+    publicador_id: t.publicador_id,
+    publicador_nome: t.publicador_id ? (nomePub.get(t.publicador_id) ?? null) : null
+  }));
+
   return {
     quadras,
     designacoesAbertas: abertas,
     publicadores,
     quadrasAlocadas: [...quadrasAlocadas],
-    participantesPorDesignacao
+    participantesPorDesignacao,
+    tces
   };
 };
 
 export const actions: Actions = {
+  // Designa um TCE a um publicador/dirigente com prazo (mesmo lugar das designações)
+  atribuirTce: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const publicadorId = String(fd.get('publicador_id') ?? '').trim() || null;
+    const prazo = String(fd.get('prazo') ?? '').trim() || null;
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('tces').update({ publicador_id: publicadorId, prazo, status: 'aberto' }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: publicadorId ? 'TCE designado' : 'Designação removida' };
+  },
+
   // Admin designa direto da Geral. Dois tipos:
   // - 'pessoal' (default): território pessoal pra UM publicador trabalhar
   // - 'arranjo': delega pra um DIRIGENTE coordenar uma saída em grupo

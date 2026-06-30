@@ -292,20 +292,6 @@ export const actions: Actions = {
     return { ok: true, msg: `TCE "${nome}" criado (${localIds.length} endereço(s))`, id: data };
   },
 
-  // Designa um TCE a um publicador/dirigente com prazo
-  atribuirTce: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    const fd = await request.formData();
-    const id = String(fd.get('id') ?? '');
-    const publicadorId = String(fd.get('publicador_id') ?? '').trim() || null;
-    const prazo = String(fd.get('prazo') ?? '').trim() || null;
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase
-      .from('tces').update({ publicador_id: publicadorId, prazo, status: 'aberto' }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: publicadorId ? 'TCE designado' : 'Designação removida' };
-  },
-
   alterarStatusTce: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
