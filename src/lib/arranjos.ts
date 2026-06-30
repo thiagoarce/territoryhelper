@@ -46,29 +46,46 @@ export function semanaAtual() {
 
 export function ocorrenciasDaSemana<A extends ArranjoBase>(arranjos: A[]): Ocorrencia<A>[] {
   const sem = semanaAtual();
+  return ocorrenciasEntre(arranjos, sem.isoIni, sem.isoFim);
+}
+
+// Expande ocorrências entre dataIni e dataFim (ISO yyyy-mm-dd, inclusive).
+// Recorrentes geram 1 ocorrência por semana no dia_semana dentro do range.
+// Pontuais entram se a data cair no range.
+export function ocorrenciasEntre<A extends ArranjoBase>(
+  arranjos: A[],
+  isoIni: string,
+  isoFim: string
+): Ocorrencia<A>[] {
   const out: Ocorrencia<A>[] = [];
+  const ini = new Date(isoIni + 'T12:00:00');
+  const fim = new Date(isoFim + 'T12:00:00');
+
   for (const a of arranjos) {
     if (!a.ativo) continue;
     if (a.recorrente) {
       if (a.dia_semana === null || a.dia_semana === undefined) continue;
-      if (a.data_inicio && a.data_inicio > sem.isoFim) continue;
-      if (a.data_fim && a.data_fim < sem.isoIni) continue;
-      const d = new Date(sem.ini);
-      const diffDias = (a.dia_semana - 1 + 7) % 7;
-      d.setDate(sem.ini.getDate() + diffDias);
-      const dIso = d.toISOString().slice(0, 10);
-      if (a.data_inicio && dIso < a.data_inicio) continue;
-      if (a.data_fim && dIso > a.data_fim) continue;
-      out.push({ arranjo: a, data: dIso, dia_semana: a.dia_semana });
-    } else if (a.data && a.data >= sem.isoIni && a.data <= sem.isoFim) {
+      if (a.data_inicio && a.data_inicio > isoFim) continue;
+      if (a.data_fim && a.data_fim < isoIni) continue;
+      // Acha primeiro dia da semana >= ini com o dia_semana certo
+      const d = new Date(ini);
+      while (d.getDay() !== a.dia_semana && d <= fim) {
+        d.setDate(d.getDate() + 1);
+      }
+      while (d <= fim) {
+        const dIso = d.toISOString().slice(0, 10);
+        if ((!a.data_inicio || dIso >= a.data_inicio) && (!a.data_fim || dIso <= a.data_fim)) {
+          out.push({ arranjo: a, data: dIso, dia_semana: a.dia_semana });
+        }
+        d.setDate(d.getDate() + 7);
+      }
+    } else if (a.data && a.data >= isoIni && a.data <= isoFim) {
       const d = new Date(a.data + 'T12:00:00');
       out.push({ arranjo: a, data: a.data, dia_semana: d.getDay() });
     }
   }
   return out.sort((x, y) => {
-    const dx = (x.dia_semana - 1 + 7) % 7;
-    const dy = (y.dia_semana - 1 + 7) % 7;
-    if (dx !== dy) return dx - dy;
+    if (x.data !== y.data) return x.data < y.data ? -1 : 1;
     return (x.arranjo.hora_inicio ?? '') > (y.arranjo.hora_inicio ?? '') ? 1 : -1;
   });
 }
@@ -77,4 +94,38 @@ export function agruparPorDia<A extends ArranjoBase>(ocs: Ocorrencia<A>[]): Reco
   const m: Record<number, Ocorrencia<A>[]> = {};
   for (const o of ocs) (m[o.dia_semana] ??= []).push(o);
   return m;
+}
+
+// Agrupa ocorrências por chave de dia (yyyy-mm-dd) pra view de mês/ano.
+export function agruparPorData<A extends ArranjoBase>(ocs: Ocorrencia<A>[]): Record<string, Ocorrencia<A>[]> {
+  const m: Record<string, Ocorrencia<A>[]> = {};
+  for (const o of ocs) (m[o.data] ??= []).push(o);
+  return m;
+}
+
+export type Periodo = 'semana' | 'mes' | 'tres_meses' | 'ano';
+
+export function rangeDoPeriodo(p: Periodo): { isoIni: string; isoFim: string; label: string } {
+  const hoje = new Date();
+  hoje.setHours(12, 0, 0, 0);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  if (p === 'semana') {
+    const s = semanaAtual();
+    return { isoIni: s.isoIni, isoFim: s.isoFim, label: 'Esta semana' };
+  }
+  if (p === 'mes') {
+    // Mês corrente: dia 1 → último dia
+    const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1, 12, 0, 0);
+    const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 12, 0, 0);
+    return { isoIni: iso(ini), isoFim: iso(fim), label: 'Este mês' };
+  }
+  if (p === 'tres_meses') {
+    const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1, 12, 0, 0);
+    const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0, 12, 0, 0);
+    return { isoIni: iso(ini), isoFim: iso(fim), label: 'Próximos 3 meses' };
+  }
+  // ano
+  const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1, 12, 0, 0);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 12, 0, 12, 0, 0);
+  return { isoIni: iso(ini), isoFim: iso(fim), label: 'Próximo ano' };
 }

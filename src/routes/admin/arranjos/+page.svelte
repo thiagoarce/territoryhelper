@@ -6,7 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { semanaAtual, ocorrenciasDaSemana, agruparPorDia, DIAS_SEMANA, DIAS_ORDENADOS } from '$lib/arranjos';
+  import { semanaAtual, ocorrenciasEntre, agruparPorData, rangeDoPeriodo, DIAS_SEMANA, DIAS_ORDENADOS, type Periodo } from '$lib/arranjos';
   import type { Modalidade, Arranjo, PredioLite } from './$types';
 
   let { data }: {
@@ -36,9 +36,12 @@
 
   const DIAS = DIAS_SEMANA;
   const diasOrdenados = DIAS_ORDENADOS;
-  const semana = semanaAtual();
-  const ocorrenciasSemana = $derived(ocorrenciasDaSemana(data.arranjos));
-  const ocPorDia = $derived(agruparPorDia(ocorrenciasSemana));
+
+  let periodo = $state<Periodo>('semana');
+  const range = $derived(rangeDoPeriodo(periodo));
+  const ocorrencias = $derived(ocorrenciasEntre(data.arranjos, range.isoIni, range.isoFim));
+  const ocPorData = $derived(agruparPorData(ocorrencias));
+  const datasOrdenadas = $derived(Object.keys(ocPorData).sort());
 
   const modalidadeById = $derived(
     Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const))
@@ -67,18 +70,20 @@
   }
 
   // === Sheet de arranjo ===
-  function abrirNovoArr(modalidade?: Modalidade) {
+  // dataPontual: se passado, cria como NÃO recorrente nesse dia (pra feriado / data específica)
+  function abrirNovoArr(modalidade?: Modalidade, dataPontual?: string) {
     const m = modalidade ?? data.modalidades.find((x) => x.ativo) ?? data.modalidades[0];
     if (!m) {
       toast.error('Crie uma modalidade antes');
       aba = 'modalidades';
       return;
     }
+    const pontual = !!dataPontual;
     arrEditando = {
       modalidade_id: m.id,
-      recorrente: m.tipo_territorio !== 'arquivo', // arquivos costumam ser pontuais
-      dia_semana: m.default_dia_semana,
-      data: null,
+      recorrente: pontual ? false : m.tipo_territorio !== 'arquivo',
+      dia_semana: pontual ? null : m.default_dia_semana,
+      data: pontual ? dataPontual! : null,
       hora_inicio: m.default_hora,
       hora_fim: null,
       local_endereco: m.default_local,
@@ -176,7 +181,7 @@
       class:text-primary-700={aba === 'semana'}
       class:border-transparent={aba !== 'semana'}
       class:text-slate-500={aba !== 'semana'}
-    >Semana ({ocorrenciasSemana.length})</button>
+    >Agenda ({ocorrencias.length})</button>
     <button
       type="button"
       onclick={() => (aba = 'modalidades')}
@@ -189,95 +194,113 @@
   </div>
 
   {#if aba === 'semana'}
-    <div class="flex justify-between items-center">
-      <div class="text-sm text-slate-500">
-        {semana.ini.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-        — {semana.fim.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+    <div class="flex justify-between items-center flex-wrap gap-2">
+      <div class="flex gap-1 bg-slate-100 rounded-lg p-1">
+        {#each [['semana','Semana'],['mes','Mês'],['tres_meses','3 meses'],['ano','Ano']] as [p, label]}
+          <button
+            type="button"
+            onclick={() => (periodo = p as Periodo)}
+            class="px-3 py-1 text-xs font-medium rounded transition-colors"
+            class:bg-white={periodo === p}
+            class:shadow-sm={periodo === p}
+            class:text-slate-900={periodo === p}
+            class:text-slate-500={periodo !== p}
+          >{label}</button>
+        {/each}
       </div>
       <Button variant="primary" onclick={() => abrirNovoArr()}>+ Novo arranjo</Button>
     </div>
 
-    {#if ocorrenciasSemana.length === 0}
+    <div class="text-xs text-slate-500">
+      {new Date(range.isoIni + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+      — {new Date(range.isoFim + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+      · {ocorrencias.length} ocorrência(s)
+    </div>
+
+    {#if ocorrencias.length === 0}
       <Card padding="md">
         <div class="text-center py-8">
           <div class="text-4xl mb-2 opacity-50">📅</div>
-          <div class="font-medium">Nenhum arranjo nesta semana</div>
-          <div class="text-sm text-slate-500">
-            Clique em "+ Novo arranjo" pra marcar uma saída.
-          </div>
+          <div class="font-medium">Nenhum arranjo no período</div>
+          <div class="text-sm text-slate-500">Use "+ Novo arranjo" pra marcar uma saída.</div>
         </div>
       </Card>
     {:else}
       <div class="grid gap-3">
-        {#each diasOrdenados as dia}
-          {#if (ocPorDia[dia] ?? []).length > 0}
-            <div>
-              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">{DIAS[dia]}</div>
-              <div class="grid gap-2">
-                {#each ocPorDia[dia] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
-                  {@const m = modalidadeById[oc.arranjo.modalidade_id]}
-                  {@const nome = oc.arranjo.nome || m?.nome || 'Arranjo'}
-                  <Card padding="md">
-                    <div class="flex items-start gap-3">
-                      <span class="w-2 self-stretch rounded shrink-0" style="background:{m?.cor ?? '#3b82f6'}"></span>
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                          <span class="font-semibold">{nome}</span>
-                          {#if oc.arranjo.recorrente}<span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded">semanal</span>{/if}
-                          {#if m}<span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{tipoLabel(m.tipo_territorio)}</span>{/if}
-                        </div>
-                        <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                          {#if oc.arranjo.hora_inicio}<span>🕒 {oc.arranjo.hora_inicio.substring(0, 5)}{oc.arranjo.hora_fim ? `–${oc.arranjo.hora_fim.substring(0, 5)}` : ''}</span>{/if}
-                          {#if oc.arranjo.local_endereco}<span class="truncate">📍 {oc.arranjo.local_endereco}</span>{/if}
-                          {#if oc.arranjo.dirigente_id}<span>👤 {dirigenteNome(oc.arranjo.dirigente_id)}</span>{/if}
-                        </div>
-                        {#if (oc.arranjo.quadras_ids?.length ?? 0) > 0}
-                          <div class="mt-1.5 flex flex-wrap gap-1">
-                            {#each oc.arranjo.quadras_ids ?? [] as q}
-                              <span class="text-xs font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
-                            {/each}
-                          </div>
-                        {/if}
-                        {#if (oc.arranjo.cartas_locais_ids?.length ?? 0) > 0}
-                          <div class="mt-1 text-xs text-slate-500">{oc.arranjo.cartas_locais_ids?.length} prédio(s) na lista</div>
-                        {/if}
-                        {#if oc.arranjo.arquivo_url}
-                          <div class="mt-1">
-                            <a href={oc.arranjo.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline">📎 {oc.arranjo.arquivo_nome || 'arquivo'}</a>
-                          </div>
-                        {/if}
-                        {#if oc.arranjo.notas}
-                          <div class="mt-1 text-xs italic text-slate-500">{oc.arranjo.notas}</div>
-                        {/if}
-                      </div>
-                      <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline shrink-0">Editar</button>
-                    </div>
-                  </Card>
-                {/each}
-              </div>
+        {#each datasOrdenadas as dataIso}
+          {@const dObj = new Date(dataIso + 'T12:00:00')}
+          {@const diaLabel = dObj.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold">{diaLabel}</div>
+              <button
+                type="button"
+                onclick={() => abrirNovoArr(undefined, dataIso)}
+                class="text-[10px] text-primary-700 hover:underline"
+              >+ pontual neste dia</button>
             </div>
-          {/if}
+            <div class="grid gap-2">
+              {#each ocPorData[dataIso] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
+                {@const m = modalidadeById[oc.arranjo.modalidade_id]}
+                {@const nome = oc.arranjo.nome || m?.nome || 'Arranjo'}
+                <Card padding="md">
+                  <div class="flex items-start gap-3">
+                    <span class="w-2 self-stretch rounded shrink-0" style="background:{m?.cor ?? '#3b82f6'}"></span>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold">{nome}</span>
+                        {#if oc.arranjo.recorrente}<span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded">semanal</span>{/if}
+                        {#if m}<span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{tipoLabel(m.tipo_territorio)}</span>{/if}
+                      </div>
+                      <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {#if oc.arranjo.hora_inicio}<span>🕒 {oc.arranjo.hora_inicio.substring(0, 5)}{oc.arranjo.hora_fim ? `–${oc.arranjo.hora_fim.substring(0, 5)}` : ''}</span>{/if}
+                        {#if oc.arranjo.local_endereco}<span class="truncate">📍 {oc.arranjo.local_endereco}</span>{/if}
+                        {#if oc.arranjo.dirigente_id}<span>👤 {dirigenteNome(oc.arranjo.dirigente_id)}</span>{/if}
+                      </div>
+                      {#if (oc.arranjo.quadras_ids?.length ?? 0) > 0}
+                        <div class="mt-1.5 flex flex-wrap gap-1">
+                          {#each oc.arranjo.quadras_ids ?? [] as q}
+                            <span class="text-xs font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if (oc.arranjo.cartas_locais_ids?.length ?? 0) > 0}
+                        <div class="mt-1 text-xs text-slate-500">{oc.arranjo.cartas_locais_ids?.length} prédio(s) na lista</div>
+                      {/if}
+                      {#if oc.arranjo.arquivo_url}
+                        <div class="mt-1">
+                          <a href={oc.arranjo.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline">📎 {oc.arranjo.arquivo_nome || 'arquivo'}</a>
+                        </div>
+                      {/if}
+                      {#if oc.arranjo.notas}
+                        <div class="mt-1 text-xs italic text-slate-500">{oc.arranjo.notas}</div>
+                      {/if}
+                    </div>
+                    <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline shrink-0">Editar</button>
+                  </div>
+                </Card>
+              {/each}
+            </div>
+          </div>
         {/each}
       </div>
     {/if}
 
-    {#if data.arranjos.length > ocorrenciasSemana.length}
-      <details class="mt-4">
-        <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-700">
-          Mostrar todos os arranjos cadastrados ({data.arranjos.length})
-        </summary>
-        <div class="mt-2 grid gap-1.5">
-          {#each data.arranjos as a (a.id)}
-            {@const m = modalidadeById[a.modalidade_id]}
-            <button type="button" onclick={() => abrirEditarArr(a)} class="text-left p-2 rounded border border-slate-200 hover:bg-slate-50 text-sm flex gap-2 items-center">
-              <span class="w-2 h-6 rounded" style="background:{m?.cor ?? '#3b82f6'}"></span>
-              <span class="flex-1 truncate">{a.nome || m?.nome || 'Arranjo'} · {a.recorrente ? `toda ${a.dia_semana !== null ? DIAS[a.dia_semana!] : '?'}` : formatData(a.data)}</span>
-              {#if !a.ativo}<span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded">inativo</span>{/if}
-            </button>
-          {/each}
-        </div>
-      </details>
-    {/if}
+    <details class="mt-4">
+      <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-700">
+        Todos os arranjos cadastrados ({data.arranjos.length})
+      </summary>
+      <div class="mt-2 grid gap-1.5">
+        {#each data.arranjos as a (a.id)}
+          {@const m = modalidadeById[a.modalidade_id]}
+          <button type="button" onclick={() => abrirEditarArr(a)} class="text-left p-2 rounded border border-slate-200 hover:bg-slate-50 text-sm flex gap-2 items-center">
+            <span class="w-2 h-6 rounded" style="background:{m?.cor ?? '#3b82f6'}"></span>
+            <span class="flex-1 truncate">{a.nome || m?.nome || 'Arranjo'} · {a.recorrente ? `toda ${a.dia_semana !== null ? DIAS[a.dia_semana!] : '?'}` : formatData(a.data)}</span>
+            {#if !a.ativo}<span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded">inativo</span>{/if}
+          </button>
+        {/each}
+      </div>
+    </details>
   {:else}
     <div class="flex justify-end">
       <Button variant="primary" onclick={abrirNovaMod}>+ Nova modalidade</Button>
