@@ -37,6 +37,21 @@
   const DIAS = DIAS_SEMANA;
   const diasOrdenados = DIAS_ORDENADOS;
 
+  // Quantas ocorrências serão geradas (preview no form de criação recorrente)
+  const previewQtd = $derived.by(() => {
+    const a = arrEditando;
+    if (!a || !a.recorrente || a.dia_semana === null || a.dia_semana === undefined || !a.data_fim) return 0;
+    const inicioIso = a.data_inicio ?? new Date().toISOString().slice(0, 10);
+    const ini = new Date(inicioIso + 'T12:00:00');
+    const fim = new Date(a.data_fim + 'T12:00:00');
+    if (fim < ini) return 0;
+    const d = new Date(ini);
+    while (d.getDay() !== a.dia_semana && d <= fim) d.setDate(d.getDate() + 1);
+    let c = 0;
+    while (d <= fim && c < 200) { c++; d.setDate(d.getDate() + 7); }
+    return c;
+  });
+
   let periodo = $state<Periodo>('semana');
   const range = $derived(rangeDoPeriodo(periodo));
   const ocorrencias = $derived(ocorrenciasEntre(data.arranjos, range.isoIni, range.isoFim));
@@ -115,28 +130,6 @@
     if (t === 'arquivo') return 'Arquivo enviado';
     if (t === 'ponto_tp') return 'Ponto fixo (TP)';
     return t;
-  }
-
-  async function materializar(arranjoId: number, dataIso: string) {
-    const dPretty = new Date(dataIso + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-    if (!confirm(`Personalizar só ${dPretty}? A série continua, mas esse dia vira um arranjo separado pra você editar (dirigente, território, etc).`)) return;
-    const fd = new FormData();
-    fd.append('arranjo_id', String(arranjoId));
-    fd.append('data', dataIso);
-    const res = await fetch('?/materializarOcorrencia', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text());
-    if (parsed.type === 'success') {
-      toast.success('Personalizado — abrindo pra editar');
-      await invalidateAll();
-      // Abre o novo arranjo pontual pra edição
-      const novoId = (parsed.data as any)?.novoId;
-      if (novoId) {
-        const novo = data.arranjos.find((x) => x.id === novoId);
-        if (novo) abrirEditarArr(novo);
-      }
-    } else if (parsed.type === 'failure') {
-      toast.error(String((parsed.data as any)?.erro || 'Falhou'));
-    }
   }
 
   async function apagarArranjo() {
@@ -298,16 +291,7 @@
                         <div class="mt-1 text-xs italic text-slate-500">{oc.arranjo.notas}</div>
                       {/if}
                     </div>
-                    <div class="flex flex-col gap-1 items-end shrink-0">
-                      <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline">
-                        {oc.arranjo.recorrente ? 'Editar série' : 'Editar'}
-                      </button>
-                      {#if oc.arranjo.recorrente}
-                        <button type="button" onclick={() => materializar(oc.arranjo.id!, oc.data)} class="text-xs text-amber-700 hover:underline">
-                          Só este dia
-                        </button>
-                      {/if}
-                    </div>
+                    <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline shrink-0">Editar</button>
                   </div>
                 </Card>
               {/each}
@@ -517,57 +501,86 @@
         <input id="nome" name="nome" value={arrEditando.nome ?? ''} placeholder="Default: nome da modalidade" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       </div>
 
-      <!-- Recorrência -->
+      <!-- Recorrência: na criação gera N arranjos pontuais; em edição é só pontual -->
       <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
-        <label class="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            name="recorrente"
-            checked={arrEditando.recorrente}
-            onchange={(e) => arrEditando = { ...arrEditando, recorrente: (e.target as HTMLInputElement).checked }}
-            class="w-4 h-4 rounded"
-          />
-          Recorrente (toda semana)
-        </label>
+        {#if !arrEditando.id}
+          <label class="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              name="recorrente"
+              checked={arrEditando.recorrente}
+              onchange={(e) => {
+                const ck = (e.target as HTMLInputElement).checked;
+                const fimAno = new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10);
+                arrEditando = {
+                  ...arrEditando,
+                  recorrente: ck,
+                  data_fim: ck && !arrEditando.data_fim ? fimAno : arrEditando.data_fim
+                };
+              }}
+              class="w-4 h-4 rounded"
+            />
+            Gerar para várias semanas (cada saída fica editável separadamente)
+          </label>
+        {/if}
 
-        {#if arrEditando.recorrente}
+        {#if !arrEditando.id && arrEditando.recorrente}
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label for="dia_semana" class="block text-xs font-medium mb-1">Dia</label>
-              <select id="dia_semana" name="dia_semana" required class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={arrEditando.dia_semana ?? ''}>
+              <label for="dia_semana" class="block text-xs font-medium mb-1">Dia da semana</label>
+              <select id="dia_semana" name="dia_semana" required class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={arrEditando.dia_semana ?? ''}
+                onchange={(e) => arrEditando = { ...arrEditando, dia_semana: Number((e.target as HTMLSelectElement).value) || null }}
+              >
                 <option value="">—</option>
                 {#each DIAS as d, i}<option value={i}>{d}</option>{/each}
               </select>
             </div>
             <div>
-              <label for="hora_inicio" class="block text-xs font-medium mb-1">Hora</label>
-              <input id="hora_inicio" name="hora_inicio" type="time" value={arrEditando.hora_inicio ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+              <label for="hora_inicio_rec" class="block text-xs font-medium mb-1">Hora</label>
+              <input id="hora_inicio_rec" name="hora_inicio" type="time" value={arrEditando.hora_inicio ?? ''}
+                oninput={(e) => arrEditando = { ...arrEditando, hora_inicio: (e.target as HTMLInputElement).value || null }}
+                class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             </div>
             <div>
               <label for="data_inicio" class="block text-xs font-medium mb-1">Começa em (opcional)</label>
-              <input id="data_inicio" name="data_inicio" type="date" value={arrEditando.data_inicio ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+              <input id="data_inicio" name="data_inicio" type="date" value={arrEditando.data_inicio ?? ''}
+                oninput={(e) => arrEditando = { ...arrEditando, data_inicio: (e.target as HTMLInputElement).value || null }}
+                class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             </div>
             <div>
-              <label for="data_fim" class="block text-xs font-medium mb-1">Termina em (opcional)</label>
-              <input id="data_fim" name="data_fim" type="date" value={arrEditando.data_fim ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+              <label for="data_fim" class="block text-xs font-medium mb-1">Gerar até</label>
+              <input id="data_fim" name="data_fim" type="date" required value={arrEditando.data_fim ?? ''}
+                oninput={(e) => arrEditando = { ...arrEditando, data_fim: (e.target as HTMLInputElement).value || null }}
+                class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             </div>
           </div>
+          {#if arrEditando.dia_semana !== null && arrEditando.dia_semana !== undefined && arrEditando.data_fim}
+            <div class="text-xs text-slate-600 bg-white rounded p-2 border border-slate-200">
+              📅 Vai gerar <strong>{previewQtd}</strong> arranjo(s) (toda {DIAS[arrEditando.dia_semana!]} até {new Date(arrEditando.data_fim + 'T12:00:00').toLocaleDateString('pt-BR')})
+            </div>
+          {/if}
         {:else}
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label for="data" class="block text-xs font-medium mb-1">Data</label>
-              <input id="data" name="data" type="date" required value={arrEditando.data ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+              <input id="data" name="data" type="date" required value={arrEditando.data ?? ''}
+                oninput={(e) => arrEditando = { ...arrEditando, data: (e.target as HTMLInputElement).value || null }}
+                class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             </div>
             <div>
               <label for="hora_inicio" class="block text-xs font-medium mb-1">Hora</label>
-              <input id="hora_inicio" name="hora_inicio" type="time" value={arrEditando.hora_inicio ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+              <input id="hora_inicio" name="hora_inicio" type="time" value={arrEditando.hora_inicio ?? ''}
+                oninput={(e) => arrEditando = { ...arrEditando, hora_inicio: (e.target as HTMLInputElement).value || null }}
+                class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             </div>
           </div>
         {/if}
 
         <div>
           <label for="hora_fim" class="block text-xs font-medium mb-1">Hora fim (opcional)</label>
-          <input id="hora_fim" name="hora_fim" type="time" value={arrEditando.hora_fim ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+          <input id="hora_fim" name="hora_fim" type="time" value={arrEditando.hora_fim ?? ''}
+            oninput={(e) => arrEditando = { ...arrEditando, hora_fim: (e.target as HTMLInputElement).value || null }}
+            class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
         </div>
       </div>
 

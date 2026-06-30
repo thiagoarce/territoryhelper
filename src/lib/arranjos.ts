@@ -20,7 +20,6 @@ export interface ArranjoBase {
   ativo: boolean;
   data_inicio: string | null;
   data_fim: string | null;
-  excecoes_datas?: string[] | null;
 }
 
 export interface Ocorrencia<A extends ArranjoBase = ArranjoBase> {
@@ -73,14 +72,9 @@ export function ocorrenciasEntre<A extends ArranjoBase>(
       while (d.getDay() !== a.dia_semana && d <= fim) {
         d.setDate(d.getDate() + 1);
       }
-      const excecoes = new Set(a.excecoes_datas ?? []);
       while (d <= fim) {
         const dIso = d.toISOString().slice(0, 10);
-        if (
-          (!a.data_inicio || dIso >= a.data_inicio) &&
-          (!a.data_fim || dIso <= a.data_fim) &&
-          !excecoes.has(dIso)
-        ) {
+        if ((!a.data_inicio || dIso >= a.data_inicio) && (!a.data_fim || dIso <= a.data_fim)) {
           out.push({ arranjo: a, data: dIso, dia_semana: a.dia_semana });
         }
         d.setDate(d.getDate() + 7);
