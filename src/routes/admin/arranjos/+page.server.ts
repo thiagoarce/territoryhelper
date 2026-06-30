@@ -35,6 +35,7 @@ export interface Arranjo {
   ativo: boolean;
   data_inicio: string | null;
   data_fim: string | null;
+  excecoes_datas: string[] | null;
 }
 
 export interface PredioLite {
@@ -259,6 +260,45 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('arranjos').update(data).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Arranjo salvo' };
+  },
+
+  // Cria uma cópia pontual de um arranjo recorrente pra uma data específica
+  // e adiciona essa data nas exceções da recorrência. Permite editar só
+  // aquele dia (mudar dirigente, território, etc) sem afetar os outros.
+  materializarOcorrencia: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    const dataIso = String(fd.get('data') ?? '').trim();
+    if (!arranjoId || !dataIso) return fail(400, { erro: 'arranjo_id e data obrigatórios' });
+
+    const { data: orig, error: errO } = await locals.supabase
+      .from('arranjos').select('*').eq('id', arranjoId).single();
+    if (errO || !orig) return fail(400, { erro: 'Arranjo não encontrado' });
+    if (!orig.recorrente) return fail(400, { erro: 'Arranjo não é recorrente' });
+
+    // Cria cópia pontual nesta data (sem recorrência)
+    const { id: _omit, criado_em, atualizado_em, excecoes_datas, ...resto } = orig as any;
+    const { data: novo, error: errN } = await locals.supabase
+      .from('arranjos').insert({
+        ...resto,
+        recorrente: false,
+        dia_semana: null,
+        data: dataIso,
+        data_inicio: null,
+        data_fim: null,
+        excecoes_datas: [],
+        criado_por: locals.user.id
+      }).select('id').single();
+    if (errN || !novo) return fail(400, { erro: errN?.message ?? 'Falha ao clonar' });
+
+    // Adiciona data nas exceções da recorrência
+    const novasExc = Array.from(new Set([...(orig.excecoes_datas ?? []), dataIso])).sort();
+    const { error: errU } = await locals.supabase
+      .from('arranjos').update({ excecoes_datas: novasExc }).eq('id', arranjoId);
+    if (errU) return fail(400, { erro: errU.message });
+
+    return { ok: true, msg: 'Ocorrência personalizada', novoId: novo.id };
   },
 
   deletarArranjo: async ({ request, locals }) => {

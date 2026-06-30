@@ -117,6 +117,28 @@
     return t;
   }
 
+  async function materializar(arranjoId: number, dataIso: string) {
+    const dPretty = new Date(dataIso + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    if (!confirm(`Personalizar só ${dPretty}? A série continua, mas esse dia vira um arranjo separado pra você editar (dirigente, território, etc).`)) return;
+    const fd = new FormData();
+    fd.append('arranjo_id', String(arranjoId));
+    fd.append('data', dataIso);
+    const res = await fetch('?/materializarOcorrencia', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text());
+    if (parsed.type === 'success') {
+      toast.success('Personalizado — abrindo pra editar');
+      await invalidateAll();
+      // Abre o novo arranjo pontual pra edição
+      const novoId = (parsed.data as any)?.novoId;
+      if (novoId) {
+        const novo = data.arranjos.find((x) => x.id === novoId);
+        if (novo) abrirEditarArr(novo);
+      }
+    } else if (parsed.type === 'failure') {
+      toast.error(String((parsed.data as any)?.erro || 'Falhou'));
+    }
+  }
+
   async function apagarArranjo() {
     if (!arrEditando?.id) return;
     if (!confirm('Apagar esse arranjo?')) return;
@@ -276,7 +298,16 @@
                         <div class="mt-1 text-xs italic text-slate-500">{oc.arranjo.notas}</div>
                       {/if}
                     </div>
-                    <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline shrink-0">Editar</button>
+                    <div class="flex flex-col gap-1 items-end shrink-0">
+                      <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline">
+                        {oc.arranjo.recorrente ? 'Editar série' : 'Editar'}
+                      </button>
+                      {#if oc.arranjo.recorrente}
+                        <button type="button" onclick={() => materializar(oc.arranjo.id!, oc.data)} class="text-xs text-amber-700 hover:underline">
+                          Só este dia
+                        </button>
+                      {/if}
+                    </div>
                   </div>
                 </Card>
               {/each}
