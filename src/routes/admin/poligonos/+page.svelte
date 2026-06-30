@@ -13,6 +13,7 @@
       locais: LocalComGeo[];
       quadras: QuadraGeo[];
       territorios: { id: string; nome: string; cor: string | null; qtd: number }[];
+      tces: { id: string; nome: string; tipo: string; status: string; poly_geojson: unknown | null }[];
       quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number }[] }[];
       quadrasVazias: string[];
       quadrasOrfas: string[];
@@ -21,18 +22,23 @@
     form: any;
   } = $props();
 
-  // null = mapa limpo (nenhum modo). Endereços só aparecem em 'vincular'.
-  type Modo = 'vincular' | 'quadras' | 'territorios' | 'auditar' | null;
+  // null = mapa limpo (nenhum modo). Endereços só aparecem em 'vincular'/'tce'.
+  type Modo = 'vincular' | 'quadras' | 'territorios' | 'tce' | 'auditar' | null;
   let modo = $state<Modo>(null);
 
   let filtroTipo = $state<'dom' | 'com' | 'ambos'>('ambos');
   let filtroVinculo = $state<'vinculados' | 'sem' | 'ambos'>('ambos');
+  let porFace = $state(false);
   let mostrarRotulos = $state(true);
   let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let selecionadosLocais = $state<Set<number>>(new Set());
   let selecionadasQuadras = $state<Set<string>>(new Set());
   let quadraDestaque = $state<string | null>(null);
   let salvando = $state(false);
+
+  // TCE
+  let sheetCriarTce = $state(false);
+  let novoTceNome = $state('');
 
   // Sheet do modo Quadras (renomear + território + ativa)
   let sheetQuadra = $state(false);
@@ -48,14 +54,71 @@
   let novoTerrCor = $state('#3388ff');
   let adicionarAterritorio = $state('');
 
-  const mostrarEnderecos = $derived(modo === 'vincular');
+  const mostrarEnderecos = $derived(modo === 'vincular' || modo === 'tce');
   const colorirPorTerritorio = $derived(modo === 'territorios');
+  // No TCE o filtro é sempre comércio
+  const filtroTipoEfetivo = $derived(modo === 'tce' ? 'com' : filtroTipo);
 
   function setModo(m: Modo) {
     modo = modo === m ? null : m;
-    if (modo !== 'vincular') selecionadosLocais = new Set();
+    if (modo !== 'vincular' && modo !== 'tce') selecionadosLocais = new Set();
     if (modo !== 'territorios') selecionadasQuadras = new Set();
     if (modo !== 'auditar') quadraDestaque = null;
+    // TCE entra já agrupado por face (cluster de comércios)
+    if (modo === 'tce') porFace = true;
+  }
+
+  // Locais visíveis conforme filtros do modo atual
+  const locaisVisiveis = $derived.by(() => {
+    return data.locais.filter((l) => {
+      if (filtroTipoEfetivo === 'com' && l.tipo !== 'comercio') return false;
+      if (filtroTipoEfetivo === 'dom' && l.tipo === 'comercio') return false;
+      if (modo === 'vincular') {
+        if (filtroVinculo === 'vinculados' && !l.quadra_id) return false;
+        if (filtroVinculo === 'sem' && l.quadra_id) return false;
+      }
+      return true;
+    });
+  });
+
+  // Faces (cluster por setor|quadra_ibge|face_ibge) dos locais visíveis
+  function faceKey(l: LocalComGeo): string {
+    return `${l.setor ?? ''}|${l.quadra_ibge ?? ''}|${l.face_ibge ?? ''}`;
+  }
+  const faceIds = $derived.by(() => {
+    const m = new Map<string, number[]>();
+    for (const l of locaisVisiveis) {
+      const k = faceKey(l);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(l.id);
+    }
+    return m;
+  });
+  const selLocaisKey = $derived([...selecionadosLocais].sort().join('|'));
+  const faces = $derived.by(() => {
+    void selLocaisKey;
+    const acc = new Map<string, { lat: number; lng: number; n: number; sel: number }>();
+    for (const l of locaisVisiveis) {
+      if (l.lat == null || l.lng == null) continue;
+      const k = faceKey(l);
+      const e = acc.get(k) ?? { lat: 0, lng: 0, n: 0, sel: 0 };
+      e.lat += l.lat; e.lng += l.lng; e.n++;
+      if (selecionadosLocais.has(l.id)) e.sel++;
+      acc.set(k, e);
+    }
+    return [...acc].map(([key, e]) => ({
+      key, lat: e.lat / e.n, lng: e.lng / e.n, qtd: e.n, selecionada: e.sel === e.n && e.n > 0
+    }));
+  });
+
+  function onClickFace(key: string) {
+    const ids = faceIds.get(key) ?? [];
+    const todosSel = ids.every((id) => selecionadosLocais.has(id));
+    for (const id of ids) {
+      if (todosSel) selecionadosLocais.delete(id);
+      else selecionadosLocais.add(id);
+    }
+    selecionadosLocais = new Set(selecionadosLocais);
   }
 
   function toggleQuadraSel(id: string) {
@@ -126,6 +189,7 @@
     { k: 'vincular', label: 'Vincular' },
     { k: 'quadras', label: 'Quadras' },
     { k: 'territorios', label: 'Territórios' },
+    { k: 'tce', label: 'TCE' },
     { k: 'auditar', label: 'Auditar' }
   ];
 
@@ -167,6 +231,13 @@
         <option value="vinculados">Vinculados</option>
         <option value="sem">Sem quadra</option>
       </select>
+    {/if}
+
+    {#if modo === 'vincular' || modo === 'tce'}
+      <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+        <input type="checkbox" bind:checked={porFace} class="w-4 h-4 rounded" />
+        Por face
+      </label>
     {/if}
 
     <select bind:value={basemap} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Mapa base">
@@ -292,10 +363,48 @@
     </div>
   {/if}
 
+  <!-- Painel TCE -->
+  {#if modo === 'tce'}
+    <div class="text-xs text-slate-500">
+      Comércios{porFace ? ' agrupados por face' : ''}. Click pra selecionar; depois "Criar TCE".
+    </div>
+    {#if data.tces.length > 0}
+      <div class="space-y-1 max-h-32 overflow-y-auto rounded-lg border border-slate-200 p-2">
+        {#each data.tces as t}
+          <div class="flex items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full shrink-0" style:background-color={t.status === 'aberto' ? '#9333ea' : '#94a3b8'}></span>
+              <span class="font-medium truncate">{t.nome}</span>
+              <span class="text-slate-400">{t.status}</span>
+            </div>
+            <div class="flex gap-1 shrink-0">
+              {#if t.status === 'aberto'}
+                <form method="POST" action="?/alterarStatusTce" use:enhance={() => async ({ result, update }) => { await update(); if (result.type==='success'){ toast.success('Concluído'); await invalidateAll(); } }}>
+                  <input type="hidden" name="id" value={t.id} /><input type="hidden" name="status" value="concluido" />
+                  <button type="submit" class="text-green-700 hover:underline">✓</button>
+                </form>
+              {/if}
+              <form method="POST" action="?/deletarTce" use:enhance={() => async ({ result, update }) => { await update(); if (result.type==='success'){ toast.warn('Removido'); await invalidateAll(); } }} onsubmit={(e) => { if (!confirm(`Deletar TCE "${t.nome}"?`)) e.preventDefault(); }}>
+                <input type="hidden" name="id" value={t.id} />
+                <button type="submit" class="text-red-600 hover:underline">🗑</button>
+              </form>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {/if}
+
   <!-- Instruções por modo -->
   <p class="text-xs text-slate-500 text-center">
     {#if modo === null}
       Escolha um modo acima. Mapa mostra as quadras coloridas.
+    {:else if modo === 'tce'}
+      {#if selecionadosLocais.size === 0}
+        Click nos comércios/faces pra montar o TCE.
+      {:else}
+        <strong>{selecionadosLocais.size}</strong> endereço(s) — clique "Criar TCE" abaixo
+      {/if}
     {:else if modo === 'vincular'}
       {#if selecionadosLocais.size === 0}
         Click nos pontos pra selecionar endereços. Depois click numa quadra pra vincular.
@@ -318,10 +427,13 @@
   <MapaPoligonos
     quadras={data.quadras}
     locais={data.locais}
+    tces={data.tces}
+    {faces}
+    mostrarFaces={porFace}
     altura={500}
     {mostrarRotulos}
     {mostrarEnderecos}
-    {filtroTipo}
+    filtroTipo={filtroTipoEfetivo}
     {filtroVinculo}
     {quadraDestaque}
     {colorirPorTerritorio}
@@ -330,6 +442,7 @@
     bind:basemap
     {onClickLocal}
     {onClickQuadra}
+    {onClickFace}
   />
 </div>
 
@@ -424,6 +537,50 @@
     <Button variant="ghost" size="sm" onclick={limparQuadras} class="ml-auto">Limpar</Button>
   </div>
 {/if}
+
+<!-- Barra inferior do modo TCE -->
+{#if modo === 'tce' && selecionadosLocais.size > 0}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+    <div class="text-sm font-medium"><strong>{selecionadosLocais.size}</strong> comércio(s)</div>
+    <Button variant="primary" size="sm" onclick={() => { novoTceNome = ''; sheetCriarTce = true; }}>🏪 Criar TCE</Button>
+    <Button variant="ghost" size="sm" onclick={limparSelecao} class="ml-auto">Limpar</Button>
+  </div>
+{/if}
+
+<!-- Sheet: criar TCE -->
+<BottomSheet bind:open={sheetCriarTce} title="Novo TCE">
+  <form
+    method="POST"
+    action="?/criarTce"
+    use:enhance={() => {
+      salvando = true;
+      return async ({ result, update }) => {
+        await update();
+        salvando = false;
+        if (result.type === 'success') {
+          toast.success((result.data as any)?.msg || 'TCE criado');
+          sheetCriarTce = false; limparSelecao();
+          await invalidateAll();
+        } else if (result.type === 'failure') {
+          toast.error(String((result.data as any)?.erro || 'Falhou'));
+        }
+      };
+    }}
+    class="space-y-3"
+  >
+    {#each [...selecionadosLocais] as id}<input type="hidden" name="local_ids" value={id} />{/each}
+    <input type="hidden" name="tipo" value="comercial" />
+    <div class="text-xs text-slate-500">{selecionadosLocais.size} endereço(s) comerciais. O polígono é o convex hull dos pontos.</div>
+    <div>
+      <label for="tce_nome" class="block text-sm font-medium mb-1">Nome</label>
+      <input id="tce_nome" name="nome" bind:value={novoTceNome} required placeholder="Ex: Galeria X, Av. Comercial" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetCriarTce = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" type="submit" loading={salvando} class="flex-1">Criar TCE</Button>
+    </div>
+  </form>
+</BottomSheet>
 
 <!-- Sheet: criar território -->
 <BottomSheet bind:open={sheetCriarTerr} title="Novo território">

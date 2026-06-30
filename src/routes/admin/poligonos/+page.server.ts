@@ -9,6 +9,7 @@ export interface LocalComGeo {
   numero: string;
   setor: string | null;
   quadra_ibge: string | null;
+  face_ibge: string | null;
   quadra_id: string | null;
   lat: number | null;
   lng: number | null;
@@ -21,6 +22,7 @@ interface LocalDaView {
   numero: string;
   setor: string | null;
   quadra_ibge: string | null;
+  face_ibge: string | null;
   quadra_id: string | null;
   geo_geojson: { coordinates: [number, number] } | null;
 }
@@ -36,7 +38,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const linhas = await selectAll<LocalDaView>(
     locals.supabase
       .from('locais_geo')
-      .select('id, tipo, logradouro, numero, setor, quadra_ibge, quadra_id, geo_geojson')
+      .select('id, tipo, logradouro, numero, setor, quadra_ibge, face_ibge, quadra_id, geo_geojson')
       .not('geo_geojson', 'is', null)
   );
   const locais: LocalComGeo[] = linhas.map((l) => {
@@ -48,6 +50,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       numero: l.numero,
       setor: l.setor,
       quadra_ibge: l.quadra_ibge,
+      face_ibge: l.face_ibge,
       quadra_id: l.quadra_id,
       lat: c ? c[1] : null,
       lng: c ? c[0] : null
@@ -66,6 +69,15 @@ export const load: PageServerLoad = async ({ locals }) => {
   const territorios = (terrRows ?? []).map((t) => ({
     id: t.id, nome: t.nome, cor: t.cor, qtd: qtdPorTerritorio.get(t.id) ?? 0
   })) as { id: string; nome: string; cor: string | null; qtd: number }[];
+
+  // TCEs existentes (com polígono pra desenhar no mapa)
+  const { data: tceRows } = await locals.supabase
+    .from('tces_geo')
+    .select('id, nome, tipo, status, poly_geojson')
+    .order('criado_em', { ascending: false });
+  const tces = (tceRows ?? []) as {
+    id: string; nome: string; tipo: string; status: string; poly_geojson: unknown | null;
+  }[];
 
   // Quadras pra UI de renomeio
   const quadrasParaRenomear = quadras.map((q) => ({ id: q.id, color: q.color, status: q.status }));
@@ -104,6 +116,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     locais,
     quadras,
     territorios,
+    tces,
     quadrasMultiCluster,
     quadrasVazias,
     quadrasOrfas,
@@ -252,6 +265,45 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('territorios').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `Território removido (quadras viraram órfãs)` };
+  },
+
+  // ===== Modo TCE =====
+  criarTce: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const nome = String(fd.get('nome') ?? '').trim();
+    const tipo = String(fd.get('tipo') ?? 'comercial').trim() || 'comercial';
+    const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
+    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
+    if (localIds.length === 0) return fail(400, { erro: 'Selecione endereços comerciais' });
+    const { data, error } = await locals.supabase.rpc('criar_tce' as any, {
+      p_nome: nome, p_tipo: tipo, p_local_ids: localIds
+    } as any);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `TCE "${nome}" criado (${localIds.length} endereço(s))`, id: data };
+  },
+
+  alterarStatusTce: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const status = String(fd.get('status') ?? '');
+    if (!id || !['aberto', 'concluido', 'cancelado'].includes(status)) return fail(400, { erro: 'inválido' });
+    const patch: any = { status };
+    if (status === 'concluido') patch.data_conclusao = new Date().toISOString().substring(0, 10);
+    const { error } = await locals.supabase.from('tces').update(patch).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `TCE ${status}` };
+  },
+
+  deletarTce: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('tces').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'TCE removido' };
   },
 
   // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)

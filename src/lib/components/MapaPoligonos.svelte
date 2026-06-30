@@ -11,12 +11,18 @@
     bright: 'https://tiles.openfreemap.org/styles/bright'
   };
 
+  type FaceCluster = { key: string; lat: number; lng: number; qtd: number; selecionada: boolean };
+  type TceGeo = { id: string; nome: string; status: string; poly_geojson: unknown | null };
+
   let {
     quadras,
     locais,
     altura = 600,
     mostrarRotulos = true,
     mostrarEnderecos = false,
+    mostrarFaces = false,
+    faces = [],
+    tces = [],
     filtroTipo = 'ambos',
     filtroVinculo = 'ambos',
     quadraDestaque = null,
@@ -25,13 +31,17 @@
     selecionadasQuadras = $bindable(new Set<string>()),
     basemap = $bindable<Basemap>('bright'),
     onClickQuadra,
-    onClickLocal
+    onClickLocal,
+    onClickFace
   }: {
     quadras: QuadraGeo[];
     locais: LocalComGeo[];
     altura?: number;
     mostrarRotulos?: boolean;
     mostrarEnderecos?: boolean;
+    mostrarFaces?: boolean;
+    faces?: FaceCluster[];
+    tces?: TceGeo[];
     filtroTipo?: 'dom' | 'com' | 'ambos';
     filtroVinculo?: 'vinculados' | 'sem' | 'ambos';
     quadraDestaque?: string | null;
@@ -41,6 +51,7 @@
     basemap?: Basemap;
     onClickQuadra?: (q: QuadraGeo) => void;
     onClickLocal?: (l: LocalComGeo) => void;
+    onClickFace?: (key: string) => void;
   } = $props();
 
   let container: HTMLDivElement;
@@ -113,11 +124,32 @@
   });
 
   $effect(() => {
-    const show = mostrarEnderecos;
+    const show = mostrarEnderecos, comFaces = mostrarFaces;
     if (!mapa || !mapa.getLayer('locais-points')) return;
-    const vis = show ? 'visible' : 'none';
-    mapa.setLayoutProperty('locais-points', 'visibility', vis);
-    mapa.setLayoutProperty('locais-sel', 'visibility', vis);
+    // Pontos individuais: aparecem só se endereços ON e faces OFF
+    const visPts = show && !comFaces ? 'visible' : 'none';
+    mapa.setLayoutProperty('locais-points', 'visibility', visPts);
+    mapa.setLayoutProperty('locais-sel', 'visibility', visPts);
+    // Faces: aparecem se endereços ON e faces ON
+    const visFaces = show && comFaces ? 'visible' : 'none';
+    if (mapa.getLayer('faces-cluster')) {
+      mapa.setLayoutProperty('faces-cluster', 'visibility', visFaces);
+      mapa.setLayoutProperty('faces-count', 'visibility', visFaces);
+    }
+  });
+
+  // Atualiza fonte de faces quando muda (inclui estado de seleção)
+  $effect(() => {
+    void faces;
+    if (!mapa || !mapa.getSource('faces')) return;
+    mapa.getSource('faces').setData(facesGeoJson());
+  });
+
+  // Atualiza fonte de TCEs
+  $effect(() => {
+    void tces;
+    if (!mapa || !mapa.getSource('tces')) return;
+    mapa.getSource('tces').setData(tcesGeoJson());
   });
 
   $effect(() => {
@@ -155,6 +187,30 @@
             id: l.id, tipo: l.tipo, has_quadra: !!l.quadra_id,
             logradouro: l.logradouro, numero: l.numero
           }
+        }))
+    };
+  }
+
+  function facesGeoJson(): any {
+    return {
+      type: 'FeatureCollection',
+      features: faces.map((f) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [f.lng, f.lat] },
+        properties: { key: f.key, qtd: f.qtd, selecionada: f.selecionada }
+      }))
+    };
+  }
+
+  function tcesGeoJson(): any {
+    return {
+      type: 'FeatureCollection',
+      features: (tces ?? [])
+        .filter((t) => t.poly_geojson)
+        .map((t) => ({
+          type: 'Feature',
+          geometry: t.poly_geojson as any,
+          properties: { id: t.id, nome: t.nome, status: t.status }
         }))
     };
   }
@@ -209,6 +265,24 @@
         source: 'quadras',
         paint: { 'fill-color': buildFillExpr(), 'fill-opacity': 0.25 }
       });
+
+      // TCEs (polígonos roxos)
+      mapa.addSource('tces', { type: 'geojson', data: tcesGeoJson() });
+      mapa.addLayer({
+        id: 'tces-fill',
+        type: 'fill',
+        source: 'tces',
+        paint: {
+          'fill-color': ['case', ['==', ['get', 'status'], 'aberto'], '#9333ea', '#94a3b8'],
+          'fill-opacity': 0.18
+        }
+      });
+      mapa.addLayer({
+        id: 'tces-line',
+        type: 'line',
+        source: 'tces',
+        paint: { 'line-color': '#9333ea', 'line-width': 2, 'line-dasharray': [2, 1] }
+      });
       mapa.addLayer({
         id: 'quadras-line',
         type: 'line',
@@ -259,6 +333,34 @@
           'circle-opacity': 1
         }
       });
+
+      // Faces (cluster por face IBGE): círculo grande sized por qtd + contagem
+      mapa.addSource('faces', { type: 'geojson', data: facesGeoJson() });
+      mapa.addLayer({
+        id: 'faces-cluster',
+        type: 'circle',
+        source: 'faces',
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-color': ['case', ['get', 'selecionada'], '#4f46e5', '#0891b2'],
+          'circle-radius': ['interpolate', ['linear'], ['get', 'qtd'], 1, 8, 10, 16, 40, 26],
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+          'circle-opacity': 0.85
+        }
+      });
+      mapa.addLayer({
+        id: 'faces-count',
+        type: 'symbol',
+        source: 'faces',
+        layout: {
+          visibility: 'none',
+          'text-field': ['to-string', ['get', 'qtd']],
+          'text-size': 11,
+          'text-font': ['Noto Sans Regular']
+        },
+        paint: { 'text-color': '#fff' }
+      });
     }
 
     mapa.on('style.load', setupCamadas);
@@ -283,6 +385,14 @@
         if (q && onClickQuadra) onClickQuadra(q);
       });
 
+      mapa.on('click', 'faces-cluster', (e: any) => {
+        const key = e.features?.[0]?.properties?.key;
+        if (key && onClickFace) onClickFace(key);
+        e.preventDefault?.();
+      });
+
+      mapa.on('mouseenter', 'faces-cluster', () => { mapa.getCanvas().style.cursor = 'pointer'; });
+      mapa.on('mouseleave', 'faces-cluster', () => { mapa.getCanvas().style.cursor = ''; });
       mapa.on('mouseenter', 'locais-points', () => { mapa.getCanvas().style.cursor = 'pointer'; });
       mapa.on('mouseleave', 'locais-points', () => { mapa.getCanvas().style.cursor = ''; });
       mapa.on('mouseenter', 'quadras-fill', () => { mapa.getCanvas().style.cursor = 'pointer'; });
