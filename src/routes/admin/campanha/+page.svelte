@@ -73,14 +73,15 @@
     };
   });
 
-  // Quadras destacadas no mapa: as concluídas no período viram verdes (sobre status default)
+  // Mapa do período: MapaAdmin pinta verde quem tem data_conclusao (concluida).
+  // Pra mostrar SÓ as concluídas DENTRO da campanha, anulamos data_conclusao
+  // das que não foram feitas no período — assim elas ficam âmbar (pendente).
   const quadrasComStatusCampanha = $derived.by(() => {
     if (!data.ativa) return data.quadras;
     const idsConcluidas = new Set(data.quadrasConcluidasNoPeriodo);
     return data.quadras.map((q) => ({
       ...q,
-      // Substitui status pra que o MapaAdmin pinte verde apenas as do período
-      status: idsConcluidas.has(q.id) ? 'concluido' : (!q.ativa ? 'inativa' : 'pendente')
+      data_conclusao: idsConcluidas.has(q.id) ? q.data_conclusao : null
     })) as QuadraGeo[];
   });
 

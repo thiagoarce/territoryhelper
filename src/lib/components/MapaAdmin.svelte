@@ -97,6 +97,7 @@
             color: q.color,
             status: q.status,
             ativa: q.ativa,
+            concluida: !!q.data_conclusao,
             territorio_id: q.territorio_id,
             qtd_locais: q.qtd_locais,
             data_conclusao: q.data_conclusao,
@@ -123,13 +124,13 @@
     // Default por modo
     let defaultColor: any;
     if (modo === 'status') {
-      // ativa=false → cinza (inativa)
-      // tem data_conclusao → verde (concluída)
-      // ativa=true e sem data → âmbar (pendente)
+      // ativa=false → cinza (inativa); concluida → verde; pendente → âmbar.
+      // Usa booleano 'concluida' (calculado no JS) em vez de comparar
+      // data_conclusao com null no MapLibre (comparação null é frágil).
       defaultColor = [
         'case',
-        ['==', ['get', 'ativa'], false], 'rgba(148,163,184,0.25)',
-        ['!=', ['get', 'data_conclusao'], null], 'rgba(34,197,94,0.5)',
+        ['!', ['get', 'ativa']], 'rgba(148,163,184,0.25)',
+        ['get', 'concluida'], 'rgba(34,197,94,0.5)',
         'rgba(245,158,11,0.5)'
       ];
     } else if (modo === 'territorio') {
@@ -205,6 +206,7 @@
               color: q.color,
               status: q.status,
               ativa: q.ativa,
+              concluida: !!q.data_conclusao,
               territorio_id: q.territorio_id,
               qtd_locais: q.qtd_locais,
               data_conclusao: q.data_conclusao,
