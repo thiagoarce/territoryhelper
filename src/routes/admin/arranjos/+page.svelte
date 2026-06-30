@@ -1,23 +1,106 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { deserialize } from '$app/forms';
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { Modalidade, Arranjo } from './$types';
+  import type { Modalidade, Arranjo, PredioLite } from './$types';
 
-  let { data }: { data: { modalidades: Modalidade[]; arranjos: Arranjo[]; dirigentes: { id: string; nome: string }[] } } = $props();
+  let { data }: {
+    data: {
+      modalidades: Modalidade[];
+      arranjos: Arranjo[];
+      dirigentes: { id: string; nome: string }[];
+      quadrasIds: string[];
+      predios: PredioLite[];
+    };
+  } = $props();
 
   type Aba = 'semana' | 'modalidades';
   let aba = $state<Aba>('semana');
 
+  // === Modalidade sheet ===
   let sheetMod = $state(false);
   let modEditando = $state<Partial<Modalidade> | null>(null);
   let salvandoMod = $state(false);
 
+  // === Arranjo sheet ===
+  let sheetArr = $state(false);
+  let arrEditando = $state<Partial<Arranjo> | null>(null);
+  let salvandoArr = $state(false);
+  let arquivoFile = $state<File | null>(null);
+  let uploadando = $state(false);
+
   const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+  // === Semana atual (segunda → domingo) ===
+  function semanaAtual(): { ini: Date; fim: Date; isoIni: string; isoFim: string } {
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    const diaSem = hoje.getDay(); // 0=dom
+    const diffSegunda = diaSem === 0 ? -6 : 1 - diaSem;
+    const ini = new Date(hoje);
+    ini.setDate(hoje.getDate() + diffSegunda);
+    const fim = new Date(ini);
+    fim.setDate(ini.getDate() + 6);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    return { ini, fim, isoIni: iso(ini), isoFim: iso(fim) };
+  }
+
+  const semana = semanaAtual();
+
+  type Ocorrencia = { arranjo: Arranjo; data: string; dia_semana: number };
+
+  const ocorrenciasSemana = $derived.by<Ocorrencia[]>(() => {
+    const out: Ocorrencia[] = [];
+    for (const a of data.arranjos) {
+      if (!a.ativo) continue;
+      if (a.recorrente) {
+        if (a.dia_semana === null || a.dia_semana === undefined) continue;
+        if (a.data_inicio && a.data_inicio > semana.isoFim) continue;
+        if (a.data_fim && a.data_fim < semana.isoIni) continue;
+        const d = new Date(semana.ini);
+        const diffDias = (a.dia_semana - 1 + 7) % 7; // 1=seg → 0; 0=dom → 6
+        d.setDate(semana.ini.getDate() + diffDias);
+        const dIso = d.toISOString().slice(0, 10);
+        if (a.data_inicio && dIso < a.data_inicio) continue;
+        if (a.data_fim && dIso > a.data_fim) continue;
+        out.push({ arranjo: a, data: dIso, dia_semana: a.dia_semana });
+      } else if (a.data && a.data >= semana.isoIni && a.data <= semana.isoFim) {
+        const d = new Date(a.data + 'T12:00:00');
+        out.push({ arranjo: a, data: a.data, dia_semana: d.getDay() });
+      }
+    }
+    return out.sort((x, y) => {
+      const dx = (x.dia_semana - 1 + 7) % 7;
+      const dy = (y.dia_semana - 1 + 7) % 7;
+      if (dx !== dy) return dx - dy;
+      return (x.arranjo.hora_inicio ?? '') > (y.arranjo.hora_inicio ?? '') ? 1 : -1;
+    });
+  });
+
+  const ocPorDia = $derived.by(() => {
+    const m: Record<number, Ocorrencia[]> = {};
+    for (const o of ocorrenciasSemana) {
+      (m[o.dia_semana] ??= []).push(o);
+    }
+    return m;
+  });
+
+  // Dias da semana ordenados (seg→dom)
+  const diasOrdenados = [1, 2, 3, 4, 5, 6, 0];
+
+  const modalidadeById = $derived(
+    Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const))
+  );
+
+  const dirigenteNome = $derived((id: string | null) =>
+    id ? data.dirigentes.find((d) => d.id === id)?.nome ?? '?' : null
+  );
+
+  // === Sheet de modalidade ===
   function abrirNovaMod() {
     modEditando = {
       nome: '',
@@ -30,10 +113,47 @@
     };
     sheetMod = true;
   }
-
   function abrirEditarMod(m: Modalidade) {
     modEditando = { ...m };
     sheetMod = true;
+  }
+
+  // === Sheet de arranjo ===
+  function abrirNovoArr(modalidade?: Modalidade) {
+    const m = modalidade ?? data.modalidades.find((x) => x.ativo) ?? data.modalidades[0];
+    if (!m) {
+      toast.error('Crie uma modalidade antes');
+      aba = 'modalidades';
+      return;
+    }
+    arrEditando = {
+      modalidade_id: m.id,
+      recorrente: m.tipo_territorio !== 'arquivo', // arquivos costumam ser pontuais
+      dia_semana: m.default_dia_semana,
+      data: null,
+      hora_inicio: m.default_hora,
+      hora_fim: null,
+      local_endereco: m.default_local,
+      local_lat: null,
+      local_lng: null,
+      dirigente_id: null,
+      quadras_ids: null,
+      cartas_locais_ids: null,
+      arquivo_url: null,
+      arquivo_nome: null,
+      notas: null,
+      data_inicio: null,
+      data_fim: null,
+      ativo: true
+    };
+    arquivoFile = null;
+    sheetArr = true;
+  }
+
+  function abrirEditarArr(a: Arranjo) {
+    arrEditando = { ...a };
+    arquivoFile = null;
+    sheetArr = true;
   }
 
   function tipoLabel(t: string): string {
@@ -43,12 +163,60 @@
     if (t === 'ponto_tp') return 'Ponto fixo (TP)';
     return t;
   }
+
+  async function apagarArranjo() {
+    if (!arrEditando?.id) return;
+    if (!confirm('Apagar esse arranjo?')) return;
+    const fd = new FormData();
+    fd.append('id', String(arrEditando.id));
+    const res = await fetch('?/deletarArranjo', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text());
+    if (parsed.type === 'success') {
+      toast.success('Removido');
+      sheetArr = false;
+      await invalidateAll();
+    } else if (parsed.type === 'failure') {
+      toast.error(String((parsed.data as any)?.erro || 'Falhou'));
+    }
+  }
+
+  // Upload de arquivo client-side via action separada
+  async function uploadArquivo() {
+    if (!arquivoFile) return;
+    uploadando = true;
+    try {
+      const fd = new FormData();
+      fd.append('arquivo', arquivoFile);
+      const res = await fetch('?/uploadArquivo', { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text());
+      if (parsed.type === 'success') {
+        const d = (parsed.data ?? {}) as { url?: string; nome?: string };
+        arrEditando = { ...arrEditando, arquivo_url: d.url ?? null, arquivo_nome: d.nome ?? null };
+        toast.success('Arquivo enviado');
+      } else if (parsed.type === 'failure') {
+        toast.error(String((parsed.data as any)?.erro || 'Upload falhou'));
+      }
+    } finally {
+      uploadando = false;
+    }
+  }
+
+  function formatData(iso: string | null): string {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  }
+
+  function modTipoSelecionado(): 'quadras' | 'cartas_lista' | 'arquivo' | 'ponto_tp' | null {
+    if (!arrEditando?.modalidade_id) return null;
+    return modalidadeById[arrEditando.modalidade_id]?.tipo_territorio ?? null;
+  }
 </script>
 
 <div class="p-4 space-y-3 max-w-5xl mx-auto">
   <div>
     <h1 class="text-2xl font-bold">Arranjos</h1>
-    <p class="text-sm text-slate-500">Configure modalidades e marque saídas da semana.</p>
+    <p class="text-sm text-slate-500">Saídas semanais — cartas, pregação, TP. Admin coordena, dirigente distribui aos publicadores.</p>
   </div>
 
   <div class="flex gap-1 border-b border-slate-200">
@@ -60,7 +228,7 @@
       class:text-primary-700={aba === 'semana'}
       class:border-transparent={aba !== 'semana'}
       class:text-slate-500={aba !== 'semana'}
-    >Semana</button>
+    >Semana ({ocorrenciasSemana.length})</button>
     <button
       type="button"
       onclick={() => (aba = 'modalidades')}
@@ -73,16 +241,95 @@
   </div>
 
   {#if aba === 'semana'}
-    <Card padding="md">
-      <div class="text-center py-8 text-slate-500">
-        <div class="text-4xl mb-2 opacity-50">📅</div>
-        <div class="font-medium">Em construção</div>
-        <div class="text-sm">A criação de arranjos vem no próximo incremento. Configure as modalidades primeiro.</div>
-        {#if data.modalidades.length === 0}
-          <Button variant="primary" class="mt-3" onclick={() => { aba = 'modalidades'; abrirNovaMod(); }}>+ Criar primeira modalidade</Button>
-        {/if}
+    <div class="flex justify-between items-center">
+      <div class="text-sm text-slate-500">
+        {semana.ini.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+        — {semana.fim.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
       </div>
-    </Card>
+      <Button variant="primary" onclick={() => abrirNovoArr()}>+ Novo arranjo</Button>
+    </div>
+
+    {#if ocorrenciasSemana.length === 0}
+      <Card padding="md">
+        <div class="text-center py-8">
+          <div class="text-4xl mb-2 opacity-50">📅</div>
+          <div class="font-medium">Nenhum arranjo nesta semana</div>
+          <div class="text-sm text-slate-500">
+            Clique em "+ Novo arranjo" pra marcar uma saída.
+          </div>
+        </div>
+      </Card>
+    {:else}
+      <div class="grid gap-3">
+        {#each diasOrdenados as dia}
+          {#if (ocPorDia[dia] ?? []).length > 0}
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">{DIAS[dia]}</div>
+              <div class="grid gap-2">
+                {#each ocPorDia[dia] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
+                  {@const m = modalidadeById[oc.arranjo.modalidade_id]}
+                  {@const nome = oc.arranjo.nome || m?.nome || 'Arranjo'}
+                  <Card padding="md">
+                    <div class="flex items-start gap-3">
+                      <span class="w-2 self-stretch rounded shrink-0" style="background:{m?.cor ?? '#3b82f6'}"></span>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="font-semibold">{nome}</span>
+                          {#if oc.arranjo.recorrente}<span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded">semanal</span>{/if}
+                          {#if m}<span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{tipoLabel(m.tipo_territorio)}</span>{/if}
+                        </div>
+                        <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {#if oc.arranjo.hora_inicio}<span>🕒 {oc.arranjo.hora_inicio.substring(0, 5)}{oc.arranjo.hora_fim ? `–${oc.arranjo.hora_fim.substring(0, 5)}` : ''}</span>{/if}
+                          {#if oc.arranjo.local_endereco}<span class="truncate">📍 {oc.arranjo.local_endereco}</span>{/if}
+                          {#if oc.arranjo.dirigente_id}<span>👤 {dirigenteNome(oc.arranjo.dirigente_id)}</span>{/if}
+                        </div>
+                        {#if (oc.arranjo.quadras_ids?.length ?? 0) > 0}
+                          <div class="mt-1.5 flex flex-wrap gap-1">
+                            {#each oc.arranjo.quadras_ids ?? [] as q}
+                              <span class="text-xs font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
+                            {/each}
+                          </div>
+                        {/if}
+                        {#if (oc.arranjo.cartas_locais_ids?.length ?? 0) > 0}
+                          <div class="mt-1 text-xs text-slate-500">{oc.arranjo.cartas_locais_ids?.length} prédio(s) na lista</div>
+                        {/if}
+                        {#if oc.arranjo.arquivo_url}
+                          <div class="mt-1">
+                            <a href={oc.arranjo.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline">📎 {oc.arranjo.arquivo_nome || 'arquivo'}</a>
+                          </div>
+                        {/if}
+                        {#if oc.arranjo.notas}
+                          <div class="mt-1 text-xs italic text-slate-500">{oc.arranjo.notas}</div>
+                        {/if}
+                      </div>
+                      <button type="button" onclick={() => abrirEditarArr(oc.arranjo)} class="text-xs text-primary-700 hover:underline shrink-0">Editar</button>
+                    </div>
+                  </Card>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+
+    {#if data.arranjos.length > ocorrenciasSemana.length}
+      <details class="mt-4">
+        <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-700">
+          Mostrar todos os arranjos cadastrados ({data.arranjos.length})
+        </summary>
+        <div class="mt-2 grid gap-1.5">
+          {#each data.arranjos as a (a.id)}
+            {@const m = modalidadeById[a.modalidade_id]}
+            <button type="button" onclick={() => abrirEditarArr(a)} class="text-left p-2 rounded border border-slate-200 hover:bg-slate-50 text-sm flex gap-2 items-center">
+              <span class="w-2 h-6 rounded" style="background:{m?.cor ?? '#3b82f6'}"></span>
+              <span class="flex-1 truncate">{a.nome || m?.nome || 'Arranjo'} · {a.recorrente ? `toda ${a.dia_semana !== null ? DIAS[a.dia_semana!] : '?'}` : formatData(a.data)}</span>
+              {#if !a.ativo}<span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded">inativo</span>{/if}
+            </button>
+          {/each}
+        </div>
+      </details>
+    {/if}
   {:else}
     <div class="flex justify-end">
       <Button variant="primary" onclick={abrirNovaMod}>+ Nova modalidade</Button>
@@ -138,6 +385,7 @@
   {/if}
 </div>
 
+<!-- Sheet modalidade -->
 <BottomSheet bind:open={sheetMod} title={modEditando?.id ? 'Editar modalidade' : 'Nova modalidade'}>
   {#if modEditando}
     <form
@@ -174,7 +422,6 @@
           <option value="arquivo">Arquivo enviado (PDF/imagem)</option>
           <option value="ponto_tp">Ponto fixo (TP)</option>
         </select>
-        <p class="text-xs text-slate-500 mt-1">Define o que o admin vai escolher ao criar um arranjo dessa modalidade.</p>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -214,6 +461,208 @@
       <div class="flex gap-2 pt-2">
         <Button variant="secondary" onclick={() => (sheetMod = false)} class="flex-1">Cancelar</Button>
         <Button variant="primary" type="submit" loading={salvandoMod} class="flex-1">Salvar</Button>
+      </div>
+    </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet arranjo -->
+<BottomSheet bind:open={sheetArr} title={arrEditando?.id ? 'Editar arranjo' : 'Novo arranjo'}>
+  {#if arrEditando}
+    {@const tipoMod = modTipoSelecionado()}
+    <form
+      method="POST"
+      action={arrEditando.id ? '?/atualizarArranjo' : '?/criarArranjo'}
+      use:enhance={() => {
+        salvandoArr = true;
+        return async ({ result, update }) => {
+          await update();
+          salvandoArr = false;
+          if (result.type === 'success') {
+            toast.success('Salvo');
+            sheetArr = false;
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="space-y-3"
+    >
+      {#if arrEditando.id}<input type="hidden" name="id" value={arrEditando.id} />{/if}
+
+      <div>
+        <label for="modalidade_id" class="block text-sm font-medium mb-1">Modalidade</label>
+        <select
+          id="modalidade_id"
+          name="modalidade_id"
+          required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          value={arrEditando.modalidade_id}
+          onchange={(e) => {
+            const id = Number((e.target as HTMLSelectElement).value);
+            arrEditando = { ...arrEditando, modalidade_id: id };
+          }}
+        >
+          {#each data.modalidades.filter((m) => m.ativo || m.id === arrEditando.modalidade_id) as m}
+            <option value={m.id}>{m.nome} · {tipoLabel(m.tipo_territorio)}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div>
+        <label for="nome" class="block text-sm font-medium mb-1">Nome (opcional)</label>
+        <input id="nome" name="nome" value={arrEditando.nome ?? ''} placeholder="Default: nome da modalidade" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+
+      <!-- Recorrência -->
+      <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            name="recorrente"
+            checked={arrEditando.recorrente}
+            onchange={(e) => arrEditando = { ...arrEditando, recorrente: (e.target as HTMLInputElement).checked }}
+            class="w-4 h-4 rounded"
+          />
+          Recorrente (toda semana)
+        </label>
+
+        {#if arrEditando.recorrente}
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="dia_semana" class="block text-xs font-medium mb-1">Dia</label>
+              <select id="dia_semana" name="dia_semana" required class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={arrEditando.dia_semana ?? ''}>
+                <option value="">—</option>
+                {#each DIAS as d, i}<option value={i}>{d}</option>{/each}
+              </select>
+            </div>
+            <div>
+              <label for="hora_inicio" class="block text-xs font-medium mb-1">Hora</label>
+              <input id="hora_inicio" name="hora_inicio" type="time" value={arrEditando.hora_inicio ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label for="data_inicio" class="block text-xs font-medium mb-1">Começa em (opcional)</label>
+              <input id="data_inicio" name="data_inicio" type="date" value={arrEditando.data_inicio ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label for="data_fim" class="block text-xs font-medium mb-1">Termina em (opcional)</label>
+              <input id="data_fim" name="data_fim" type="date" value={arrEditando.data_fim ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
+          </div>
+        {:else}
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="data" class="block text-xs font-medium mb-1">Data</label>
+              <input id="data" name="data" type="date" required value={arrEditando.data ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label for="hora_inicio" class="block text-xs font-medium mb-1">Hora</label>
+              <input id="hora_inicio" name="hora_inicio" type="time" value={arrEditando.hora_inicio ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
+          </div>
+        {/if}
+
+        <div>
+          <label for="hora_fim" class="block text-xs font-medium mb-1">Hora fim (opcional)</label>
+          <input id="hora_fim" name="hora_fim" type="time" value={arrEditando.hora_fim ?? ''} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+        </div>
+      </div>
+
+      <div>
+        <label for="local_endereco" class="block text-sm font-medium mb-1">Local</label>
+        <input id="local_endereco" name="local_endereco" value={arrEditando.local_endereco ?? ''} placeholder="Endereço ou ponto de encontro" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+
+      <div>
+        <label for="dirigente_id" class="block text-sm font-medium mb-1">Dirigente</label>
+        <select id="dirigente_id" name="dirigente_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={arrEditando.dirigente_id ?? ''}>
+          <option value="">—</option>
+          {#each data.dirigentes as d}<option value={d.id}>{d.nome}</option>{/each}
+        </select>
+      </div>
+
+      <!-- Bloco por tipo de território -->
+      {#if tipoMod === 'quadras'}
+        <div>
+          <label for="quadras_ids" class="block text-sm font-medium mb-1">Quadras designadas</label>
+          <input
+            id="quadras_ids"
+            name="quadras_ids"
+            value={(arrEditando.quadras_ids ?? []).join(', ')}
+            placeholder="Q-1, Q-2, Q-3"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+          />
+          <p class="text-xs text-slate-500 mt-1">IDs separados por vírgula. O dirigente distribui aos publicadores depois.</p>
+        </div>
+      {:else if tipoMod === 'cartas_lista'}
+        <div>
+          <span class="block text-sm font-medium mb-1">Prédios na lista</span>
+          <input id="cartas_locais_ids" name="cartas_locais_ids" type="hidden" value={(arrEditando.cartas_locais_ids ?? []).join(',')} />
+          <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+            {#each data.predios.slice(0, 200) as p}
+              {@const sel = arrEditando.cartas_locais_ids?.includes(p.id)}
+              <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={sel}
+                  onchange={(e) => {
+                    const cur = new Set(arrEditando.cartas_locais_ids ?? []);
+                    if ((e.target as HTMLInputElement).checked) cur.add(p.id);
+                    else cur.delete(p.id);
+                    arrEditando = { ...arrEditando, cartas_locais_ids: [...cur] };
+                  }}
+                  class="w-4 h-4 rounded"
+                />
+                <span class="flex-1 truncate">{p.nome_estabelecimento ?? '—'}</span>
+                <span class="text-xs text-slate-400 truncate">{p.logradouro ?? ''} {p.numero ?? ''}</span>
+              </label>
+            {/each}
+          </div>
+          <p class="text-xs text-slate-500 mt-1">{(arrEditando.cartas_locais_ids ?? []).length} prédio(s) selecionados (mostra os primeiros 200).</p>
+        </div>
+      {:else if tipoMod === 'arquivo'}
+        <div>
+          <span class="block text-sm font-medium mb-1">Arquivo (PDF/imagem)</span>
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp"
+            onchange={(e) => arquivoFile = (e.target as HTMLInputElement).files?.[0] ?? null}
+            class="w-full text-sm"
+          />
+          {#if arquivoFile}
+            <Button variant="secondary" onclick={uploadArquivo} loading={uploadando} class="mt-2 w-full">⬆ Enviar arquivo</Button>
+          {/if}
+          {#if arrEditando.arquivo_url}
+            <div class="mt-2 text-xs text-slate-600">
+              <a href={arrEditando.arquivo_url} target="_blank" rel="noopener" class="text-primary-700 hover:underline">📎 {arrEditando.arquivo_nome || 'arquivo'}</a>
+            </div>
+          {/if}
+          <input type="hidden" name="arquivo_url" value={arrEditando.arquivo_url ?? ''} />
+          <input type="hidden" name="arquivo_nome" value={arrEditando.arquivo_nome ?? ''} />
+        </div>
+      {:else if tipoMod === 'ponto_tp'}
+        <p class="text-xs text-slate-500 italic">Ponto fixo de TP — só o local importa.</p>
+      {/if}
+
+      <div>
+        <label for="notas" class="block text-sm font-medium mb-1">Notas (opcional)</label>
+        <textarea id="notas" name="notas" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{arrEditando.notas ?? ''}</textarea>
+      </div>
+
+      {#if arrEditando.id}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="ativo" checked={arrEditando.ativo} class="w-4 h-4 rounded" />
+          Ativo
+        </label>
+      {/if}
+
+      <div class="flex gap-2 pt-2">
+        {#if arrEditando.id}
+          <Button variant="secondary" onclick={apagarArranjo} class="text-red-600">Apagar</Button>
+        {/if}
+        <Button variant="secondary" onclick={() => (sheetArr = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={salvandoArr} class="flex-1">Salvar</Button>
       </div>
     </form>
   {/if}

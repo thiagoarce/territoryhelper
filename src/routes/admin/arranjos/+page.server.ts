@@ -37,10 +37,17 @@ export interface Arranjo {
   data_fim: string | null;
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { modalidades: [], arranjos: [], dirigentes: [] };
+export interface PredioLite {
+  id: number;
+  logradouro: string | null;
+  numero: string | null;
+  nome_estabelecimento: string | null;
+}
 
-  const [modalidades, arranjos, { data: dirigentes }] = await Promise.all([
+export const load: PageServerLoad = async ({ locals }) => {
+  if (!locals.user) return { modalidades: [], arranjos: [], dirigentes: [], quadrasIds: [], predios: [] };
+
+  const [modalidades, arranjos, { data: dirigentes }, { data: quadrasRaw }, predios] = await Promise.all([
     selectAll<Modalidade>(
       locals.supabase
         .from('arranjo_modalidades')
@@ -60,15 +67,84 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome')
       .in('role', ['dirigente', 'admin'])
       .eq('ativo', true)
-      .order('nome')
+      .order('nome'),
+    locals.supabase.from('quadras').select('id').eq('ativa', true).order('id'),
+    selectAll<PredioLite>(
+      locals.supabase
+        .from('locais')
+        .select('id, logradouro, numero, nome_estabelecimento')
+        .eq('tipo', 'predio')
+        .order('logradouro')
+        .order('numero')
+    )
   ]);
 
   return {
     modalidades,
     arranjos,
-    dirigentes: dirigentes ?? []
+    dirigentes: dirigentes ?? [],
+    quadrasIds: (quadrasRaw ?? []).map((q: any) => q.id as string),
+    predios
   };
 };
+
+function parseIntArray(s: string): number[] {
+  return s
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function parseStrArray(s: string): string[] {
+  return s
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function arranjoFromForm(fd: FormData) {
+  const modalidade_id = Number(fd.get('modalidade_id') ?? 0);
+  const nome = String(fd.get('nome') ?? '').trim() || null;
+  const recorrente = fd.get('recorrente') === 'on' || fd.get('recorrente') === 'true';
+  const diaStr = String(fd.get('dia_semana') ?? '').trim();
+  const data = String(fd.get('data') ?? '').trim() || null;
+  const hi = String(fd.get('hora_inicio') ?? '').trim() || null;
+  const hf = String(fd.get('hora_fim') ?? '').trim() || null;
+  const local = String(fd.get('local_endereco') ?? '').trim() || null;
+  const latStr = String(fd.get('local_lat') ?? '').trim();
+  const lngStr = String(fd.get('local_lng') ?? '').trim();
+  const dirigente_id = String(fd.get('dirigente_id') ?? '').trim() || null;
+  const quadras_csv = String(fd.get('quadras_ids') ?? '').trim();
+  const cartas_csv = String(fd.get('cartas_locais_ids') ?? '').trim();
+  const arquivo_url = String(fd.get('arquivo_url') ?? '').trim() || null;
+  const arquivo_nome = String(fd.get('arquivo_nome') ?? '').trim() || null;
+  const notas = String(fd.get('notas') ?? '').trim() || null;
+  const data_inicio = String(fd.get('data_inicio') ?? '').trim() || null;
+  const data_fim = String(fd.get('data_fim') ?? '').trim() || null;
+  const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true' || fd.get('ativo') === null;
+
+  return {
+    modalidade_id,
+    nome,
+    recorrente,
+    dia_semana: diaStr === '' ? null : Number(diaStr),
+    data: recorrente ? null : data,
+    hora_inicio: hi,
+    hora_fim: hf,
+    local_endereco: local,
+    local_lat: latStr === '' ? null : Number(latStr),
+    local_lng: lngStr === '' ? null : Number(lngStr),
+    dirigente_id,
+    quadras_ids: quadras_csv ? parseStrArray(quadras_csv) : null,
+    cartas_locais_ids: cartas_csv ? parseIntArray(cartas_csv) : null,
+    arquivo_url,
+    arquivo_nome,
+    notas,
+    data_inicio: recorrente ? data_inicio : null,
+    data_fim: recorrente ? data_fim : null,
+    ativo
+  };
+}
 
 export const actions: Actions = {
   criarModalidade: async ({ request, locals }) => {
@@ -135,5 +211,57 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('arranjo_modalidades').delete().eq('id', id);
     if (error) return fail(400, { erro: 'Não dá pra apagar (provavelmente tem arranjos usando essa modalidade)' });
     return { ok: true, msg: 'Modalidade removida' };
+  },
+
+  criarArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const data = arranjoFromForm(fd);
+    if (!data.modalidade_id) return fail(400, { erro: 'Modalidade obrigatória' });
+    if (data.recorrente && data.dia_semana === null) return fail(400, { erro: 'Recorrente exige dia da semana' });
+    if (!data.recorrente && !data.data) return fail(400, { erro: 'Data obrigatória pra arranjo único' });
+    const { error } = await locals.supabase.from('arranjos').insert({ ...data, criado_por: locals.user.id });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Arranjo criado' };
+  },
+
+  atualizarArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const data = arranjoFromForm(fd);
+    if (!data.modalidade_id) return fail(400, { erro: 'Modalidade obrigatória' });
+    if (data.recorrente && data.dia_semana === null) return fail(400, { erro: 'Recorrente exige dia da semana' });
+    if (!data.recorrente && !data.data) return fail(400, { erro: 'Data obrigatória pra arranjo único' });
+    const { error } = await locals.supabase.from('arranjos').update(data).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Arranjo salvo' };
+  },
+
+  deletarArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('arranjos').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Arranjo removido' };
+  },
+
+  uploadArquivo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const file = fd.get('arquivo') as File | null;
+    if (!file || file.size === 0) return fail(400, { erro: 'Arquivo vazio' });
+    if (file.size > 10 * 1024 * 1024) return fail(400, { erro: 'Arquivo > 10MB' });
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const path = `arranjo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error: errUp } = await locals.supabase.storage
+      .from('arranjos')
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (errUp) return fail(400, { erro: errUp.message });
+    const { data: pub } = locals.supabase.storage.from('arranjos').getPublicUrl(path);
+    return { ok: true, url: pub.publicUrl, nome: file.name };
   }
 };
