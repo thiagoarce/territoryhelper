@@ -18,6 +18,7 @@
       quadrasAlocadas: string[];
       participantesPorDesignacao: Record<number, string[]>;
       tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null }[];
+      arranjosQuadras: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; quadras_ids: string[] | null; hora_inicio: string | null }[];
     };
     form: any;
   } = $props();
@@ -45,6 +46,11 @@
   // TCE designar
   let sheetAtribuirTce = $state(false);
   let tceAtribuir = $state<{ id: string; nome: string; publicador_id: string | null; prazo: string | null } | null>(null);
+
+  // Adicionar quadras a um arranjo
+  let sheetArranjo = $state(false);
+  let modoAnexar = $state<'somar' | 'substituir'>('somar');
+  let salvandoAnexar = $state(false);
 
   function abrirEditarDesignacao(d: DesignacaoEnriquecida) {
     editandoDesignacao = d;
@@ -180,8 +186,9 @@
     <div class="text-sm font-medium">
       <strong>{selecionadas.size}</strong> quadra(s) selecionada(s)
     </div>
-    <div class="flex gap-2 ml-auto">
+    <div class="flex gap-2 ml-auto flex-wrap justify-end">
       <Button variant="primary" size="sm" onclick={() => (sheetDesignar = true)}>📤 Designar</Button>
+      <Button variant="secondary" size="sm" onclick={() => (sheetArranjo = true)}>📅 Anexar a arranjo</Button>
       <Button variant="secondary" size="sm" onclick={limparSelecao}>Limpar</Button>
     </div>
     </div>
@@ -470,6 +477,88 @@
       <div class="flex gap-2 pt-2">
         <Button variant="secondary" onclick={() => (sheetEditarDesignacao = false)} class="flex-1">Cancelar</Button>
         <Button variant="primary" type="submit" loading={salvando} class="flex-1">Salvar</Button>
+      </div>
+    </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet: anexar quadras selecionadas a um arranjo (admin → arranjo direto) -->
+<BottomSheet bind:open={sheetArranjo} title="Anexar quadras a um arranjo">
+  {#if data.arranjosQuadras.length === 0}
+    <div class="text-center py-8 text-slate-500">
+      <div class="text-4xl mb-2 opacity-50">📅</div>
+      <div class="font-medium">Nenhum arranjo de quadras</div>
+      <div class="text-sm">Cria um arranjo do tipo "quadras" em <a href="/admin/arranjos" class="text-primary-700 hover:underline">/admin/arranjos</a>.</div>
+    </div>
+  {:else}
+    <form
+      method="POST"
+      action="?/adicionarQuadrasAoArranjo"
+      use:enhance={() => {
+        salvandoAnexar = true;
+        return async ({ result, update }) => {
+          await update();
+          salvandoAnexar = false;
+          if (result.type === 'success') {
+            toast.success(String((result.data as any)?.msg || 'Anexado'));
+            sheetArranjo = false;
+            selecionadas = new Set();
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="space-y-3"
+    >
+      {#each [...selecionadas] as qid}
+        <input type="hidden" name="quadras_ids" value={qid} />
+      {/each}
+
+      <div class="text-sm bg-slate-50 rounded p-2">
+        <strong>{selecionadas.size}</strong> quadra(s) selecionada(s)
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Modo</span>
+        <div class="flex gap-1 bg-slate-100 rounded-lg p-1 text-xs">
+          <button type="button" onclick={() => (modoAnexar = 'somar')}
+            class="flex-1 px-2 py-1 rounded font-medium"
+            class:bg-white={modoAnexar === 'somar'}
+            class:text-slate-900={modoAnexar === 'somar'}
+            class:text-slate-500={modoAnexar !== 'somar'}>Somar às existentes</button>
+          <button type="button" onclick={() => (modoAnexar = 'substituir')}
+            class="flex-1 px-2 py-1 rounded font-medium"
+            class:bg-white={modoAnexar === 'substituir'}
+            class:text-slate-900={modoAnexar === 'substituir'}
+            class:text-slate-500={modoAnexar !== 'substituir'}>Substituir tudo</button>
+        </div>
+        <input type="hidden" name="substituir" value={modoAnexar === 'substituir' ? 'true' : 'false'} />
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Arranjo</span>
+        <div class="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.arranjosQuadras as a}
+            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="radio" name="arranjo_id" value={a.id} required class="w-4 h-4" />
+              <span class="w-2 h-8 rounded shrink-0" style="background:{a.modalidade_cor}"></span>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium truncate">{a.nome || a.modalidade_nome}</div>
+                <div class="text-xs text-slate-500">
+                  {a.data ? new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }) : '—'}
+                  {a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}
+                  · {(a.quadras_ids ?? []).length} já vinculada(s)
+                </div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <Button variant="secondary" onclick={() => (sheetArranjo = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={salvandoAnexar} class="flex-1">Anexar</Button>
       </div>
     </form>
   {/if}

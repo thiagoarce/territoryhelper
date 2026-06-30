@@ -6,7 +6,30 @@
   import { toast } from '$lib/ui/toast.svelte';
   import type { PredioListado, PredioDetalhado } from '$lib/server/queries';
 
-  let { data, form }: { data: { predios: PredioListado[] }; form: any } = $props();
+  let { data, form }: {
+    data: {
+      predios: PredioListado[];
+      arranjosCartas: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; cartas_locais_ids: number[] | null; hora_inicio: string | null }[];
+    };
+    form: any;
+  } = $props();
+
+  // Seleção pra anexar a arranjo de cartas
+  let selecionados = $state<Set<number>>(new Set());
+  let sheetAnexarArranjo = $state(false);
+  let modoAnexar = $state<'somar' | 'substituir'>('somar');
+  let salvandoAnexar = $state(false);
+
+  function toggleSel(id: number) {
+    if (selecionados.has(id)) selecionados.delete(id);
+    else selecionados.add(id);
+    selecionados = new Set(selecionados);
+  }
+
+  function selecionarFiltrados(items: PredioListado[]) {
+    for (const p of items) selecionados.add(p.id);
+    selecionados = new Set(selecionados);
+  }
 
   let busca = $state('');
   let filtroTipo = $state<'todos' | 'residencial' | 'comercial'>('todos');
@@ -203,7 +226,18 @@
 
   <div class="space-y-2">
     {#each filtrados as p (p.id)}
-      <div class="rounded-lg border border-slate-200 bg-white p-3 flex items-start gap-3">
+      <div class="rounded-lg border bg-white p-3 flex items-start gap-3"
+        class:border-slate-200={!selecionados.has(p.id)}
+        class:border-primary-400={selecionados.has(p.id)}
+        class:bg-primary-50={selecionados.has(p.id)}
+      >
+        <input
+          type="checkbox"
+          checked={selecionados.has(p.id)}
+          onchange={() => toggleSel(p.id)}
+          aria-label="Selecionar prédio"
+          class="w-4 h-4 mt-1 rounded shrink-0"
+        />
         <button
           type="button"
           onclick={() => abrirEditar(p.id)}
@@ -246,6 +280,98 @@
     {/each}
   </div>
 </div>
+
+<!-- Barra inferior quando há prédios selecionados -->
+{#if selecionados.size > 0}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+    <div class="text-sm font-medium"><strong>{selecionados.size}</strong> prédio(s) selecionado(s)</div>
+    <div class="flex gap-2 ml-auto flex-wrap">
+      <Button variant="secondary" size="sm" onclick={() => selecionarFiltrados(filtrados)}>Selecionar todos visíveis ({filtrados.length})</Button>
+      <Button variant="primary" size="sm" onclick={() => (sheetAnexarArranjo = true)}>📅 Anexar a arranjo de cartas</Button>
+      <Button variant="secondary" size="sm" onclick={() => (selecionados = new Set())}>Limpar</Button>
+    </div>
+  </div>
+{/if}
+
+<!-- Sheet: anexar prédios a um arranjo de cartas -->
+<BottomSheet bind:open={sheetAnexarArranjo} title="Anexar prédios a um arranjo de cartas">
+  {#if data.arranjosCartas.length === 0}
+    <div class="text-center py-8 text-slate-500">
+      <div class="text-4xl mb-2 opacity-50">📅</div>
+      <div class="font-medium">Nenhum arranjo de cartas</div>
+      <div class="text-sm">Crie um arranjo do tipo "Lista de cartas" em <a href="/admin/arranjos" class="text-primary-700 hover:underline">/admin/arranjos</a>.</div>
+    </div>
+  {:else}
+    <form
+      method="POST"
+      action="?/adicionarPrediosAoArranjo"
+      use:enhance={() => {
+        salvandoAnexar = true;
+        return async ({ result, update }) => {
+          await update();
+          salvandoAnexar = false;
+          if (result.type === 'success') {
+            toast.success(String((result.data as any)?.msg || 'Anexado'));
+            sheetAnexarArranjo = false;
+            selecionados = new Set();
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="space-y-3"
+    >
+      {#each [...selecionados] as pid}
+        <input type="hidden" name="predio_ids" value={pid} />
+      {/each}
+
+      <div class="text-sm bg-slate-50 rounded p-2"><strong>{selecionados.size}</strong> prédio(s)</div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Modo</span>
+        <div class="flex gap-1 bg-slate-100 rounded-lg p-1 text-xs">
+          <button type="button" onclick={() => (modoAnexar = 'somar')}
+            class="flex-1 px-2 py-1 rounded font-medium"
+            class:bg-white={modoAnexar === 'somar'}
+            class:text-slate-900={modoAnexar === 'somar'}
+            class:text-slate-500={modoAnexar !== 'somar'}>Somar aos existentes</button>
+          <button type="button" onclick={() => (modoAnexar = 'substituir')}
+            class="flex-1 px-2 py-1 rounded font-medium"
+            class:bg-white={modoAnexar === 'substituir'}
+            class:text-slate-900={modoAnexar === 'substituir'}
+            class:text-slate-500={modoAnexar !== 'substituir'}>Substituir tudo</button>
+        </div>
+        <input type="hidden" name="substituir" value={modoAnexar === 'substituir' ? 'true' : 'false'} />
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Arranjo</span>
+        <div class="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.arranjosCartas as a}
+            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="radio" name="arranjo_id" value={a.id} required class="w-4 h-4" />
+              <span class="w-2 h-8 rounded shrink-0" style="background:{a.modalidade_cor}"></span>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium truncate">{a.nome || a.modalidade_nome}</div>
+                <div class="text-xs text-slate-500">
+                  {a.data ? new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }) : '—'}
+                  {a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}
+                  · {(a.cartas_locais_ids ?? []).length} já na lista
+                </div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <Button variant="secondary" onclick={() => (sheetAnexarArranjo = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={salvandoAnexar} class="flex-1">Anexar</Button>
+      </div>
+    </form>
+  {/if}
+</BottomSheet>
 
 <!-- Modal editar prédio (igual ao GAS) -->
 <BottomSheet bind:open={sheetEditar} title="Editar prédio">

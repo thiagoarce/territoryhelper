@@ -41,13 +41,33 @@ export const load: PageServerLoad = async ({ locals }) => {
     publicador_nome: t.publicador_id ? (nomePub.get(t.publicador_id) ?? null) : null
   }));
 
+  // Arranjos do tipo 'quadras' (pra anexar quadras selecionadas via Visão Geral)
+  const { data: modsQ } = await locals.supabase
+    .from('arranjo_modalidades').select('id, nome, tipo_territorio, cor');
+  const modsQuadrasIds = new Set((modsQ ?? []).filter((m: any) => m.tipo_territorio === 'quadras').map((m: any) => m.id));
+  const { data: arranjosRaw } = await locals.supabase
+    .from('arranjos')
+    .select('id, nome, modalidade_id, data, dia_semana, recorrente, quadras_ids, hora_inicio, ativo')
+    .eq('ativo', true)
+    .order('data', { nullsFirst: false })
+    .order('hora_inicio', { nullsFirst: false });
+  const modById = new Map((modsQ ?? []).map((m: any) => [m.id, m]));
+  const arranjosQuadras = (arranjosRaw ?? [])
+    .filter((a: any) => modsQuadrasIds.has(a.modalidade_id))
+    .map((a: any) => ({
+      ...a,
+      modalidade_nome: modById.get(a.modalidade_id)?.nome ?? '?',
+      modalidade_cor: modById.get(a.modalidade_id)?.cor ?? '#3b82f6'
+    }));
+
   return {
     quadras,
     designacoesAbertas: abertas,
     publicadores,
     quadrasAlocadas: [...quadrasAlocadas],
     participantesPorDesignacao,
-    tces
+    tces,
+    arranjosQuadras
   };
 };
 
@@ -161,5 +181,28 @@ export const actions: Actions = {
       await locals.supabase.from('designacoes').update({ publicador_id: publicadorIds[0] }).eq('id', id);
     }
     return { ok: true, msg: 'Designação atualizada' };
+  },
+
+  // Anexa quadras selecionadas a um arranjo (tipo 'quadras'). Admin → arranjo
+  // direto, sem precisar de dirigente. Junta com as quadras_ids existentes.
+  adicionarQuadrasAoArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    const substituir = fd.get('substituir') === 'on' || fd.get('substituir') === 'true';
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+    if (quadrasIds.length === 0) return fail(400, { erro: 'Sem quadras selecionadas' });
+
+    const { data: arr, error: errR } = await locals.supabase
+      .from('arranjos').select('quadras_ids').eq('id', arranjoId).single();
+    if (errR || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
+
+    const atuais = (arr.quadras_ids ?? []) as string[];
+    const novas = substituir ? quadrasIds : Array.from(new Set([...atuais, ...quadrasIds]));
+    const { error } = await locals.supabase
+      .from('arranjos').update({ quadras_ids: novas }).eq('id', arranjoId);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${quadrasIds.length} quadra(s) anexada(s) ao arranjo` };
   }
 };
