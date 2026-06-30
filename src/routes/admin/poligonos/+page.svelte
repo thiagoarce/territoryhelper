@@ -47,6 +47,17 @@
   let novoIdQuadra = $state('');
   let territorioSel = $state('');
 
+  // Desenho de polígono (terra-draw)
+  let mapaRef = $state<any>(null);
+  let desenhoAtivo = $state<'off' | 'nova' | 'editar'>('off');
+  let quadraEditandoForma = $state<QuadraGeo | null>(null);
+  let sheetNovaQuadra = $state(false);
+  let novaQuadraId = $state('');
+  let novaQuadraCor = $state('#3388ff');
+  let novaQuadraTerr = $state('');
+  // Juntar quadras (sub-modo dentro de Quadras)
+  let juntarAtivo = $state(false);
+
   // Modo Território
   let sheetCriarTerr = $state(false);
   let sheetEditarTerr = $state(false);
@@ -61,10 +72,12 @@
   const filtroTipoEfetivo = $derived(modo === 'tce' ? 'com' : filtroTipo);
 
   function setModo(m: Modo) {
+    if (desenhoAtivo !== 'off') cancelarDesenho();
     modo = modo === m ? null : m;
     if (modo !== 'vincular' && modo !== 'tce') selecionadosLocais = new Set();
-    if (modo !== 'territorios') selecionadasQuadras = new Set();
+    if (modo !== 'territorios' && modo !== 'quadras') selecionadasQuadras = new Set();
     if (modo !== 'auditar') quadraDestaque = null;
+    if (modo !== 'quadras') juntarAtivo = false;
     // TCE entra já agrupado por face (cluster de comércios)
     if (modo === 'tce') porFace = true;
   }
@@ -137,7 +150,9 @@
   }
 
   async function onClickQuadra(q: QuadraGeo) {
+    if (desenhoAtivo !== 'off') return; // ignora cliques enquanto desenha
     if (modo === 'quadras') {
+      if (juntarAtivo) { toggleQuadraSel(q.id); return; }
       quadraSel = q;
       novoIdQuadra = '';
       territorioSel = q.territorio_id ?? '';
@@ -172,6 +187,57 @@
 
   function destacarQuadra(id: string) {
     quadraDestaque = quadraDestaque === id ? null : id;
+  }
+
+  // ---- Desenho ----
+  function iniciarNova() {
+    desenhoAtivo = 'nova';
+    quadraEditandoForma = null;
+    mapaRef?.desenharNova();
+  }
+  function onDesenhoPronto() {
+    // Polígono novo terminado → abre sheet pra id/cor/território
+    novaQuadraId = '';
+    novaQuadraCor = '#3388ff';
+    novaQuadraTerr = '';
+    sheetNovaQuadra = true;
+  }
+  function iniciarEditarForma(q: QuadraGeo) {
+    sheetQuadra = false;
+    desenhoAtivo = 'editar';
+    quadraEditandoForma = q;
+    mapaRef?.editarForma(q);
+  }
+  function cancelarDesenho() {
+    mapaRef?.cancelarDesenho();
+    desenhoAtivo = 'off';
+    quadraEditandoForma = null;
+    sheetNovaQuadra = false;
+  }
+  async function salvarPoligono(criar: boolean, id: string, color = '#3388ff', territorioId = '') {
+    const geom = mapaRef?.pegarPoligono();
+    if (!geom) { toast.error('Desenhe o polígono primeiro'); return; }
+    const fd = new FormData();
+    fd.append('id', id);
+    fd.append('geojson', JSON.stringify(geom));
+    fd.append('criar', String(criar));
+    fd.append('color', color);
+    fd.append('territorio_id', territorioId);
+    salvando = true;
+    try {
+      const res = await fetch('?/salvarPoligonoQuadra', { method: 'POST', body: fd });
+      const { deserialize } = await import('$app/forms');
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success') {
+        toast.success(result.data?.msg || 'Salvo');
+        cancelarDesenho();
+        await invalidateAll();
+      } else {
+        toast.error(String(result.data?.erro || 'Falhou'));
+      }
+    } finally {
+      salvando = false;
+    }
   }
 
   function limparSelecao() { selecionadosLocais = new Set(); }
@@ -417,7 +483,15 @@
         <strong>{selecionadosLocais.size}</strong> endereço(s) selecionado(s) · click numa quadra pra vincular
       {/if}
     {:else if modo === 'quadras'}
-      Click numa quadra pra renomear, mudar território ou ativar/inativar.
+      {#if desenhoAtivo === 'nova'}
+        Desenhe a quadra no mapa: clique nos cantos, duplo-clique pra fechar.
+      {:else if desenhoAtivo === 'editar'}
+        Arraste os vértices pra ajustar a forma de {quadraEditandoForma?.id}.
+      {:else if juntarAtivo}
+        Click em 2+ quadras adjacentes pra juntar.
+      {:else}
+        Click numa quadra pra renomear/território/ativar. Ou desenhe/junte abaixo.
+      {/if}
     {:else if modo === 'territorios'}
       {#if selecionadasQuadras.size === 0}
         Click nas quadras pra montar um território. Cores mostram os territórios atuais.
@@ -429,7 +503,23 @@
     {/if}
   </p>
 
+  <!-- Sub-toolbar do modo Quadras: desenhar / juntar -->
+  {#if modo === 'quadras' && desenhoAtivo === 'off'}
+    <div class="flex items-center gap-2">
+      <Button variant="secondary" size="sm" onclick={iniciarNova}>✏ Desenhar nova quadra</Button>
+      <button
+        onclick={() => { juntarAtivo = !juntarAtivo; selecionadasQuadras = new Set(); }}
+        class="text-sm px-3 py-1.5 rounded-lg border transition-colors"
+        class:bg-primary-50={juntarAtivo}
+        class:border-primary-500={juntarAtivo}
+        class:text-primary-700={juntarAtivo}
+        class:border-slate-300={!juntarAtivo}
+      >🔗 Juntar quadras</button>
+    </div>
+  {/if}
+
   <MapaPoligonos
+    bind:this={mapaRef}
     quadras={data.quadras}
     locais={data.locais}
     tces={data.tces}
@@ -448,6 +538,7 @@
     {onClickLocal}
     {onClickQuadra}
     {onClickFace}
+    {onDesenhoPronto}
   />
 </div>
 
@@ -543,6 +634,55 @@
   </div>
 {/if}
 
+<!-- Barra inferior: salvar forma editada -->
+{#if desenhoAtivo === 'editar' && quadraEditandoForma}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2">
+    <div class="text-sm font-medium">Editando forma de <strong>{quadraEditandoForma.id}</strong></div>
+    <div class="ml-auto flex gap-2">
+      <Button variant="ghost" size="sm" onclick={cancelarDesenho}>Cancelar</Button>
+      <Button variant="primary" size="sm" loading={salvando} onclick={() => salvarPoligono(false, quadraEditandoForma!.id)}>Salvar forma</Button>
+    </div>
+  </div>
+{/if}
+
+<!-- Barra inferior: desenhando nova (antes de fechar o polígono) -->
+{#if desenhoAtivo === 'nova' && !sheetNovaQuadra}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2">
+    <div class="text-sm text-slate-600">Desenhando nova quadra…</div>
+    <Button variant="ghost" size="sm" onclick={cancelarDesenho} class="ml-auto">Cancelar</Button>
+  </div>
+{/if}
+
+<!-- Barra inferior: juntar quadras -->
+{#if modo === 'quadras' && juntarAtivo && selecionadasQuadras.size > 0}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+    <div class="text-sm font-medium"><strong>{selecionadasQuadras.size}</strong>: {[...selecionadasQuadras].join(', ')}</div>
+    <form
+      method="POST"
+      action="?/juntarQuadras"
+      use:enhance={() => {
+        salvando = true;
+        return async ({ result, update }) => {
+          await update();
+          salvando = false;
+          if (result.type === 'success') {
+            toast.success((result.data as any)?.msg || 'Unidas');
+            selecionadasQuadras = new Set();
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="ml-auto"
+    >
+      {#each [...selecionadasQuadras] as id}<input type="hidden" name="ids" value={id} />{/each}
+      <Button variant="primary" size="sm" type="submit" loading={salvando} disabled={selecionadasQuadras.size < 2}>🔗 Juntar (mantém {[...selecionadasQuadras][0] ?? ''})</Button>
+    </form>
+    <Button variant="ghost" size="sm" onclick={() => (selecionadasQuadras = new Set())}>Limpar</Button>
+  </div>
+{/if}
+
 <!-- Barra inferior do modo TCE -->
 {#if modo === 'tce' && selecionadosLocais.size > 0}
   <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
@@ -585,6 +725,34 @@
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Criar TCE</Button>
     </div>
   </form>
+</BottomSheet>
+
+<!-- Sheet: nova quadra (depois de desenhar) -->
+<BottomSheet open={sheetNovaQuadra} title="Nova quadra">
+  <div class="space-y-3">
+    <div class="text-xs text-slate-500">Polígono desenhado. Defina o ID da quadra.</div>
+    <div>
+      <label for="nq_id" class="block text-sm font-medium mb-1">ID da quadra</label>
+      <input id="nq_id" bind:value={novaQuadraId} placeholder="Ex: 12B" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label for="nq_cor" class="block text-sm font-medium mb-1">Cor</label>
+        <input id="nq_cor" type="color" bind:value={novaQuadraCor} class="h-10 w-20 rounded border border-slate-300" />
+      </div>
+      <div>
+        <label for="nq_terr" class="block text-sm font-medium mb-1">Território</label>
+        <select id="nq_terr" bind:value={novaQuadraTerr} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">— sem —</option>
+          {#each data.territorios as t}<option value={t.id}>{t.nome}</option>{/each}
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={cancelarDesenho} class="flex-1">Cancelar</Button>
+      <Button variant="primary" loading={salvando} disabled={!novaQuadraId.trim()} onclick={() => salvarPoligono(true, novaQuadraId.trim(), novaQuadraCor, novaQuadraTerr)} class="flex-1">Criar quadra</Button>
+    </div>
+  </div>
 </BottomSheet>
 
 <!-- Sheet: criar território -->
@@ -769,6 +937,11 @@
         </div>
         <p class="text-xs text-slate-500">Cascata via locais e designações.</p>
       </form>
+
+      <!-- Editar forma do polígono -->
+      <div class="border-t border-slate-100 pt-3">
+        <Button variant="secondary" onclick={() => iniciarEditarForma(quadraSel!)} class="w-full">✏ Editar forma do polígono</Button>
+      </div>
 
       <Button variant="ghost" onclick={() => (sheetQuadra = false)} class="w-full">Fechar</Button>
     </div>

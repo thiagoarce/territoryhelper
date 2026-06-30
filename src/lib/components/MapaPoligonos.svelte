@@ -32,7 +32,8 @@
     basemap = $bindable<Basemap>('bright'),
     onClickQuadra,
     onClickLocal,
-    onClickFace
+    onClickFace,
+    onDesenhoPronto
   }: {
     quadras: QuadraGeo[];
     locais: LocalComGeo[];
@@ -52,11 +53,47 @@
     onClickQuadra?: (q: QuadraGeo) => void;
     onClickLocal?: (l: LocalComGeo) => void;
     onClickFace?: (key: string) => void;
+    onDesenhoPronto?: () => void;
   } = $props();
 
   let container: HTMLDivElement;
   let mapa = $state<any>(null);
   let maplibre: any = null;
+  let draw: any = null; // terra-draw instance
+
+  // ---- API de desenho (terra-draw) exposta pro pai ----
+  export function desenhando(): boolean {
+    return !!draw && draw.enabled && draw.getMode?.() !== 'static';
+  }
+  export function desenharNova() {
+    if (!draw) return;
+    try { draw.clear(); draw.setMode('polygon'); } catch {}
+  }
+  export function editarForma(q: QuadraGeo) {
+    if (!draw || !q.poly_geojson) return;
+    try {
+      draw.clear();
+      draw.addFeatures([{
+        type: 'Feature',
+        geometry: q.poly_geojson as any,
+        properties: { mode: 'polygon' }
+      }]);
+      draw.setMode('select');
+    } catch (e) { console.error('editarForma', e); }
+  }
+  export function cancelarDesenho() {
+    if (!draw) return;
+    try { draw.clear(); draw.setMode('static'); } catch {}
+  }
+  // Retorna a geometria Polygon do desenho atual (ou null)
+  export function pegarPoligono(): any {
+    if (!draw) return null;
+    try {
+      const snap = draw.getSnapshot();
+      const f = (snap ?? []).find((x: any) => x.geometry?.type === 'Polygon');
+      return f ? f.geometry : null;
+    } catch { return null; }
+  }
 
   // Cor base dos pontos (NUNCA aninha zoom-interpolate; seleção é camada separada)
   function buildPointColor(): any {
@@ -411,10 +448,41 @@
         }
         if (bounds) mapa.fitBounds(bounds, { padding: 30, duration: 0 });
       } catch {}
+
+      // Inicializa terra-draw (lazy) pra desenho/edição de polígonos
+      (async () => {
+        try {
+          const [{ TerraDraw, TerraDrawPolygonMode, TerraDrawSelectMode }, { TerraDrawMapLibreGLAdapter }] =
+            await Promise.all([import('terra-draw'), import('terra-draw-maplibre-gl-adapter')]);
+          draw = new TerraDraw({
+            adapter: new TerraDrawMapLibreGLAdapter({ map: mapa }),
+            modes: [
+              new TerraDrawPolygonMode(),
+              new TerraDrawSelectMode({
+                flags: {
+                  polygon: {
+                    feature: {
+                      draggable: true,
+                      coordinates: { midpoints: true, draggable: true, deletable: true }
+                    }
+                  }
+                }
+              })
+            ]
+          });
+          draw.start();
+          draw.setMode('static');
+          // Ao terminar de desenhar um polígono novo, avisa o pai
+          draw.on('finish', () => { if (onDesenhoPronto) onDesenhoPronto(); });
+        } catch (e) {
+          console.error('terra-draw init falhou', e);
+        }
+      })();
     });
   });
 
   onDestroy(() => {
+    if (draw) try { draw.stop(); } catch {}
     if (mapa) try { mapa.remove(); } catch {}
   });
 </script>

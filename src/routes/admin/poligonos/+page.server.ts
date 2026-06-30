@@ -315,6 +315,36 @@ export const actions: Actions = {
     return { ok: true, msg: 'TCE removido' };
   },
 
+  // ===== Geometria (terra-draw) =====
+  // Salva polígono: cria quadra nova ou edita forma de existente
+  salvarPoligonoQuadra: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '').trim();
+    const geojsonRaw = String(fd.get('geojson') ?? '');
+    const criar = fd.get('criar') === 'true';
+    const color = String(fd.get('color') ?? '#3388ff');
+    const territorioId = String(fd.get('territorio_id') ?? '').trim() || null;
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    let geojson: any;
+    try { geojson = JSON.parse(geojsonRaw); } catch { return fail(400, { erro: 'GeoJSON inválido' }); }
+    const { error } = await locals.supabase.rpc('salvar_quadra_poligono' as any, {
+      p_id: id, p_geojson: geojson, p_color: color, p_territorio_id: territorioId, p_criar: criar
+    } as any);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: criar ? `Quadra ${id} criada` : `Forma de ${id} salva` };
+  },
+
+  juntarQuadras: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
+    if (ids.length < 2) return fail(400, { erro: 'Selecione ao menos 2 quadras' });
+    const { data, error } = await locals.supabase.rpc('quadras_join' as any, { p_ids: ids } as any);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${ids.length} quadras unidas em ${data}` };
+  },
+
   // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)
   vincularTerritorioQuadra: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
