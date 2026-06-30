@@ -59,7 +59,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   // Lista de territórios (pra select no modo Quadras + colorir por território)
   const { data: terrRows } = await locals.supabase
     .from('territorios').select('id, nome, cor').order('nome');
-  const territorios = (terrRows ?? []) as { id: string; nome: string; cor: string | null }[];
+  const qtdPorTerritorio = new Map<string, number>();
+  for (const q of quadras) {
+    if (q.territorio_id) qtdPorTerritorio.set(q.territorio_id, (qtdPorTerritorio.get(q.territorio_id) ?? 0) + 1);
+  }
+  const territorios = (terrRows ?? []).map((t) => ({
+    id: t.id, nome: t.nome, cor: t.cor, qtd: qtdPorTerritorio.get(t.id) ?? 0
+  })) as { id: string; nome: string; cor: string | null; qtd: number }[];
 
   // Quadras pra UI de renomeio
   const quadrasParaRenomear = quadras.map((q) => ({ id: q.id, color: q.color, status: q.status }));
@@ -163,6 +169,89 @@ export const actions: Actions = {
       .from('quadras').update({ ativa }).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `${id} → ${ativa ? 'ativa' : 'inativa'}` };
+  },
+
+  // ===== Modo Território (CRUD) =====
+
+  // Cria território de quadras selecionadas. Gera id único a partir do nome.
+  criarTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const nome = String(fd.get('nome') ?? '').trim();
+    const cor = String(fd.get('cor') ?? '').trim() || '#3388ff';
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
+
+    // id = slug do nome; se colidir, sufixa -2, -3...
+    const base = nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'territorio';
+    const { data: existentes } = await locals.supabase.from('territorios').select('id');
+    const usados = new Set((existentes ?? []).map((t) => t.id));
+    let id = base;
+    let n = 2;
+    while (usados.has(id)) { id = `${base}-${n++}`; }
+
+    const { error: errT } = await locals.supabase
+      .from('territorios').insert({ id, nome, cor });
+    if (errT) return fail(400, { erro: errT.message });
+
+    if (quadrasIds.length > 0) {
+      const { error: errQ } = await locals.supabase
+        .from('quadras').update({ territorio_id: id }).in('id', quadrasIds);
+      if (errQ) return fail(400, { erro: 'Território criado mas falhou ao vincular quadras: ' + errQ.message });
+    }
+    return { ok: true, msg: `Território "${nome}" criado com ${quadrasIds.length} quadra(s)` };
+  },
+
+  atualizarTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const nome = String(fd.get('nome') ?? '').trim();
+    const cor = String(fd.get('cor') ?? '').trim() || '#3388ff';
+    if (!id || !nome) return fail(400, { erro: 'id e nome obrigatórios' });
+    const { error } = await locals.supabase
+      .from('territorios').update({ nome, cor }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    // Propaga a cor pras quadras do território (visual consistente)
+    await locals.supabase.from('quadras').update({ color: cor }).eq('territorio_id', id);
+    return { ok: true, msg: 'Território atualizado' };
+  },
+
+  // Adiciona quadras selecionadas a um território existente
+  adicionarQuadrasAoTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    if (!id || quadrasIds.length === 0) return fail(400, { erro: 'território + quadras obrigatórios' });
+    const { error } = await locals.supabase
+      .from('quadras').update({ territorio_id: id }).in('id', quadrasIds);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${quadrasIds.length} quadra(s) adicionada(s)` };
+  },
+
+  // Remove quadras de qualquer território (viram órfãs)
+  removerQuadrasDoTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    if (quadrasIds.length === 0) return fail(400, { erro: 'Sem quadras' });
+    const { error } = await locals.supabase
+      .from('quadras').update({ territorio_id: null }).in('id', quadrasIds);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${quadrasIds.length} quadra(s) órfã(s)` };
+  },
+
+  // Deleta território. FK ON DELETE SET NULL deixa as quadras órfãs.
+  deletarTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('territorios').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `Território removido (quadras viraram órfãs)` };
   },
 
   // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)

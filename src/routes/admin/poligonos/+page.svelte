@@ -12,7 +12,7 @@
     data: {
       locais: LocalComGeo[];
       quadras: QuadraGeo[];
-      territorios: { id: string; nome: string; cor: string | null }[];
+      territorios: { id: string; nome: string; cor: string | null; qtd: number }[];
       quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number }[] }[];
       quadrasVazias: string[];
       quadrasOrfas: string[];
@@ -22,7 +22,7 @@
   } = $props();
 
   // null = mapa limpo (nenhum modo). Endereços só aparecem em 'vincular'.
-  type Modo = 'vincular' | 'quadras' | 'auditar' | null;
+  type Modo = 'vincular' | 'quadras' | 'territorios' | 'auditar' | null;
   let modo = $state<Modo>(null);
 
   let filtroTipo = $state<'dom' | 'com' | 'ambos'>('ambos');
@@ -30,6 +30,7 @@
   let mostrarRotulos = $state(true);
   let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let selecionadosLocais = $state<Set<number>>(new Set());
+  let selecionadasQuadras = $state<Set<string>>(new Set());
   let quadraDestaque = $state<string | null>(null);
   let salvando = $state(false);
 
@@ -39,13 +40,30 @@
   let novoIdQuadra = $state('');
   let territorioSel = $state('');
 
+  // Modo Território
+  let sheetCriarTerr = $state(false);
+  let sheetEditarTerr = $state(false);
+  let terrEdit = $state<{ id: string; nome: string; cor: string | null; qtd: number } | null>(null);
+  let novoTerrNome = $state('');
+  let novoTerrCor = $state('#3388ff');
+  let adicionarAterritorio = $state('');
+
   const mostrarEnderecos = $derived(modo === 'vincular');
+  const colorirPorTerritorio = $derived(modo === 'territorios');
 
   function setModo(m: Modo) {
     modo = modo === m ? null : m;
     if (modo !== 'vincular') selecionadosLocais = new Set();
+    if (modo !== 'territorios') selecionadasQuadras = new Set();
     if (modo !== 'auditar') quadraDestaque = null;
   }
+
+  function toggleQuadraSel(id: string) {
+    if (selecionadasQuadras.has(id)) selecionadasQuadras.delete(id);
+    else selecionadasQuadras.add(id);
+    selecionadasQuadras = new Set(selecionadasQuadras);
+  }
+  function limparQuadras() { selecionadasQuadras = new Set(); }
 
   function onClickLocal(l: LocalComGeo) {
     if (modo !== 'vincular') return;
@@ -60,6 +78,10 @@
       novoIdQuadra = '';
       territorioSel = q.territorio_id ?? '';
       sheetQuadra = true;
+      return;
+    }
+    if (modo === 'territorios') {
+      toggleQuadraSel(q.id);
       return;
     }
     if (modo === 'vincular' && selecionadosLocais.size > 0) {
@@ -103,6 +125,7 @@
   const MODOS: { k: Exclude<Modo, null>; label: string }[] = [
     { k: 'vincular', label: 'Vincular' },
     { k: 'quadras', label: 'Quadras' },
+    { k: 'territorios', label: 'Territórios' },
     { k: 'auditar', label: 'Auditar' }
   ];
 
@@ -247,6 +270,28 @@
     {/if}
   {/if}
 
+  <!-- Painel Territórios -->
+  {#if modo === 'territorios'}
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <div class="text-xs text-slate-500">
+        {data.territorios.length} território(s). Click numa quadra pra selecionar; click num território abaixo pra editar.
+      </div>
+      <Button variant="primary" size="sm" onclick={() => { novoTerrNome = ''; novoTerrCor = '#3388ff'; sheetCriarTerr = true; }}>+ Novo território</Button>
+    </div>
+    <div class="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
+      {#each data.territorios as t}
+        <button
+          onclick={() => { terrEdit = t; novoTerrNome = t.nome; novoTerrCor = t.cor ?? '#3388ff'; sheetEditarTerr = true; }}
+          class="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5 hover:bg-slate-50"
+          style:border-color={t.cor ?? '#cbd5e1'}
+        >
+          <span class="w-3 h-3 rounded-full" style:background-color={t.cor ?? '#cbd5e1'}></span>
+          {t.nome} <span class="text-slate-400">({t.qtd})</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Instruções por modo -->
   <p class="text-xs text-slate-500 text-center">
     {#if modo === null}
@@ -259,6 +304,12 @@
       {/if}
     {:else if modo === 'quadras'}
       Click numa quadra pra renomear, mudar território ou ativar/inativar.
+    {:else if modo === 'territorios'}
+      {#if selecionadasQuadras.size === 0}
+        Click nas quadras pra montar um território. Cores mostram os territórios atuais.
+      {:else}
+        <strong>{selecionadasQuadras.size}</strong> quadra(s) selecionada(s) — use a barra inferior
+      {/if}
     {:else}
       Click num item da lista pra destacar a quadra no mapa.
     {/if}
@@ -273,7 +324,9 @@
     {filtroTipo}
     {filtroVinculo}
     {quadraDestaque}
+    {colorirPorTerritorio}
     bind:selecionadosLocais
+    bind:selecionadasQuadras
     bind:basemap
     {onClickLocal}
     {onClickQuadra}
@@ -330,6 +383,134 @@
     <Button variant="ghost" size="sm" onclick={limparSelecao} class="ml-auto">Limpar</Button>
   </div>
 {/if}
+
+<!-- Barra inferior do modo Território (quadras selecionadas) -->
+{#if modo === 'territorios' && selecionadasQuadras.size > 0}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+    <div class="text-sm font-medium"><strong>{selecionadasQuadras.size}</strong> quadra(s)</div>
+
+    <Button variant="primary" size="sm" onclick={() => { novoTerrNome = ''; novoTerrCor = '#3388ff'; sheetCriarTerr = true; }}>+ Criar território</Button>
+
+    <form
+      method="POST"
+      action="?/adicionarQuadrasAoTerritorio"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') { toast.success((result.data as any)?.msg || 'OK'); limparQuadras(); adicionarAterritorio=''; await invalidateAll(); }
+        else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+      }}
+      class="flex items-center gap-1"
+    >
+      {#each [...selecionadasQuadras] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+      <select name="id" bind:value={adicionarAterritorio} required class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+        <option value="">+ a existente…</option>
+        {#each data.territorios as t}<option value={t.id}>{t.nome}</option>{/each}
+      </select>
+      <Button variant="secondary" size="sm" type="submit" disabled={!adicionarAterritorio}>Add</Button>
+    </form>
+
+    <form
+      method="POST"
+      action="?/removerQuadrasDoTerritorio"
+      use:enhance={() => async ({ result, update }) => {
+        await update();
+        if (result.type === 'success') { toast.info((result.data as any)?.msg || 'Órfãs'); limparQuadras(); await invalidateAll(); }
+      }}
+    >
+      {#each [...selecionadasQuadras] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+      <Button variant="ghost" size="sm" type="submit">↺ Tirar do território</Button>
+    </form>
+
+    <Button variant="ghost" size="sm" onclick={limparQuadras} class="ml-auto">Limpar</Button>
+  </div>
+{/if}
+
+<!-- Sheet: criar território -->
+<BottomSheet bind:open={sheetCriarTerr} title="Novo território">
+  <form
+    method="POST"
+    action="?/criarTerritorio"
+    use:enhance={() => {
+      salvando = true;
+      return async ({ result, update }) => {
+        await update();
+        salvando = false;
+        if (result.type === 'success') {
+          toast.success((result.data as any)?.msg || 'Criado');
+          sheetCriarTerr = false; limparQuadras();
+          await invalidateAll();
+        } else if (result.type === 'failure') {
+          toast.error(String((result.data as any)?.erro || 'Falhou'));
+        }
+      };
+    }}
+    class="space-y-3"
+  >
+    {#each [...selecionadasQuadras] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+    <div class="text-xs text-slate-500">{selecionadasQuadras.size} quadra(s) selecionada(s) entrarão neste território.</div>
+    <div>
+      <label for="terr_nome" class="block text-sm font-medium mb-1">Nome</label>
+      <input id="terr_nome" name="nome" bind:value={novoTerrNome} required placeholder="Ex: Centro, Bairro X" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div>
+      <label for="terr_cor" class="block text-sm font-medium mb-1">Cor</label>
+      <input id="terr_cor" name="cor" type="color" bind:value={novoTerrCor} class="h-10 w-20 rounded border border-slate-300" />
+    </div>
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetCriarTerr = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" type="submit" loading={salvando} class="flex-1">Criar</Button>
+    </div>
+  </form>
+</BottomSheet>
+
+<!-- Sheet: editar/deletar território -->
+<BottomSheet bind:open={sheetEditarTerr} title={terrEdit ? `Território ${terrEdit.nome}` : ''}>
+  {#if terrEdit}
+    <div class="space-y-4">
+      <form
+        method="POST"
+        action="?/atualizarTerritorio"
+        use:enhance={() => {
+          salvando = true;
+          return async ({ result, update }) => {
+            await update();
+            salvando = false;
+            if (result.type === 'success') { toast.success('Salvo'); sheetEditarTerr = false; await invalidateAll(); }
+            else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+          };
+        }}
+        class="space-y-3"
+      >
+        <input type="hidden" name="id" value={terrEdit.id} />
+        <div class="text-xs text-slate-500">{terrEdit.qtd} quadra(s) neste território.</div>
+        <div>
+          <label for="ed_nome" class="block text-sm font-medium mb-1">Nome</label>
+          <input id="ed_nome" name="nome" bind:value={novoTerrNome} required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label for="ed_cor" class="block text-sm font-medium mb-1">Cor (propaga pras quadras)</label>
+          <input id="ed_cor" name="cor" type="color" bind:value={novoTerrCor} class="h-10 w-20 rounded border border-slate-300" />
+        </div>
+        <Button variant="primary" type="submit" loading={salvando} class="w-full">Salvar</Button>
+      </form>
+
+      <form
+        method="POST"
+        action="?/deletarTerritorio"
+        use:enhance={() => async ({ result, update }) => {
+          await update();
+          if (result.type === 'success') { toast.warn((result.data as any)?.msg || 'Removido'); sheetEditarTerr = false; await invalidateAll(); }
+          else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+        }}
+        onsubmit={(e) => { if (!confirm(`Deletar território "${terrEdit?.nome}"? As ${terrEdit?.qtd} quadra(s) ficam órfãs.`)) e.preventDefault(); }}
+        class="border-t border-slate-100 pt-3"
+      >
+        <input type="hidden" name="id" value={terrEdit.id} />
+        <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Deletar território (quadras viram órfãs)</button>
+      </form>
+    </div>
+  {/if}
+</BottomSheet>
 
 <!-- Sheet do modo Quadras (renomear + território + ativa) -->
 <BottomSheet bind:open={sheetQuadra} title={quadraSel ? `Quadra ${quadraSel.id}` : ''}>
