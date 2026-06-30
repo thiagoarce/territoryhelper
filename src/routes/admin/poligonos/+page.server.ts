@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { selectAll, listarQuadrasComGeo } from '$lib/server/queries';
+import { selectAll, listarQuadrasComGeo, listarPublicadores } from '$lib/server/queries';
 
 export interface LocalComGeo {
   id: number;
@@ -70,13 +70,21 @@ export const load: PageServerLoad = async ({ locals }) => {
     id: t.id, nome: t.nome, cor: t.cor, qtd: qtdPorTerritorio.get(t.id) ?? 0
   })) as { id: string; nome: string; cor: string | null; qtd: number }[];
 
-  // TCEs existentes (com polígono pra desenhar no mapa)
+  // TCEs existentes (com polígono pra desenhar no mapa) + nome do publicador
   const { data: tceRows } = await locals.supabase
     .from('tces_geo')
-    .select('id, nome, tipo, status, poly_geojson')
+    .select('id, nome, tipo, status, prazo, publicador_id, poly_geojson')
     .order('criado_em', { ascending: false });
-  const tces = (tceRows ?? []) as {
-    id: string; nome: string; tipo: string; status: string; poly_geojson: unknown | null;
+  const publicadores = await listarPublicadores(locals.supabase);
+  const nomePub = new Map(publicadores.map((p) => [p.id, p.nome]));
+  const tces = (tceRows ?? []).map((t: any) => ({
+    id: t.id, nome: t.nome, tipo: t.tipo, status: t.status,
+    prazo: t.prazo, publicador_id: t.publicador_id,
+    publicador_nome: t.publicador_id ? (nomePub.get(t.publicador_id) ?? null) : null,
+    poly_geojson: t.poly_geojson
+  })) as {
+    id: string; nome: string; tipo: string; status: string; prazo: string | null;
+    publicador_id: string | null; publicador_nome: string | null; poly_geojson: unknown | null;
   }[];
 
   // Quadras pra UI de renomeio
@@ -117,6 +125,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     quadras,
     territorios,
     tces,
+    publicadores,
     quadrasMultiCluster,
     quadrasVazias,
     quadrasOrfas,
@@ -281,6 +290,20 @@ export const actions: Actions = {
     } as any);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `TCE "${nome}" criado (${localIds.length} endereço(s))`, id: data };
+  },
+
+  // Designa um TCE a um publicador/dirigente com prazo
+  atribuirTce: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const publicadorId = String(fd.get('publicador_id') ?? '').trim() || null;
+    const prazo = String(fd.get('prazo') ?? '').trim() || null;
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('tces').update({ publicador_id: publicadorId, prazo, status: 'aberto' }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: publicadorId ? 'TCE designado' : 'Designação removida' };
   },
 
   alterarStatusTce: async ({ request, locals }) => {

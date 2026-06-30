@@ -13,7 +13,8 @@
       locais: LocalComGeo[];
       quadras: QuadraGeo[];
       territorios: { id: string; nome: string; cor: string | null; qtd: number }[];
-      tces: { id: string; nome: string; tipo: string; status: string; poly_geojson: unknown | null }[];
+      tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null; poly_geojson: unknown | null }[];
+      publicadores: { id: string; nome: string; role: string }[];
       quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number }[] }[];
       quadrasVazias: string[];
       quadrasOrfas: string[];
@@ -39,6 +40,8 @@
   // TCE
   let sheetCriarTce = $state(false);
   let novoTceNome = $state('');
+  let sheetAtribuirTce = $state(false);
+  let tceAtribuir = $state<{ id: string; nome: string; publicador_id: string | null; prazo: string | null } | null>(null);
 
   // Sheet do modo Quadras (renomear + território + ativa)
   let sheetQuadra = $state(false);
@@ -375,9 +378,14 @@
             <div class="flex items-center gap-1.5 min-w-0">
               <span class="w-2.5 h-2.5 rounded-full shrink-0" style:background-color={t.status === 'aberto' ? '#9333ea' : '#94a3b8'}></span>
               <span class="font-medium truncate">{t.nome}</span>
-              <span class="text-slate-400">{t.status}</span>
+              {#if t.publicador_nome}
+                <span class="text-blue-600 truncate">👤 {t.publicador_nome}</span>
+              {:else}
+                <span class="text-slate-400">{t.status}</span>
+              {/if}
             </div>
-            <div class="flex gap-1 shrink-0">
+            <div class="flex gap-1.5 shrink-0">
+              <button onclick={() => { tceAtribuir = { id: t.id, nome: t.nome, publicador_id: t.publicador_id, prazo: t.prazo }; sheetAtribuirTce = true; }} class="text-blue-700 hover:underline">designar</button>
               {#if t.status === 'aberto'}
                 <form method="POST" action="?/alterarStatusTce" use:enhance={() => async ({ result, update }) => { await update(); if (result.type==='success'){ toast.success('Concluído'); await invalidateAll(); } }}>
                   <input type="hidden" name="id" value={t.id} /><input type="hidden" name="status" value="concluido" />
@@ -580,6 +588,50 @@
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Criar TCE</Button>
     </div>
   </form>
+</BottomSheet>
+
+<!-- Sheet: designar TCE -->
+<BottomSheet bind:open={sheetAtribuirTce} title={tceAtribuir ? `Designar — ${tceAtribuir.nome}` : ''}>
+  {#if tceAtribuir}
+    <form
+      method="POST"
+      action="?/atribuirTce"
+      use:enhance={() => {
+        salvando = true;
+        return async ({ result, update }) => {
+          await update();
+          salvando = false;
+          if (result.type === 'success') {
+            toast.success((result.data as any)?.msg || 'OK');
+            sheetAtribuirTce = false;
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="space-y-3"
+    >
+      <input type="hidden" name="id" value={tceAtribuir.id} />
+      <div>
+        <label for="tce_pub" class="block text-sm font-medium mb-1">Publicador / Dirigente</label>
+        <select id="tce_pub" name="publicador_id" value={tceAtribuir.publicador_id ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">— sem designação —</option>
+          {#each data.publicadores as p}
+            <option value={p.id}>{p.nome} ({p.role})</option>
+          {/each}
+        </select>
+      </div>
+      <div>
+        <label for="tce_prazo" class="block text-sm font-medium mb-1">Prazo (opcional)</label>
+        <input id="tce_prazo" name="prazo" type="date" value={tceAtribuir.prazo ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+      <div class="flex gap-2 pt-2">
+        <Button variant="secondary" onclick={() => (sheetAtribuirTce = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={salvando} class="flex-1">Designar</Button>
+      </div>
+    </form>
+  {/if}
 </BottomSheet>
 
 <!-- Sheet: criar território -->

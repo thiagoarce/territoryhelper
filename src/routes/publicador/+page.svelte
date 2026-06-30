@@ -10,6 +10,7 @@
       concluidas: DesignacaoEnriquecida[];
       quadrasMap: Record<string, QuadraGeo>;
       cobertura: Record<string, CoberturaQuadra>;
+      tces: { id: string; nome: string; tipo: string; prazo: string | null; status: string }[];
       minhaRole: string | undefined;
     };
   } = $props();
@@ -55,6 +56,24 @@
 {#if quadrasMapa.length > 0 && aba === 'abertas'}
   <div class="mt-4">
     <AdminMapa quadras={quadrasMapa} altura={220} onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))} />
+  </div>
+{/if}
+
+<!-- TCEs designados -->
+{#if data.tces && data.tces.length > 0}
+  <div class="mt-4">
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">🏪 Territórios comerciais</h2>
+    <div class="space-y-2">
+      {#each data.tces as t}
+        <a href="/publicador/tce/{t.id}" class="block rounded-lg border border-purple-200 bg-purple-50 p-3 hover:bg-purple-100 transition-colors">
+          <div class="font-medium flex items-center justify-between">
+            {t.nome}
+            {#if t.prazo}<span class="text-xs text-amber-700">prazo {t.prazo}</span>{/if}
+          </div>
+          <div class="text-xs text-slate-500 mt-0.5">{t.tipo} · toque pra trabalhar</div>
+        </a>
+      {/each}
+    </div>
   </div>
 {/if}
 
