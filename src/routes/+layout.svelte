@@ -46,7 +46,8 @@
         { href: '/admin/poligonos', label: 'Polígonos', icon: 'polygon' },
         { href: '/admin/registro', label: 'Registro', icon: 'clipboard' },
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
-        { href: '/admin/campanha', label: 'Campanha', icon: 'chart' }
+        { href: '/admin/campanha', label: 'Campanha', icon: 'chart' },
+        { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' }
       ]
     },
     {
@@ -158,7 +159,7 @@
                 <span class="absolute left-0 top-0 bottom-0 w-1 bg-primary-600"></span>
               {/if}
               <span class="w-5 text-center text-slate-500">
-                {#if link.icon === 'map'}🗺{:else if link.icon === 'polygon'}◇{:else if link.icon === 'clipboard'}📋{:else if link.icon === 'building'}✉{:else if link.icon === 'chart'}📊{:else if link.icon === 'people'}◉{:else if link.icon === 'history'}◴{:else if link.icon === 'wrench'}⚙{:else if link.icon === 'eye'}👁{:else}·{/if}
+                {#if link.icon === 'map'}🗺{:else if link.icon === 'polygon'}◇{:else if link.icon === 'clipboard'}📋{:else if link.icon === 'building'}✉{:else if link.icon === 'chart'}📊{:else if link.icon === 'calendar'}📅{:else if link.icon === 'people'}◉{:else if link.icon === 'history'}◴{:else if link.icon === 'wrench'}⚙{:else if link.icon === 'eye'}👁{:else}·{/if}
               </span>
               <span>{link.label}</span>
             </a>
