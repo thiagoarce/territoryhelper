@@ -23,31 +23,39 @@ create table if not exists arranjo_modalidades (
 );
 
 -- 2) Arranjos = eventos (templates recorrentes ou pontuais).
+--    Cria base mínima, depois ALTER ... ADD COLUMN IF NOT EXISTS pra ser
+--    idempotente se a tabela ficou parcial em uma execução anterior.
 create table if not exists arranjos (
   id bigserial primary key,
-  modalidade_id bigint not null references arranjo_modalidades(id) on delete restrict,
-  nome text,                                   -- opcional; senão usa nome da modalidade
-  recorrente boolean not null default false,   -- true = repete toda semana no dia_semana
-  dia_semana int check (dia_semana between 0 and 6),
-  data date,                                   -- usado quando NÃO recorrente
-  hora_inicio time,
-  hora_fim time,
-  local_endereco text,
-  local_lat double precision,
-  local_lng double precision,
-  dirigente_id uuid references profiles(id) on delete set null,
-  quadras_ids text[],                          -- pra tipo 'quadras'
-  cartas_locais_ids bigint[],                  -- pra tipo 'cartas_lista'
-  arquivo_url text,                            -- pra tipo 'arquivo'
-  arquivo_nome text,
-  notas text,
-  ativo boolean not null default true,
-  data_inicio date,                            -- recorrente: começa em
-  data_fim date,                               -- recorrente: termina em (null = indef)
-  criado_em timestamptz not null default now(),
-  criado_por uuid references profiles(id) on delete set null,
-  atualizado_em timestamptz not null default now()
+  modalidade_id bigint not null references arranjo_modalidades(id) on delete restrict
 );
+
+alter table arranjos add column if not exists nome text;
+alter table arranjos add column if not exists recorrente boolean not null default false;
+alter table arranjos add column if not exists dia_semana int;
+do $$ begin
+  alter table arranjos add constraint arranjos_dia_semana_check
+    check (dia_semana between 0 and 6) not valid;
+exception when duplicate_object then null;
+end $$;
+alter table arranjos add column if not exists data date;
+alter table arranjos add column if not exists hora_inicio time;
+alter table arranjos add column if not exists hora_fim time;
+alter table arranjos add column if not exists local_endereco text;
+alter table arranjos add column if not exists local_lat double precision;
+alter table arranjos add column if not exists local_lng double precision;
+alter table arranjos add column if not exists dirigente_id uuid references profiles(id) on delete set null;
+alter table arranjos add column if not exists quadras_ids text[];
+alter table arranjos add column if not exists cartas_locais_ids bigint[];
+alter table arranjos add column if not exists arquivo_url text;
+alter table arranjos add column if not exists arquivo_nome text;
+alter table arranjos add column if not exists notas text;
+alter table arranjos add column if not exists ativo boolean not null default true;
+alter table arranjos add column if not exists data_inicio date;
+alter table arranjos add column if not exists data_fim date;
+alter table arranjos add column if not exists criado_em timestamptz not null default now();
+alter table arranjos add column if not exists criado_por uuid references profiles(id) on delete set null;
+alter table arranjos add column if not exists atualizado_em timestamptz not null default now();
 
 create index if not exists arranjos_dia_idx on arranjos(dia_semana) where recorrente;
 create index if not exists arranjos_data_idx on arranjos(data) where not recorrente;
