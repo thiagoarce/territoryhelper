@@ -23,12 +23,25 @@ create table if not exists arranjo_modalidades (
 );
 
 -- 2) Arranjos = eventos (templates recorrentes ou pontuais).
---    Cria base mínima, depois ALTER ... ADD COLUMN IF NOT EXISTS pra ser
---    idempotente se a tabela ficou parcial em uma execução anterior.
+--    Cria base mínima (só id), depois ALTER ... ADD COLUMN IF NOT EXISTS pra
+--    cada coluna. Idempotente mesmo se a tabela ficou parcial antes.
 create table if not exists arranjos (
-  id bigserial primary key,
-  modalidade_id bigint not null references arranjo_modalidades(id) on delete restrict
+  id bigserial primary key
 );
+
+alter table arranjos add column if not exists modalidade_id bigint;
+-- FK via constraint nomeada (ALTER ADD COLUMN não suporta REFERENCES idempotente)
+do $$ begin
+  alter table arranjos add constraint arranjos_modalidade_fk
+    foreign key (modalidade_id) references arranjo_modalidades(id) on delete restrict;
+exception when duplicate_object then null;
+end $$;
+-- NOT NULL só se a tabela ainda estiver vazia (segurança em re-runs)
+do $$ begin
+  if not exists (select 1 from arranjos limit 1) then
+    alter table arranjos alter column modalidade_id set not null;
+  end if;
+end $$;
 
 alter table arranjos add column if not exists nome text;
 alter table arranjos add column if not exists recorrente boolean not null default false;
