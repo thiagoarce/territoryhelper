@@ -56,6 +56,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const quadras = await listarQuadrasComGeo(locals.supabase);
 
+  // Lista de territórios (pra select no modo Quadras + colorir por território)
+  const { data: terrRows } = await locals.supabase
+    .from('territorios').select('id, nome, cor').order('nome');
+  const territorios = (terrRows ?? []) as { id: string; nome: string; cor: string | null }[];
+
   // Quadras pra UI de renomeio
   const quadrasParaRenomear = quadras.map((q) => ({ id: q.id, color: q.color, status: q.status }));
 
@@ -81,14 +86,21 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const idsComLocais = new Set(clusterPorQuadra.keys());
   const quadrasVazias = quadras
-    .filter((q) => !idsComLocais.has(q.id) && q.status !== 'inativa')
+    .filter((q) => !idsComLocais.has(q.id) && q.ativa)
+    .map((q) => q.id);
+
+  // Quadras órfãs: ativas sem território (apitam no Auditar)
+  const quadrasOrfas = quadras
+    .filter((q) => q.ativa && !q.territorio_id)
     .map((q) => q.id);
 
   return {
     locais,
     quadras,
+    territorios,
     quadrasMultiCluster,
     quadrasVazias,
+    quadrasOrfas,
     quadrasParaRenomear
   };
 };
@@ -151,6 +163,19 @@ export const actions: Actions = {
       .from('quadras').update({ ativa }).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `${id} → ${ativa ? 'ativa' : 'inativa'}` };
+  },
+
+  // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)
+  vincularTerritorioQuadra: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const territorioId = String(fd.get('territorio_id') ?? '').trim() || null;
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('quadras').update({ territorio_id: territorioId }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: territorioId ? `${id} → território ${territorioId}` : `${id} sem território` };
   },
 
   // Renomeia uma quadra propagando o id em CASCADE (FK ON UPDATE):

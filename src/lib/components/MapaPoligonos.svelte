@@ -16,10 +16,13 @@
     locais,
     altura = 600,
     mostrarRotulos = true,
+    mostrarEnderecos = false,
     filtroTipo = 'ambos',
     filtroVinculo = 'ambos',
     quadraDestaque = null,
+    colorirPorTerritorio = false,
     selecionadosLocais = $bindable(new Set<number>()),
+    selecionadasQuadras = $bindable(new Set<string>()),
     basemap = $bindable<Basemap>('bright'),
     onClickQuadra,
     onClickLocal
@@ -28,10 +31,13 @@
     locais: LocalComGeo[];
     altura?: number;
     mostrarRotulos?: boolean;
+    mostrarEnderecos?: boolean;
     filtroTipo?: 'dom' | 'com' | 'ambos';
     filtroVinculo?: 'vinculados' | 'sem' | 'ambos';
     quadraDestaque?: string | null;
+    colorirPorTerritorio?: boolean;
     selecionadosLocais?: Set<number>;
+    selecionadasQuadras?: Set<string>;
     basemap?: Basemap;
     onClickQuadra?: (q: QuadraGeo) => void;
     onClickLocal?: (l: LocalComGeo) => void;
@@ -41,73 +47,77 @@
   let mapa = $state<any>(null);
   let maplibre: any = null;
 
-  function buildPointColor(sel: Set<number>): any {
-    if (sel.size === 0) {
-      return [
-        'case',
-        ['==', ['get', 'has_quadra'], false], '#dc2626',
-        ['==', ['get', 'tipo'], 'comercio'], '#0891b2',
-        '#64748b'
-      ];
-    }
-    const matchSel: any[] = ['match', ['get', 'id']];
-    for (const id of sel) { matchSel.push(id); matchSel.push('#4f46e5'); }
-    matchSel.push([
+  // Cor base dos pontos (NUNCA aninha zoom-interpolate; seleção é camada separada)
+  function buildPointColor(): any {
+    return [
       'case',
       ['==', ['get', 'has_quadra'], false], '#dc2626',
       ['==', ['get', 'tipo'], 'comercio'], '#0891b2',
       '#64748b'
-    ]);
-    return matchSel;
-  }
-
-  function buildPointRadius(sel: Set<number>): any {
-    if (sel.size === 0) {
-      return ['interpolate', ['linear'], ['zoom'], 12, 2, 16, 4, 18, 6];
-    }
-    const matchSel: any[] = ['match', ['get', 'id']];
-    for (const id of sel) { matchSel.push(id); matchSel.push(7); }
-    matchSel.push(['interpolate', ['linear'], ['zoom'], 12, 2, 16, 4, 18, 6]);
-    return matchSel;
+    ];
   }
 
   function buildPointFilter(): any {
     const filters: any[] = ['all'];
     if (filtroTipo !== 'ambos') {
-      filters.push(['==', ['get', 'tipo'], filtroTipo === 'com' ? 'comercio' : 'casa']);
+      // 'dom' = qualquer residencial (casa/predio/coletivo); 'com' = comercio
+      if (filtroTipo === 'com') filters.push(['==', ['get', 'tipo'], 'comercio']);
+      else filters.push(['!=', ['get', 'tipo'], 'comercio']);
     }
     if (filtroVinculo === 'vinculados') filters.push(['==', ['get', 'has_quadra'], true]);
     if (filtroVinculo === 'sem') filters.push(['==', ['get', 'has_quadra'], false]);
     return filters;
   }
 
-  function buildFillExpr(destaque: string | null): any {
-    if (!destaque) return ['get', 'color'];
-    return [
-      'case',
-      ['==', ['get', 'id'], destaque], '#fde047',
-      ['get', 'color']
-    ];
+  // Filtro da camada de selecionados (ids num literal)
+  function buildSelFilter(): any {
+    return ['in', ['get', 'id'], ['literal', [...selecionadosLocais]]];
   }
 
-  const selKey = $derived([...selecionadosLocais].sort().join('|'));
+  // Fill das quadras: destaque (amarelo) > seleção (azul) > cor padrão.
+  // Cor padrão = território (quando colorirPorTerritorio) ou cor da quadra.
+  function buildFillExpr(): any {
+    const sel = [...selecionadasQuadras];
+    const base: any = colorirPorTerritorio ? ['get', 'terr_color'] : ['get', 'color'];
+    let expr: any = base;
+    if (sel.length > 0) {
+      expr = ['case', ['in', ['get', 'id'], ['literal', sel]], '#4f46e5', base];
+    }
+    if (quadraDestaque) {
+      expr = ['case', ['==', ['get', 'id'], quadraDestaque], '#fde047', expr];
+    }
+    return expr;
+  }
+
+  // ----- Reatividade (lê deps ANTES do guard pra Svelte rastrear) -----
+  const selLocaisKey = $derived([...selecionadosLocais].sort().join('|'));
+  const selQuadrasKey = $derived([...selecionadasQuadras].sort().join('|'));
+
   $effect(() => {
-    void selKey;
-    if (!mapa || !mapa.getLayer('locais-points')) return;
-    mapa.setPaintProperty('locais-points', 'circle-color', buildPointColor(selecionadosLocais));
-    mapa.setPaintProperty('locais-points', 'circle-radius', buildPointRadius(selecionadosLocais));
+    void selLocaisKey;
+    if (!mapa || !mapa.getLayer('locais-sel')) return;
+    mapa.setFilter('locais-sel', buildSelFilter());
   });
 
   $effect(() => {
     const t = filtroTipo, v = filtroVinculo; void t; void v;
     if (!mapa || !mapa.getLayer('locais-points')) return;
-    mapa.setFilter('locais-points', buildPointFilter());
+    const f = buildPointFilter();
+    mapa.setFilter('locais-points', f);
   });
 
   $effect(() => {
-    const d = quadraDestaque; void d;
+    void selQuadrasKey; void quadraDestaque; void colorirPorTerritorio;
     if (!mapa || !mapa.getLayer('quadras-fill')) return;
-    mapa.setPaintProperty('quadras-fill', 'fill-color', buildFillExpr(quadraDestaque));
+    mapa.setPaintProperty('quadras-fill', 'fill-color', buildFillExpr());
+  });
+
+  $effect(() => {
+    const show = mostrarEnderecos;
+    if (!mapa || !mapa.getLayer('locais-points')) return;
+    const vis = show ? 'visible' : 'none';
+    mapa.setLayoutProperty('locais-points', 'visibility', vis);
+    mapa.setLayoutProperty('locais-sel', 'visibility', vis);
   });
 
   $effect(() => {
@@ -125,31 +135,48 @@
     try { mapa.setStyle(BASEMAPS[b]); } catch {}
   });
 
-  // Atualizar GeoJSON quando locais/quadras mudam (vincular muda has_quadra)
+  // Atualiza GeoJSON quando dados mudam
   $effect(() => {
     void locais; void quadras;
     if (!mapa || !mapa.getSource('locais') || !mapa.getSource('quadras')) return;
-    const locFeatures = locais
-      .filter((l) => l.lat != null && l.lng != null)
-      .map((l) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [l.lng!, l.lat!] } as any,
-        properties: {
-          id: l.id, tipo: l.tipo, has_quadra: !!l.quadra_id,
-          logradouro: l.logradouro, numero: l.numero
-        }
-      }));
-    mapa.getSource('locais').setData({ type: 'FeatureCollection', features: locFeatures } as any);
-
-    const qFeatures = quadras
-      .filter((q) => q.poly_geojson)
-      .map((q) => ({
-        type: 'Feature' as const,
-        geometry: q.poly_geojson as any,
-        properties: { id: q.id, color: q.color, status: q.status }
-      }));
-    mapa.getSource('quadras').setData({ type: 'FeatureCollection', features: qFeatures } as any);
+    mapa.getSource('locais').setData(locaisGeoJson());
+    mapa.getSource('quadras').setData(quadrasGeoJson());
   });
+
+  function locaisGeoJson(): any {
+    return {
+      type: 'FeatureCollection',
+      features: locais
+        .filter((l) => l.lat != null && l.lng != null)
+        .map((l) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [l.lng!, l.lat!] },
+          properties: {
+            id: l.id, tipo: l.tipo, has_quadra: !!l.quadra_id,
+            logradouro: l.logradouro, numero: l.numero
+          }
+        }))
+    };
+  }
+
+  function quadrasGeoJson(): any {
+    return {
+      type: 'FeatureCollection',
+      features: quadras
+        .filter((q) => q.poly_geojson)
+        .map((q) => ({
+          type: 'Feature',
+          geometry: q.poly_geojson as any,
+          properties: {
+            id: q.id,
+            color: q.color,
+            terr_color: q.territorio_id ? q.color : '#cbd5e1',
+            status: q.status,
+            territorio_id: q.territorio_id ?? ''
+          }
+        }))
+    };
+  }
 
   onMount(async () => {
     const mod = await import('maplibre-gl');
@@ -175,24 +202,12 @@
       if (!mapa.getStyle()) return;
       if (mapa.getLayer('quadras-fill')) return;
 
-      // Quadras (polígonos)
-      const quadrasFeatures = quadras
-        .filter((q) => q.poly_geojson)
-        .map((q) => ({
-          type: 'Feature' as const,
-          geometry: q.poly_geojson as any,
-          properties: { id: q.id, color: q.color, status: q.status }
-        }));
-
-      mapa.addSource('quadras', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: quadrasFeatures } as any
-      });
+      mapa.addSource('quadras', { type: 'geojson', data: quadrasGeoJson() });
       mapa.addLayer({
         id: 'quadras-fill',
         type: 'fill',
         source: 'quadras',
-        paint: { 'fill-color': buildFillExpr(quadraDestaque), 'fill-opacity': 0.2 }
+        paint: { 'fill-color': buildFillExpr(), 'fill-opacity': 0.25 }
       });
       mapa.addLayer({
         id: 'quadras-line',
@@ -213,32 +228,35 @@
         paint: { 'text-color': '#1e293b', 'text-halo-color': '#fff', 'text-halo-width': 1.5 }
       });
 
-      // Locais (pontos)
-      const locaisFeatures = locais
-        .filter((l) => l.lat != null && l.lng != null)
-        .map((l) => ({
-          type: 'Feature' as const,
-          geometry: { type: 'Point', coordinates: [l.lng!, l.lat!] } as any,
-          properties: {
-            id: l.id,
-            tipo: l.tipo,
-            has_quadra: !!l.quadra_id,
-            logradouro: l.logradouro,
-            numero: l.numero
-          }
-        }));
-      mapa.addSource('locais', { type: 'geojson', data: { type: 'FeatureCollection', features: locaisFeatures } as any });
+      // Pontos: camada BASE (zoom-interpolate no radius, cor por case)
+      mapa.addSource('locais', { type: 'geojson', data: locaisGeoJson() });
       mapa.addLayer({
         id: 'locais-points',
         type: 'circle',
         source: 'locais',
         filter: buildPointFilter(),
+        layout: { visibility: mostrarEnderecos ? 'visible' : 'none' },
         paint: {
-          'circle-color': buildPointColor(selecionadosLocais),
-          'circle-radius': buildPointRadius(selecionadosLocais),
+          'circle-color': buildPointColor(),
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2, 16, 4, 18, 6],
           'circle-stroke-color': '#fff',
           'circle-stroke-width': 1,
           'circle-opacity': 0.85
+        }
+      });
+      // Pontos: camada SELECIONADOS (por cima, radius fixo + azul) — sem aninhar zoom
+      mapa.addLayer({
+        id: 'locais-sel',
+        type: 'circle',
+        source: 'locais',
+        filter: buildSelFilter(),
+        layout: { visibility: mostrarEnderecos ? 'visible' : 'none' },
+        paint: {
+          'circle-color': '#4f46e5',
+          'circle-radius': 7,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+          'circle-opacity': 1
         }
       });
     }
@@ -249,25 +267,20 @@
     mapa.on('load', () => {
       setupCamadas();
 
-      // Click no ponto → toggle seleção
       mapa.on('click', 'locais-points', (e: any) => {
         const props = e.features?.[0]?.properties;
         if (!props) return;
-        const l = locais.find((x) => x.id === props.id);
-        if (!l) return;
-        if (onClickLocal) onClickLocal(l);
+        const l = (locais ?? []).find((x) => x.id === props.id);
+        if (l && onClickLocal) onClickLocal(l);
         e.preventDefault?.();
       });
 
-      // Click numa quadra
       mapa.on('click', 'quadras-fill', (e: any) => {
-        // Se clicou num ponto que está em cima, ignora
         if (e.defaultPrevented) return;
         const props = e.features?.[0]?.properties;
         if (!props) return;
-        const q = quadras.find((x) => x.id === props.id);
-        if (!q) return;
-        if (onClickQuadra) onClickQuadra(q);
+        const q = (quadras ?? []).find((x) => x.id === props.id);
+        if (q && onClickQuadra) onClickQuadra(q);
       });
 
       mapa.on('mouseenter', 'locais-points', () => { mapa.getCanvas().style.cursor = 'pointer'; });
