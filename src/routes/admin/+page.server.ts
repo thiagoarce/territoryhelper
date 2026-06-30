@@ -267,5 +267,31 @@ export const actions: Actions = {
       .from('arranjos').update({ quadras_ids: novas }).eq('id', arranjoId);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `${quadrasIds.length} quadra(s) anexada(s) ao arranjo` };
+  },
+
+  // Remove quadras de QUALQUER arranjo onde estão (libera a trava).
+  // Útil pra desfazer engano ou liberar quadra concluída.
+  liberarQuadrasDeArranjos: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    if (quadrasIds.length === 0) return fail(400, { erro: 'Sem quadras' });
+
+    const { data: arranjos } = await locals.supabase
+      .from('arranjos').select('id, quadras_ids').eq('ativo', true)
+      .overlaps('quadras_ids', quadrasIds);
+    if (!arranjos || arranjos.length === 0) return { ok: true, msg: 'Nada a fazer (não estavam em arranjo)' };
+
+    let removidasTotal = 0;
+    for (const a of arranjos) {
+      const atuais = (a.quadras_ids ?? []) as string[];
+      const novas = atuais.filter((q) => !quadrasIds.includes(q));
+      if (novas.length === atuais.length) continue;
+      removidasTotal += atuais.length - novas.length;
+      const { error } = await locals.supabase
+        .from('arranjos').update({ quadras_ids: novas }).eq('id', a.id);
+      if (error) return fail(400, { erro: `Falhou ao atualizar arranjo ${a.id}: ${error.message}` });
+    }
+    return { ok: true, msg: `${removidasTotal} quadra(s) liberada(s) de ${arranjos.length} arranjo(s)` };
   }
 };

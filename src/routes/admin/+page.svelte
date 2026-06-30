@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -52,6 +52,27 @@
   let sheetArranjo = $state(false);
   let modoAnexar = $state<'somar' | 'substituir'>('somar');
   let salvandoAnexar = $state(false);
+
+  // Quais das selecionadas estão em algum arranjo (pra exibir botão Liberar)
+  const selEmArranjo = $derived(
+    [...selecionadas].filter((qid) => data.arranjoPorQuadra?.[qid])
+  );
+
+  async function liberarDeArranjo() {
+    if (selEmArranjo.length === 0) return;
+    if (!confirm(`Liberar ${selEmArranjo.length} quadra(s) do(s) arranjo(s)? A trava some — a quadra fica livre pra novo uso.`)) return;
+    const fd = new FormData();
+    for (const qid of selEmArranjo) fd.append('quadras_ids', qid);
+    const res = await fetch('?/liberarQuadrasDeArranjos', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text());
+    if (parsed.type === 'success') {
+      toast.success(String((parsed.data as any)?.msg || 'Liberadas'));
+      selecionadas = new Set();
+      await invalidateAll();
+    } else if (parsed.type === 'failure') {
+      toast.error(String((parsed.data as any)?.erro || 'Falhou'));
+    }
+  }
 
   function abrirEditarDesignacao(d: DesignacaoEnriquecida) {
     editandoDesignacao = d;
@@ -195,6 +216,9 @@
     <div class="flex gap-2 ml-auto flex-wrap justify-end">
       <Button variant="primary" size="sm" onclick={() => (sheetDesignar = true)}>📤 Designar</Button>
       <Button variant="secondary" size="sm" onclick={() => (sheetArranjo = true)}>📅 Anexar a arranjo</Button>
+      {#if selEmArranjo.length > 0}
+        <Button variant="secondary" size="sm" onclick={liberarDeArranjo} class="text-amber-700">🔓 Liberar de arranjo ({selEmArranjo.length})</Button>
+      {/if}
       <Button variant="secondary" size="sm" onclick={limparSelecao}>Limpar</Button>
     </div>
     </div>
