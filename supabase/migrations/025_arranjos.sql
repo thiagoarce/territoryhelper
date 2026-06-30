@@ -44,6 +44,11 @@ do $$ begin
 end $$;
 
 alter table arranjos add column if not exists nome text;
+-- Garante que nome é nullable (versão antiga da migration deixou NOT NULL)
+do $$ begin
+  alter table arranjos alter column nome drop not null;
+exception when others then null;
+end $$;
 alter table arranjos add column if not exists recorrente boolean not null default false;
 alter table arranjos add column if not exists dia_semana int;
 do $$ begin

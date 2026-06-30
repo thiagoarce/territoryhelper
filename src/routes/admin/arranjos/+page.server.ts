@@ -231,6 +231,12 @@ export const actions: Actions = {
     if (!data.modalidade_id) return fail(400, { erro: 'Modalidade obrigatória' });
     if (data.recorrente && data.dia_semana === null) return fail(400, { erro: 'Recorrente exige dia da semana' });
     if (!data.recorrente && !data.data) return fail(400, { erro: 'Data obrigatória pra arranjo único' });
+    // Fallback: se nome vier vazio, usa nome da modalidade (defesa contra NOT NULL legado)
+    if (!data.nome) {
+      const { data: mod } = await locals.supabase
+        .from('arranjo_modalidades').select('nome').eq('id', data.modalidade_id).single();
+      data.nome = mod?.nome ?? 'Arranjo';
+    }
     const { error } = await locals.supabase.from('arranjos').insert({ ...data, criado_por: locals.user.id });
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Arranjo criado' };
@@ -245,6 +251,11 @@ export const actions: Actions = {
     if (!data.modalidade_id) return fail(400, { erro: 'Modalidade obrigatória' });
     if (data.recorrente && data.dia_semana === null) return fail(400, { erro: 'Recorrente exige dia da semana' });
     if (!data.recorrente && !data.data) return fail(400, { erro: 'Data obrigatória pra arranjo único' });
+    if (!data.nome) {
+      const { data: mod } = await locals.supabase
+        .from('arranjo_modalidades').select('nome').eq('id', data.modalidade_id).single();
+      data.nome = mod?.nome ?? 'Arranjo';
+    }
     const { error } = await locals.supabase.from('arranjos').update(data).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Arranjo salvo' };
