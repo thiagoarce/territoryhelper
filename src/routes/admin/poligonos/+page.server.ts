@@ -345,6 +345,34 @@ export const actions: Actions = {
     return { ok: true, msg: `${ids.length} quadras unidas em ${data}` };
   },
 
+  // Divide a quadra por uma linha (split). Cria uma nova quadra com a outra metade.
+  dividirQuadra: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    const novoId = String(fd.get('novo_id') ?? '').trim();
+    const lineRaw = String(fd.get('line') ?? '');
+    if (!id || !novoId) return fail(400, { erro: 'id e novo_id obrigatórios' });
+    let line: any;
+    try { line = JSON.parse(lineRaw); } catch { return fail(400, { erro: 'Linha inválida' }); }
+    const { error } = await locals.supabase.rpc('dividir_quadra' as any, {
+      p_id: id, p_line: line, p_novo_id: novoId
+    } as any);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `Quadra ${id} dividida (nova: ${novoId})` };
+  },
+
+  // Exclui quadra. locais ficam órfãos (FK SET NULL); designacao_quadras cascata.
+  excluirQuadra: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('quadras').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `Quadra ${id} excluída (endereços ficaram sem quadra)` };
+  },
+
   // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)
   vincularTerritorioQuadra: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });

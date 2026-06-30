@@ -49,8 +49,11 @@
 
   // Desenho de polígono (terra-draw)
   let mapaRef = $state<any>(null);
-  let desenhoAtivo = $state<'off' | 'nova' | 'editar'>('off');
+  let desenhoAtivo = $state<'off' | 'nova' | 'editar' | 'split'>('off');
   let quadraEditandoForma = $state<QuadraGeo | null>(null);
+  let quadraSplit = $state<QuadraGeo | null>(null);
+  let sheetSplit = $state(false);
+  let splitNovoId = $state('');
   let sheetNovaQuadra = $state(false);
   let novaQuadraId = $state('');
   let novaQuadraCor = $state('#3388ff');
@@ -196,6 +199,12 @@
     mapaRef?.desenharNova();
   }
   function onDesenhoPronto() {
+    if (desenhoAtivo === 'split') {
+      // Linha de corte terminada → pede id da nova metade
+      splitNovoId = '';
+      sheetSplit = true;
+      return;
+    }
     // Polígono novo terminado → abre sheet pra id/cor/território
     novaQuadraId = '';
     novaQuadraCor = '#3388ff';
@@ -208,11 +217,44 @@
     quadraEditandoForma = q;
     mapaRef?.editarForma(q);
   }
+  function iniciarSplit(q: QuadraGeo) {
+    sheetQuadra = false;
+    desenhoAtivo = 'split';
+    quadraSplit = q;
+    quadraDestaque = q.id;
+    mapaRef?.desenharLinha();
+  }
+  async function confirmarSplit() {
+    const line = mapaRef?.pegarLinha();
+    if (!line || !quadraSplit) { toast.error('Desenhe a linha de corte'); return; }
+    const fd = new FormData();
+    fd.append('id', quadraSplit.id);
+    fd.append('novo_id', splitNovoId.trim());
+    fd.append('line', JSON.stringify(line));
+    salvando = true;
+    try {
+      const res = await fetch('?/dividirQuadra', { method: 'POST', body: fd });
+      const { deserialize } = await import('$app/forms');
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success') {
+        toast.success(result.data?.msg || 'Dividida');
+        cancelarDesenho();
+        await invalidateAll();
+      } else {
+        toast.error(String(result.data?.erro || 'Falhou'));
+      }
+    } finally {
+      salvando = false;
+    }
+  }
   function cancelarDesenho() {
     mapaRef?.cancelarDesenho();
     desenhoAtivo = 'off';
     quadraEditandoForma = null;
+    quadraSplit = null;
+    quadraDestaque = null;
     sheetNovaQuadra = false;
+    sheetSplit = false;
   }
   async function salvarPoligono(criar: boolean, id: string, color = '#3388ff', territorioId = '') {
     const geom = mapaRef?.pegarPoligono();
@@ -487,6 +529,8 @@
         Desenhe a quadra no mapa: clique nos cantos, duplo-clique pra fechar.
       {:else if desenhoAtivo === 'editar'}
         Arraste os vértices pra ajustar a forma de {quadraEditandoForma?.id}.
+      {:else if desenhoAtivo === 'split'}
+        Desenhe uma linha cortando {quadraSplit?.id} de lado a lado, duplo-clique pra terminar.
       {:else if juntarAtivo}
         Click em 2+ quadras adjacentes pra juntar.
       {:else}
@@ -653,6 +697,14 @@
   </div>
 {/if}
 
+<!-- Barra inferior: desenhando linha de corte (split) -->
+{#if desenhoAtivo === 'split' && !sheetSplit}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2">
+    <div class="text-sm text-slate-600">Cortando <strong>{quadraSplit?.id}</strong>…</div>
+    <Button variant="ghost" size="sm" onclick={cancelarDesenho} class="ml-auto">Cancelar</Button>
+  </div>
+{/if}
+
 <!-- Barra inferior: juntar quadras -->
 {#if modo === 'quadras' && juntarAtivo && selecionadasQuadras.size > 0}
   <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
@@ -751,6 +803,21 @@
     <div class="flex gap-2 pt-2">
       <Button variant="secondary" onclick={cancelarDesenho} class="flex-1">Cancelar</Button>
       <Button variant="primary" loading={salvando} disabled={!novaQuadraId.trim()} onclick={() => salvarPoligono(true, novaQuadraId.trim(), novaQuadraCor, novaQuadraTerr)} class="flex-1">Criar quadra</Button>
+    </div>
+  </div>
+</BottomSheet>
+
+<!-- Sheet: dividir (split) — id da nova metade -->
+<BottomSheet open={sheetSplit} title={quadraSplit ? `Dividir ${quadraSplit.id}` : ''}>
+  <div class="space-y-3">
+    <div class="text-xs text-slate-500">A linha cortou a quadra. A parte original mantém {quadraSplit?.id}; a outra metade vira uma nova quadra.</div>
+    <div>
+      <label for="sp_id" class="block text-sm font-medium mb-1">ID da nova metade</label>
+      <input id="sp_id" bind:value={splitNovoId} placeholder="Ex: {quadraSplit?.id}-B" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={cancelarDesenho} class="flex-1">Cancelar</Button>
+      <Button variant="primary" loading={salvando} disabled={!splitNovoId.trim()} onclick={confirmarSplit} class="flex-1">Dividir</Button>
     </div>
   </div>
 </BottomSheet>
@@ -938,10 +1005,26 @@
         <p class="text-xs text-slate-500">Cascata via locais e designações.</p>
       </form>
 
-      <!-- Editar forma do polígono -->
-      <div class="border-t border-slate-100 pt-3">
-        <Button variant="secondary" onclick={() => iniciarEditarForma(quadraSel!)} class="w-full">✏ Editar forma do polígono</Button>
+      <!-- Geometria: editar forma / dividir -->
+      <div class="border-t border-slate-100 pt-3 grid grid-cols-2 gap-2">
+        <Button variant="secondary" onclick={() => iniciarEditarForma(quadraSel!)}>✏ Editar forma</Button>
+        <Button variant="secondary" onclick={() => iniciarSplit(quadraSel!)}>✂ Dividir</Button>
       </div>
+
+      <!-- Excluir quadra -->
+      <form
+        method="POST"
+        action="?/excluirQuadra"
+        use:enhance={() => async ({ result, update }) => {
+          await update();
+          if (result.type === 'success') { toast.warn((result.data as any)?.msg || 'Excluída'); sheetQuadra = false; await invalidateAll(); }
+          else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+        }}
+        onsubmit={(e) => { if (!confirm(`Excluir quadra ${quadraSel?.id}? Os endereços ficam sem quadra.`)) e.preventDefault(); }}
+      >
+        <input type="hidden" name="id" value={quadraSel.id} />
+        <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Excluir quadra</button>
+      </form>
 
       <Button variant="ghost" onclick={() => (sheetQuadra = false)} class="w-full">Fechar</Button>
     </div>

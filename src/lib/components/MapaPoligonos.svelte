@@ -81,6 +81,10 @@
       draw.setMode('select');
     } catch (e) { console.error('editarForma', e); }
   }
+  export function desenharLinha() {
+    if (!draw) return;
+    try { draw.clear(); draw.setMode('linestring'); } catch {}
+  }
   export function cancelarDesenho() {
     if (!draw) return;
     try { draw.clear(); draw.setMode('static'); } catch {}
@@ -91,6 +95,14 @@
     try {
       const snap = draw.getSnapshot();
       const f = (snap ?? []).find((x: any) => x.geometry?.type === 'Polygon');
+      return f ? f.geometry : null;
+    } catch { return null; }
+  }
+  export function pegarLinha(): any {
+    if (!draw) return null;
+    try {
+      const snap = draw.getSnapshot();
+      const f = (snap ?? []).find((x: any) => x.geometry?.type === 'LineString');
       return f ? f.geometry : null;
     } catch { return null; }
   }
@@ -452,12 +464,13 @@
       // Inicializa terra-draw (lazy) pra desenho/edição de polígonos
       (async () => {
         try {
-          const [{ TerraDraw, TerraDrawPolygonMode, TerraDrawSelectMode }, { TerraDrawMapLibreGLAdapter }] =
+          const [{ TerraDraw, TerraDrawPolygonMode, TerraDrawLineStringMode, TerraDrawSelectMode }, { TerraDrawMapLibreGLAdapter }] =
             await Promise.all([import('terra-draw'), import('terra-draw-maplibre-gl-adapter')]);
           draw = new TerraDraw({
             adapter: new TerraDrawMapLibreGLAdapter({ map: mapa }),
             modes: [
               new TerraDrawPolygonMode(),
+              new TerraDrawLineStringMode(),
               new TerraDrawSelectMode({
                 flags: {
                   polygon: {
