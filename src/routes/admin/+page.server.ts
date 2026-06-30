@@ -11,6 +11,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   const abertas = designacoes.filter((d) => d.status === 'aberta');
   const quadrasAlocadas = new Set<string>();
   for (const d of abertas) for (const q of d.quadras_ids) quadrasAlocadas.add(q);
+  // Quadras em arranjos ativos também contam como alocadas (trava).
+  // O arranjo É o trava — não precisa criar designacao paralela.
+  // alocacaoArranjoPorQuadra: pra UI mostrar "está em arranjo X em DD/MM"
 
   // Participantes por designação (multi-publicador)
   const participantesPorDesignacao: Record<number, string[]> = {};
@@ -60,6 +63,24 @@ export const load: PageServerLoad = async ({ locals }) => {
       modalidade_cor: modById.get(a.modalidade_id)?.cor ?? '#3b82f6'
     }));
 
+  // Trava de arranjos: cada quadra em arranjo ativo é "alocada" (sem precisar
+  // criar designação paralela — o próprio arranjo é a trava).
+  const arranjoPorQuadra: Record<string, { id: number; nome: string; modalidade_nome: string; modalidade_cor: string; data: string | null }> = {};
+  for (const a of arranjosQuadras) {
+    for (const q of (a.quadras_ids ?? []) as string[]) {
+      quadrasAlocadas.add(q);
+      if (!arranjoPorQuadra[q]) {
+        arranjoPorQuadra[q] = {
+          id: a.id,
+          nome: a.nome || a.modalidade_nome,
+          modalidade_nome: a.modalidade_nome,
+          modalidade_cor: a.modalidade_cor,
+          data: a.data
+        };
+      }
+    }
+  }
+
   return {
     quadras,
     designacoesAbertas: abertas,
@@ -67,7 +88,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     quadrasAlocadas: [...quadrasAlocadas],
     participantesPorDesignacao,
     tces,
-    arranjosQuadras
+    arranjosQuadras,
+    arranjoPorQuadra
   };
 };
 
@@ -99,6 +121,20 @@ export const actions: Actions = {
     const prazo = String(fd.get('prazo') ?? '').trim() || null;
     const notas = String(fd.get('notas') ?? '').trim() || null;
     if (quadrasIds.length === 0) return fail(400, { erro: 'quadras obrigatórias' });
+
+    // Bloqueia quadras já em arranjo ativo (defesa server-side; UI também avisa)
+    const { data: arrAtivos } = await locals.supabase
+      .from('arranjos').select('id, nome, quadras_ids').eq('ativo', true)
+      .overlaps('quadras_ids', quadrasIds);
+    const conflitos: string[] = [];
+    for (const a of arrAtivos ?? []) {
+      for (const q of (a.quadras_ids ?? []) as string[]) {
+        if (quadrasIds.includes(q)) conflitos.push(q);
+      }
+    }
+    if (conflitos.length > 0) {
+      return fail(409, { erro: `Quadra(s) ${Array.from(new Set(conflitos)).join(', ')} já está(ão) em arranjo. Remova do arranjo antes ou use outra.` });
+    }
 
     if (tipo === 'arranjo') {
       if (!dirigenteId) return fail(400, { erro: 'dirigente obrigatório pra arranjo' });
@@ -197,6 +233,33 @@ export const actions: Actions = {
     const { data: arr, error: errR } = await locals.supabase
       .from('arranjos').select('quadras_ids').eq('id', arranjoId).single();
     if (errR || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
+
+    // Bloqueia se quadras tiverem designação pessoal aberta ou estiverem em
+    // OUTRO arranjo ativo (uma quadra em dois lugares quebraria a trava)
+    const { data: desigAbertas } = await locals.supabase
+      .from('designacoes').select('id, designacao_quadras(quadra_id)')
+      .eq('status', 'aberta');
+    const ocupPorDesig: string[] = [];
+    for (const d of (desigAbertas ?? []) as any[]) {
+      for (const dq of d.designacao_quadras ?? []) {
+        if (quadrasIds.includes(dq.quadra_id)) ocupPorDesig.push(dq.quadra_id);
+      }
+    }
+    if (ocupPorDesig.length > 0) {
+      return fail(409, { erro: `Quadra(s) ${Array.from(new Set(ocupPorDesig)).join(', ')} já tem designação aberta. Encerre antes.` });
+    }
+    const { data: outrosArr } = await locals.supabase
+      .from('arranjos').select('id, quadras_ids').eq('ativo', true).neq('id', arranjoId)
+      .overlaps('quadras_ids', quadrasIds);
+    const ocupPorArr: string[] = [];
+    for (const oa of outrosArr ?? []) {
+      for (const q of (oa.quadras_ids ?? []) as string[]) {
+        if (quadrasIds.includes(q)) ocupPorArr.push(q);
+      }
+    }
+    if (ocupPorArr.length > 0) {
+      return fail(409, { erro: `Quadra(s) ${Array.from(new Set(ocupPorArr)).join(', ')} já está em outro arranjo.` });
+    }
 
     const atuais = (arr.quadras_ids ?? []) as string[];
     const novas = substituir ? quadrasIds : Array.from(new Set([...atuais, ...quadrasIds]));

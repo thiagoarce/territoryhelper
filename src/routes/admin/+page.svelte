@@ -19,6 +19,7 @@
       participantesPorDesignacao: Record<number, string[]>;
       tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null }[];
       arranjosQuadras: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; quadras_ids: string[] | null; hora_inicio: string | null }[];
+      arranjoPorQuadra: Record<string, { id: number; nome: string; modalidade_nome: string; modalidade_cor: string; data: string | null }>;
     };
     form: any;
   } = $props();
@@ -77,6 +78,11 @@
     if (!q.ativa) {
       toast.info(`Quadra ${q.id} está inativa — edita em Polígonos pra reativar`);
       return;
+    }
+    const arr = data.arranjoPorQuadra?.[q.id];
+    if (arr && !selecionadas.has(q.id)) {
+      const dataPretty = arr.data ? new Date(arr.data + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+      toast.info(`Quadra ${q.id} está em arranjo "${arr.nome}"${dataPretty ? ' (' + dataPretty + ')' : ''}`);
     }
     if (selecionadas.has(q.id)) selecionadas.delete(q.id);
     else selecionadas.add(q.id);
