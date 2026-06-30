@@ -487,7 +487,20 @@
           value={arrEditando.modalidade_id}
           onchange={(e) => {
             const id = Number((e.target as HTMLSelectElement).value);
-            arrEditando = { ...arrEditando, modalidade_id: id };
+            const m = modalidadeById[id];
+            if (!m) { arrEditando = { ...arrEditando, modalidade_id: id }; return; }
+            // Aplica defaults da nova modalidade e zera os campos do tipo anterior
+            arrEditando = {
+              ...arrEditando,
+              modalidade_id: id,
+              hora_inicio: m.default_hora ?? null,
+              local_endereco: m.default_local ?? null,
+              dia_semana: arrEditando.recorrente ? m.default_dia_semana ?? null : arrEditando.dia_semana,
+              quadras_ids: null,
+              cartas_locais_ids: null,
+              arquivo_url: null,
+              arquivo_nome: null
+            };
           }}
         >
           {#each data.modalidades.filter((m) => m.ativo || m.id === arrEditando.modalidade_id) as m}
