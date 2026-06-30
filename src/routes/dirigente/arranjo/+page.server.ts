@@ -1,127 +1,110 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { selectAll, listarPublicadores } from '$lib/server/queries';
+import type { ArranjoBase } from '$lib/arranjos';
 
-export interface ArranjoLinha {
+export interface ArranjoLinha extends ArranjoBase {}
+
+export interface ModalidadeLite {
   id: number;
-  tipo: string;
-  status: string;
-  data_encontro: string | null;
-  hora_encontro: string | null;
-  ponto_encontro_endereco: string | null;
-  ponto_encontro_lat: number | null;
-  ponto_encontro_lng: number | null;
-  dirigente_id: string | null;
-  notas: string | null;
-  publicador_id: string | null;
+  nome: string;
+  tipo_territorio: string;
+  cor: string;
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { arranjos: [], dirigenteNomes: {}, publicadores: [], quadrasPorArranjo: {}, participantesPorArranjo: {}, podeCoordenar: false };
+  if (!locals.user) {
+    return { arranjos: [], modalidades: [], dirigentes: {}, publicadores: [], minhaId: '', podeCoordenar: false };
+  }
 
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
-  const arranjos = await selectAll<ArranjoLinha>(
+  const [arranjos, modalidades, { data: profs }, publicadores] = await Promise.all([
+    selectAll<ArranjoLinha>(
+      locals.supabase
+        .from('arranjos')
+        .select('*')
+        .eq('ativo', true)
+        .order('dia_semana', { nullsFirst: false })
+        .order('hora_inicio', { nullsFirst: false })
+    ),
+    selectAll<ModalidadeLite>(
+      locals.supabase
+        .from('arranjo_modalidades')
+        .select('id, nome, tipo_territorio, cor')
+    ),
     locals.supabase
-      .from('designacoes')
-      .select('id, tipo, status, data_encontro, hora_encontro, ponto_encontro_endereco, ponto_encontro_lat, ponto_encontro_lng, dirigente_id, notas, publicador_id')
-      .eq('tipo', 'arranjo')
-      .in('status', ['aberta', 'concluida'])
-      .order('data_encontro', { ascending: true })
-  );
+      .from('profiles')
+      .select('id, nome')
+      .in('role', ['dirigente', 'admin']),
+    podeCoordenar ? listarPublicadores(locals.supabase) : Promise.resolve([])
+  ]);
 
-  const arranjoIds = arranjos.map((a) => a.id);
-
-  const quadrasPorArranjo: Record<number, string[]> = {};
-  const participantesPorArranjo: Record<number, { id: string; nome: string; papel: string }[]> = {};
-
-  if (arranjoIds.length > 0) {
-    const [linhasQuadras, linhasPubs] = await Promise.all([
-      locals.supabase.from('designacao_quadras').select('designacao_id, quadra_id').in('designacao_id', arranjoIds),
-      locals.supabase.from('designacao_publicadores').select('designacao_id, publicador_id, papel, profiles(nome)').in('designacao_id', arranjoIds)
-    ]);
-    for (const l of linhasQuadras.data ?? []) {
-      const arr = quadrasPorArranjo[l.designacao_id] ?? [];
-      arr.push(l.quadra_id);
-      quadrasPorArranjo[l.designacao_id] = arr;
-    }
-    for (const l of (linhasPubs.data ?? []) as any[]) {
-      const arr = participantesPorArranjo[l.designacao_id] ?? [];
-      arr.push({ id: l.publicador_id, nome: l.profiles?.nome ?? '?', papel: l.papel });
-      participantesPorArranjo[l.designacao_id] = arr;
-    }
-  }
-
-  const dirigenteIds = [...new Set(arranjos.map((a) => a.dirigente_id).filter(Boolean) as string[])];
   const dirigenteNomes: Record<string, string> = {};
-  if (dirigenteIds.length > 0) {
-    const { data: profs } = await locals.supabase.from('profiles').select('id, nome').in('id', dirigenteIds);
-    for (const p of profs ?? []) dirigenteNomes[p.id] = p.nome;
-  }
-
-  const publicadores = podeCoordenar ? await listarPublicadores(locals.supabase) : [];
+  for (const p of profs ?? []) dirigenteNomes[p.id] = p.nome;
 
   return {
-    arranjos, dirigenteNomes, publicadores,
-    quadrasPorArranjo, participantesPorArranjo,
-    podeCoordenar,
-    minhaId: locals.user.id
+    arranjos,
+    modalidades,
+    dirigentes: dirigenteNomes,
+    publicadores,
+    minhaId: locals.user.id,
+    podeCoordenar
   };
 };
 
 export const actions: Actions = {
-  criarArranjo: async ({ request, locals }) => {
+  // Distribui quadras de um arranjo aos publicadores: cria designacoes pessoais
+  // com todas as quadras do arranjo pra cada publicador selecionado.
+  distribuirQuadras: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
-    const quadras = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
-    const participantes = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
-    const dataEncontro = String(fd.get('data_encontro') ?? '').trim() || null;
-    const horaEncontro = String(fd.get('hora_encontro') ?? '').trim() || null;
-    const ponto = String(fd.get('ponto_encontro_endereco') ?? '').trim() || null;
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    if (quadras.length === 0) return fail(400, { erro: 'Selecione quadras' });
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    const prazo = String(fd.get('prazo') ?? '').trim() || null;
+    const publicadores = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+    if (publicadores.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
 
-    const { data: des, error } = await locals.supabase
-      .from('designacoes')
-      .insert({
-        tipo: 'arranjo',
-        status: 'aberta',
-        criado_por: locals.user.id,
-        dirigente_id: locals.user.id,
-        publicador_id: participantes[0] ?? locals.user.id,
-        data_encontro: dataEncontro,
-        hora_encontro: horaEncontro,
-        ponto_encontro_endereco: ponto,
-        notas
-      })
-      .select('id')
+    // Defesa em profundidade: dirigente só distribui arranjos que ele dirige.
+    // Admin distribui qualquer um. RLS de leitura é aberta, mas escopo de ação
+    // é restrito aqui no servidor.
+    const ehAdmin = locals.profile?.role === 'admin';
+    const { data: arr, error: errA } = await locals.supabase
+      .from('arranjos')
+      .select('id, quadras_ids, modalidade_id, nome, local_endereco, hora_inicio, dirigente_id')
+      .eq('id', arranjoId)
       .single();
-    if (error) return fail(400, { erro: error.message });
+    if (errA || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
+    if (!ehAdmin && arr.dirigente_id !== locals.user.id) {
+      return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
+    }
+    const quadras = (arr.quadras_ids ?? []) as string[];
+    if (quadras.length === 0) return fail(400, { erro: 'Arranjo não tem quadras pra distribuir' });
 
-    if (quadras.length > 0) {
+    for (const pubId of publicadores) {
+      const { data: des, error: errD } = await locals.supabase
+        .from('designacoes')
+        .insert({
+          tipo: 'pessoal',
+          status: 'aberta',
+          criado_por: locals.user.id,
+          dirigente_id: locals.user.id,
+          publicador_id: pubId,
+          prazo,
+          notas: `Distribuído do arranjo "${arr.nome ?? ''}".`
+        })
+        .select('id')
+        .single();
+      if (errD || !des) continue;
+
       await locals.supabase.from('designacao_quadras').insert(
         quadras.map((qid) => ({ designacao_id: des.id, quadra_id: qid }))
       );
+      await locals.supabase
+        .from('designacao_publicadores')
+        .insert({ designacao_id: des.id, publicador_id: pubId, papel: 'lider' });
     }
-    if (participantes.length > 0) {
-      await locals.supabase.from('designacao_publicadores').insert(
-        participantes.map((pid, i) => ({
-          designacao_id: des.id,
-          publicador_id: pid,
-          papel: i === 0 ? 'lider' : 'participante'
-        }))
-      );
-    }
-    return { ok: true, msg: 'Arranjo criado' };
-  },
 
-  concluir: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase.from('designacoes').update({ status: 'concluida' }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Concluído' };
+    return { ok: true, msg: `Distribuído pra ${publicadores.length} publicador(es)` };
   }
 };

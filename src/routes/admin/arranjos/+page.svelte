@@ -6,6 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { semanaAtual, ocorrenciasDaSemana, agruparPorDia, DIAS_SEMANA, DIAS_ORDENADOS } from '$lib/arranjos';
   import type { Modalidade, Arranjo, PredioLite } from './$types';
 
   let { data }: {
@@ -33,64 +34,11 @@
   let arquivoFile = $state<File | null>(null);
   let uploadando = $state(false);
 
-  const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-
-  // === Semana atual (segunda → domingo) ===
-  function semanaAtual(): { ini: Date; fim: Date; isoIni: string; isoFim: string } {
-    const hoje = new Date();
-    hoje.setHours(12, 0, 0, 0);
-    const diaSem = hoje.getDay(); // 0=dom
-    const diffSegunda = diaSem === 0 ? -6 : 1 - diaSem;
-    const ini = new Date(hoje);
-    ini.setDate(hoje.getDate() + diffSegunda);
-    const fim = new Date(ini);
-    fim.setDate(ini.getDate() + 6);
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    return { ini, fim, isoIni: iso(ini), isoFim: iso(fim) };
-  }
-
+  const DIAS = DIAS_SEMANA;
+  const diasOrdenados = DIAS_ORDENADOS;
   const semana = semanaAtual();
-
-  type Ocorrencia = { arranjo: Arranjo; data: string; dia_semana: number };
-
-  const ocorrenciasSemana = $derived.by<Ocorrencia[]>(() => {
-    const out: Ocorrencia[] = [];
-    for (const a of data.arranjos) {
-      if (!a.ativo) continue;
-      if (a.recorrente) {
-        if (a.dia_semana === null || a.dia_semana === undefined) continue;
-        if (a.data_inicio && a.data_inicio > semana.isoFim) continue;
-        if (a.data_fim && a.data_fim < semana.isoIni) continue;
-        const d = new Date(semana.ini);
-        const diffDias = (a.dia_semana - 1 + 7) % 7; // 1=seg → 0; 0=dom → 6
-        d.setDate(semana.ini.getDate() + diffDias);
-        const dIso = d.toISOString().slice(0, 10);
-        if (a.data_inicio && dIso < a.data_inicio) continue;
-        if (a.data_fim && dIso > a.data_fim) continue;
-        out.push({ arranjo: a, data: dIso, dia_semana: a.dia_semana });
-      } else if (a.data && a.data >= semana.isoIni && a.data <= semana.isoFim) {
-        const d = new Date(a.data + 'T12:00:00');
-        out.push({ arranjo: a, data: a.data, dia_semana: d.getDay() });
-      }
-    }
-    return out.sort((x, y) => {
-      const dx = (x.dia_semana - 1 + 7) % 7;
-      const dy = (y.dia_semana - 1 + 7) % 7;
-      if (dx !== dy) return dx - dy;
-      return (x.arranjo.hora_inicio ?? '') > (y.arranjo.hora_inicio ?? '') ? 1 : -1;
-    });
-  });
-
-  const ocPorDia = $derived.by(() => {
-    const m: Record<number, Ocorrencia[]> = {};
-    for (const o of ocorrenciasSemana) {
-      (m[o.dia_semana] ??= []).push(o);
-    }
-    return m;
-  });
-
-  // Dias da semana ordenados (seg→dom)
-  const diasOrdenados = [1, 2, 3, 4, 5, 6, 0];
+  const ocorrenciasSemana = $derived(ocorrenciasDaSemana(data.arranjos));
+  const ocPorDia = $derived(agruparPorDia(ocorrenciasSemana));
 
   const modalidadeById = $derived(
     Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const))

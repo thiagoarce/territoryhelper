@@ -1,78 +1,90 @@
 <script lang="ts">
   import Card from '$lib/ui/Card.svelte';
-  import type { ArranjoLinha } from './$types';
+  import { ocorrenciasDaSemana, agruparPorDia, semanaAtual, DIAS_SEMANA, DIAS_ORDENADOS } from '$lib/arranjos';
+  import type { ArranjoLinha, ModalidadeLite } from './$types';
 
   let { data }: {
     data: {
       arranjos: ArranjoLinha[];
-      dirigenteNomes: Record<string, string>;
-      quadrasPorArranjo: Record<number, string[]>;
-      participantesPorArranjo: Record<number, { id: string; nome: string; papel: string }[]>;
+      modalidades: ModalidadeLite[];
+      dirigentes: Record<string, string>;
     };
   } = $props();
 
-  function diaSemana(dataStr: string | null): string {
-    if (!dataStr) return '—';
-    const d = new Date(dataStr + 'T12:00:00');
-    return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+  const semana = semanaAtual();
+  const ocorrencias = $derived(ocorrenciasDaSemana<ArranjoLinha>(data.arranjos));
+  const ocPorDia = $derived(agruparPorDia(ocorrencias));
+  const modById = $derived(Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const)));
+
+  function tipoLabel(t: string): string {
+    if (t === 'quadras') return 'Quadras';
+    if (t === 'cartas_lista') return 'Cartas';
+    if (t === 'arquivo') return 'Arquivo';
+    if (t === 'ponto_tp') return 'TP fixo';
+    return t;
   }
 </script>
 
 <div class="p-4 space-y-3">
   <div>
     <h1 class="text-2xl font-bold">Arranjo</h1>
-    <p class="text-sm text-slate-500">Saídas em grupo coordenadas por dirigentes</p>
+    <p class="text-sm text-slate-500">Saídas em grupo desta semana</p>
+    <div class="text-xs text-slate-400 mt-1">
+      {semana.ini.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      — {semana.fim.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+    </div>
   </div>
 
-  {#if data.arranjos.length === 0}
+  {#if ocorrencias.length === 0}
     <Card padding="md">
-      <div class="text-center py-6">
+      <div class="text-center py-8">
         <div class="text-4xl mb-2 opacity-50">📅</div>
-        <div class="font-medium">Nenhum arranjo marcado</div>
-        <div class="text-sm text-slate-500">Quando um dirigente marcar uma saída em grupo, ela aparece aqui.</div>
+        <div class="font-medium">Sem arranjos esta semana</div>
+        <div class="text-sm text-slate-500">Quando uma saída for marcada, aparece aqui.</div>
       </div>
     </Card>
   {:else}
-    {#each data.arranjos as a (a.id)}
-      {@const quadras = data.quadrasPorArranjo[a.id] ?? []}
-      {@const participantes = data.participantesPorArranjo[a.id] ?? []}
-      {@const dirigenteNome = a.dirigente_id ? data.dirigenteNomes[a.dirigente_id] : null}
-      <Card padding="md">
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex-1 min-w-0">
-            <div class="font-semibold text-lg">{diaSemana(a.data_encontro)}{a.hora_encontro ? ` · ${a.hora_encontro.substring(0, 5)}` : ''}</div>
-            {#if dirigenteNome}<div class="text-xs text-slate-500">Dirigente: {dirigenteNome}</div>{/if}
-          </div>
-          <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{quadras.length} quadra(s)</span>
-        </div>
-
-        {#if a.ponto_encontro_endereco}
-          <div class="mt-2 text-sm">
-            <span class="text-slate-500">Ponto de encontro:</span> {a.ponto_encontro_endereco}
+    <div class="grid gap-3">
+      {#each DIAS_ORDENADOS as dia}
+        {#if (ocPorDia[dia] ?? []).length > 0}
+          <div>
+            <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">{DIAS_SEMANA[dia]}</div>
+            <div class="grid gap-2">
+              {#each ocPorDia[dia] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
+                {@const a = oc.arranjo}
+                {@const m = modById[a.modalidade_id]}
+                <Card padding="md">
+                  <div class="flex items-start gap-3">
+                    <span class="w-2 self-stretch rounded shrink-0" style="background:{m?.cor ?? '#3b82f6'}"></span>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold">{a.nome || m?.nome || 'Arranjo'}</span>
+                        {#if m}<span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{tipoLabel(m.tipo_territorio)}</span>{/if}
+                      </div>
+                      <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {#if a.hora_inicio}<span>🕒 {a.hora_inicio.substring(0, 5)}{a.hora_fim ? `–${a.hora_fim.substring(0, 5)}` : ''}</span>{/if}
+                        {#if a.local_endereco}<span class="truncate">📍 {a.local_endereco}</span>{/if}
+                        {#if a.dirigente_id}<span>👤 {data.dirigentes[a.dirigente_id] ?? '?'}</span>{/if}
+                      </div>
+                      {#if (a.quadras_ids?.length ?? 0) > 0}
+                        <div class="mt-1.5 flex flex-wrap gap-1">
+                          {#each a.quadras_ids ?? [] as q}
+                            <a href="/publicador/quadra/{q}" class="text-xs font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded hover:bg-slate-200">{q}</a>
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if a.arquivo_url}
+                        <div class="mt-1"><a href={a.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline">📎 {a.arquivo_nome || 'arquivo'}</a></div>
+                      {/if}
+                      {#if a.notas}<div class="mt-1 text-xs italic text-slate-500">{a.notas}</div>{/if}
+                    </div>
+                  </div>
+                </Card>
+              {/each}
+            </div>
           </div>
         {/if}
-
-        {#if quadras.length > 0}
-          <div class="mt-2 flex flex-wrap gap-1">
-            {#each quadras as q}
-              <a href="/publicador/quadra/{q}" class="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded hover:bg-slate-200">{q}</a>
-            {/each}
-          </div>
-        {/if}
-
-        {#if participantes.length > 0}
-          <div class="mt-2 text-xs text-slate-500">
-            <span class="font-medium">Participantes:</span>
-            {#each participantes as p, i}
-              <span class:font-semibold={p.papel === 'lider'}>{p.nome}</span>{i < participantes.length - 1 ? ', ' : ''}
-            {/each}
-          </div>
-        {/if}
-
-        {#if a.notas}
-          <div class="mt-2 text-xs text-slate-500 italic">{a.notas}</div>
-        {/if}
-      </Card>
-    {/each}
+      {/each}
+    </div>
   {/if}
 </div>
