@@ -12,31 +12,34 @@
   const semChrome = $derived(rotasPublicas.some((p) => $page.url.pathname.startsWith(p)));
   const role = $derived(data.profile?.role ?? null);
 
-  // Modo atual baseado na URL — decide chrome (admin=drawer, dirigente=bottom, publicador=bottom).
-  // Em rotas compartilhadas (/perfil, /buscar) cai no modo do role do usuário — evita
-  // publicador/dirigente ver menu de admin ao abrir Perfil.
-  type Modo = 'admin' | 'dirigente' | 'publicador';
-  const modoPorRole = $derived<Modo>(role === 'admin' ? 'admin' : role === 'dirigente' ? 'dirigente' : 'publicador');
+  // 2 modos apenas: admin (organizador) e campo (publicador+dirigente).
+  // Dirigente = publicador com features extras habilitadas por role,
+  // não uma tela separada (specs.md revisado).
+  type Modo = 'admin' | 'campo';
   const modoAtual = $derived<Modo>(
-    $page.url.pathname.startsWith('/publicador') ? 'publicador'
-    : $page.url.pathname.startsWith('/dirigente') ? 'dirigente'
-    : $page.url.pathname.startsWith('/admin') ? 'admin'
-    : modoPorRole
+    $page.url.pathname.startsWith('/admin') ? 'admin'
+    : $page.url.pathname.startsWith('/publicador') ? 'campo'
+    : $page.url.pathname.startsWith('/dirigente') ? 'campo'
+    : (role === 'admin' ? 'admin' : 'campo')
   );
 
-  // Itens do bottom nav (publicador/dirigente) — Perfil não fica no bottom
-  // pra não gastar slot; já tem ícone no header (top-right).
-  const bottomNavPublicador = [
-    { href: '/publicador', label: 'Designações', icon: 'home' },
-    { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
-    { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
-  ];
-  const bottomNavDirigente = [
-    { href: '/dirigente', label: 'Designações', icon: 'home' },
-    { href: '/dirigente/arranjo', label: 'Arranjo', icon: 'clipboard' },
-    { href: '/dirigente/campanha', label: 'Campanha', icon: 'chart' }
-  ];
-  const bottomNav = $derived(modoAtual === 'publicador' ? bottomNavPublicador : bottomNavDirigente);
+  // Bottom nav do modo campo. Dirigente/admin ganham item "Mapa" extra que
+  // leva ao mapa estratégico (concluir + POIs + PNG).
+  const podeDirigir = $derived(['dirigente', 'admin'].includes(role ?? ''));
+  const bottomNav = $derived(
+    podeDirigir
+      ? [
+          { href: '/publicador', label: 'Designações', icon: 'home' },
+          { href: '/publicador/mapa', label: 'Mapa', icon: 'map' },
+          { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
+          { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
+        ]
+      : [
+          { href: '/publicador', label: 'Designações', icon: 'home' },
+          { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
+          { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
+        ]
+  );
 
   // Drawer admin
   let drawerAberto = $state(false);
@@ -60,10 +63,9 @@
       ]
     },
     {
-      titulo: 'Outros modos',
+      titulo: 'Modo campo',
       items: [
-        { href: '/dirigente', label: 'Modo Dirigente', icon: 'eye' },
-        { href: '/publicador', label: 'Modo Publicador', icon: 'eye' }
+        { href: '/publicador', label: 'Ir pro campo', icon: 'eye' }
       ]
     }
   ];
@@ -72,15 +74,13 @@
     const p = $page.url.pathname;
     if (href === '/admin') return p === '/admin';
     if (href === '/publicador') return p === '/publicador';
-    if (href === '/dirigente') return p === '/dirigente';
+    if (href === '/publicador/mapa') return p === '/publicador/mapa';
     return p.startsWith(href);
   }
 
-  // Título do header — vem do modo OR override (futuro: pode ser setado por página)
+  // Título do header — modo campo pra publicador/dirigente, Território pra admin
   const tituloHeader = $derived(
-    modoAtual === 'publicador' ? 'Publicador'
-    : modoAtual === 'dirigente' ? 'Dirigente'
-    : 'Território'
+    modoAtual === 'campo' ? (podeDirigir ? 'Campo' : 'Publicador') : 'Território'
   );
 
   // Iniciais do nome pra avatar

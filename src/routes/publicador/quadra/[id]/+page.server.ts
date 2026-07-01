@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   await exigirQuadraDesignada(locals, params.id);
   const dados = await carregarQuadraComLocais(locals.supabase, params.id);
   if (!dados) throw error(404, 'Quadra não encontrada');
-  return dados;
+  return { ...dados, minhaRole: locals.profile?.role };
 };
 
 export const actions: Actions = {
@@ -201,6 +201,37 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('locais').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Local excluído' };
+  },
+
+  // Marca a quadra atual como concluída (só dirigente/admin). Poder de
+  // dirigente no modo campo — publicador comum não pode.
+  concluirQuadra: async ({ request, locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode marcar conclusão' });
+    }
+    const fd = await request.formData();
+    const data = String(fd.get('data') ?? '').trim() || new Date().toISOString().substring(0, 10);
+    const { error: err } = await locals.supabase
+      .from('quadras')
+      .update({ data_conclusao: data })
+      .eq('id', params.id);
+    if (err) return fail(400, { erro: err.message });
+    return { ok: true, msg: 'Quadra concluída em ' + data };
+  },
+
+  // Desfaz conclusão (dirigente/admin)
+  desfazerConclusao: async ({ locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const { error: err } = await locals.supabase
+      .from('quadras')
+      .update({ data_conclusao: null })
+      .eq('id', params.id);
+    if (err) return fail(400, { erro: err.message });
+    return { ok: true, msg: 'Conclusão desfeita' };
   },
 
   // Marca/desmarca carta entregue. Atualiza unidades.carta_entregue (date)

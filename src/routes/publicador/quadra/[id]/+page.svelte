@@ -12,10 +12,13 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
 
-  let { data }: { data: DadosQuadraTrabalho } = $props();
+  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string } } = $props();
   let editandoLocal: LocalComUnidades | null = $state(null);
   let sheetEditar = $state(false);
   let sheetAdd = $state(false);
+  const podeDirigir = $derived(['dirigente', 'admin'].includes(data.minhaRole ?? ''));
+  let dataConclusao = $state(new Date().toISOString().substring(0, 10));
+  let salvandoConclusao = $state(false);
 
   // Modo simples: botões gigantes, sem mapa nem ações de edição.
   // Persistido em localStorage por usuário.
@@ -145,6 +148,44 @@
     >{modoSimples ? '🔍 Avançado' : 'ⓢ Simples'}</button>
   </div>
 </div>
+
+<!-- Ações de dirigente (marcar quadra concluída / desfazer) — só se role permite -->
+{#if podeDirigir}
+  <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+    {#if data.quadra.data_conclusao}
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-sm text-green-700 flex-1">✓ Concluída em <strong>{data.quadra.data_conclusao}</strong></span>
+        <form
+          method="POST"
+          action="?/desfazerConclusao"
+          use:enhance={() => { salvandoConclusao = true; return async ({ result, update }) => {
+            await update(); salvandoConclusao = false;
+            if (result.type === 'success') { toast.success('Desfeito'); await invalidateAll(); }
+            else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }; }}
+        >
+          <Button variant="secondary" size="sm" type="submit" loading={salvandoConclusao}>Desfazer</Button>
+        </form>
+      </div>
+    {:else}
+      <form
+        method="POST"
+        action="?/concluirQuadra"
+        use:enhance={() => { salvandoConclusao = true; return async ({ result, update }) => {
+          await update(); salvandoConclusao = false;
+          if (result.type === 'success') { toast.success(String((result.data as any)?.msg || 'Concluída')); await invalidateAll(); }
+          else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+        }; }}
+        class="flex items-center gap-2 flex-wrap"
+      >
+        <label for="data-conc" class="text-sm text-slate-600">Concluir em</label>
+        <input id="data-conc" type="date" name="data" bind:value={dataConclusao}
+          class="rounded border border-slate-300 px-2 py-1 text-sm" />
+        <Button variant="success" size="sm" type="submit" loading={salvandoConclusao}>✓ Marcar concluída</Button>
+      </form>
+    {/if}
+  </div>
+{/if}
 
 <!-- Mapa (escondido no modo simples) -->
 {#if !modoSimples}
