@@ -12,6 +12,8 @@
     total_meta: number;
   }
 
+  interface DelegTempAtiva { id: number; dirigente_nome: string; quadras_ids: string[]; data_fim: string }
+
   let {
     data
   }: {
@@ -22,6 +24,7 @@
       cobertura: Record<string, CoberturaQuadra>;
       tces: { id: string; nome: string; tipo: string; prazo: string | null; status: string }[];
       campanhaAtiva: CampanhaAtiva | null;
+      delegacoesTempAtivas: DelegTempAtiva[];
       minhaRole: string | undefined;
     };
   } = $props();
@@ -54,6 +57,28 @@
 </script>
 
 <div class="p-4">
+{#if data.delegacoesTempAtivas.length > 0}
+  <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+    <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2">🚶 Pregando com dirigente agora</div>
+    {#each data.delegacoesTempAtivas as d}
+      <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
+        <div class="font-medium">{d.dirigente_nome}</div>
+        <div class="text-xs text-slate-500 mb-1.5">até {new Date(d.data_fim).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+        <div class="flex flex-wrap gap-1.5">
+          {#each d.quadras_ids as qid}
+            {@const q = data.quadrasMap[qid]}
+            <a href="/publicador/quadra/{encodeURIComponent(qid)}"
+              class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200">
+              {#if q}<span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>{/if}
+              <span>{qid}</span>
+            </a>
+          {/each}
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
 {#if data.campanhaAtiva}
   {@const c = data.campanhaAtiva}
   {@const pct = c.total_meta > 0 ? Math.round((c.concluidas_no_periodo / c.total_meta) * 100) : 0}

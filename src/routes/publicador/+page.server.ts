@@ -12,14 +12,22 @@ export interface CampanhaAtiva {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const [designacoes, quadras, campanhaRes] = await Promise.all([
+  const [designacoes, quadras, campanhaRes, delegRes, profRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
       .from('campanhas')
       .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa')
       .eq('ativa', true)
-      .maybeSingle()
+      .maybeSingle(),
+    // Delegações temporárias ATIVAS que eu recebi como publicador
+    locals.supabase
+      .from('delegacoes_temp')
+      .select('id, dirigente_id, quadras_ids, data_fim')
+      .eq('publicador_id', locals.user!.id)
+      .gt('data_fim', new Date().toISOString())
+      .order('criada_em', { ascending: false }),
+    locals.supabase.from('profiles').select('id, nome')
   ]);
   const abertas = designacoes.filter((d) => d.status === 'aberta');
   const concluidas = designacoes.filter((d) => d.status === 'concluida');
@@ -57,6 +65,15 @@ export const load: PageServerLoad = async ({ locals }) => {
     };
   }
 
+  // Delegações temporárias ativas que eu recebi (mostra card no topo do home)
+  const nomePorId = new Map((profRes.data ?? []).map((p: any) => [p.id, p.nome as string]));
+  const delegacoesTempAtivas = (delegRes.data ?? []).map((d: any) => ({
+    id: d.id,
+    dirigente_nome: nomePorId.get(d.dirigente_id) ?? '?',
+    quadras_ids: d.quadras_ids as string[],
+    data_fim: d.data_fim as string
+  }));
+
   return {
     abertas,
     concluidas,
@@ -64,6 +81,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     cobertura: Object.fromEntries(cobertura),
     tces,
     campanhaAtiva,
+    delegacoesTempAtivas,
     minhaRole: locals.profile?.role
   };
 };

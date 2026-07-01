@@ -8,12 +8,53 @@
   import { buscarPOIs, categoriaLabel, categoriaEmoji, urlRotaGoogleMaps, type CategoriaPOI } from '$lib/utils/overpass';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
 
-  let { data, form }: { data: { quadras: QuadraGeo[]; designacoesAbertas: DesignacaoEnriquecida[] }; form: any } = $props();
+  interface DelegTemp { id: number; publicador_id: string; quadras_ids: string[]; data_fim: string }
+  interface Pub { id: string; nome: string; role: string }
+
+  let { data, form }: {
+    data: {
+      quadras: QuadraGeo[];
+      designacoesAbertas: DesignacaoEnriquecida[];
+      publicadores: Pub[];
+      delegacoesTemp: DelegTemp[];
+    };
+    form: any;
+  } = $props();
 
   let quadraSel: QuadraGeo | null = $state(null);
   let sheetOpen = $state(false);
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvando = $state(false);
+
+  // Delegação temporária
+  let sheetDelegar = $state(false);
+  let quadrasParaDelegar = $state<Set<string>>(new Set());
+  let publicadorAlvo = $state('');
+  let dataFimDelegar = $state('');
+  let notasDelegar = $state('');
+  let delegando = $state(false);
+  const pubById = $derived(Object.fromEntries(data.publicadores.map((p) => [p.id, p.nome])));
+
+  function toggleQuadraDeleg(qid: string) {
+    if (quadrasParaDelegar.has(qid)) quadrasParaDelegar.delete(qid);
+    else quadrasParaDelegar.add(qid);
+    quadrasParaDelegar = new Set(quadrasParaDelegar);
+  }
+  function abrirDelegar() {
+    quadrasParaDelegar = new Set();
+    publicadorAlvo = '';
+    dataFimDelegar = '';
+    notasDelegar = '';
+    sheetDelegar = true;
+  }
+  async function encerrarDeleg(id: number) {
+    if (!confirm('Encerrar essa delegação agora?')) return;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/encerrarDelegacaoTemp', { method: 'POST', body: fd });
+    if (res.ok) { toast.success('Encerrada'); await invalidateAll(); }
+    else toast.error('Falhou');
+  }
 
   let mapaRef: { exportarPng: () => string | null; centralizarEmQuadra: (q: QuadraGeo) => void } | null = $state(null);
 
@@ -124,10 +165,10 @@
 
 <div class="flex items-end justify-between flex-wrap gap-3">
   <div>
-    <h1 class="text-2xl font-bold">Dirigente</h1>
-    <p class="text-sm text-slate-500 mt-1">Concluir quadras + estacionamento + visão geral</p>
+    <h1 class="text-2xl font-bold">Mapa estratégico</h1>
+    <p class="text-sm text-slate-500 mt-1">Concluir quadras · estacionamento · delegar temp</p>
   </div>
-  <div class="flex gap-2">
+  <div class="flex gap-2 flex-wrap">
     <div class="flex border border-slate-300 rounded-lg overflow-hidden text-sm">
       <button onclick={() => (visao = 'mapa')} class="px-3 py-1.5 {visao === 'mapa' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}">🗺 Mapa</button>
       <button onclick={() => (visao = 'lista')} class="px-3 py-1.5 {visao === 'lista' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}">☰ Lista</button>
@@ -135,6 +176,7 @@
     {#if visao === 'mapa'}
       <Button variant="secondary" size="sm" onclick={exportarMapa}>📸 PNG</Button>
     {/if}
+    <Button variant="primary" size="sm" onclick={abrirDelegar}>👤 Delegar temp</Button>
   </div>
 </div>
 
@@ -325,4 +367,85 @@
       {/if}
     </div>
   {/if}
+</BottomSheet>
+
+{#if data.delegacoesTemp.length > 0}
+  <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+    <div class="text-xs uppercase tracking-wider font-semibold text-amber-900 mb-2">Delegações ativas ({data.delegacoesTemp.length})</div>
+    <div class="space-y-1">
+      {#each data.delegacoesTemp as d}
+        <div class="flex items-center gap-2 text-sm bg-white rounded p-2">
+          <div class="flex-1 min-w-0">
+            <div class="font-medium">👤 {pubById[d.publicador_id] ?? '?'}</div>
+            <div class="text-xs text-slate-500">
+              {d.quadras_ids.length} quadra(s) · até {new Date(d.data_fim).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </div>
+            <div class="flex flex-wrap gap-1 mt-1">
+              {#each d.quadras_ids as q}
+                <span class="text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
+              {/each}
+            </div>
+          </div>
+          <button type="button" onclick={() => encerrarDeleg(d.id)} class="text-xs text-red-600 hover:underline">Encerrar</button>
+        </div>
+      {/each}
+    </div>
+  </div>
+{/if}
+
+<BottomSheet bind:open={sheetDelegar} title="Delegar temporariamente">
+  <form
+    method="POST"
+    action="?/delegarTemp"
+    use:enhance={() => { delegando = true; return async ({ result, update }) => {
+      await update(); delegando = false;
+      if (result.type === 'success') {
+        toast.success(String((result.data as any)?.msg || 'Delegado'));
+        sheetDelegar = false; await invalidateAll();
+      } else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+    }; }}
+    class="space-y-3"
+  >
+    <p class="text-xs text-slate-500">Delegação some sozinha no fim do dia. O publicador ganha acesso temporário sem virar designação persistente.</p>
+    {#each [...quadrasParaDelegar] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+
+    <div>
+      <label for="pub" class="block text-sm font-medium mb-1">Publicador</label>
+      <select id="pub" name="publicador_id" required bind:value={publicadorAlvo} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="">—</option>
+        {#each data.publicadores as p}<option value={p.id}>{p.nome}</option>{/each}
+      </select>
+    </div>
+
+    <div>
+      <span class="block text-sm font-medium mb-1">Quadras ({quadrasParaDelegar.size} selecionadas)</span>
+      <div class="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+        {#each data.quadras.filter((q) => q.ativa && !q.data_conclusao) as q}
+          <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+            <input type="checkbox" checked={quadrasParaDelegar.has(q.id)} onchange={() => toggleQuadraDeleg(q.id)} class="w-4 h-4 rounded" />
+            <span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>
+            <span class="font-mono">{q.id}</span>
+            <span class="ml-auto text-xs text-slate-400 truncate max-w-[150px]">{q.territorio_nome ?? ''}</span>
+          </label>
+        {/each}
+      </div>
+      <p class="text-xs text-slate-500 mt-1">Só quadras ativas não concluídas</p>
+    </div>
+
+    <div>
+      <label for="fim" class="block text-sm font-medium mb-1">Válida até (opcional)</label>
+      <input id="fim" name="data_fim" type="datetime-local" bind:value={dataFimDelegar} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <p class="text-xs text-slate-500 mt-1">Vazio = hoje 23:59</p>
+    </div>
+
+    <div>
+      <label for="notas" class="block text-sm font-medium mb-1">Notas (opcional)</label>
+      <input id="notas" name="notas" bind:value={notasDelegar} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetDelegar = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" type="submit" loading={delegando} class="flex-1" disabled={quadrasParaDelegar.size === 0 || !publicadorAlvo}>Delegar</Button>
+    </div>
+  </form>
 </BottomSheet>
