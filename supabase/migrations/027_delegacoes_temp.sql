@@ -23,13 +23,14 @@ create table if not exists delegacoes_temp (
   criada_em timestamptz not null default now()
 );
 
-create index if not exists delegacoes_temp_publicador_ativas
-  on delegacoes_temp(publicador_id, data_fim)
-  where data_fim > now();
+-- Não dá pra usar WHERE data_fim > now() no predicate (now() não é immutable).
+-- Indexa (id, data_fim) — o filtro data_fim > now() no WHERE das queries
+-- ainda usa o índice via index-only scan.
+create index if not exists delegacoes_temp_publicador_idx
+  on delegacoes_temp(publicador_id, data_fim desc);
 
-create index if not exists delegacoes_temp_dirigente_ativas
-  on delegacoes_temp(dirigente_id, data_fim)
-  where data_fim > now();
+create index if not exists delegacoes_temp_dirigente_idx
+  on delegacoes_temp(dirigente_id, data_fim desc);
 
 alter table delegacoes_temp enable row level security;
 
