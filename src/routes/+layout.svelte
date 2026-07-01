@@ -32,11 +32,13 @@
           { href: '/publicador', label: 'Designações', icon: 'home' },
           { href: '/publicador/mapa', label: 'Mapa', icon: 'map' },
           { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
+          { href: '/publicador/predios', label: 'Prédios', icon: 'envelope' },
           { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
         ]
       : [
           { href: '/publicador', label: 'Designações', icon: 'home' },
           { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
+          { href: '/publicador/predios', label: 'Prédios', icon: 'envelope' },
           { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
         ]
   );
