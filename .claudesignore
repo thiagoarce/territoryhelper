@@ -1,0 +1,28 @@
+# Dependências e builds
+node_modules/
+.svelte-kit/
+build/
+dist/
+.vercel/
+.wrangler/
+
+# Arquivos de Lock
+package-lock.json
+
+# Dados estáticos pesados e Assets visuais
+static/icon-*.svg
+static/*.png
+static/*.webmanifest
+
+# Scripts de dados e DB estático (evitar que a IA leia tudo durante o dev de UI)
+scripts/migrate-from-csv.ts
+scripts/generate-migration-sql.ts
+supabase/migrations/
+
+# Documentações de log longos
+docs/CHANGELOG.md
+
+# Arquivos de ambiente
+.env
+.env.example
+.env.local
