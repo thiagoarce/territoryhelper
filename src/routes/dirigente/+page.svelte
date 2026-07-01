@@ -5,7 +5,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { buscarPOIs, categoriaLabel, categoriaEmoji, type CategoriaPOI } from '$lib/utils/overpass';
+  import { buscarPOIs, categoriaLabel, categoriaEmoji, urlRotaGoogleMaps, type CategoriaPOI } from '$lib/utils/overpass';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
 
   let { data, form }: { data: { quadras: QuadraGeo[]; designacoesAbertas: DesignacaoEnriquecida[] }; form: any } = $props();
@@ -15,7 +15,19 @@
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvando = $state(false);
 
-  let mapaRef: { exportarPng: () => string | null } | null = $state(null);
+  let mapaRef: { exportarPng: () => string | null; centralizarEmQuadra: (q: QuadraGeo) => void } | null = $state(null);
+
+  // POIs viram marcadores no mapa (specs Fase 3 — "renderizar no mapa")
+  const poisMarcadores = $derived(
+    pois.map((p) => ({
+      id: p.id,
+      lat: p.lat,
+      lng: p.lng,
+      nome: `${p.nome} · ${p.distancia}m`,
+      emoji: categoriaEmoji(p.categoria),
+      url: urlRotaGoogleMaps(p.lat, p.lng)
+    }))
+  );
 
   function exportarMapa() {
     const png = mapaRef?.exportarPng();
@@ -66,12 +78,25 @@
         ...p,
         distancia: Math.round(distanciaMetros(centerLat, centerLng, p.lat, p.lng))
       })).sort((a, b) => a.distancia - b.distancia);
-      if (pois.length === 0) toast.info('Nenhum POI encontrado em 500m');
+      if (pois.length === 0) {
+        toast.info('Nenhum POI encontrado em 500m');
+        return;
+      }
+      // Fecha o sheet e centraliza o mapa na quadra pra ver os marcadores
+      if (visao === 'mapa' && mapaRef && quadraSel) {
+        mapaRef.centralizarEmQuadra(quadraSel);
+        sheetOpen = false;
+        toast.success(`${pois.length} POIs no mapa`);
+      }
     } catch (e: any) {
       toast.error('Overpass falhou: ' + (e?.message || e));
     } finally {
       buscandoPOIs = false;
     }
+  }
+
+  function limparPOIs() {
+    pois = [];
   }
 
   // Haversine simplificado pra distância em metros entre 2 pontos
@@ -115,8 +140,14 @@
 
 {#if visao === 'mapa'}
   <div class="mt-4">
-    <AdminMapa bind:this={mapaRef} quadras={data.quadras} altura={620} onQuadraClick={abrirQuadra} />
+    <AdminMapa bind:this={mapaRef} quadras={data.quadras} pois={poisMarcadores} altura={620} onQuadraClick={abrirQuadra} />
   </div>
+  {#if pois.length > 0}
+    <div class="mt-2 flex items-center gap-2 flex-wrap text-xs">
+      <span class="font-medium">{pois.length} POI(s) no mapa</span>
+      <button type="button" onclick={limparPOIs} class="text-red-600 hover:underline">🧹 Limpar</button>
+    </div>
+  {/if}
 {:else}
   <!-- Lista -->
   <div class="mt-4 flex gap-2 flex-wrap">
