@@ -10,7 +10,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "format": "prettier --write .",
     "lint": "prettier --check .",
-    "migrate": "tsx scripts/migrate-from-csv.ts"
+    "migrate": "tsx scripts/migrate-from-csv.ts",
+    "fill-complementos": "tsx scripts/fill-complementos.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-cloudflare": "^4.7.2",

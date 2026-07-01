@@ -401,8 +401,12 @@ async function importLocaisEUnidades() {
     faceIbge: colIdx(headers, 'FaceIBGE', 'Face IBGE', 'Face-IBGE'),
     logradouro: colIdx(headers, 'Logradouro'),
     numero: colIdx(headers, 'Numero', 'Número'),
-    // "Comp. Num." (número do apto) tem prioridade sobre "Complemento" (texto livre)
-    complemento: colIdx(headers, 'Comp. Num.', 'Comp Num', 'Comp', 'Complemento'),
+    // "Comp. Num." (número do apto) tem prioridade, mas se estiver vazio
+    // cai pra "Complemento" (texto livre) — resolvido POR LINHA em cada row.
+    // colIdx retorna o primeiro que EXISTE mesmo se todas as células estiverem
+    // vazias, então precisamos dos DOIS índices e fallback por row.
+    complementoNum: colIdx(headers, 'Comp. Num.', 'Comp Num', 'Comp'),
+    complementoTxt: colIdx(headers, 'Complemento'),
     lat: colIdx(headers, 'Lat', 'Latitude', 'latitude', 'LAT'),
     lng: colIdx(headers, 'Lng', 'Lon', 'Long', 'Longitude', 'longitude', 'LNG'),
     tipo: colIdx(headers, 'Tipo'),
@@ -454,9 +458,12 @@ async function importLocaisEUnidades() {
       localPorChave.set(chaveCompleta, local);
     }
 
+    // Fallback: Comp. Num. vazio? usa Complemento (texto livre com "APARTAMENTO 300" etc)
+    const compNum = c.complementoNum >= 0 ? toStrOrNull(r[c.complementoNum]) : null;
+    const compTxt = c.complementoTxt >= 0 ? toStrOrNull(r[c.complementoTxt]) : null;
     local.unidades.push({
       legacy_row: legacyRow,
-      complemento: toStrOrNull(r[c.complemento]),
+      complemento: compNum ?? compTxt,
       ordem: toInt(r[c.ordem]),
       nota: toStrOrNull(r[c.nota]),
       nao_visitar: toBool(r[c.naoVisitar]),
