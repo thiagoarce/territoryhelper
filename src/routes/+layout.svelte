@@ -24,18 +24,17 @@
     : modoPorRole
   );
 
-  // Itens do bottom nav (publicador/dirigente) — mesma estrutura, contextos diferentes
+  // Itens do bottom nav (publicador/dirigente) — Perfil não fica no bottom
+  // pra não gastar slot; já tem ícone no header (top-right).
   const bottomNavPublicador = [
     { href: '/publicador', label: 'Designações', icon: 'home' },
     { href: '/publicador/arranjo', label: 'Arranjo', icon: 'clipboard' },
-    { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' },
-    { href: '/perfil', label: 'Perfil', icon: 'user' }
+    { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
   ];
   const bottomNavDirigente = [
     { href: '/dirigente', label: 'Designações', icon: 'home' },
     { href: '/dirigente/arranjo', label: 'Arranjo', icon: 'clipboard' },
-    { href: '/dirigente/campanha', label: 'Campanha', icon: 'chart' },
-    { href: '/perfil', label: 'Perfil', icon: 'user' }
+    { href: '/dirigente/campanha', label: 'Campanha', icon: 'chart' }
   ];
   const bottomNav = $derived(modoAtual === 'publicador' ? bottomNavPublicador : bottomNavDirigente);
 
