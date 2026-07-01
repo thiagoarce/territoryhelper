@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { listarPredios } from '$lib/server/queries';
+import { listarPredios, listarPublicadores } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
 
 export type PredioCampo = PredioListado & { distancia_m?: number };
@@ -13,13 +13,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const lng = parseFloat(url.searchParams.get('lng') || '');
   const temGeo = isFinite(lat) && isFinite(lng);
 
-  const [predios, proxRes] = await Promise.all([
+  const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
+
+  const [predios, proxRes, publicadores] = await Promise.all([
     listarPredios(locals.supabase),
     temGeo
       ? locals.supabase.rpc('buscar_locais_proximos' as any, {
           p_lat: lat, p_lng: lng, p_limite: 500, p_raio_m: 5000
         } as any)
-      : Promise.resolve({ data: null })
+      : Promise.resolve({ data: null }),
+    podeCoordenar ? listarPublicadores(locals.supabase) : Promise.resolve([])
   ]);
 
   // Se tem GPS, injeta distância e ordena por proximidade
@@ -35,7 +38,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     });
   }
 
-  return { predios: enriched, q, lat: temGeo ? lat : null, lng: temGeo ? lng : null };
+  return {
+    predios: enriched,
+    q,
+    lat: temGeo ? lat : null,
+    lng: temGeo ? lng : null,
+    publicadores,
+    podeCoordenar
+  };
 };
 
 export const actions: Actions = {
@@ -75,6 +85,47 @@ export const actions: Actions = {
     }));
     await locals.supabase.from('unidades').insert(unidades);
     return { ok: true, msg: 'Prédio criado — admin vai validar', id: novo.id };
+  },
+
+  // Designa prédios como território de cartas pra um ou mais publicadores.
+  // Cria N designações (uma por publicador) com tipo='cartas' + linha em
+  // designacao_locais pra cada prédio. Só dirigente/admin.
+  designarCartas: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode designar' });
+    }
+    const fd = await request.formData();
+    const publicadores = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+    const prediosIds = fd.getAll('predio_ids').map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
+    const prazo = String(fd.get('prazo') ?? '').trim() || null;
+    const notas = String(fd.get('notas') ?? '').trim() || null;
+    if (publicadores.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
+    if (prediosIds.length === 0) return fail(400, { erro: 'Selecione ao menos um prédio' });
+
+    for (const pubId of publicadores) {
+      const { data: des, error: errD } = await locals.supabase
+        .from('designacoes')
+        .insert({
+          tipo: 'cartas',
+          status: 'aberta',
+          criado_por: locals.user.id,
+          dirigente_id: locals.user.id,
+          publicador_id: pubId,
+          prazo,
+          notas
+        })
+        .select('id').single();
+      if (errD || !des) continue;
+      await locals.supabase.from('designacao_locais').insert(
+        prediosIds.map((lid) => ({ designacao_id: des.id, local_id: lid }))
+      );
+      // Também registra em designacao_publicadores (padrão do resto do schema)
+      await locals.supabase
+        .from('designacao_publicadores')
+        .insert({ designacao_id: des.id, publicador_id: pubId, papel: 'lider' });
+    }
+    return { ok: true, msg: `Designado ${prediosIds.length} prédio(s) pra ${publicadores.length} publicador(es)` };
   },
 
   // Gera link público de cartas pro WhatsApp (mesma do admin)

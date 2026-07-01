@@ -12,8 +12,37 @@
       q: string;
       lat: number | null;
       lng: number | null;
+      publicadores: { id: string; nome: string; role: string }[];
+      podeCoordenar: boolean;
     };
   } = $props();
+
+  // Multi-seleção pra designar cartas (só dirigente/admin)
+  let selecionados = $state<Set<number>>(new Set());
+  function toggleSel(id: number) {
+    if (selecionados.has(id)) selecionados.delete(id);
+    else selecionados.add(id);
+    selecionados = new Set(selecionados);
+  }
+  function limparSel() { selecionados = new Set(); }
+
+  // Sheet designar cartas
+  let sheetDesignar = $state(false);
+  let pubsSelDesig = $state<Set<string>>(new Set());
+  let prazoDesig = $state('');
+  let notasDesig = $state('');
+  let designando = $state(false);
+  function togglePubDesig(id: string) {
+    if (pubsSelDesig.has(id)) pubsSelDesig.delete(id);
+    else pubsSelDesig.add(id);
+    pubsSelDesig = new Set(pubsSelDesig);
+  }
+  function abrirDesignar() {
+    pubsSelDesig = new Set();
+    prazoDesig = '';
+    notasDesig = '';
+    sheetDesignar = true;
+  }
 
   let q = $state(data.q);
   let lat = $state<number | null>(data.lat);
@@ -243,11 +272,23 @@
 
   <div class="mt-3 space-y-2">
     {#each filtrados as p (p.id)}
-      <div class="rounded-lg border bg-white p-3 flex items-start gap-3"
-        class:border-amber-400={p.pendente}
-        class:bg-amber-50={p.pendente}
-        class:border-slate-200={!p.pendente}
+      <div class="rounded-lg border p-3 flex items-start gap-3"
+        class:border-amber-400={p.pendente && !selecionados.has(p.id)}
+        class:bg-amber-50={p.pendente && !selecionados.has(p.id)}
+        class:border-primary-400={selecionados.has(p.id)}
+        class:bg-primary-50={selecionados.has(p.id)}
+        class:border-slate-200={!p.pendente && !selecionados.has(p.id)}
+        class:bg-white={!p.pendente && !selecionados.has(p.id)}
       >
+        {#if data.podeCoordenar}
+          <input
+            type="checkbox"
+            checked={selecionados.has(p.id)}
+            onchange={() => toggleSel(p.id)}
+            aria-label="Selecionar prédio"
+            class="w-4 h-4 mt-1 rounded shrink-0"
+          />
+        {/if}
         <a
           href="/predio/{p.id}"
           class="flex-1 text-left min-w-0"
@@ -292,6 +333,67 @@
     {/each}
   </div>
 </div>
+
+<!-- Barra bottom quando dirigente/admin tem prédios selecionados -->
+{#if data.podeCoordenar && selecionados.size > 0}
+  <div class="fixed bottom-14 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+    <div class="text-sm font-medium"><strong>{selecionados.size}</strong> prédio(s) selecionado(s)</div>
+    <div class="flex gap-2 ml-auto flex-wrap">
+      <Button variant="primary" size="sm" onclick={abrirDesignar}>🎯 Designar cartas</Button>
+      <Button variant="secondary" size="sm" onclick={limparSel}>Limpar</Button>
+    </div>
+  </div>
+{/if}
+
+<!-- Sheet designar cartas -->
+<BottomSheet bind:open={sheetDesignar} title="Designar cartas">
+  <form
+    method="POST"
+    action="?/designarCartas"
+    use:enhance={() => { designando = true; return async ({ result, update }) => {
+      await update(); designando = false;
+      if (result.type === 'success') {
+        toast.success(String((result.data as any)?.msg || 'Designado'));
+        sheetDesignar = false; selecionados = new Set(); await invalidateAll();
+      } else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+    }; }}
+    class="space-y-3"
+  >
+    {#each [...selecionados] as pid}<input type="hidden" name="predio_ids" value={pid} />{/each}
+    {#each [...pubsSelDesig] as uid}<input type="hidden" name="publicador_ids" value={uid} />{/each}
+
+    <div class="text-sm bg-slate-50 rounded p-2"><strong>{selecionados.size}</strong> prédio(s) serão designados</div>
+
+    <div>
+      <label for="prazo-d" class="block text-sm font-medium mb-1">Prazo (opcional)</label>
+      <input id="prazo-d" name="prazo" type="date" bind:value={prazoDesig} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <div>
+      <span class="block text-sm font-medium mb-1">Publicadores</span>
+      <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+        {#each data.publicadores as p}
+          <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+            <input type="checkbox" checked={pubsSelDesig.has(p.id)} onchange={() => togglePubDesig(p.id)} class="w-4 h-4 rounded" />
+            <span class="flex-1">{p.nome}</span>
+            <span class="text-xs text-slate-400">{p.role}</span>
+          </label>
+        {/each}
+      </div>
+      <p class="text-xs text-slate-500 mt-1">{pubsSelDesig.size} selecionado(s). Cada um recebe designação separada com os prédios.</p>
+    </div>
+
+    <div>
+      <label for="notas-d" class="block text-sm font-medium mb-1">Notas (opcional)</label>
+      <input id="notas-d" name="notas" bind:value={notasDesig} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetDesignar = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" type="submit" loading={designando} class="flex-1" disabled={pubsSelDesig.size === 0}>Designar</Button>
+    </div>
+  </form>
+</BottomSheet>
 
 <!-- Sheet criar prédio pendente -->
 <BottomSheet bind:open={sheetCriar} title="Criar prédio pendente">

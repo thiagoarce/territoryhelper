@@ -13,6 +13,11 @@
   }
 
   interface DelegTempAtiva { id: number; dirigente_nome: string; quadras_ids: string[]; data_fim: string }
+  interface CartaDesignada {
+    designacao_id: number;
+    prazo: string | null;
+    predios: { id: number; nome: string | null; logradouro: string; numero: string; qtd_entregues: number; qtd_aptos: number }[];
+  }
 
   let {
     data
@@ -25,6 +30,7 @@
       tces: { id: string; nome: string; tipo: string; prazo: string | null; status: string }[];
       campanhaAtiva: CampanhaAtiva | null;
       delegacoesTempAtivas: DelegTempAtiva[];
+      cartasDesignadas: CartaDesignada[];
       minhaRole: string | undefined;
     };
   } = $props();
@@ -32,8 +38,8 @@
   let aba: 'abertas' | 'concluidas' = $state('abertas');
   const lista = $derived(aba === 'abertas' ? data.abertas : data.concluidas);
 
-  // Divisão pessoal vs pregação (arranjo) — specs.md Fase 2
-  const pessoais = $derived(lista.filter((d: any) => d.tipo !== 'arranjo'));
+  // Divisão pessoal vs pregação vs cartas (specs.md Fase 2 revisado)
+  const pessoais = $derived(lista.filter((d: any) => d.tipo === 'pessoal' || (!d.tipo && d.tipo !== 'arranjo' && d.tipo !== 'cartas')));
   const pregacoes = $derived(lista.filter((d: any) => d.tipo === 'arranjo'));
 
   // Quadras envolvidas nas designações abertas — pro mini-mapa
@@ -218,6 +224,34 @@
       </h2>
       <div class="grid gap-3 sm:grid-cols-2">
         {#each pregacoes as d (d.id)}{@render cardDesignacao(d)}{/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if data.cartasDesignadas && data.cartasDesignadas.length > 0}
+    <section>
+      <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
+        ✉ Cartas designadas
+        <span class="text-xs text-slate-400 normal-case font-normal">({data.cartasDesignadas.reduce((s, c) => s + c.predios.length, 0)} prédio(s))</span>
+      </h2>
+      <div class="grid gap-3">
+        {#each data.cartasDesignadas as c}
+          <div class="rounded-lg border border-purple-200 bg-purple-50 p-3">
+            {#if c.prazo}
+              <div class="text-xs text-purple-700 font-medium mb-1.5">Prazo: {new Date(c.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+            {/if}
+            <div class="flex flex-wrap gap-1.5">
+              {#each c.predios as p}
+                <a href="/predio/{p.id}"
+                  class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-purple-300 bg-white text-purple-900 hover:bg-purple-100 max-w-[240px]">
+                  <span>✉</span>
+                  <span class="truncate">{p.nome || `${p.logradouro}, ${p.numero}`}</span>
+                  <span class="text-[10px] text-purple-500 shrink-0">{p.qtd_entregues}/{p.qtd_aptos}</span>
+                </a>
+              {/each}
+            </div>
+          </div>
+        {/each}
       </div>
     </section>
   {/if}

@@ -74,6 +74,54 @@ export const load: PageServerLoad = async ({ locals }) => {
     data_fim: d.data_fim as string
   }));
 
+  // Designações de cartas (tipo='cartas') — resolve prédios associados via
+  // designacao_locais + tabela locais pra mostrar chip clicável no home
+  const abertasCartas = abertas.filter((d: any) => d.tipo === 'cartas');
+  let cartasDesignadas: {
+    designacao_id: number;
+    prazo: string | null;
+    predios: { id: number; nome: string | null; logradouro: string; numero: string; qtd_entregues: number; qtd_aptos: number }[];
+  }[] = [];
+  if (abertasCartas.length > 0) {
+    const desigIds = abertasCartas.map((d) => d.id);
+    const { data: locaisJoin } = await locals.supabase
+      .from('designacao_locais')
+      .select('designacao_id, local_id')
+      .in('designacao_id', desigIds);
+    const localIds = Array.from(new Set((locaisJoin ?? []).map((r: any) => r.local_id)));
+    if (localIds.length > 0) {
+      const [locDetalhes, unidsPorLocal] = await Promise.all([
+        locals.supabase.from('locais').select('id, nome, logradouro, numero').in('id', localIds),
+        locals.supabase.from('unidades').select('local_id, carta_entregue').in('local_id', localIds)
+      ]);
+      const stats: Record<number, { qtd: number; ent: number }> = {};
+      for (const u of (unidsPorLocal.data ?? []) as any[]) {
+        const s = (stats[u.local_id] ||= { qtd: 0, ent: 0 });
+        s.qtd++;
+        if (u.carta_entregue) s.ent++;
+      }
+      const detById = new Map((locDetalhes.data ?? []).map((l: any) => [l.id, l]));
+      const prediosPorDesig: Record<number, any[]> = {};
+      for (const j of (locaisJoin ?? []) as any[]) {
+        const l = detById.get(j.local_id);
+        if (!l) continue;
+        (prediosPorDesig[j.designacao_id] ||= []).push({
+          id: l.id,
+          nome: l.nome,
+          logradouro: l.logradouro,
+          numero: l.numero,
+          qtd_entregues: stats[l.id]?.ent ?? 0,
+          qtd_aptos: stats[l.id]?.qtd ?? 0
+        });
+      }
+      cartasDesignadas = abertasCartas.map((d: any) => ({
+        designacao_id: d.id,
+        prazo: d.prazo,
+        predios: prediosPorDesig[d.id] ?? []
+      }));
+    }
+  }
+
   return {
     abertas,
     concluidas,
@@ -82,6 +130,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     tces,
     campanhaAtiva,
     delegacoesTempAtivas,
+    cartasDesignadas,
     minhaRole: locals.profile?.role
   };
 };
