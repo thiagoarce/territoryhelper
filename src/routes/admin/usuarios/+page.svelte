@@ -32,6 +32,7 @@
   };
 </script>
 
+<div class="p-4 max-w-6xl mx-auto">
 <div class="flex items-center justify-between">
   <h1 class="text-2xl font-bold">Usuários</h1>
   <div class="text-sm text-slate-500">{data.usuarios.length} cadastrado(s)</div>
@@ -297,6 +298,8 @@ admin@cong.com,trocar123,Admin Cong,admin`}
     {/if}
   </form>
 {/if}
+
+</div>
 
 <!-- Modal de edição -->
 {#if usuarioEditando}

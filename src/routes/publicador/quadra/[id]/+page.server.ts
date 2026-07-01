@@ -1,10 +1,12 @@
 import type { Actions, PageServerLoad } from './$types';
 import { error, fail } from '@sveltejs/kit';
 import { carregarQuadraComLocais } from '$lib/server/queries';
+import { exigirQuadraDesignada } from '$lib/server/guards';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
 export const load: PageServerLoad = async ({ locals, params }) => {
+  await exigirQuadraDesignada(locals, params.id);
   const dados = await carregarQuadraComLocais(locals.supabase, params.id);
   if (!dados) throw error(404, 'Quadra não encontrada');
   return dados;

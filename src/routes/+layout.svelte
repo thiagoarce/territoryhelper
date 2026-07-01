@@ -12,12 +12,16 @@
   const semChrome = $derived(rotasPublicas.some((p) => $page.url.pathname.startsWith(p)));
   const role = $derived(data.profile?.role ?? null);
 
-  // Modo atual baseado na URL — decide chrome (admin=drawer, dirigente=bottom, publicador=bottom)
+  // Modo atual baseado na URL — decide chrome (admin=drawer, dirigente=bottom, publicador=bottom).
+  // Em rotas compartilhadas (/perfil, /buscar) cai no modo do role do usuário — evita
+  // publicador/dirigente ver menu de admin ao abrir Perfil.
   type Modo = 'admin' | 'dirigente' | 'publicador';
+  const modoPorRole = $derived<Modo>(role === 'admin' ? 'admin' : role === 'dirigente' ? 'dirigente' : 'publicador');
   const modoAtual = $derived<Modo>(
     $page.url.pathname.startsWith('/publicador') ? 'publicador'
     : $page.url.pathname.startsWith('/dirigente') ? 'dirigente'
-    : 'admin'
+    : $page.url.pathname.startsWith('/admin') ? 'admin'
+    : modoPorRole
   );
 
   // Itens do bottom nav (publicador/dirigente) — mesma estrutura, contextos diferentes
@@ -53,9 +57,7 @@
     {
       titulo: 'Sistema',
       items: [
-        { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'people' },
-        { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' },
-        { href: '/admin/dev/sql', label: 'SQL (dev)', icon: 'wrench' }
+        { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'people' }
       ]
     },
     {
