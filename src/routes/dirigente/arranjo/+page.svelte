@@ -8,6 +8,15 @@
   import { ocorrenciasDaSemana, agruparPorDia, semanaAtual, DIAS_SEMANA, DIAS_ORDENADOS, type ArranjoBase } from '$lib/arranjos';
   import type { ArranjoLinha, ModalidadeLite } from './$types';
 
+  interface PredioChip {
+    id: number;
+    logradouro: string | null;
+    numero: string | null;
+    nome: string | null;
+    qtd_aptos: number;
+    qtd_entregues: number;
+  }
+
   let { data }: {
     data: {
       arranjos: ArranjoLinha[];
@@ -16,6 +25,7 @@
       publicadores: { id: string; nome: string; role: string }[];
       minhaId: string;
       podeCoordenar: boolean;
+      prediosMap: Record<number, PredioChip>;
     };
   } = $props();
 
@@ -99,6 +109,17 @@
                         <div class="mt-1.5 flex flex-wrap gap-1">
                           {#each a.quadras_ids ?? [] as q}
                             <span class="text-xs font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if (a.cartas_locais_ids?.length ?? 0) > 0}
+                        <div class="mt-1.5 flex flex-wrap gap-1">
+                          {#each a.cartas_locais_ids ?? [] as pid}
+                            {@const p = data.prediosMap[pid]}
+                            <a href="/predio/{pid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded hover:bg-purple-200 truncate max-w-[220px]">
+                              ✉ {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${pid}`)}
+                              {#if p} · {p.qtd_entregues}/{p.qtd_aptos}{/if}
+                            </a>
                           {/each}
                         </div>
                       {/if}

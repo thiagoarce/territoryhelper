@@ -9,6 +9,15 @@
   import { semanaAtual, ocorrenciasEntre, agruparPorData, rangeDoPeriodo, DIAS_SEMANA, DIAS_ORDENADOS, type Periodo } from '$lib/arranjos';
   import type { Modalidade, Arranjo, PredioLite } from './$types';
 
+  interface PredioChip {
+    id: number;
+    logradouro: string | null;
+    numero: string | null;
+    nome: string | null;
+    qtd_aptos: number;
+    qtd_entregues: number;
+  }
+
   let { data }: {
     data: {
       modalidades: Modalidade[];
@@ -16,6 +25,7 @@
       dirigentes: { id: string; nome: string }[];
       quadrasIds: string[];
       predios: PredioLite[];
+      prediosMap: Record<number, PredioChip>;
     };
   } = $props();
 
@@ -280,7 +290,15 @@
                         </div>
                       {/if}
                       {#if (oc.arranjo.cartas_locais_ids?.length ?? 0) > 0}
-                        <div class="mt-1 text-xs text-slate-500">{oc.arranjo.cartas_locais_ids?.length} prédio(s) na lista</div>
+                        <div class="mt-1.5 flex flex-wrap gap-1">
+                          {#each oc.arranjo.cartas_locais_ids ?? [] as pid}
+                            {@const p = data.prediosMap[pid]}
+                            <a href="/predio/{pid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded hover:bg-purple-200 truncate max-w-[220px]">
+                              ✉ {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${pid}`)}
+                              {#if p} · {p.qtd_entregues}/{p.qtd_aptos}{/if}
+                            </a>
+                          {/each}
+                        </div>
                       {/if}
                       {#if oc.arranjo.arquivo_url}
                         <div class="mt-1">

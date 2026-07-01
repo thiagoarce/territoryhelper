@@ -45,6 +45,15 @@ export interface PredioLite {
   nome_estabelecimento: string | null;
 }
 
+export interface PredioChip {
+  id: number;
+  logradouro: string | null;
+  numero: string | null;
+  nome: string | null;
+  qtd_aptos: number;
+  qtd_entregues: number;
+}
+
 async function safe<T>(label: string, p: Promise<T>, fallback: T): Promise<T> {
   try {
     return await p;
@@ -55,7 +64,7 @@ async function safe<T>(label: string, p: Promise<T>, fallback: T): Promise<T> {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { modalidades: [], arranjos: [], dirigentes: [], quadrasIds: [], predios: [], loadErro: null };
+  if (!locals.user) return { modalidades: [], arranjos: [], dirigentes: [], quadrasIds: [], predios: [], prediosMap: {} as Record<number, PredioChip>, loadErro: null };
 
   const [modalidades, arranjos, dirigRes, quadrasRes, predios] = await Promise.all([
     safe('modalidades', selectAll<Modalidade>(
@@ -90,12 +99,45 @@ export const load: PageServerLoad = async ({ locals }) => {
     ), [] as PredioLite[])
   ]);
 
+  // Detalhes dos prédios referenciados nos arranjos (pros chips clicáveis)
+  const predioIds = Array.from(
+    new Set(arranjos.flatMap((a) => a.cartas_locais_ids ?? []).filter((n) => Number.isFinite(n)))
+  );
+  const prediosMap: Record<number, PredioChip> = {};
+  if (predioIds.length > 0) {
+    const [locaisRes, unidsRes] = await Promise.all([
+      safe('predios_chip', locals.supabase.from('locais').select('id, logradouro, numero, nome').in('id', predioIds),
+        { data: [] as any[], error: null } as any),
+      safe('predios_chip_units', selectAll<{ local_id: number; carta_entregue: string | null }>(
+        locals.supabase.from('unidades').select('local_id, carta_entregue').in('local_id', predioIds)
+      ), [] as { local_id: number; carta_entregue: string | null }[])
+    ]);
+    const stats: Record<number, { qtd: number; ent: number }> = {};
+    for (const u of unidsRes) {
+      const s = (stats[u.local_id] ||= { qtd: 0, ent: 0 });
+      s.qtd++;
+      if (u.carta_entregue) s.ent++;
+    }
+    for (const l of (locaisRes?.data ?? []) as any[]) {
+      const s = stats[l.id] ?? { qtd: 0, ent: 0 };
+      prediosMap[l.id] = {
+        id: l.id,
+        logradouro: l.logradouro,
+        numero: l.numero,
+        nome: l.nome,
+        qtd_aptos: s.qtd,
+        qtd_entregues: s.ent
+      };
+    }
+  }
+
   return {
     modalidades,
     arranjos,
     dirigentes: dirigRes?.data ?? [],
     quadrasIds: (quadrasRes?.data ?? []).map((q: any) => q.id as string),
     predios,
+    prediosMap,
     loadErro: null as string | null
   };
 };
