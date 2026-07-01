@@ -5,6 +5,11 @@ import { listarPredios, carregarPredioDetalhado } from '$lib/server/queries';
 export const load: PageServerLoad = async ({ locals }) => {
   const predios = await listarPredios(locals.supabase);
 
+  // Quadras ativas pra dropdown de validar prédio pendente
+  const { data: quadrasRes } = await locals.supabase
+    .from('quadras').select('id').eq('ativa', true).order('id');
+  const quadrasAtivas = ((quadrasRes ?? []) as any[]).map((q) => q.id as string);
+
   // Arranjos do tipo 'cartas_lista' (pra anexar prédios via lista)
   const { data: mods } = await locals.supabase
     .from('arranjo_modalidades').select('id, nome, tipo_territorio, cor');
@@ -24,7 +29,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       modalidade_cor: modById.get(a.modalidade_id)?.cor ?? '#3b82f6'
     }));
 
-  return { predios, arranjosCartas };
+  return { predios, arranjosCartas, quadrasAtivas };
 };
 
 export const actions: Actions = {
@@ -94,6 +99,22 @@ export const actions: Actions = {
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, token: data.token };
+  },
+
+  // Valida prédio pendente: associa a uma quadra e marca pendente=false.
+  // Admin only.
+  validarPredio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    const quadraId = String(fd.get('quadra_id') ?? '').trim() || null;
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const patch: any = { pendente: false };
+    if (quadraId) patch.quadra_id = quadraId;
+    const { error } = await locals.supabase.from('locais').update(patch).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Prédio validado' };
   },
 
   // Anexa prédios selecionados a um arranjo de cartas (tipo 'cartas_lista').

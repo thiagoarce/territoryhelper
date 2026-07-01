@@ -10,9 +10,21 @@
     data: {
       predios: PredioListado[];
       arranjosCartas: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; cartas_locais_ids: number[] | null; hora_inicio: string | null }[];
+      quadrasAtivas: string[];
     };
     form: any;
   } = $props();
+
+  // Validar prédio pendente
+  let sheetValidar = $state(false);
+  let predioValidar: PredioListado | null = $state(null);
+  let quadraValidar = $state('');
+  let validando = $state(false);
+  function abrirValidar(p: PredioListado) {
+    predioValidar = p;
+    quadraValidar = p.quadra_id ?? '';
+    sheetValidar = true;
+  }
 
   // Seleção pra anexar a arranjo de cartas
   let selecionados = $state<Set<number>>(new Set());
@@ -37,10 +49,14 @@
   let soComIrmao = $state(false);
   let soComCaixas = $state(false);
   let soComInterfone = $state(false);
+  let soPendentes = $state(false);
   let mostrarFiltros = $state(false);
+
+  const totalPendentes = $derived(data.predios.filter((p) => p.pendente).length);
 
   const filtrados = $derived(
     data.predios.filter((p) => {
+      if (soPendentes && !p.pendente) return false;
       if (filtroTipo === 'residencial' && p.tipo !== 'predio') return false;
       if (filtroTipo === 'comercial' && p.tipo !== 'comercio') return false;
 
@@ -176,7 +192,7 @@
   </div>
 
   <!-- Botão de filtros avançados (mostra contador se ativos) -->
-  <div class="flex items-center gap-2">
+  <div class="flex items-center gap-2 flex-wrap">
     <button
       onclick={() => (mostrarFiltros = !mostrarFiltros)}
       class="text-sm px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 flex items-center gap-1.5"
@@ -185,6 +201,19 @@
     </button>
     {#if filtrosAtivos > 0}
       <button onclick={limparFiltros} class="text-xs text-slate-500 hover:underline">Limpar filtros</button>
+    {/if}
+    {#if totalPendentes > 0}
+      <button
+        type="button"
+        onclick={() => (soPendentes = !soPendentes)}
+        class="text-xs px-2 py-1 rounded border font-medium ml-auto"
+        class:bg-amber-100={soPendentes}
+        class:border-amber-500={soPendentes}
+        class:text-amber-800={soPendentes}
+        class:border-amber-300={!soPendentes}
+        class:bg-amber-50={!soPendentes}
+        class:text-amber-700={!soPendentes}
+      >⏳ Pendentes ({totalPendentes})</button>
     {/if}
   </div>
 
@@ -227,9 +256,11 @@
   <div class="space-y-2">
     {#each filtrados as p (p.id)}
       <div class="rounded-lg border bg-white p-3 flex items-start gap-3"
-        class:border-slate-200={!selecionados.has(p.id)}
+        class:border-slate-200={!selecionados.has(p.id) && !p.pendente}
         class:border-primary-400={selecionados.has(p.id)}
         class:bg-primary-50={selecionados.has(p.id)}
+        class:border-amber-400={p.pendente && !selecionados.has(p.id)}
+        class:bg-amber-50={p.pendente && !selecionados.has(p.id)}
       >
         <input
           type="checkbox"
@@ -247,6 +278,7 @@
             <span title={p.tipo === 'comercio' ? 'Comercial' : 'Residencial'}>{p.tipo === 'comercio' ? '🏪' : '🏢'}</span>
             {p.nome || `${p.logradouro}, ${p.numero}`}
             {#if p.irmao_mora}<span title="Irmão mora">👤</span>{/if}
+            {#if p.pendente}<span title="Aguarda validação" class="text-[9px] bg-amber-600 text-white px-1.5 py-0.5 rounded">⏳ pendente</span>{/if}
           </div>
           <div class="text-xs text-slate-500 truncate mt-0.5">
             {p.logradouro}, {p.numero} · {p.qtd_aptos} {p.tipo === 'comercio' ? 'unidade' : 'apto'}(s)
@@ -263,6 +295,15 @@
             <div class="h-full bg-purple-500" style:width="{pct(p.qtd_carta_entregue, p.qtd_aptos)}%"></div>
           </div>
         </button>
+        {#if p.pendente}
+          <button
+            type="button"
+            onclick={() => abrirValidar(p)}
+            aria-label="Validar prédio"
+            class="w-10 h-10 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 flex items-center justify-center shrink-0 font-bold text-lg"
+            title="Validar prédio pendente"
+          >⏳</button>
+        {/if}
         <button
           type="button"
           onclick={() => compartilharWhatsApp(p.id, p.nome, p.logradouro, p.numero)}
@@ -456,6 +497,41 @@
       <div class="flex gap-2 pt-2">
         <Button variant="secondary" onclick={() => (sheetEditar = false)} class="flex-1">Cancelar</Button>
         <Button variant="primary" type="submit" loading={salvando} class="flex-1">Salvar</Button>
+      </div>
+    </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet validar prédio pendente -->
+<BottomSheet bind:open={sheetValidar} title="Validar prédio pendente">
+  {#if predioValidar}
+    <form
+      method="POST"
+      action="?/validarPredio"
+      use:enhance={() => { validando = true; return async ({ result, update }) => {
+        await update(); validando = false;
+        if (result.type === 'success') { toast.success('Validado'); sheetValidar = false; await invalidateAll(); }
+        else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+      }; }}
+      class="space-y-3"
+    >
+      <input type="hidden" name="id" value={predioValidar.id} />
+      <div class="rounded-lg bg-amber-50 border border-amber-200 p-2 text-sm">
+        <div class="font-medium">{predioValidar.nome || `${predioValidar.logradouro}, ${predioValidar.numero}`}</div>
+        <div class="text-xs text-slate-500">{predioValidar.logradouro}, {predioValidar.numero} · {predioValidar.qtd_aptos} apto(s)</div>
+      </div>
+      <div>
+        <label for="q-val" class="block text-sm font-medium mb-1">Associar à quadra</label>
+        <input list="quadras-list" id="q-val" name="quadra_id" bind:value={quadraValidar}
+          placeholder="Ex: Q-42" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono" />
+        <datalist id="quadras-list">
+          {#each data.quadrasAtivas as q}<option value={q}></option>{/each}
+        </datalist>
+        <p class="text-xs text-slate-500 mt-1">Deixe vazio pra manter sem quadra</p>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <Button variant="secondary" onclick={() => (sheetValidar = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={validando} class="flex-1">✓ Validar</Button>
       </div>
     </form>
   {/if}

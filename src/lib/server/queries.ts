@@ -201,6 +201,7 @@ export interface PredioListado {
   acesso_caixas: boolean;
   acesso_interfones: boolean;
   irmao_mora: boolean;
+  pendente: boolean;
   qtd_aptos: number;
   qtd_carta_entregue: number;
   qtd_desocupado: number;
@@ -214,7 +215,7 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
     selectAll<any>(
       supabase
         .from('locais')
-        .select('id, tipo, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora, nao_eh_predio')
+        .select('id, tipo, logradouro, numero, nome, quadra_id, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora, nao_eh_predio, pendente')
         .in('tipo', ['predio', 'comercio'])
         .eq('nao_eh_predio', false)
         .order('logradouro')
