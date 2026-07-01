@@ -102,6 +102,47 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  // Assume a dirigência de um arranjo aberto. Substitui o dirigente anterior
+  // e reassinala as designações pessoais que foram distribuídas por ele
+  // (via notas contendo referência do arranjo). Specs.md Fase 3.
+  assumirArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode assumir arranjo' });
+    }
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+
+    const { data: arr, error: errA } = await locals.supabase
+      .from('arranjos')
+      .select('id, nome, dirigente_id')
+      .eq('id', arranjoId)
+      .single();
+    if (errA || !arr) return fail(404, { erro: 'Arranjo não encontrado' });
+    if (arr.dirigente_id === locals.user.id) return fail(400, { erro: 'Você já é o dirigente' });
+
+    const { error: errUp } = await locals.supabase
+      .from('arranjos')
+      .update({ dirigente_id: locals.user.id })
+      .eq('id', arranjoId);
+    if (errUp) return fail(400, { erro: errUp.message });
+
+    // Reassinala designações abertas distribuídas do arranjo anterior — matching
+    // por notas com nome do arranjo. Não é ideal (não temos FK arranjo→designacao),
+    // mas cobre 90%%.
+    if (arr.nome && arr.dirigente_id) {
+      await locals.supabase
+        .from('designacoes')
+        .update({ dirigente_id: locals.user.id })
+        .eq('status', 'aberta')
+        .eq('dirigente_id', arr.dirigente_id)
+        .ilike('notas', `%${arr.nome}%`);
+    }
+
+    return { ok: true, msg: `Você é o novo dirigente de "${arr.nome ?? 'arranjo'}"` };
+  },
+
   // Distribui quadras de um arranjo aos publicadores: cria designacoes pessoais
   // com todas as quadras do arranjo pra cada publicador selecionado.
   distribuirQuadras: async ({ request, locals }) => {

@@ -134,6 +134,26 @@
                     <div class="mt-2 pt-2 border-t border-slate-100">
                       <Button variant="primary" onclick={() => abrirDistribuir(a)} class="w-full">Distribuir quadras aos publicadores</Button>
                     </div>
+                  {:else if data.podeCoordenar && !ehMeu}
+                    <div class="mt-2 pt-2 border-t border-slate-100">
+                      <form
+                        method="POST"
+                        action="?/assumirArranjo"
+                        use:enhance={() => async ({ result, update }) => {
+                          await update();
+                          if (result.type === 'success') {
+                            toast.success(String((result.data as any)?.msg || 'Assumido'));
+                            await invalidateAll();
+                          } else if (result.type === 'failure') {
+                            toast.error(String((result.data as any)?.erro || 'Falhou'));
+                          }
+                        }}
+                        onsubmit={(e) => { if (!confirm('Assumir a dirigência deste arranjo? O dirigente anterior deixa de ser responsável.')) e.preventDefault(); }}
+                      >
+                        <input type="hidden" name="arranjo_id" value={a.id} />
+                        <Button variant="secondary" type="submit" class="w-full">👋 Assumir a dirigência</Button>
+                      </form>
+                    </div>
                   {/if}
                 </Card>
               {/each}

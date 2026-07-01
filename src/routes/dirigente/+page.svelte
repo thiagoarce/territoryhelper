@@ -61,7 +61,7 @@
     buscandoPOIs = true;
     pois = [];
     try {
-      const raw = await buscarPOIs(centerLat, centerLng, 500, ['parking', 'pharmacy', 'square']);
+      const raw = await buscarPOIs(centerLat, centerLng, 500, ['parking', 'pharmacy', 'square', 'bakery', 'fuel']);
       pois = raw.map((p) => ({
         ...p,
         distancia: Math.round(distanciaMetros(centerLat, centerLng, p.lat, p.lng))

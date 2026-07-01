@@ -1,7 +1,7 @@
 // Helper pra Overpass API (OSM) — busca POIs perto de um centro.
 // Free, sem chave, mas tem rate limit. Cache simples in-memory.
 
-export type CategoriaPOI = 'parking' | 'pharmacy' | 'square' | 'fuel' | 'supermarket';
+export type CategoriaPOI = 'parking' | 'pharmacy' | 'square' | 'fuel' | 'supermarket' | 'bakery';
 
 interface POI {
   id: string;
@@ -16,7 +16,8 @@ const queryPorCategoria: Record<CategoriaPOI, string> = {
   pharmacy: '["amenity"="pharmacy"]',
   square: '["leisure"="park"];node["leisure"="garden"];node["place"="square"]',
   fuel: '["amenity"="fuel"]',
-  supermarket: '["shop"="supermarket"]'
+  supermarket: '["shop"="supermarket"]',
+  bakery: '["shop"="bakery"]'
 };
 
 const cache = new Map<string, { ts: number; data: POI[] }>();
@@ -63,6 +64,7 @@ function detectarCategoria(tags: any): CategoriaPOI | null {
   if (tags.amenity === 'pharmacy') return 'pharmacy';
   if (tags.amenity === 'fuel') return 'fuel';
   if (tags.shop === 'supermarket') return 'supermarket';
+  if (tags.shop === 'bakery') return 'bakery';
   if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.place === 'square') return 'square';
   return null;
 }
@@ -73,10 +75,16 @@ export function categoriaLabel(c: CategoriaPOI): string {
     pharmacy: 'Farmácia',
     square: 'Praça',
     fuel: 'Posto',
-    supermarket: 'Mercado'
+    supermarket: 'Mercado',
+    bakery: 'Padaria'
   }[c];
 }
 
 export function categoriaEmoji(c: CategoriaPOI): string {
-  return { parking: '🅿️', pharmacy: '💊', square: '🌳', fuel: '⛽', supermarket: '🛒' }[c];
+  return { parking: '🅿️', pharmacy: '💊', square: '🌳', fuel: '⛽', supermarket: '🛒', bakery: '🥐' }[c];
+}
+
+// Gera URL do Google Maps pra navegação até um ponto.
+export function urlRotaGoogleMaps(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 }
