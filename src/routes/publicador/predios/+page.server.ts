@@ -1,12 +1,21 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { listarPredios, listarPublicadores } from '$lib/server/queries';
+import { listarPredios, listarPublicadores, selectAll } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
 
 export type PredioCampo = PredioListado & { distancia_m?: number };
 
+// Haversine simples pra ordenação por proximidade (sem depender de PostGIS)
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // metros
+  const φ1 = (lat1 * Math.PI) / 180, φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180, Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Reusa listarPredios (mesma fonte de /admin/predios). Se GPS ativo,
-// chama RPC pra ter distâncias e ordena por proximidade.
+// carrega geo de TODOS os prédios e ordena por distância haversine.
 export const load: PageServerLoad = async ({ locals, url }) => {
   const q = (url.searchParams.get('q') || '').trim();
   const lat = parseFloat(url.searchParams.get('lat') || '');
@@ -15,22 +24,35 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
-  const [predios, proxRes, publicadores] = await Promise.all([
+  const [predios, geoRows, publicadores] = await Promise.all([
     listarPredios(locals.supabase),
     temGeo
-      ? locals.supabase.rpc('buscar_locais_proximos' as any, {
-          p_lat: lat, p_lng: lng, p_limite: 500, p_raio_m: 5000
-        } as any)
-      : Promise.resolve({ data: null }),
+      ? selectAll<{ id: number; geo_geojson: any }>(
+          locals.supabase
+            .from('locais_geo')
+            .select('id, geo_geojson')
+            .in('tipo', ['predio', 'comercio'])
+        )
+      : Promise.resolve([] as { id: number; geo_geojson: any }[]),
     podeCoordenar ? listarPublicadores(locals.supabase) : Promise.resolve([])
   ]);
 
-  // Se tem GPS, injeta distância e ordena por proximidade
+  // Se tem GPS, calcula distância haversine pra cada prédio com geo
   let enriched: PredioCampo[] = predios as PredioCampo[];
-  if (temGeo && proxRes.data) {
-    const distById = new Map<number, number>();
-    for (const p of proxRes.data as any[]) distById.set(p.id, p.distancia_m);
-    enriched = predios.map((p) => ({ ...p, distancia_m: distById.get(p.id) }));
+  if (temGeo && geoRows.length > 0) {
+    const geoById = new Map<number, [number, number]>(); // [lat, lng]
+    for (const g of geoRows) {
+      const coords = g.geo_geojson?.coordinates;
+      if (Array.isArray(coords) && coords.length >= 2) {
+        // GeoJSON é [lng, lat]
+        geoById.set(g.id, [coords[1], coords[0]]);
+      }
+    }
+    enriched = predios.map((p) => {
+      const c = geoById.get(p.id);
+      if (!c) return { ...p, distancia_m: undefined };
+      return { ...p, distancia_m: haversine(lat, lng, c[0], c[1]) };
+    });
     enriched.sort((a, b) => {
       const da = a.distancia_m ?? Number.POSITIVE_INFINITY;
       const db = b.distancia_m ?? Number.POSITIVE_INFINITY;

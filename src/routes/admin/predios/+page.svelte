@@ -1,19 +1,68 @@
 <script lang="ts">
   import { enhance, deserialize } from '$app/forms';
-  import { invalidateAll } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { PredioListado, PredioDetalhado } from '$lib/server/queries';
 
+  type PredioAdmin = PredioListado & { distancia_m?: number };
+
   let { data, form }: {
     data: {
-      predios: PredioListado[];
+      predios: PredioAdmin[];
       arranjosCartas: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; cartas_locais_ids: number[] | null; hora_inicio: string | null }[];
       quadrasAtivas: string[];
+      publicadores: { id: string; nome: string; role: string }[];
+      lat: number | null;
+      lng: number | null;
     };
     form: any;
   } = $props();
+
+  // GPS proximidade (mesmo padrão do /publicador/predios)
+  let lat = $state<number | null>(data.lat);
+  let lng = $state<number | null>(data.lng);
+  let carregandoGPS = $state(false);
+  let timerGPS: any = null;
+  $effect(() => {
+    const _t = lat + '|' + lng;
+    clearTimeout(timerGPS);
+    timerGPS = setTimeout(() => {
+      const url = new URL(window.location.href);
+      if (lat != null && lng != null) {
+        url.searchParams.set('lat', String(lat));
+        url.searchParams.set('lng', String(lng));
+      } else {
+        url.searchParams.delete('lat');
+        url.searchParams.delete('lng');
+      }
+      if (url.search !== window.location.search) goto(url.toString(), { keepFocus: true, noScroll: true, replaceState: true });
+    }, 250);
+  });
+  function usarLocalizacao() {
+    if (!navigator.geolocation) { toast.warn('Geolocation não disponível'); return; }
+    carregandoGPS = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { lat = pos.coords.latitude; lng = pos.coords.longitude; carregandoGPS = false; toast.success('GPS OK — ordenando por proximidade'); },
+      (err) => { carregandoGPS = false; toast.error('GPS falhou: ' + err.message); },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+  function limparGeo() { lat = null; lng = null; }
+
+  // Sheet designar cartas
+  let sheetDesignar = $state(false);
+  let pubsSelDesig = $state<Set<string>>(new Set());
+  let prazoDesig = $state('');
+  let notasDesig = $state('');
+  let designando = $state(false);
+  function togglePubDesig(id: string) {
+    if (pubsSelDesig.has(id)) pubsSelDesig.delete(id);
+    else pubsSelDesig.add(id);
+    pubsSelDesig = new Set(pubsSelDesig);
+  }
+  function abrirDesignar() { pubsSelDesig = new Set(); prazoDesig = ''; notasDesig = ''; sheetDesignar = true; }
 
   // Validar prédio pendente
   let sheetValidar = $state(false);
@@ -202,6 +251,12 @@
     {#if filtrosAtivos > 0}
       <button onclick={limparFiltros} class="text-xs text-slate-500 hover:underline">Limpar filtros</button>
     {/if}
+    {#if lat == null || lng == null}
+      <Button variant="secondary" size="sm" onclick={usarLocalizacao} loading={carregandoGPS}>📍 Proximidade</Button>
+    {:else}
+      <span class="text-xs bg-green-50 border border-green-200 text-green-800 px-2 py-1 rounded">📍 GPS ativo</span>
+      <button type="button" onclick={limparGeo} class="text-xs text-red-600 hover:underline">Limpar</button>
+    {/if}
     {#if totalPendentes > 0}
       <button
         type="button"
@@ -283,6 +338,7 @@
           <div class="text-xs text-slate-500 truncate mt-0.5">
             {p.logradouro}, {p.numero} · {p.qtd_aptos} {p.tipo === 'comercio' ? 'unidade' : 'apto'}(s)
             {#if p.quadra_id}· Q{p.quadra_id}{/if}
+            {#if p.distancia_m != null}· <strong class="text-primary-700">{Math.round(p.distancia_m)}m</strong>{/if}
           </div>
           <div class="mt-2 flex gap-1 flex-wrap">
             {#if p.tipo_entrada === 'porteiro'}<span class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Porteiro</span>{/if}
@@ -304,6 +360,12 @@
             title="Validar prédio pendente"
           >⏳</button>
         {/if}
+        <a
+          href="/predio/{p.id}"
+          aria-label="Trabalhar prédio"
+          class="w-10 h-10 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 flex items-center justify-center shrink-0 font-bold"
+          title="Trabalhar prédio (casa em casa / cartas)"
+        >▶</a>
         <button
           type="button"
           onclick={() => compartilharWhatsApp(p.id, p.nome, p.logradouro, p.numero)}
@@ -328,7 +390,8 @@
     <div class="text-sm font-medium"><strong>{selecionados.size}</strong> prédio(s) selecionado(s)</div>
     <div class="flex gap-2 ml-auto flex-wrap">
       <Button variant="secondary" size="sm" onclick={() => selecionarFiltrados(filtrados)}>Selecionar todos visíveis ({filtrados.length})</Button>
-      <Button variant="primary" size="sm" onclick={() => (sheetAnexarArranjo = true)}>📅 Anexar a arranjo de cartas</Button>
+      <Button variant="primary" size="sm" onclick={abrirDesignar}>🎯 Designar cartas</Button>
+      <Button variant="secondary" size="sm" onclick={() => (sheetAnexarArranjo = true)}>📅 Anexar arranjo</Button>
       <Button variant="secondary" size="sm" onclick={() => (selecionados = new Set())}>Limpar</Button>
     </div>
   </div>
@@ -535,4 +598,54 @@
       </div>
     </form>
   {/if}
+</BottomSheet>
+
+<!-- Sheet designar cartas -->
+<BottomSheet bind:open={sheetDesignar} title="Designar cartas">
+  <form
+    method="POST"
+    action="?/designarCartas"
+    use:enhance={() => { designando = true; return async ({ result, update }) => {
+      await update(); designando = false;
+      if (result.type === 'success') {
+        toast.success(String((result.data as any)?.msg || 'Designado'));
+        sheetDesignar = false; selecionados = new Set(); await invalidateAll();
+      } else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+    }; }}
+    class="space-y-3"
+  >
+    {#each [...selecionados] as pid}<input type="hidden" name="predio_ids" value={pid} />{/each}
+    {#each [...pubsSelDesig] as uid}<input type="hidden" name="publicador_ids" value={uid} />{/each}
+
+    <div class="text-sm bg-slate-50 rounded p-2"><strong>{selecionados.size}</strong> prédio(s) serão designados</div>
+
+    <div>
+      <label for="prazo-d" class="block text-sm font-medium mb-1">Prazo (opcional)</label>
+      <input id="prazo-d" name="prazo" type="date" bind:value={prazoDesig} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <div>
+      <span class="block text-sm font-medium mb-1">Publicadores</span>
+      <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+        {#each data.publicadores as p}
+          <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+            <input type="checkbox" checked={pubsSelDesig.has(p.id)} onchange={() => togglePubDesig(p.id)} class="w-4 h-4 rounded" />
+            <span class="flex-1">{p.nome}</span>
+            <span class="text-xs text-slate-400">{p.role}</span>
+          </label>
+        {/each}
+      </div>
+      <p class="text-xs text-slate-500 mt-1">{pubsSelDesig.size} selecionado(s). Cada um recebe designação separada.</p>
+    </div>
+
+    <div>
+      <label for="notas-d" class="block text-sm font-medium mb-1">Notas (opcional)</label>
+      <input id="notas-d" name="notas" bind:value={notasDesig} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetDesignar = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" type="submit" loading={designando} class="flex-1" disabled={pubsSelDesig.size === 0}>Designar</Button>
+    </div>
+  </form>
 </BottomSheet>
