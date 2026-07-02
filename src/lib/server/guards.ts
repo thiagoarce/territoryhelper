@@ -11,15 +11,15 @@ export function exigirRole(locals: App.Locals, rolesPermitidas: Role[]) {
   }
 }
 
-// Confere se o usuário logado tem posse da quadra (via designação ativa ou
-// arranjo ativo que a inclui). Admin sempre passa. Se não passar, lança 403.
-// Defesa em profundidade além do RLS.
+// Confere se o usuário logado tem posse da quadra. Admin/dirigente passam.
+// Publicador passa se: designação aberta com a quadra, OU delegação temp
+// ativa cobrindo ela, OU a quadra está num arranjo ativo (saída de grupo —
+// o dirigente pode mandar trabalhar qualquer quadra do arranjo na hora).
+// Defesa em profundidade além do RLS (que usa pode_editar_local).
 export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string): Promise<void> {
   if (!locals.session || !locals.user || !locals.profile) throw redirect(303, '/login');
   if (locals.profile.role === 'admin' || locals.profile.role === 'dirigente') return;
 
-  // Publicador: precisa ter designação ativa com essa quadra, ou estar em
-  // arranjo ativo cuja quadras_ids contenha ela.
   const userId = locals.user.id;
 
   const { data: dq } = await locals.supabase
@@ -31,12 +31,23 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
     .limit(1);
   if (dq && dq.length > 0) return;
 
+  // Delegação temporária ativa (dirigente delegou essa quadra pra mim agora)
+  const { data: deleg } = await locals.supabase
+    .from('delegacoes_temp')
+    .select('id')
+    .eq('publicador_id', userId)
+    .contains('quadras_ids', [quadraId])
+    .gt('data_fim', new Date().toISOString())
+    .limit(1);
+  if (deleg && deleg.length > 0) return;
+
+  // Quadra dentro de um arranjo ativo — os chips de /publicador/arranjo
+  // linkam pra cá pra qualquer publicador da saída.
   const { data: arr } = await locals.supabase
     .from('arranjos')
     .select('id')
     .eq('ativo', true)
     .contains('quadras_ids', [quadraId])
-    .or(`dirigente_id.eq.${userId}`)
     .limit(1);
   if (arr && arr.length > 0) return;
 
