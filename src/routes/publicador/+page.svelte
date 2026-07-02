@@ -110,16 +110,11 @@
 {/if}
 
 <div>
-  <h1 class="text-2xl font-bold">
-    {data.minhaRole === 'admin' || data.minhaRole === 'dirigente'
-      ? 'Designações ativas'
-      : 'Minha carteira'}
-  </h1>
+  <h1 class="text-2xl font-bold">Minha carteira</h1>
   <p class="mt-1 text-sm text-slate-500">
+    Território pessoal · pregação em grupo · cartas.
     {#if data.minhaRole === 'admin' || data.minhaRole === 'dirigente'}
-      Você vê tudo. Publicador comum vê só as próprias.
-    {:else}
-      Território pessoal + pregação em grupo.
+      <a href="/publicador/mapa" class="text-primary-700 hover:underline">Visão geral no mapa →</a>
     {/if}
   </p>
 </div>
@@ -171,9 +166,6 @@
         <div class="text-sm text-slate-500">
           Designada em {new Date(d.criada_em).toLocaleDateString('pt-BR')}
         </div>
-        {#if d.publicador_nome && (data.minhaRole === 'admin' || data.minhaRole === 'dirigente')}
-          <div class="text-sm font-medium text-primary-700">{d.publicador_nome}</div>
-        {/if}
         <div class="mt-2 text-sm font-semibold">{d.quadras_ids.length} quadra(s)</div>
         <div class="mt-2 flex flex-wrap gap-1.5">
           {#each d.quadras_ids as qid}

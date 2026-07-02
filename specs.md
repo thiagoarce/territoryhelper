@@ -95,10 +95,30 @@ em `localStorage`.
 * Actions role-restritas: sempre checar `locals.profile?.role` no início da action (defesa em profundidade além de RLS).
 * Não usar `now()` em predicate de índice parcial (não é IMMUTABLE — fica no WHERE das queries).
 
+## Hub de designações ✅
+`/admin/designacoes` — gestão central de TODAS as designações (pessoal,
+pregação/arranjo, cartas, TCE) num lugar só: filtros por tipo/status +
+busca, concluir/reabrir/cancelar/apagar, editar publicador/prazo/notas.
+Antes cada tipo era gerido na tela onde nascia.
+
+## Visão futura — superintendente de serviço
+O app deve crescer pra cobrir tudo do superintendente de serviço:
+* **Testemunho público**: agenda de pontos fixos (carrinhos), escala de
+  publicadores por turno, controle de publicações levadas.
+* **Publicações**: pedido/estoque de publicações pra campanhas futuras.
+* **Campanha caprichada**: a tela atual (`/admin/campanha` +
+  `/publicador/campanha`) merece redesign — metas por modalidade,
+  progresso individual do publicador, comparativo com campanhas
+  anteriores, compartilhamento.
+
 ## Polimentos futuros (fora do specs original)
-* Coloração cinza/vermelho por idade de conclusão no mapa estratégico
-  (hoje já tem amber/green/slate por status).
 * PNG export em lote (múltiplas quadras selecionadas).
 * Rename `/publicador/*` → `/campo/*` (cosmético — URLs semânticas).
 * Multi-publicador por designação (`designacao_publicadores` já existe;
   UI ainda opera 1-a-1).
+* Distribuir arranjo com subconjuntos (hoje cada publicador selecionado
+  recebe TODAS as quadras do arranjo; o real é repartir).
+* Offline-first: cache de leitura + fila de escrita no service worker
+  (confiabilidade em campo com sinal ruim).
+* Testes de fluxo ponta-a-ponta (delegação, designar cartas) + helper
+  único de posse de quadra espelhando `pode_editar_local`.

@@ -24,7 +24,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     quadras,
     designacoesAbertas: abertas,
     publicadores,
-    delegacoesTemp: (delegRes.data ?? []) as { id: number; publicador_id: string; quadras_ids: string[]; data_fim: string }[]
+    delegacoesTemp: (delegRes.data ?? []) as { id: number; publicador_id: string; quadras_ids: string[]; data_fim: string }[],
+    minhaId: locals.user!.id
   };
 };
 

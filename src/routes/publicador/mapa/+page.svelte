@@ -17,6 +17,7 @@
       designacoesAbertas: DesignacaoEnriquecida[];
       publicadores: Pub[];
       delegacoesTemp: DelegTemp[];
+      minhaId: string;
     };
     form: any;
   } = $props();
@@ -25,6 +26,22 @@
   let sheetOpen = $state(false);
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvando = $state(false);
+
+  // Quadras designadas a MIM (destaque com borda escura no mapa)
+  const minhasQuadrasIds = $derived(
+    data.designacoesAbertas
+      .filter((d) => d.publicador_id === data.minhaId)
+      .flatMap((d) => d.quadras_ids)
+  );
+
+  // Modo seleção: click no mapa acumula quadras em vez de abrir o sheet
+  let modoSelecao = $state(false);
+  let selecaoMapa = $state<Set<string>>(new Set());
+  const selecaoMapaIds = $derived([...selecaoMapa]);
+  function toggleModoSelecao() {
+    modoSelecao = !modoSelecao;
+    if (!modoSelecao) selecaoMapa = new Set();
+  }
 
   // Delegação temporária
   let sheetDelegar = $state(false);
@@ -150,10 +167,26 @@
   }
 
   function abrirQuadra(q: QuadraGeo) {
+    if (modoSelecao) {
+      // Modo seleção: click acumula (só quadras ativas não recém-concluídas)
+      if (selecaoMapa.has(q.id)) selecaoMapa.delete(q.id);
+      else selecaoMapa.add(q.id);
+      selecaoMapa = new Set(selecaoMapa);
+      return;
+    }
     quadraSel = q;
     sheetOpen = true;
     dataConclusao = new Date().toISOString().substring(0, 10);
     pois = [];
+  }
+
+  // Abre o sheet de delegação pré-preenchido com a seleção do mapa
+  function delegarSelecao() {
+    quadrasParaDelegar = new Set(selecaoMapa);
+    publicadorAlvo = '';
+    dataFimDelegar = '';
+    notasDelegar = '';
+    sheetDelegar = true;
   }
 
   const designacoesQuadra = $derived(
@@ -175,6 +208,11 @@
     </div>
     {#if visao === 'mapa'}
       <Button variant="secondary" size="sm" onclick={exportarMapa}>📸 PNG</Button>
+      <Button
+        variant={modoSelecao ? 'primary' : 'secondary'}
+        size="sm"
+        onclick={toggleModoSelecao}
+      >{modoSelecao ? '✓ Selecionando…' : '☑ Selecionar'}</Button>
     {/if}
     <Button variant="primary" size="sm" onclick={abrirDelegar}>👤 Delegar temp</Button>
   </div>
@@ -182,7 +220,16 @@
 
 {#if visao === 'mapa'}
   <div class="mt-4">
-    <AdminMapa bind:this={mapaRef} quadras={data.quadras} pois={poisMarcadores} altura={620} onQuadraClick={abrirQuadra} />
+    <AdminMapa
+      bind:this={mapaRef}
+      quadras={data.quadras}
+      pois={poisMarcadores}
+      altura={620}
+      colorirPor="recencia"
+      destacarIds={minhasQuadrasIds}
+      selecionadasIds={selecaoMapaIds}
+      onQuadraClick={abrirQuadra}
+    />
   </div>
   {#if pois.length > 0}
     <div class="mt-2 flex items-center gap-2 flex-wrap text-xs">
@@ -236,12 +283,27 @@
   </div>
 {/if}
 
-<!-- Legenda -->
-<div class="mt-3 flex gap-4 flex-wrap text-xs">
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span> Pendente</span>
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span> Concluída</span>
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-slate-400/60"></span> Inativa</span>
+<!-- Legenda (recência — visão do dirigente) -->
+<div class="mt-3 flex gap-x-4 gap-y-1 flex-wrap text-xs">
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-green-500/50"></span> Livre pra trabalhar</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span> Concluída 15–45d</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-red-600/60"></span> Concluída &lt;15d — evitar</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded bg-slate-400/50"></span> Inativa</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded border-2 border-slate-900"></span> Minhas designadas</span>
 </div>
+
+<!-- Barra de seleção (modo selecionar ativo) -->
+{#if modoSelecao && selecaoMapa.size > 0}
+  <div class="fixed bottom-14 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
+    <div class="text-sm font-medium"><strong>{selecaoMapa.size}</strong> quadra(s):
+      <span class="font-mono text-xs text-slate-600">{selecaoMapaIds.slice(0, 6).join(', ')}{selecaoMapa.size > 6 ? '…' : ''}</span>
+    </div>
+    <div class="flex gap-2 ml-auto">
+      <Button variant="primary" size="sm" onclick={delegarSelecao}>👤 Delegar ({selecaoMapa.size})</Button>
+      <Button variant="secondary" size="sm" onclick={() => (selecaoMapa = new Set())}>Limpar</Button>
+    </div>
+  </div>
+{/if}
 
 <BottomSheet bind:open={sheetOpen} title={quadraSel ? `Quadra ${quadraSel.id}` : ''}>
   {#if quadraSel}

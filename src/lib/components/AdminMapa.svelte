@@ -16,21 +16,42 @@
     altura = 600,
     onQuadraClick,
     densidade = false,
+    colorirPor = 'status',
+    destacarIds = [],
+    selecionadasIds = [],
     pois = []
   }: {
     quadras: QuadraGeo[];
     altura?: number;
     onQuadraClick?: (q: QuadraGeo) => void;
     densidade?: boolean;
+    // 'status' (pendente/concluída/inativa) ou 'recencia' (vermelho <15d,
+    // laranja 15–45d, verde trabalhável, cinza inativa) — visão do dirigente
+    colorirPor?: 'status' | 'recencia';
+    // Quadras com borda grossa escura (ex.: designadas ao dirigente logado)
+    destacarIds?: string[];
+    // Quadras selecionadas no modo multi-seleção (borda azul grossa)
+    selecionadasIds?: string[];
     pois?: POI[];
   } = $props();
 
   let container: HTMLDivElement;
   let mapa: any = null;
+  let carregado = $state(false);
   let userMarker: any = null;
   let watchId: number | null = null;
   let poiMarkers: any[] = [];
   let maplibreRef: any = null;
+
+  // Bucket de recência calculado em JS (MapLibre não faz date-diff)
+  function bucketRecencia(q: QuadraGeo): string {
+    if (!q.ativa) return 'inativa';
+    if (!q.data_conclusao) return 'livre';
+    const dias = Math.floor((Date.now() - new Date(q.data_conclusao + 'T12:00:00').getTime()) / 86400000);
+    if (dias < 15) return 'recente';
+    if (dias < 45) return 'medio';
+    return 'livre';
+  }
 
   // Expõe o canvas pra screenshot. Chamado de fora via bind:this.
   export function exportarPng(): string | null {
@@ -53,6 +74,21 @@
     const sumLng = coords.reduce((s: number, c: number[]) => s + c[0], 0);
     mapa.easeTo({ center: [sumLng / coords.length, sumLat / coords.length], zoom: 16, duration: 400 });
   }
+
+  // Atualiza filtros das camadas de destaque/seleção quando os props mudam.
+  // ⚠ deps lidas ANTES do early-return (regra dos runes).
+  $effect(() => {
+    const ids = [...destacarIds];
+    const ok = carregado;
+    if (!ok || !mapa) return;
+    try { mapa.setFilter('quadras-destaque', ['in', ['get', 'id'], ['literal', ids]]); } catch {}
+  });
+  $effect(() => {
+    const ids = [...selecionadasIds];
+    const ok = carregado;
+    if (!ok || !mapa) return;
+    try { mapa.setFilter('quadras-sel', ['in', ['get', 'id'], ['literal', ids]]); } catch {}
+  });
 
   // Renderiza pois como marcadores clicáveis (Google Maps ao clicar).
   // Reativo — muda quando o prop pois muda.
@@ -120,7 +156,8 @@
             color: q.color,
             status: q.status,
             territorio_id: q.territorio_id,
-            qtd_locais: q.qtd_locais
+            qtd_locais: q.qtd_locais,
+            recencia: bucketRecencia(q)
           }
         }));
 
@@ -129,7 +166,7 @@
         data: { type: 'FeatureCollection', features } as any
       });
 
-      // Fill: por status OU por densidade (interpola amarelo→vermelho)
+      // Fill: densidade > recência > status (nessa ordem de prioridade)
       const fillColor: any = densidade
         ? [
             'interpolate',
@@ -140,6 +177,15 @@
             15, '#fcd34d',
             30, '#f59e0b',
             60, '#dc2626'
+          ]
+        : colorirPor === 'recencia'
+        ? [
+            'match',
+            ['get', 'recencia'],
+            'recente', 'rgba(220, 38, 38, 0.55)',   // vermelho: concluída <15d — não trabalhar
+            'medio', 'rgba(245, 158, 11, 0.5)',      // laranja: 15–45d — evitar
+            'inativa', 'rgba(148, 163, 184, 0.3)',   // cinza: inativa
+            'rgba(34, 197, 94, 0.4)'                 // verde: livre pra trabalhar
           ]
         : [
             'match',
@@ -166,6 +212,24 @@
         }
       });
 
+      // Destaque (minhas quadras): borda grossa escura, atualizada via $effect
+      mapa.addLayer({
+        id: 'quadras-destaque',
+        type: 'line',
+        source: 'quadras',
+        filter: ['in', ['get', 'id'], ['literal', []]],
+        paint: { 'line-color': '#0f172a', 'line-width': 4 }
+      });
+
+      // Seleção (modo multi-seleção): borda azul mais grossa por cima
+      mapa.addLayer({
+        id: 'quadras-sel',
+        type: 'line',
+        source: 'quadras',
+        filter: ['in', ['get', 'id'], ['literal', []]],
+        paint: { 'line-color': '#2563eb', 'line-width': 5 }
+      });
+
       // Label com ID
       mapa.addLayer({
         id: 'quadras-label',
@@ -182,6 +246,8 @@
           'text-halo-width': 1.5
         }
       });
+
+      carregado = true;
 
       // Click handler
       mapa.on('click', 'quadras-fill', (e: any) => {

@@ -29,8 +29,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       .order('criada_em', { ascending: false }),
     locals.supabase.from('profiles').select('id, nome')
   ]);
-  const abertas = designacoes.filter((d) => d.status === 'aberta');
-  const concluidas = designacoes.filter((d) => d.status === 'concluida');
+  // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
+  // no campo). A visão de todas as designações mora no mapa estratégico e
+  // no hub /admin/designacoes — não aqui.
+  const minhas = designacoes.filter((d) => d.publicador_id === locals.user!.id);
+  const abertas = minhas.filter((d) => d.status === 'aberta');
+  const concluidas = minhas.filter((d) => d.status === 'concluida');
 
   const idsAbertas = [...new Set(abertas.flatMap((d) => d.quadras_ids))];
   const cobertura = idsAbertas.length > 0
