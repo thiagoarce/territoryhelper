@@ -26,6 +26,7 @@
       quadrasIds: string[];
       predios: PredioLite[];
       prediosMap: Record<number, PredioChip>;
+      tces: { id: string; nome: string; status: string }[];
     };
   } = $props();
 
@@ -119,6 +120,7 @@
       cartas_locais_ids: null,
       arquivo_url: null,
       arquivo_nome: null,
+      tce_id: null,
       notas: null,
       data_inicio: null,
       data_fim: null,
@@ -185,10 +187,6 @@
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
   }
 
-  function modTipoSelecionado(): 'quadras' | 'cartas_lista' | 'arquivo' | 'ponto_tp' | null {
-    if (!arrEditando?.modalidade_id) return null;
-    return modalidadeById[arrEditando.modalidade_id]?.tipo_territorio ?? null;
-  }
 </script>
 
 <div class="p-4 space-y-3 max-w-5xl mx-auto">
@@ -473,7 +471,6 @@
 <!-- Sheet arranjo -->
 <BottomSheet bind:open={sheetArr} title={arrEditando?.id ? 'Editar arranjo' : 'Novo arranjo'}>
   {#if arrEditando}
-    {@const tipoMod = modTipoSelecionado()}
     <form
       method="POST"
       action={arrEditando.id ? '?/atualizarArranjo' : '?/criarArranjo'}
@@ -507,17 +504,14 @@
             const id = Number((e.target as HTMLSelectElement).value);
             const m = modalidadeById[id];
             if (!m) { arrEditando = { ...arrEditando, modalidade_id: id }; return; }
-            // Aplica defaults da nova modalidade e zera os campos do tipo anterior
+            // Modalidade é só categoria: aplica defaults de hora/local/dia,
+            // mas NÃO mexe no território (misto livre)
             arrEditando = {
               ...arrEditando,
               modalidade_id: id,
               hora_inicio: m.default_hora ?? null,
               local_endereco: m.default_local ?? null,
-              dia_semana: arrEditando.recorrente ? m.default_dia_semana ?? null : arrEditando.dia_semana,
-              quadras_ids: null,
-              cartas_locais_ids: null,
-              arquivo_url: null,
-              arquivo_nome: null
+              dia_semana: arrEditando.recorrente ? m.default_dia_semana ?? null : arrEditando.dia_semana
             };
           }}
         >
@@ -628,68 +622,80 @@
         </select>
       </div>
 
-      <!-- Bloco por tipo de território -->
-      {#if tipoMod === 'quadras'}
+      <!-- Território MISTO: qualquer combinação de quadras + prédios + TCE + ponto.
+           Modalidade é só categoria (cor/nome/defaults), não trava nada. -->
+      <div class="rounded-lg border border-slate-200 p-3 space-y-3">
+        <div class="text-xs uppercase tracking-wider font-semibold text-slate-500">Território (misto — preencha o que a saída tiver)</div>
+
         <div>
-          <label for="quadras_ids" class="block text-sm font-medium mb-1">Quadras designadas</label>
+          <label for="quadras_ids" class="block text-sm font-medium mb-1">🚪 Quadras (casa em casa)</label>
           <input
             id="quadras_ids"
             name="quadras_ids"
             value={(arrEditando.quadras_ids ?? []).join(', ')}
-            placeholder="Q-1, Q-2, Q-3"
+            placeholder="Q-1, Q-2, Q-3 (ou anexe pela Visão Geral)"
             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
           />
-          <p class="text-xs text-slate-500 mt-1">IDs separados por vírgula. O dirigente distribui aos publicadores depois.</p>
         </div>
-      {:else if tipoMod === 'cartas_lista'}
+
         <div>
-          <span class="block text-sm font-medium mb-1">Prédios na lista</span>
+          <span class="block text-sm font-medium mb-1">✉ Prédios (cartas) — {(arrEditando.cartas_locais_ids ?? []).length} selecionado(s)</span>
           <input id="cartas_locais_ids" name="cartas_locais_ids" type="hidden" value={(arrEditando.cartas_locais_ids ?? []).join(',')} />
-          <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-            {#each data.predios.slice(0, 200) as p}
-              {@const sel = arrEditando.cartas_locais_ids?.includes(p.id)}
-              <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={sel}
-                  onchange={(e) => {
-                    const cur = new Set(arrEditando.cartas_locais_ids ?? []);
-                    if ((e.target as HTMLInputElement).checked) cur.add(p.id);
-                    else cur.delete(p.id);
-                    arrEditando = { ...arrEditando, cartas_locais_ids: [...cur] };
-                  }}
-                  class="w-4 h-4 rounded"
-                />
-                <span class="flex-1 truncate">{p.nome_estabelecimento ?? '—'}</span>
-                <span class="text-xs text-slate-400 truncate">{p.logradouro ?? ''} {p.numero ?? ''}</span>
-              </label>
-            {/each}
-          </div>
-          <p class="text-xs text-slate-500 mt-1">{(arrEditando.cartas_locais_ids ?? []).length} prédio(s) selecionados (mostra os primeiros 200).</p>
-        </div>
-      {:else if tipoMod === 'arquivo'}
-        <div>
-          <span class="block text-sm font-medium mb-1">Arquivo (PDF/imagem)</span>
-          <input
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg,.webp"
-            onchange={(e) => arquivoFile = (e.target as HTMLInputElement).files?.[0] ?? null}
-            class="w-full text-sm"
-          />
-          {#if arquivoFile}
-            <Button variant="secondary" onclick={uploadArquivo} loading={uploadando} class="mt-2 w-full">⬆ Enviar arquivo</Button>
-          {/if}
-          {#if arrEditando.arquivo_url}
-            <div class="mt-2 text-xs text-slate-600">
-              <a href={arrEditando.arquivo_url} target="_blank" rel="noopener" class="text-primary-700 hover:underline">📎 {arrEditando.arquivo_nome || 'arquivo'}</a>
+          <details class="border border-slate-200 rounded-lg">
+            <summary class="px-3 py-2 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">Escolher prédios (ou anexe por /admin/predios)</summary>
+            <div class="max-h-48 overflow-y-auto divide-y divide-slate-100 border-t border-slate-100">
+              {#each data.predios.slice(0, 200) as p}
+                {@const sel = arrEditando.cartas_locais_ids?.includes(p.id)}
+                <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={sel}
+                    onchange={(e) => {
+                      const cur = new Set(arrEditando.cartas_locais_ids ?? []);
+                      if ((e.target as HTMLInputElement).checked) cur.add(p.id);
+                      else cur.delete(p.id);
+                      arrEditando = { ...arrEditando, cartas_locais_ids: [...cur] };
+                    }}
+                    class="w-4 h-4 rounded"
+                  />
+                  <span class="flex-1 truncate">{p.nome_estabelecimento ?? '—'}</span>
+                  <span class="text-xs text-slate-400 truncate">{p.logradouro ?? ''} {p.numero ?? ''}</span>
+                </label>
+              {/each}
             </div>
-          {/if}
-          <input type="hidden" name="arquivo_url" value={arrEditando.arquivo_url ?? ''} />
-          <input type="hidden" name="arquivo_nome" value={arrEditando.arquivo_nome ?? ''} />
+          </details>
         </div>
-      {:else if tipoMod === 'ponto_tp'}
-        <p class="text-xs text-slate-500 italic">Ponto fixo de TP — só o local importa.</p>
-      {/if}
+
+        <div>
+          <label for="tce_id" class="block text-sm font-medium mb-1">🏪 TCE (comercial)</label>
+          <select id="tce_id" name="tce_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={(arrEditando as any).tce_id ?? ''}>
+            <option value="">— nenhum —</option>
+            {#each data.tces as t}<option value={t.id}>{t.nome}</option>{/each}
+          </select>
+        </div>
+
+        <p class="text-xs text-slate-500">📍 Ponto fixo (TP/carrinho/praça) usa o campo "Local" acima.</p>
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">📎 Arquivo (PDF/imagem, opcional)</span>
+        <input
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.webp"
+          onchange={(e) => arquivoFile = (e.target as HTMLInputElement).files?.[0] ?? null}
+          class="w-full text-sm"
+        />
+        {#if arquivoFile}
+          <Button variant="secondary" onclick={uploadArquivo} loading={uploadando} class="mt-2 w-full">⬆ Enviar arquivo</Button>
+        {/if}
+        {#if arrEditando.arquivo_url}
+          <div class="mt-2 text-xs text-slate-600">
+            <a href={arrEditando.arquivo_url} target="_blank" rel="noopener" class="text-primary-700 hover:underline">📎 {arrEditando.arquivo_nome || 'arquivo'}</a>
+          </div>
+        {/if}
+        <input type="hidden" name="arquivo_url" value={arrEditando.arquivo_url ?? ''} />
+        <input type="hidden" name="arquivo_nome" value={arrEditando.arquivo_nome ?? ''} />
+      </div>
 
       <div>
         <label for="notas" class="block text-sm font-medium mb-1">Notas (opcional)</label>

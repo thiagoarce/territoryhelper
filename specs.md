@@ -95,6 +95,34 @@ em `localStorage`.
 * Actions role-restritas: sempre checar `locals.profile?.role` no início da action (defesa em profundidade além de RLS).
 * Não usar `now()` em predicate de índice parcial (não é IMMUTABLE — fica no WHERE das queries).
 
+## Modelo de designação v2 ✅ (grande limpeza)
+
+Três conceitos, sem sobreposição:
+* **Designação** = território PESSOAL (quadras e/ou prédios → publicador,
+  fora de arranjo). Tipos: `pessoal` | `cartas`. Sem dirigente — "designar
+  pra dirigente" morreu (era resquício pré-arranjos).
+* **Arranjo** = saída agendada com **dirigente** + território **misto
+  livre** (quadras + prédios + TCE + ponto/local, qualquer combinação —
+  praças, cartas, casa em casa, comercial, TP, ou tudo junto). Modalidade
+  é só categoria (nome/cor/defaults de dia/hora).
+* **Parte** = o dirigente reparte o território do arranjo: subconjunto →
+  1+ publicadores (dupla/trio compartilham a MESMA parte, realtime
+  sincroniza). Só existe dentro de arranjo; expira com a data dele.
+  Tabela `arranjo_partes` (substituiu `delegacoes_temp` e o antigo
+  `distribuirQuadras`).
+
+Carteira: card "🎪 Você dirige" (dirigente vê o território do arranjo
+dele + Repartir) e card "🚶 Pregação em grupo — sua parte" (publicador).
+Repartir mora em /publicador/arranjo e no mapa estratégico (seleção no
+mapa → ✂ Repartir).
+
+## Link público de território ✅
+`/t/<token>` (sem login): mapa + lista do território de um arranjo ou
+designação. Botão 📤 nos cards (arranjo, hub, carteira) gera token
+(`territorio_tokens` + RPC `territorio_publico` security definer) e abre
+a página, de onde se compartilha no WhatsApp — com PNG do mapa anexado
+via Web Share API (fallback: baixa PNG + wa.me).
+
 ## Hub de designações ✅
 `/admin/designacoes` — gestão central de TODAS as designações (pessoal,
 pregação/arranjo, cartas, TCE) num lugar só: filtros por tipo/status +

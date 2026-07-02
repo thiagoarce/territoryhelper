@@ -14,7 +14,7 @@
   let { data, children }: { data: { profile: any }; children: Snippet } = $props();
 
   // Rotas sem chrome (header/nav): públicas + login
-  const rotasPublicas = ['/login', '/c', '/cartas', '/convite'];
+  const rotasPublicas = ['/login', '/c', '/cartas', '/convite', '/t/'];
   const semChrome = $derived(rotasPublicas.some((p) => $page.url.pathname.startsWith(p)));
   const role = $derived(data.profile?.role ?? null);
 

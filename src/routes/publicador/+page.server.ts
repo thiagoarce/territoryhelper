@@ -1,4 +1,5 @@
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
+import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra } from '$lib/server/queries';
 
 export interface CampanhaAtiva {
@@ -12,7 +13,10 @@ export interface CampanhaAtiva {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const [designacoes, quadras, campanhaRes, delegRes, profRes] = await Promise.all([
+  const hoje = new Date().toISOString().substring(0, 10);
+  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+
+  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
@@ -20,13 +24,23 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa')
       .eq('ativa', true)
       .maybeSingle(),
-    // Delegações temporárias ATIVAS que eu recebi como publicador
+    // Partes de arranjo que me incluem (dupla/trio) — válidas pela data do arranjo
     locals.supabase
-      .from('delegacoes_temp')
-      .select('id, dirigente_id, quadras_ids, data_fim')
-      .eq('publicador_id', locals.user!.id)
-      .gt('data_fim', new Date().toISOString())
+      .from('arranjo_partes')
+      .select('id, quadras_ids, locais_ids, publicadores, notas, arranjos!inner(id, nome, data, hora_inicio, local_endereco, dirigente_id, ativo)')
+      .contains('publicadores', [locals.user!.id])
+      .eq('arranjos.ativo', true)
+      .gte('arranjos.data', ontem)
       .order('criada_em', { ascending: false }),
+    // Arranjos que EU dirijo (hoje em diante) — card "Você dirige"
+    locals.supabase
+      .from('arranjos')
+      .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id')
+      .eq('ativo', true)
+      .eq('dirigente_id', locals.user!.id)
+      .gte('data', hoje)
+      .order('data')
+      .limit(5),
     locals.supabase.from('profiles').select('id, nome')
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
@@ -69,13 +83,32 @@ export const load: PageServerLoad = async ({ locals }) => {
     };
   }
 
-  // Delegações temporárias ativas que eu recebi (mostra card no topo do home)
+  // Partes de arranjo que eu recebi (card no topo do home)
   const nomePorId = new Map((profRes.data ?? []).map((p: any) => [p.id, p.nome as string]));
-  const delegacoesTempAtivas = (delegRes.data ?? []).map((d: any) => ({
-    id: d.id,
-    dirigente_nome: nomePorId.get(d.dirigente_id) ?? '?',
-    quadras_ids: d.quadras_ids as string[],
-    data_fim: d.data_fim as string
+  const minhasPartes = (partesRes.data ?? []).map((p: any) => ({
+    id: p.id,
+    arranjo_nome: p.arranjos?.nome ?? 'Arranjo',
+    arranjo_data: p.arranjos?.data ?? null,
+    hora_inicio: p.arranjos?.hora_inicio ?? null,
+    local_endereco: p.arranjos?.local_endereco ?? null,
+    dirigente_nome: p.arranjos?.dirigente_id ? nomePorId.get(p.arranjos.dirigente_id) ?? '?' : null,
+    colegas: (p.publicadores as string[])
+      .filter((id) => id !== locals.user!.id)
+      .map((id) => nomePorId.get(id) ?? '?'),
+    quadras_ids: p.quadras_ids as string[],
+    locais_ids: p.locais_ids as number[]
+  }));
+
+  // Arranjos que eu dirijo — card "Você dirige" com o território completo
+  const arranjosQueDirijo = (dirijoRes.data ?? []).map((a: any) => ({
+    id: a.id,
+    nome: a.nome ?? 'Arranjo',
+    data: a.data as string,
+    hora_inicio: a.hora_inicio as string | null,
+    local_endereco: a.local_endereco as string | null,
+    quadras_ids: (a.quadras_ids ?? []) as string[],
+    cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
+    tce_id: a.tce_id as string | null
   }));
 
   // Designações de cartas (tipo='cartas') — resolve prédios associados via
@@ -133,8 +166,26 @@ export const load: PageServerLoad = async ({ locals }) => {
     cobertura: Object.fromEntries(cobertura),
     tces,
     campanhaAtiva,
-    delegacoesTempAtivas,
+    minhasPartes,
+    arranjosQueDirijo,
     cartasDesignadas,
     minhaRole: locals.profile?.role
   };
+};
+
+export const actions: Actions = {
+  // Link público /t/<token> da PRÓPRIA designação (RLS permite o dono gerar)
+  gerarLinkTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const designacaoId = Number(fd.get('designacao_id') ?? 0);
+    if (!designacaoId) return fail(400, { erro: 'designacao_id obrigatório' });
+    const { data, error } = await locals.supabase
+      .from('territorio_tokens')
+      .insert({ designacao_id: designacaoId, criado_por: locals.user.id })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, token: data.token };
+  }
 };

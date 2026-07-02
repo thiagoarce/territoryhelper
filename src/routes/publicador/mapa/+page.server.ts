@@ -8,23 +8,45 @@ export const load: PageServerLoad = async ({ locals }) => {
   if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
     throw error(403, 'Só dirigente/admin acessa o mapa estratégico');
   }
-  const [quadras, designacoes, publicadores, delegRes] = await Promise.all([
+  const hoje = new Date().toISOString().substring(0, 10);
+
+  const [quadras, designacoes, publicadores, dirijoRes] = await Promise.all([
     listarQuadrasComGeo(locals.supabase),
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
+    // Arranjos que EU dirijo (hoje em diante) — alvo do repartir via mapa
     locals.supabase
-      .from('delegacoes_temp')
-      .select('id, publicador_id, quadras_ids, data_fim')
+      .from('arranjos')
+      .select('id, nome, data, quadras_ids, cartas_locais_ids')
+      .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .gt('data_fim', new Date().toISOString())
-      .order('criada_em', { ascending: false })
+      .gte('data', hoje)
+      .order('data')
   ]);
   const abertas = designacoes.filter((d) => d.status === 'aberta');
+
+  const meusArranjos = (dirijoRes.data ?? []) as {
+    id: number; nome: string | null; data: string;
+    quadras_ids: string[] | null; cartas_locais_ids: number[] | null;
+  }[];
+
+  // Partes dos meus arranjos (pra listar embaixo do mapa)
+  let partes: { id: number; arranjo_id: number; quadras_ids: string[]; locais_ids: number[]; publicadores: string[] }[] = [];
+  if (meusArranjos.length > 0) {
+    const { data: pt } = await locals.supabase
+      .from('arranjo_partes')
+      .select('id, arranjo_id, quadras_ids, locais_ids, publicadores')
+      .in('arranjo_id', meusArranjos.map((a) => a.id))
+      .order('criada_em');
+    partes = (pt ?? []) as any[];
+  }
+
   return {
     quadras,
     designacoesAbertas: abertas,
     publicadores,
-    delegacoesTemp: (delegRes.data ?? []) as { id: number; publicador_id: string; quadras_ids: string[]; data_fim: string }[],
+    meusArranjos,
+    partes,
     minhaId: locals.user!.id
   };
 };
@@ -59,39 +81,67 @@ export const actions: Actions = {
     return { ok: true, msg: 'Conclusão desfeita' };
   },
 
-  // Delega temporariamente subconjunto de quadras pra um publicador.
-  // Expira sozinho no fim do dia (default) ou no prazo escolhido.
-  delegarTemp: async ({ request, locals }) => {
+  // Reparte quadras de UM DOS MEUS arranjos pra 1+ publicadores (mesma parte).
+  // Repartição só existe dentro de arranjo — delegação avulsa morreu.
+  criarParte: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
       return fail(403, { erro: 'Só dirigente/admin' });
     }
     const fd = await request.formData();
-    const publicadorId = String(fd.get('publicador_id') ?? '').trim();
-    const quadras = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
-    const dataFim = String(fd.get('data_fim') ?? '').trim() || null;
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
     const notas = String(fd.get('notas') ?? '').trim() || null;
-    if (!publicadorId) return fail(400, { erro: 'Publicador obrigatório' });
-    if (quadras.length === 0) return fail(400, { erro: 'Escolha ao menos uma quadra' });
+    if (!arranjoId) return fail(400, { erro: 'Escolha o arranjo' });
+    if (publicadorIds.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
+    if (quadrasIds.length === 0) return fail(400, { erro: 'Escolha ao menos uma quadra' });
 
-    const patch: any = { dirigente_id: locals.user.id, publicador_id: publicadorId, quadras_ids: quadras, notas };
-    if (dataFim) patch.data_fim = dataFim;
-    const { error: err } = await locals.supabase.from('delegacoes_temp').insert(patch);
+    const ehAdmin = locals.profile?.role === 'admin';
+    const { data: arr } = await locals.supabase
+      .from('arranjos').select('id, quadras_ids, dirigente_id').eq('id', arranjoId).single();
+    if (!arr) return fail(404, { erro: 'Arranjo não encontrado' });
+    if (!ehAdmin && arr.dirigente_id !== locals.user.id) {
+      return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
+    }
+    const quadrasArr = new Set((arr.quadras_ids ?? []) as string[]);
+    const fora = quadrasIds.filter((q) => !quadrasArr.has(q));
+    if (fora.length > 0) {
+      return fail(400, { erro: `Quadra(s) ${fora.join(', ')} não está(ão) no território do arranjo. Anexe primeiro em /admin/arranjos ou na Visão Geral.` });
+    }
+
+    const { error: err } = await locals.supabase.from('arranjo_partes').insert({
+      arranjo_id: arranjoId,
+      quadras_ids: quadrasIds,
+      locais_ids: [],
+      publicadores: publicadorIds,
+      notas,
+      criado_por: locals.user.id
+    });
     if (err) return fail(400, { erro: err.message });
-    return { ok: true, msg: `Delegado ${quadras.length} quadra(s)` };
+    return { ok: true, msg: `Parte criada (${quadrasIds.length} quadras → ${publicadorIds.length} publicador(es))` };
   },
 
-  encerrarDelegacaoTemp: async ({ request, locals }) => {
+  apagarParte: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
-    // seta data_fim = agora pra "encerrar" (RLS já garante dirigente/admin)
-    const { error: err } = await locals.supabase
-      .from('delegacoes_temp')
-      .update({ data_fim: new Date().toISOString() })
-      .eq('id', id);
+    if (locals.profile?.role !== 'admin') {
+      const { data: pt } = await locals.supabase
+        .from('arranjo_partes')
+        .select('id, arranjos!inner(dirigente_id)')
+        .eq('id', id)
+        .maybeSingle();
+      if (!pt || (pt as any).arranjos?.dirigente_id !== locals.user.id) {
+        return fail(403, { erro: 'Essa parte não é de um arranjo seu' });
+      }
+    }
+    const { error: err } = await locals.supabase.from('arranjo_partes').delete().eq('id', id);
     if (err) return fail(400, { erro: err.message });
-    return { ok: true, msg: 'Delegação encerrada' };
+    return { ok: true, msg: 'Parte removida' };
   }
 };

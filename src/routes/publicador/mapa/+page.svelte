@@ -8,7 +8,8 @@
   import { buscarPOIs, categoriaLabel, categoriaEmoji, urlRotaGoogleMaps, type CategoriaPOI } from '$lib/utils/overpass';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
 
-  interface DelegTemp { id: number; publicador_id: string; quadras_ids: string[]; data_fim: string }
+  interface MeuArranjo { id: number; nome: string | null; data: string; quadras_ids: string[] | null; cartas_locais_ids: number[] | null }
+  interface Parte { id: number; arranjo_id: number; quadras_ids: string[]; locais_ids: number[]; publicadores: string[] }
   interface Pub { id: string; nome: string; role: string }
 
   let { data, form }: {
@@ -16,7 +17,8 @@
       quadras: QuadraGeo[];
       designacoesAbertas: DesignacaoEnriquecida[];
       publicadores: Pub[];
-      delegacoesTemp: DelegTemp[];
+      meusArranjos: MeuArranjo[];
+      partes: Parte[];
       minhaId: string;
     };
     form: any;
@@ -43,33 +45,39 @@
     if (!modoSelecao) selecaoMapa = new Set();
   }
 
-  // Delegação temporária
-  let sheetDelegar = $state(false);
-  let quadrasParaDelegar = $state<Set<string>>(new Set());
-  let publicadorAlvo = $state('');
-  let dataFimDelegar = $state('');
-  let notasDelegar = $state('');
-  let delegando = $state(false);
+  // Repartir (parte de arranjo) — só dentro de arranjo que EU dirijo
+  let sheetRepartir = $state(false);
+  let arranjoAlvoId = $state<number | ''>('');
+  let quadrasParte = $state<Set<string>>(new Set());
+  let pubsParte = $state<Set<string>>(new Set());
+  let notasParte = $state('');
+  let repartindo = $state(false);
   const pubById = $derived(Object.fromEntries(data.publicadores.map((p) => [p.id, p.nome])));
+  const arranjoAlvo = $derived(data.meusArranjos.find((a) => a.id === arranjoAlvoId) ?? null);
 
-  function toggleQuadraDeleg(qid: string) {
-    if (quadrasParaDelegar.has(qid)) quadrasParaDelegar.delete(qid);
-    else quadrasParaDelegar.add(qid);
-    quadrasParaDelegar = new Set(quadrasParaDelegar);
+  function toggleQuadraParte(qid: string) {
+    if (quadrasParte.has(qid)) quadrasParte.delete(qid);
+    else quadrasParte.add(qid);
+    quadrasParte = new Set(quadrasParte);
   }
-  function abrirDelegar() {
-    quadrasParaDelegar = new Set();
-    publicadorAlvo = '';
-    dataFimDelegar = '';
-    notasDelegar = '';
-    sheetDelegar = true;
+  function togglePubParte(id: string) {
+    if (pubsParte.has(id)) pubsParte.delete(id);
+    else pubsParte.add(id);
+    pubsParte = new Set(pubsParte);
   }
-  async function encerrarDeleg(id: number) {
-    if (!confirm('Encerrar essa delegação agora?')) return;
+  function abrirRepartir(preQuadras?: Set<string>) {
+    arranjoAlvoId = data.meusArranjos.length === 1 ? data.meusArranjos[0].id : '';
+    quadrasParte = new Set(preQuadras ?? []);
+    pubsParte = new Set();
+    notasParte = '';
+    sheetRepartir = true;
+  }
+  async function apagarParte(id: number) {
+    if (!confirm('Remover essa parte?')) return;
     const fd = new FormData();
     fd.append('id', String(id));
-    const res = await fetch('?/encerrarDelegacaoTemp', { method: 'POST', body: fd });
-    if (res.ok) { toast.success('Encerrada'); await invalidateAll(); }
+    const res = await fetch('?/apagarParte', { method: 'POST', body: fd });
+    if (res.ok) { toast.success('Removida'); await invalidateAll(); }
     else toast.error('Falhou');
   }
 
@@ -180,13 +188,9 @@
     pois = [];
   }
 
-  // Abre o sheet de delegação pré-preenchido com a seleção do mapa
-  function delegarSelecao() {
-    quadrasParaDelegar = new Set(selecaoMapa);
-    publicadorAlvo = '';
-    dataFimDelegar = '';
-    notasDelegar = '';
-    sheetDelegar = true;
+  // Abre o sheet de repartir pré-preenchido com a seleção do mapa
+  function repartirSelecao() {
+    abrirRepartir(selecaoMapa);
   }
 
   const designacoesQuadra = $derived(
@@ -199,7 +203,7 @@
 <div class="flex items-end justify-between flex-wrap gap-3">
   <div>
     <h1 class="text-2xl font-bold">Mapa estratégico</h1>
-    <p class="text-sm text-slate-500 mt-1">Concluir quadras · estacionamento · delegar temp</p>
+    <p class="text-sm text-slate-500 mt-1">Concluir quadras · estacionamento · repartir arranjo</p>
   </div>
   <div class="flex gap-2 flex-wrap">
     <div class="flex border border-slate-300 rounded-lg overflow-hidden text-sm">
@@ -214,7 +218,9 @@
         onclick={toggleModoSelecao}
       >{modoSelecao ? '✓ Selecionando…' : '☑ Selecionar'}</Button>
     {/if}
-    <Button variant="primary" size="sm" onclick={abrirDelegar}>👤 Delegar temp</Button>
+    {#if data.meusArranjos.length > 0}
+      <Button variant="primary" size="sm" onclick={() => abrirRepartir()}>✂ Repartir</Button>
+    {/if}
   </div>
 </div>
 
@@ -299,7 +305,11 @@
       <span class="font-mono text-xs text-slate-600">{selecaoMapaIds.slice(0, 6).join(', ')}{selecaoMapa.size > 6 ? '…' : ''}</span>
     </div>
     <div class="flex gap-2 ml-auto">
-      <Button variant="primary" size="sm" onclick={delegarSelecao}>👤 Delegar ({selecaoMapa.size})</Button>
+      {#if data.meusArranjos.length > 0}
+        <Button variant="primary" size="sm" onclick={repartirSelecao}>✂ Repartir ({selecaoMapa.size})</Button>
+      {:else}
+        <span class="text-xs text-slate-500 self-center">Crie/assuma um arranjo pra repartir</span>
+      {/if}
       <Button variant="secondary" size="sm" onclick={() => (selecaoMapa = new Set())}>Limpar</Button>
     </div>
   </div>
@@ -431,83 +441,109 @@
   {/if}
 </BottomSheet>
 
-{#if data.delegacoesTemp.length > 0}
+{#if data.partes.length > 0}
   <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-semibold text-amber-900 mb-2">Delegações ativas ({data.delegacoesTemp.length})</div>
+    <div class="text-xs uppercase tracking-wider font-semibold text-amber-900 mb-2">Partes dos meus arranjos ({data.partes.length})</div>
     <div class="space-y-1">
-      {#each data.delegacoesTemp as d}
+      {#each data.partes as pt (pt.id)}
+        {@const arr = data.meusArranjos.find((a) => a.id === pt.arranjo_id)}
         <div class="flex items-center gap-2 text-sm bg-white rounded p-2">
           <div class="flex-1 min-w-0">
-            <div class="font-medium">👤 {pubById[d.publicador_id] ?? '?'}</div>
+            <div class="font-medium">👤 {pt.publicadores.map((id) => pubById[id] ?? '?').join(' + ')}</div>
             <div class="text-xs text-slate-500">
-              {d.quadras_ids.length} quadra(s) · até {new Date(d.data_fim).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              {arr?.nome ?? 'Arranjo'}{arr?.data ? ` · ${new Date(arr.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
             </div>
             <div class="flex flex-wrap gap-1 mt-1">
-              {#each d.quadras_ids as q}
+              {#each pt.quadras_ids as q}
                 <span class="text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
               {/each}
+              {#if pt.locais_ids.length > 0}
+                <span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">✉ {pt.locais_ids.length} prédio(s)</span>
+              {/if}
             </div>
           </div>
-          <button type="button" onclick={() => encerrarDeleg(d.id)} class="text-xs text-red-600 hover:underline">Encerrar</button>
+          <button type="button" onclick={() => apagarParte(pt.id)} class="text-xs text-red-600 hover:underline">🗑</button>
         </div>
       {/each}
     </div>
   </div>
 {/if}
 
-<BottomSheet bind:open={sheetDelegar} title="Delegar temporariamente">
+<!-- Sheet repartir: parte de arranjo que EU dirijo -->
+<BottomSheet bind:open={sheetRepartir} title="Repartir arranjo">
   <form
     method="POST"
-    action="?/delegarTemp"
-    use:enhance={() => { delegando = true; return async ({ result, update }) => {
-      await update(); delegando = false;
+    action="?/criarParte"
+    use:enhance={() => { repartindo = true; return async ({ result, update }) => {
+      await update(); repartindo = false;
       if (result.type === 'success') {
-        toast.success(String((result.data as any)?.msg || 'Delegado'));
-        sheetDelegar = false; await invalidateAll();
+        toast.success(String((result.data as any)?.msg || 'Parte criada'));
+        sheetRepartir = false; selecaoMapa = new Set(); await invalidateAll();
       } else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
     }; }}
     class="space-y-3"
   >
-    <p class="text-xs text-slate-500">Delegação some sozinha no fim do dia. O publicador ganha acesso temporário sem virar designação persistente.</p>
-    {#each [...quadrasParaDelegar] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+    {#each [...quadrasParte] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+    {#each [...pubsParte] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
+
+    <p class="text-xs text-slate-500">A parte vale só durante o arranjo (some da carteira depois da data). Dupla/trio compartilham a mesma parte.</p>
 
     <div>
-      <label for="pub" class="block text-sm font-medium mb-1">Publicador</label>
-      <select id="pub" name="publicador_id" required bind:value={publicadorAlvo} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+      <label for="arr-alvo" class="block text-sm font-medium mb-1">Arranjo</label>
+      <select id="arr-alvo" name="arranjo_id" required bind:value={arranjoAlvoId} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
         <option value="">—</option>
-        {#each data.publicadores as p}<option value={p.id}>{p.nome}</option>{/each}
+        {#each data.meusArranjos as a}
+          <option value={a.id}>{a.nome ?? 'Arranjo'} · {new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</option>
+        {/each}
       </select>
     </div>
 
+    {#if arranjoAlvo}
+      <div>
+        <span class="block text-sm font-medium mb-1">Quadras do arranjo ({quadrasParte.size} na parte)</span>
+        {#if (arranjoAlvo.quadras_ids?.length ?? 0) === 0}
+          <p class="text-xs text-amber-700 bg-amber-50 rounded p-2">Esse arranjo não tem quadras anexadas. Anexe na Visão Geral ou em /admin/arranjos.</p>
+        {:else}
+          <div class="flex flex-wrap gap-1.5">
+            {#each arranjoAlvo.quadras_ids ?? [] as q}
+              <button type="button" onclick={() => toggleQuadraParte(q)}
+                class="text-xs font-mono px-2 py-1 rounded border transition-colors"
+                class:bg-primary-600={quadrasParte.has(q)}
+                class:text-white={quadrasParte.has(q)}
+                class:border-primary-600={quadrasParte.has(q)}
+                class:bg-white={!quadrasParte.has(q)}
+                class:border-slate-300={!quadrasParte.has(q)}
+              >{q}</button>
+            {/each}
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Quadras selecionadas fora do arranjo são rejeitadas.</p>
+        {/if}
+      </div>
+    {/if}
+
     <div>
-      <span class="block text-sm font-medium mb-1">Quadras ({quadrasParaDelegar.size} selecionadas)</span>
-      <div class="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-        {#each data.quadras.filter((q) => q.ativa && !q.data_conclusao) as q}
-          <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
-            <input type="checkbox" checked={quadrasParaDelegar.has(q.id)} onchange={() => toggleQuadraDeleg(q.id)} class="w-4 h-4 rounded" />
-            <span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>
-            <span class="font-mono">{q.id}</span>
-            <span class="ml-auto text-xs text-slate-400 truncate max-w-[150px]">{q.territorio_nome ?? ''}</span>
+      <span class="block text-sm font-medium mb-1">Publicadores (dupla/trio)</span>
+      <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+        {#each data.publicadores as p}
+          <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+            <input type="checkbox" checked={pubsParte.has(p.id)} onchange={() => togglePubParte(p.id)} class="w-4 h-4 rounded" />
+            <span class="flex-1">{p.nome}</span>
+            <span class="text-xs text-slate-400">{p.role}</span>
           </label>
         {/each}
       </div>
-      <p class="text-xs text-slate-500 mt-1">Só quadras ativas não concluídas</p>
-    </div>
-
-    <div>
-      <label for="fim" class="block text-sm font-medium mb-1">Válida até (opcional)</label>
-      <input id="fim" name="data_fim" type="datetime-local" bind:value={dataFimDelegar} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-      <p class="text-xs text-slate-500 mt-1">Vazio = hoje 23:59</p>
+      <p class="text-xs text-slate-500 mt-1">{pubsParte.size} selecionado(s)</p>
     </div>
 
     <div>
       <label for="notas" class="block text-sm font-medium mb-1">Notas (opcional)</label>
-      <input id="notas" name="notas" bind:value={notasDelegar} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <input id="notas" name="notas" bind:value={notasParte} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
     </div>
 
     <div class="flex gap-2 pt-2">
-      <Button variant="secondary" onclick={() => (sheetDelegar = false)} class="flex-1">Cancelar</Button>
-      <Button variant="primary" type="submit" loading={delegando} class="flex-1" disabled={quadrasParaDelegar.size === 0 || !publicadorAlvo}>Delegar</Button>
+      <Button variant="secondary" onclick={() => (sheetRepartir = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" type="submit" loading={repartindo} class="flex-1"
+        disabled={quadrasParte.size === 0 || pubsParte.size === 0 || !arranjoAlvoId}>Criar parte</Button>
     </div>
   </form>
 </BottomSheet>

@@ -36,6 +36,7 @@ export interface Arranjo {
   data_inicio: string | null;
   data_fim: string | null;
   excecoes_datas: string[] | null;
+  tce_id: string | null;
 }
 
 export interface PredioLite {
@@ -99,6 +100,11 @@ export const load: PageServerLoad = async ({ locals }) => {
     ), [] as PredioLite[])
   ]);
 
+  // TCEs abertos pro território misto
+  const { data: tcesRes } = await locals.supabase
+    .from('tces').select('id, nome, status').eq('status', 'aberto').order('nome');
+  const tces = (tcesRes ?? []) as { id: string; nome: string; status: string }[];
+
   // Detalhes dos prédios referenciados nos arranjos (pros chips clicáveis)
   const predioIds = Array.from(
     new Set(arranjos.flatMap((a) => a.cartas_locais_ids ?? []).filter((n) => Number.isFinite(n)))
@@ -138,6 +144,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     quadrasIds: (quadrasRes?.data ?? []).map((q: any) => q.id as string),
     predios,
     prediosMap,
+    tces,
     loadErro: null as string | null
   };
 };
@@ -188,6 +195,7 @@ function arranjoFromForm(fd: FormData) {
   const cartas_csv = String(fd.get('cartas_locais_ids') ?? '').trim();
   const arquivo_url = String(fd.get('arquivo_url') ?? '').trim() || null;
   const arquivo_nome = String(fd.get('arquivo_nome') ?? '').trim() || null;
+  const tce_id = String(fd.get('tce_id') ?? '').trim() || null;
   const notas = String(fd.get('notas') ?? '').trim() || null;
   const data_inicio = String(fd.get('data_inicio') ?? '').trim() || null;
   const data_fim = String(fd.get('data_fim') ?? '').trim() || null;
@@ -209,6 +217,7 @@ function arranjoFromForm(fd: FormData) {
     cartas_locais_ids: cartas_csv ? parseIntArray(cartas_csv) : null,
     arquivo_url,
     arquivo_nome,
+    tce_id,
     notas,
     data_inicio: recorrente ? data_inicio : null,
     data_fim: recorrente ? data_fim : null,

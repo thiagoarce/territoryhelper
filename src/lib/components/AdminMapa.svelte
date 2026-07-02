@@ -259,19 +259,22 @@
       mapa.on('mouseenter', 'quadras-fill', () => { mapa.getCanvas().style.cursor = 'pointer'; });
       mapa.on('mouseleave', 'quadras-fill', () => { mapa.getCanvas().style.cursor = ''; });
 
-      // Fit bounds em todas as quadras
+      // Fit bounds em quadras + pois (página pública pode ter só prédios)
       try {
-        if (features.length > 0) {
-          let bounds: any = null;
-          for (const f of features) {
-            const coords = (f.geometry as any).coordinates?.[0] || [];
-            for (const c of coords) {
-              if (!bounds) bounds = new maplibre.LngLatBounds(c as any, c as any);
-              else bounds.extend(c as any);
-            }
+        let bounds: any = null;
+        for (const f of features) {
+          const coords = (f.geometry as any).coordinates?.[0] || [];
+          for (const c of coords) {
+            if (!bounds) bounds = new maplibre.LngLatBounds(c as any, c as any);
+            else bounds.extend(c as any);
           }
-          if (bounds) mapa.fitBounds(bounds, { padding: 30, duration: 0 });
         }
+        for (const p of pois) {
+          const c: [number, number] = [p.lng, p.lat];
+          if (!bounds) bounds = new maplibre.LngLatBounds(c, c);
+          else bounds.extend(c);
+        }
+        if (bounds) mapa.fitBounds(bounds, { padding: 40, duration: 0, maxZoom: 16 });
       } catch {}
 
       // GPS

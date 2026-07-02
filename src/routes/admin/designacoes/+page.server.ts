@@ -112,6 +112,22 @@ export const actions: Actions = {
     return { ok: true, msg: 'Designação removida' };
   },
 
+  // Gera link público /t/<token> da designação (WhatsApp pra quem não abre o app)
+  gerarLinkTerritorio: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const designacaoId = Number(fd.get('designacao_id') ?? 0);
+    if (!designacaoId) return fail(400, { erro: 'designacao_id obrigatório' });
+    const { data, error } = await locals.supabase
+      .from('territorio_tokens')
+      .insert({ designacao_id: designacaoId, criado_por: locals.user!.id })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, token: data.token };
+  },
+
   // Status de TCE (aberto / concluido / cancelado)
   mudarStatusTce: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);

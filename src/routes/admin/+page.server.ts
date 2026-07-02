@@ -108,19 +108,17 @@ export const actions: Actions = {
     return { ok: true, msg: publicadorId ? 'TCE designado' : 'Designação removida' };
   },
 
-  // Admin designa direto da Geral. Dois tipos:
-  // - 'pessoal' (default): território pessoal pra UM publicador trabalhar
-  // - 'arranjo': delega pra um DIRIGENTE coordenar uma saída em grupo
+  // Admin designa TERRITÓRIO PESSOAL direto da Geral (sempre pessoal —
+  // saída em grupo é arranjo, gerido em /admin/arranjos com dirigente).
   criarDesignacao: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
-    const tipo = String(fd.get('tipo') ?? 'pessoal');
     const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
-    const dirigenteId = String(fd.get('dirigente_id') ?? '').trim() || null;
     const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
     const prazo = String(fd.get('prazo') ?? '').trim() || null;
     const notas = String(fd.get('notas') ?? '').trim() || null;
     if (quadrasIds.length === 0) return fail(400, { erro: 'quadras obrigatórias' });
+    if (publicadorIds.length === 0) return fail(400, { erro: 'pelo menos 1 publicador obrigatório' });
 
     // Bloqueia quadras já em arranjo ativo (defesa server-side; UI também avisa)
     const { data: arrAtivos } = await locals.supabase
@@ -136,18 +134,11 @@ export const actions: Actions = {
       return fail(409, { erro: `Quadra(s) ${Array.from(new Set(conflitos)).join(', ')} já está(ão) em arranjo. Remova do arranjo antes ou use outra.` });
     }
 
-    if (tipo === 'arranjo') {
-      if (!dirigenteId) return fail(400, { erro: 'dirigente obrigatório pra arranjo' });
-    } else {
-      if (publicadorIds.length === 0) return fail(400, { erro: 'pelo menos 1 publicador obrigatório' });
-    }
-
     const { data: des, error: errD } = await locals.supabase
       .from('designacoes')
       .insert({
-        tipo,
-        publicador_id: tipo === 'pessoal' ? publicadorIds[0] : null,
-        dirigente_id: tipo === 'arranjo' ? dirigenteId : null,
+        tipo: 'pessoal',
+        publicador_id: publicadorIds[0],
         prazo,
         notas,
         status: 'aberta',
@@ -161,17 +152,13 @@ export const actions: Actions = {
     const { error: errJ } = await locals.supabase.from('designacao_quadras').insert(linhas);
     if (errJ) return fail(400, { erro: 'Designação criada mas falhou ao vincular: ' + errJ.message });
 
-    // Participantes (somente pessoal): N publicadores. Pro arranjo, o dirigente convida
-    if (tipo === 'pessoal' && publicadorIds.length > 0) {
-      const part = publicadorIds.map((pid, i) => ({
-        designacao_id: des.id,
-        publicador_id: pid,
-        papel: i === 0 ? 'lider' : 'participante'
-      }));
-      await locals.supabase.from('designacao_publicadores').insert(part);
-    }
-    const label = tipo === 'arranjo' ? 'Arranjo delegado ao dirigente' : `Designada a ${publicadorIds.length} publicador(es)`;
-    return { ok: true, msg: `${label} com ${quadrasIds.length} quadra(s)` };
+    const part = publicadorIds.map((pid, i) => ({
+      designacao_id: des.id,
+      publicador_id: pid,
+      papel: i === 0 ? 'lider' : 'participante'
+    }));
+    await locals.supabase.from('designacao_publicadores').insert(part);
+    return { ok: true, msg: `Designada a ${publicadorIds.length} publicador(es) com ${quadrasIds.length} quadra(s)` };
   },
 
   encerrarDesignacao: async ({ request, locals }) => {

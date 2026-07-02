@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { deserialize } from '$app/forms';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
+  import { toast } from '$lib/ui/toast.svelte';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/server/queries';
 
   interface CampanhaAtiva {
@@ -12,7 +14,27 @@
     total_meta: number;
   }
 
-  interface DelegTempAtiva { id: number; dirigente_nome: string; quadras_ids: string[]; data_fim: string }
+  interface MinhaParte {
+    id: number;
+    arranjo_nome: string;
+    arranjo_data: string | null;
+    hora_inicio: string | null;
+    local_endereco: string | null;
+    dirigente_nome: string | null;
+    colegas: string[];
+    quadras_ids: string[];
+    locais_ids: number[];
+  }
+  interface ArranjoQueDirijo {
+    id: number;
+    nome: string;
+    data: string;
+    hora_inicio: string | null;
+    local_endereco: string | null;
+    quadras_ids: string[];
+    cartas_locais_ids: number[];
+    tce_id: string | null;
+  }
   interface CartaDesignada {
     designacao_id: number;
     prazo: string | null;
@@ -29,18 +51,39 @@
       cobertura: Record<string, CoberturaQuadra>;
       tces: { id: string; nome: string; tipo: string; prazo: string | null; status: string }[];
       campanhaAtiva: CampanhaAtiva | null;
-      delegacoesTempAtivas: DelegTempAtiva[];
+      minhasPartes: MinhaParte[];
+      arranjosQueDirijo: ArranjoQueDirijo[];
       cartasDesignadas: CartaDesignada[];
       minhaRole: string | undefined;
     };
   } = $props();
 
+  function fmtDia(iso: string | null): string {
+    if (!iso) return '';
+    const hoje = new Date().toISOString().substring(0, 10);
+    if (iso === hoje) return 'hoje';
+    return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+  }
+
+  // Link público da minha designação — abre /t/<token> pra compartilhar
+  async function abrirLinkPublico(designacaoId: number) {
+    const fd = new FormData();
+    fd.append('designacao_id', String(designacaoId));
+    const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success' && parsed.data?.token) {
+      window.open('/t/' + parsed.data.token, '_blank', 'noopener');
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou gerar link'));
+    }
+  }
+
   let aba: 'abertas' | 'concluidas' = $state('abertas');
   const lista = $derived(aba === 'abertas' ? data.abertas : data.concluidas);
 
-  // Divisão pessoal vs pregação vs cartas (specs.md Fase 2 revisado)
-  const pessoais = $derived(lista.filter((d: any) => d.tipo === 'pessoal' || (!d.tipo && d.tipo !== 'arranjo' && d.tipo !== 'cartas')));
-  const pregacoes = $derived(lista.filter((d: any) => d.tipo === 'arranjo'));
+  // Designações agora são só território pessoal (quadras) e cartas (prédios).
+  // Pregação em grupo vem de arranjo_partes, não de designações.
+  const pessoais = $derived(lista.filter((d: any) => d.tipo !== 'cartas'));
 
   // Quadras envolvidas nas designações abertas — pro mini-mapa
   const quadrasMapa = $derived.by(() => {
@@ -63,21 +106,63 @@
 </script>
 
 <div class="p-4">
-{#if data.delegacoesTempAtivas.length > 0}
-  <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2">🚶 Pregando com dirigente agora</div>
-    {#each data.delegacoesTempAtivas as d}
+{#if data.arranjosQueDirijo.length > 0}
+  <div class="mb-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
+    <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2">🎪 Você dirige</div>
+    {#each data.arranjosQueDirijo as a}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
-        <div class="font-medium">{d.dirigente_nome}</div>
-        <div class="text-xs text-slate-500 mb-1.5">até {new Date(d.data_fim).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-        <div class="flex flex-wrap gap-1.5">
-          {#each d.quadras_ids as qid}
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium">{a.nome}</span>
+          <span class="text-xs text-primary-700 font-medium">{fmtDia(a.data)}{a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}</span>
+        </div>
+        {#if a.local_endereco}<div class="text-xs text-slate-500 mt-0.5">📍 {a.local_endereco}</div>{/if}
+        <div class="flex flex-wrap gap-1.5 mt-1.5">
+          {#each a.quadras_ids as qid}
+            {@const q = data.quadrasMap[qid]}
+            <a href="/publicador/quadra/{encodeURIComponent(qid)}"
+              class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-primary-200 bg-primary-100 text-primary-900 hover:bg-primary-200">
+              {#if q}<span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>{/if}
+              <span>{qid}</span>
+            </a>
+          {/each}
+          {#each a.cartas_locais_ids as lid}
+            <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200">✉ #{lid}</a>
+          {/each}
+          {#if a.tce_id}
+            <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200">🏪 {a.tce_id}</span>
+          {/if}
+        </div>
+        <a href="/publicador/arranjo" class="inline-block mt-2 text-xs font-medium text-primary-700 hover:underline">✂ Repartir território →</a>
+      </div>
+    {/each}
+  </div>
+{/if}
+
+{#if data.minhasPartes.length > 0}
+  <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+    <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2">🚶 Pregação em grupo — sua parte</div>
+    {#each data.minhasPartes as p}
+      <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium">{p.arranjo_nome}</span>
+          <span class="text-xs text-amber-700 font-medium">{fmtDia(p.arranjo_data)}{p.hora_inicio ? ` · ${p.hora_inicio.substring(0, 5)}` : ''}</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-0.5">
+          {#if p.dirigente_nome}Dirigente: {p.dirigente_nome}{/if}
+          {#if p.colegas.length > 0} · com {p.colegas.join(', ')}{/if}
+        </div>
+        {#if p.local_endereco}<div class="text-xs text-slate-500">📍 {p.local_endereco}</div>{/if}
+        <div class="flex flex-wrap gap-1.5 mt-1.5">
+          {#each p.quadras_ids as qid}
             {@const q = data.quadrasMap[qid]}
             <a href="/publicador/quadra/{encodeURIComponent(qid)}"
               class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200">
               {#if q}<span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>{/if}
               <span>{qid}</span>
             </a>
+          {/each}
+          {#each p.locais_ids as lid}
+            <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:bg-amber-200">✉ #{lid}</a>
           {/each}
         </div>
       </div>
@@ -184,12 +269,16 @@
         {#if d.notas}<div class="mt-2 text-sm text-slate-600 italic">{d.notas}</div>{/if}
       </div>
     </div>
-    {#if d.prazo}
-      <div class="mt-3 text-xs text-slate-500">
-        Prazo: <strong>{new Date(d.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</strong>
-        <span class="ml-1 text-slate-400">({diasAteOuApos(d.prazo)})</span>
-      </div>
-    {/if}
+    <div class="mt-3 flex items-center gap-3">
+      {#if d.prazo}
+        <div class="text-xs text-slate-500">
+          Prazo: <strong>{new Date(d.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</strong>
+          <span class="ml-1 text-slate-400">({diasAteOuApos(d.prazo)})</span>
+        </div>
+      {/if}
+      <button type="button" onclick={() => abrirLinkPublico(d.id)}
+        class="ml-auto text-xs text-primary-700 hover:underline" title="Link público com mapa (WhatsApp)">📤 Compartilhar</button>
+    </div>
   </div>
 {/snippet}
 
@@ -207,18 +296,6 @@
       </div>
     {/if}
   </section>
-
-  {#if pregacoes.length > 0}
-    <section>
-      <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
-        🚶 Pregação em grupo
-        <span class="text-xs text-slate-400 normal-case font-normal">({pregacoes.length})</span>
-      </h2>
-      <div class="grid gap-3 sm:grid-cols-2">
-        {#each pregacoes as d (d.id)}{@render cardDesignacao(d)}{/each}
-      </div>
-    </section>
-  {/if}
 
   {#if data.cartasDesignadas && data.cartasDesignadas.length > 0}
     <section>

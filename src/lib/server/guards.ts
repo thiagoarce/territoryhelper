@@ -31,15 +31,18 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
     .limit(1);
   if (dq && dq.length > 0) return;
 
-  // Delegação temporária ativa (dirigente delegou essa quadra pra mim agora)
-  const { data: deleg } = await locals.supabase
-    .from('delegacoes_temp')
-    .select('id')
-    .eq('publicador_id', userId)
+  // Parte de arranjo ativa que me inclui (dirigente repartiu essa quadra
+  // pra mim/minha dupla). Validade deriva da data do arranjo pai.
+  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+  const { data: partes } = await locals.supabase
+    .from('arranjo_partes')
+    .select('id, arranjos!inner(ativo, data)')
+    .contains('publicadores', [userId])
     .contains('quadras_ids', [quadraId])
-    .gt('data_fim', new Date().toISOString())
+    .eq('arranjos.ativo', true)
+    .gte('arranjos.data', ontem)
     .limit(1);
-  if (deleg && deleg.length > 0) return;
+  if (partes && partes.length > 0) return;
 
   // Quadra dentro de um arranjo ativo — os chips de /publicador/arranjo
   // linkam pra cá pra qualquer publicador da saída.

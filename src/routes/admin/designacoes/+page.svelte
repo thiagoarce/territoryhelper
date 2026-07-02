@@ -15,7 +15,7 @@
     };
   } = $props();
 
-  type FiltroTipo = 'todas' | 'pessoal' | 'arranjo' | 'cartas' | 'tce';
+  type FiltroTipo = 'todas' | 'pessoal' | 'cartas' | 'tce';
   type FiltroStatus = 'abertas' | 'concluidas' | 'canceladas' | 'todas';
   let filtroTipo = $state<FiltroTipo>('todas');
   let filtroStatus = $state<FiltroStatus>('abertas');
@@ -23,7 +23,6 @@
 
   const TIPO_META: Record<string, { label: string; emoji: string; cls: string }> = {
     pessoal: { label: 'Pessoal', emoji: '🎯', cls: 'bg-blue-100 text-blue-700' },
-    arranjo: { label: 'Pregação', emoji: '🚶', cls: 'bg-green-100 text-green-700' },
     cartas: { label: 'Cartas', emoji: '✉', cls: 'bg-purple-100 text-purple-700' }
   };
 
@@ -66,7 +65,6 @@
     const abertas = data.designacoes.filter((d) => d.status === 'aberta');
     return {
       pessoal: abertas.filter((d) => (d.tipo ?? 'pessoal') === 'pessoal').length,
-      arranjo: abertas.filter((d) => d.tipo === 'arranjo').length,
       cartas: abertas.filter((d) => d.tipo === 'cartas').length,
       tce: data.tces.filter((t) => t.status === 'aberto').length
     };
@@ -101,6 +99,18 @@
     sheetEditar = false;
   }
 
+  async function abrirLinkPublico(designacaoId: number) {
+    const fd = new FormData();
+    fd.append('designacao_id', String(designacaoId));
+    const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success' && parsed.data?.token) {
+      window.open('/t/' + parsed.data.token, '_blank', 'noopener');
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou gerar link'));
+    }
+  }
+
   function fmtData(iso: string | null): string {
     if (!iso) return '—';
     return new Date(iso.substring(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -111,8 +121,7 @@
   <div>
     <h1 class="text-2xl font-bold">Designações</h1>
     <p class="text-sm text-slate-500">
-      Gestão central — 🎯 {stats.pessoal} pessoais · 🚶 {stats.arranjo} pregação ·
-      ✉ {stats.cartas} cartas · 🏪 {stats.tce} TCEs abertos
+      Gestão central — 🎯 {stats.pessoal} pessoais · ✉ {stats.cartas} cartas · 🏪 {stats.tce} TCEs abertos
     </p>
   </div>
 
@@ -125,7 +134,7 @@
 
   <!-- Filtro tipo -->
   <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5 overflow-x-auto">
-    {#each [['todas', 'Todas'], ['pessoal', '🎯 Pessoal'], ['arranjo', '🚶 Pregação'], ['cartas', '✉ Cartas'], ['tce', '🏪 TCE']] as [k, l]}
+    {#each [['todas', 'Todas'], ['pessoal', '🎯 Pessoal'], ['cartas', '✉ Cartas'], ['tce', '🏪 TCE']] as [k, l]}
       <button
         onclick={() => (filtroTipo = k as FiltroTipo)}
         class="flex-1 px-2 py-1.5 text-xs rounded whitespace-nowrap transition-colors"
@@ -197,6 +206,7 @@
                 class="text-xs text-primary-700 hover:underline">↺ Reabrir</button>
             {/if}
             <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline">✏ Editar</button>
+            <button type="button" onclick={() => abrirLinkPublico(d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)">📤 Link</button>
           </div>
         </div>
       </Card>
@@ -239,7 +249,7 @@
       <div class="text-center py-10">
         <div class="text-5xl mb-3 opacity-60">📋</div>
         <div class="text-slate-500">Nenhuma designação nesse filtro.</div>
-        <p class="text-xs text-slate-400 mt-1">Designe quadras na Visão Geral, cartas em Prédios, ou distribua um arranjo.</p>
+        <p class="text-xs text-slate-400 mt-1">Designe quadras na Visão Geral ou cartas em Prédios. Saídas em grupo são arranjos (gestão em /admin/arranjos).</p>
       </div>
     {/if}
   </div>

@@ -132,7 +132,6 @@ export const actions: Actions = {
           tipo: 'cartas',
           status: 'aberta',
           criado_por: locals.user.id,
-          dirigente_id: locals.user.id,
           publicador_id: pubId,
           prazo,
           notas

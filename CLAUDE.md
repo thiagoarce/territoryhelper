@@ -23,7 +23,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     `/publicador/*` (URLs antigas)
   - `predio/[id]` — **tela ÚNICA de trabalhar prédio**, toggle
     🚪 casa-em-casa vs ✉ cartas + edit + WhatsApp share
-  - públicas (sem auth): `cartas/[token]`, `convite/[token]`, `c`, `login`
+  - públicas (sem auth): `cartas/[token]`, `t/[token]` (território/arranjo
+    read-only + compartilhar c/ imagem), `convite/[token]`, `c`, `login`
 - `src/lib/components/` — `MapaAdmin.svelte` (mapa de quadras reutilizável),
   `MapaPoligonos.svelte` (editor de polígonos + terra-draw), `AdminMapa.svelte`,
   `EditarLocalSheet.svelte`, `InstallPrompt.svelte`
@@ -49,10 +50,11 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `locais` | endereço físico: `geo Point`, tipo (casa/predio/comercio/coletivo/terreno), `quadra_id`, setor/quadra_ibge/face_ibge, portaria, `nao_eh_predio`, **`pendente`** (criado pelo publicador; admin valida) |
 | `unidades` | apto/unidade dentro de um local (carta, desocupado…) |
 | `registros` | trilha append-only de eventos por unidade (conversou/carta/desfeito…) |
-| `designacoes` | tipo **pessoal/arranjo/cartas**, publicador_id, dirigente_id, prazo, ponto de encontro |
+| `designacoes` | **território pessoal** (tipo pessoal/cartas), sempre `publicador_id` — dirigente NÃO existe aqui (é atributo do arranjo) |
 | `designacao_quadras` / `designacao_publicadores` / `designacao_locais` | N:N (locais só p/ tipo='cartas') |
-| `arranjos` / `arranjo_modalidades` | saídas coordenadas de campo (cartas, pregação, TP) |
-| `delegacoes_temp` | delegação efemera de quadras (dirigente → publicador, expira sozinha em `data_fim` — default fim do dia) |
+| `arranjos` / `arranjo_modalidades` | saída agendada c/ dirigente + território **misto livre**: `quadras_ids[]` + `cartas_locais_ids[]` + `tce_id` + local/ponto. Modalidade é só categoria (cor/defaults) |
+| `arranjo_partes` | repartição do dirigente: subconjunto do território → `publicadores uuid[]` (dupla/trio = MESMA parte). Validade deriva da `data` do arranjo |
+| `territorio_tokens` | link público `/t/<token>` de arranjo OU designação (RPC `territorio_publico` monta o JSON; compartilha no WhatsApp com PNG do mapa) |
 | `campanha` / `campanhas` | objetivos + período (data_inicio/alvo/meta_semanal) |
 | `tces` / `tce_unidades` | Território Comercial Especial (convex hull) |
 | `cartas_tokens` | link público de cartas |

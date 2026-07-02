@@ -21,12 +21,21 @@ export interface PredioChip {
   qtd_entregues: number;
 }
 
+export interface ParteLinha {
+  id: number;
+  arranjo_id: number;
+  quadras_ids: string[];
+  locais_ids: number[];
+  publicadores: string[];
+  notas: string | null;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>, publicadores: [], minhaId: '', podeCoordenar: false };
+  if (!locals.user) return { arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>, publicadores: [], partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>, tcesMap: {} as Record<string, string>, minhaId: '', podeCoordenar: false };
 
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
-  const [arranjos, modalidades, { data: profs }, publicadores] = await Promise.all([
+  const [arranjos, modalidades, { data: profs }, publicadores, partesRes] = await Promise.all([
     selectAll<ArranjoLinha>(
       locals.supabase
         .from('arranjos')
@@ -38,12 +47,32 @@ export const load: PageServerLoad = async ({ locals }) => {
     selectAll<ModalidadeLite>(
       locals.supabase.from('arranjo_modalidades').select('id, nome, tipo_territorio, cor')
     ),
-    locals.supabase.from('profiles').select('id, nome').in('role', ['dirigente', 'admin']),
-    podeCoordenar ? listarPublicadores(locals.supabase) : Promise.resolve([])
+    // Todos os profiles pra resolver nomes (dirigentes E membros de partes)
+    locals.supabase.from('profiles').select('id, nome, role'),
+    podeCoordenar ? listarPublicadores(locals.supabase) : Promise.resolve([]),
+    // Partes dos arranjos (RLS: publicador vê as dele; dirigente/admin veem todas)
+    locals.supabase
+      .from('arranjo_partes')
+      .select('id, arranjo_id, quadras_ids, locais_ids, publicadores, notas')
+      .order('criada_em')
   ]);
 
   const dirigentes: Record<string, string> = {};
-  for (const p of profs ?? []) dirigentes[p.id] = p.nome;
+  const nomesPorId: Record<string, string> = {};
+  for (const p of profs ?? []) {
+    nomesPorId[p.id] = p.nome;
+    if (p.role === 'dirigente' || p.role === 'admin') dirigentes[p.id] = p.nome;
+  }
+
+  const partes = (partesRes.data ?? []) as ParteLinha[];
+
+  // Nomes de TCEs referenciados (arranjo misto)
+  const tceIds = Array.from(new Set(arranjos.map((a: any) => a.tce_id).filter(Boolean)));
+  const tcesMap: Record<string, string> = {};
+  if (tceIds.length > 0) {
+    const { data: tces } = await locals.supabase.from('tces').select('id, nome').in('id', tceIds);
+    for (const t of (tces ?? []) as any[]) tcesMap[t.id] = t.nome;
+  }
 
   // Coleta ids únicos de prédios referenciados nos arranjos e busca detalhes + stats
   const predioIds = Array.from(
@@ -76,7 +105,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
-  return { arranjos, modalidades, dirigentes, prediosMap, publicadores, minhaId: locals.user.id, podeCoordenar };
+  return { arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, minhaId: locals.user.id, podeCoordenar };
 };
 
 export const actions: Actions = {
@@ -110,53 +139,98 @@ export const actions: Actions = {
     return { ok: true, msg: `Você é o novo dirigente de "${arr.nome ?? 'arranjo'}"` };
   },
 
-  // Distribui quadras de um arranjo aos publicadores como designacoes pessoais
-  distribuirQuadras: async ({ request, locals }) => {
+  // Reparte o território do arranjo: cria uma PARTE (subconjunto de
+  // quadras/prédios → 1+ publicadores; dupla/trio compartilham a mesma
+  // parte). Substitui o antigo distribuirQuadras — não cria designações.
+  criarParte: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin pode distribuir' });
+      return fail(403, { erro: 'Só dirigente/admin pode repartir' });
     }
     const fd = await request.formData();
     const arranjoId = Number(fd.get('arranjo_id') ?? 0);
-    const prazo = String(fd.get('prazo') ?? '').trim() || null;
-    const publicadores = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+    const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    const locaisIds = fd.getAll('locais_ids').map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
+    const notas = String(fd.get('notas') ?? '').trim() || null;
     if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
-    if (publicadores.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
+    if (publicadorIds.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
+    if (quadrasIds.length === 0 && locaisIds.length === 0) {
+      return fail(400, { erro: 'Selecione ao menos uma quadra ou prédio' });
+    }
 
     const ehAdmin = locals.profile?.role === 'admin';
     const { data: arr, error: errA } = await locals.supabase
       .from('arranjos')
-      .select('id, quadras_ids, modalidade_id, nome, local_endereco, hora_inicio, dirigente_id')
+      .select('id, nome, quadras_ids, cartas_locais_ids, dirigente_id')
       .eq('id', arranjoId).single();
     if (errA || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
     if (!ehAdmin && arr.dirigente_id !== locals.user.id) {
       return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
     }
-    const quadras = (arr.quadras_ids ?? []) as string[];
-    if (quadras.length === 0) return fail(400, { erro: 'Arranjo não tem quadras pra distribuir' });
 
-    for (const pubId of publicadores) {
-      const { data: des, error: errD } = await locals.supabase
-        .from('designacoes')
-        .insert({
-          tipo: 'arranjo',
-          status: 'aberta',
-          criado_por: locals.user.id,
-          dirigente_id: locals.user.id,
-          publicador_id: pubId,
-          prazo,
-          notas: `Distribuído do arranjo "${arr.nome ?? ''}".`
-        })
-        .select('id').single();
-      if (errD || !des) continue;
-
-      await locals.supabase.from('designacao_quadras').insert(
-        quadras.map((qid) => ({ designacao_id: des.id, quadra_id: qid }))
-      );
-      await locals.supabase
-        .from('designacao_publicadores')
-        .insert({ designacao_id: des.id, publicador_id: pubId, papel: 'lider' });
+    // Parte tem que ser subconjunto do território do arranjo
+    const quadrasArr = new Set((arr.quadras_ids ?? []) as string[]);
+    const locaisArr = new Set((arr.cartas_locais_ids ?? []) as number[]);
+    const foraQ = quadrasIds.filter((q) => !quadrasArr.has(q));
+    const foraL = locaisIds.filter((l) => !locaisArr.has(l));
+    if (foraQ.length > 0 || foraL.length > 0) {
+      return fail(400, { erro: 'Itens fora do território do arranjo: ' + [...foraQ, ...foraL].join(', ') });
     }
-    return { ok: true, msg: `Distribuído pra ${publicadores.length} publicador(es)` };
+
+    const { error } = await locals.supabase.from('arranjo_partes').insert({
+      arranjo_id: arranjoId,
+      quadras_ids: quadrasIds,
+      locais_ids: locaisIds,
+      publicadores: publicadorIds,
+      notas,
+      criado_por: locals.user.id
+    });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `Parte criada pra ${publicadorIds.length} publicador(es)` };
+  },
+
+  // Gera link público /t/<token> do arranjo (pra WhatsApp — quem não abre o app)
+  gerarLinkTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+    const { data, error } = await locals.supabase
+      .from('territorio_tokens')
+      .insert({ arranjo_id: arranjoId, criado_por: locals.user.id })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, token: data.token };
+  },
+
+  apagarParte: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+
+    // Dirigente só apaga partes de arranjos dele
+    if (locals.profile?.role !== 'admin') {
+      const { data: pt } = await locals.supabase
+        .from('arranjo_partes')
+        .select('id, arranjos!inner(dirigente_id)')
+        .eq('id', id)
+        .maybeSingle();
+      if (!pt || (pt as any).arranjos?.dirigente_id !== locals.user.id) {
+        return fail(403, { erro: 'Essa parte não é de um arranjo seu' });
+      }
+    }
+
+    const { error } = await locals.supabase.from('arranjo_partes').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Parte removida' };
   }
 };
