@@ -1,9 +1,15 @@
 <script lang="ts">
   import '../app.css';
-  import { page } from '$app/stores';
+  import { page, updated } from '$app/stores';
   import type { Snippet } from 'svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
   import InstallPrompt from '$lib/components/InstallPrompt.svelte';
+
+  // Recarrega buscando a versão nova. skipWaiting no SW garante que o
+  // service worker novo assume; o reload traz os assets novos.
+  function atualizarApp() {
+    location.reload();
+  }
 
   let { data, children }: { data: { profile: any }; children: Snippet } = $props();
 
@@ -96,6 +102,18 @@
 
 <Toaster />
 <InstallPrompt />
+
+<!-- Banner de versão nova (PWA não atualiza sozinho sem reload) -->
+{#if $updated}
+  <div class="fixed top-0 left-0 right-0 z-[60] bg-primary-700 text-white px-4 py-2.5 flex items-center gap-3 shadow-lg">
+    <span class="text-sm flex-1">✨ Nova versão disponível</span>
+    <button
+      type="button"
+      onclick={atualizarApp}
+      class="text-sm font-semibold bg-white text-primary-700 px-3 py-1 rounded-lg hover:bg-primary-50"
+    >Atualizar</button>
+  </div>
+{/if}
 
 {#if semChrome || !data.profile}
   {@render children()}

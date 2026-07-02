@@ -5,7 +5,12 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter()
+    adapter: adapter(),
+    version: {
+      // Checa a cada 60s se saiu versão nova (compara _app/version.json).
+      // Alimenta o store `updated` → banner "Atualizar" no layout.
+      pollInterval: 60000
+    }
   }
 };
 
