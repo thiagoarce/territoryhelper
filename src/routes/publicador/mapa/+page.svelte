@@ -6,7 +6,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { buscarPOIs, categoriaLabel, categoriaEmoji, urlRotaGoogleMaps, type CategoriaPOI } from '$lib/utils/overpass';
+  import { buscarPOIs, categoriaLabel, categoriaIcone, urlRotaGoogleMaps, type CategoriaPOI } from '$lib/utils/overpass';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
 
   interface MeuArranjo { id: number; nome: string | null; data: string; quadras_ids: string[] | null; cartas_locais_ids: number[] | null }
@@ -93,7 +93,7 @@
       lat: p.lat,
       lng: p.lng,
       nome: `${p.nome} · ${p.distancia}m`,
-      emoji: categoriaEmoji(p.categoria),
+      icone: categoriaIcone(p.categoria),
       url: urlRotaGoogleMaps(p.lat, p.lng)
     }))
   );
@@ -400,7 +400,7 @@
           <ul class="space-y-1 max-h-40 overflow-y-auto text-sm">
             {#each pois.slice(0, 8) as p}
               <li class="flex items-center gap-2">
-                <span>{categoriaEmoji(p.categoria)}</span>
+                <Icon nome={categoriaIcone(p.categoria)} size={14} />
                 <a
                   href="https://www.google.com/maps/dir/?api=1&destination={p.lat},{p.lng}"
                   target="_blank"

@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, mount } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
+  import Icon, { type NomeIcone } from '$lib/ui/Icon.svelte';
 
   interface POI {
     id: string;
     lat: number;
     lng: number;
     nome: string;
-    emoji: string;
+    icone: NomeIcone;
     url?: string;
   }
 
@@ -119,8 +120,8 @@
       el.type = 'button';
       el.title = p.nome;
       el.setAttribute('aria-label', p.nome);
-      el.style.cssText = 'width:32px;height:32px;border-radius:50%;background:white;border:2px solid #2563eb;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0;';
-      el.textContent = p.emoji || '•';
+      el.style.cssText = 'width:32px;height:32px;border-radius:50%;background:white;border:2px solid #2563eb;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;color:#2563eb;display:flex;align-items:center;justify-content:center;padding:0;';
+      mount(Icon, { target: el, props: { nome: p.icone, size: 18 } });
       if (p.url) {
         el.addEventListener('click', (e) => {
           e.stopPropagation();

@@ -80,8 +80,9 @@ export function categoriaLabel(c: CategoriaPOI): string {
   }[c];
 }
 
-export function categoriaEmoji(c: CategoriaPOI): string {
-  return { parking: '🅿️', pharmacy: '💊', square: '🌳', fuel: '⛽', supermarket: '🛒', bakery: '🥐' }[c];
+// Nome do ícone lucide (ver $lib/ui/Icon.svelte) — zero emoji no app.
+export function categoriaIcone(c: CategoriaPOI): 'parking' | 'pill' | 'trees' | 'fuel' | 'cart' | 'croissant' {
+  return { parking: 'parking', pharmacy: 'pill', square: 'trees', fuel: 'fuel', supermarket: 'cart', bakery: 'croissant' }[c];
 }
 
 // Gera URL do Google Maps pra navegação até um ponto.
