@@ -15,11 +15,20 @@ export interface CampanhaAtiva {
   diasParaComecar: number;
 }
 
+export interface MeuTurnoTp {
+  turno_id: number;
+  data: string;
+  hora_inicio: string;
+  hora_fim: string;
+  ponto_nome: string;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
   const hoje = new Date().toISOString().substring(0, 10);
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+  const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10);
 
-  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes] = await Promise.all([
+  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
@@ -45,7 +54,15 @@ export const load: PageServerLoad = async ({ locals }) => {
       .or(`data.gte.${ontem},data.is.null`)
       .order('data', { nullsFirst: false })
       .limit(5),
-    locals.supabase.from('profiles').select('id, nome')
+    locals.supabase.from('profiles').select('id, nome'),
+    // Meus turnos de TP nos próximos 7 dias — seção "Seus turnos de TP" no home
+    locals.supabase
+      .from('tp_escala')
+      .select('turno_id, data, tp_turnos!inner(hora_inicio, hora_fim, ponto_id, tp_pontos!inner(nome))')
+      .eq('publicador_id', locals.user!.id)
+      .gte('data', hoje)
+      .lte('data', em7dias)
+      .order('data')
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
   // no campo). A visão de todas as designações mora no mapa estratégico e
@@ -168,6 +185,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
+  const meusTurnosTp: MeuTurnoTp[] = ((meusTurnosRes.data ?? []) as any[]).map((r) => ({
+    turno_id: r.turno_id,
+    data: r.data,
+    hora_inicio: r.tp_turnos.hora_inicio,
+    hora_fim: r.tp_turnos.hora_fim,
+    ponto_nome: r.tp_turnos.tp_pontos?.nome ?? '?'
+  }));
+
   return {
     abertas,
     concluidas,
@@ -178,6 +203,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     minhasPartes,
     arranjosQueDirijo,
     cartasDesignadas,
+    meusTurnosTp,
     minhaRole: locals.profile?.role
   };
 };
