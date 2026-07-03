@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "svelte-kit sync && tsx tests/run.ts",
     "format": "prettier --write .",
     "lint": "prettier --check .",
     "migrate": "tsx scripts/migrate-from-csv.ts",

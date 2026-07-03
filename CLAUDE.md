@@ -176,5 +176,10 @@ status='pendente'/'concluido'.
 ## Rodando testes
 
 ```bash
-node tests/run.js
+npm test
 ```
+
+Testes em Node puro via `tsx` (resolve `$lib`), sem framework — cobrem
+lógica pura de `$lib` (posse de quadra, status de campanha, expansão de
+ocorrências de arranjo/TP, `diasDesde`). Não há integração contra Supabase
+real (precisaria de projeto de teste com seed). Ver `tests/README.md`.
