@@ -7,10 +7,10 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
+  import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, ocorrenciasTurnoEntre, type Periodo } from '$lib/arranjos';
   import { page } from '$app/stores';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './$types';
+  import type { ArranjoLinha, ModalidadeLite, ParteLinha, TpTurnoLinha, TpPontoLite, TpEscalaLinha } from './$types';
 
   interface PredioChip {
     id: number;
@@ -34,6 +34,9 @@
       quadrasGeo: QuadraGeo[];
       minhaId: string;
       podeCoordenar: boolean;
+      tpTurnos: TpTurnoLinha[];
+      tpPontos: Record<number, TpPontoLite>;
+      tpEscala: TpEscalaLinha[];
     };
   } = $props();
 
@@ -45,8 +48,46 @@
   const range = $derived(rangeDoPeriodo(periodo));
   const ocorrencias = $derived(ocorrenciasEntre<ArranjoLinha>(data.arranjos, range.isoIni, range.isoFim));
   const ocPorData = $derived(agruparPorData(ocorrencias));
-  const datasOrdenadas = $derived(Object.keys(ocPorData).sort());
+  const ocTurnos = $derived(ocorrenciasTurnoEntre<TpTurnoLinha>(data.tpTurnos, range.isoIni, range.isoFim));
+  const turnosPorData = $derived.by(() => {
+    const m: Record<string, typeof ocTurnos> = {};
+    for (const oc of ocTurnos) (m[oc.data] ||= []).push(oc);
+    return m;
+  });
+  const datasOrdenadas = $derived(
+    Array.from(new Set([...Object.keys(ocPorData), ...Object.keys(turnosPorData)])).sort()
+  );
   const modById = $derived(Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const)));
+
+  // Quem já se inscreveu em cada ocorrência (turno_id + data) de TP
+  const inscritosPorOcorrencia = $derived.by(() => {
+    const m: Record<string, { publicador_id: string; nome: string }[]> = {};
+    for (const e of data.tpEscala) {
+      const key = e.turno_id + '|' + e.data;
+      (m[key] ||= []).push({ publicador_id: e.publicador_id, nome: data.nomesPorId[e.publicador_id] ?? '?' });
+    }
+    return m;
+  });
+
+  async function inscreverTurno(turnoId: number, dataOc: string) {
+    const fd = new FormData();
+    fd.append('turno_id', String(turnoId));
+    fd.append('data', dataOc);
+    const res = await fetch('?/inscreverTurno', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success') { toast.success('Inscrito'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  async function sairTurno(turnoId: number, dataOc: string) {
+    const fd = new FormData();
+    fd.append('turno_id', String(turnoId));
+    fd.append('data', dataOc);
+    const res = await fetch('?/sairTurno', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success') { toast.success('Saiu do turno'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
   const partesPorArranjo = $derived.by(() => {
     const m: Record<number, ParteLinha[]> = {};
     for (const p of data.partes) (m[p.arranjo_id] ||= []).push(p);
@@ -199,12 +240,46 @@
   {:else}
     <div class="grid gap-3">
       {#each datasOrdenadas as dataIso}
-        {#if (ocPorData[dataIso] ?? []).length > 0}
+        {#if (ocPorData[dataIso] ?? []).length > 0 || (turnosPorData[dataIso] ?? []).length > 0}
           <div>
             <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">
               {new Date(dataIso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
             </div>
             <div class="grid gap-2">
+              {#each turnosPorData[dataIso] ?? [] as oct (oct.turno.id + '-' + oct.data)}
+                {@const t = oct.turno}
+                {@const ponto = data.tpPontos[t.ponto_id]}
+                {@const inscritos = inscritosPorOcorrencia[t.id + '|' + oct.data] ?? []}
+                {@const souInscrito = inscritos.some((i) => i.publicador_id === data.minhaId)}
+                <Card padding="md">
+                  <div class="flex items-start gap-3">
+                    <span class="w-2 self-stretch rounded shrink-0 bg-teal-500"></span>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold">{ponto?.nome ?? 'Testemunho público'}</span>
+                        <span class="text-[10px] bg-teal-100 text-teal-700 px-1.5 rounded"><Icon nome="megaphone" size={10} /> TP</span>
+                      </div>
+                      <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span><Icon nome="clock" size={14} /> {t.hora_inicio.substring(0, 5)}–{t.hora_fim.substring(0, 5)}</span>
+                        {#if ponto?.endereco}<span class="truncate"><Icon nome="map-pin" size={14} /> {ponto.endereco}</span>{/if}
+                      </div>
+                      <div class="mt-1 text-xs text-slate-500">
+                        {inscritos.length}/{t.vagas} vaga(s) preenchida(s)
+                        {#if inscritos.length > 0} — {inscritos.map((i) => i.nome).join(', ')}{/if}
+                      </div>
+                      <div class="mt-2">
+                        {#if souInscrito}
+                          <Button variant="secondary" size="sm" onclick={() => sairTurno(t.id, oct.data)}>Sair do turno</Button>
+                        {:else if inscritos.length < t.vagas}
+                          <Button variant="primary" size="sm" onclick={() => inscreverTurno(t.id, oct.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
+                        {:else}
+                          <span class="text-xs text-slate-400">Sem vagas</span>
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              {/each}
               {#each ocPorData[dataIso] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
                 {@const a = oc.arranjo}
                 {@const m = modById[a.modalidade_id]}

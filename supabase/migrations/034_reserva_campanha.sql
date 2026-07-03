@@ -10,7 +10,10 @@ alter table quadras add column if not exists reservada_campanha_id
 create index if not exists quadras_reserva_idx on quadras(reservada_campanha_id)
   where reservada_campanha_id is not null;
 
--- view quadras_geo precisa expor a nova coluna
+-- view quadras_geo precisa expor a nova coluna. IMPORTANTE: CREATE OR
+-- REPLACE VIEW só aceita adicionar colunas no FINAL da lista — a nova
+-- coluna entra DEPOIS de poly_geojson (não antes), senão o Postgres
+-- rejeita com "cannot change name of view column ... to ...".
 create or replace view quadras_geo
 with (security_invoker = on)
 as
@@ -24,8 +27,8 @@ select
   notas,
   criado_em,
   atualizado_em,
-  reservada_campanha_id,
-  ST_AsGeoJSON(poly)::jsonb as poly_geojson
+  ST_AsGeoJSON(poly)::jsonb as poly_geojson,
+  reservada_campanha_id
 from quadras;
 
 grant select on quadras_geo to authenticated;

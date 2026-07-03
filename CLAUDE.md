@@ -159,6 +159,12 @@ status='pendente'/'concluido'.
 - `delete().neq('id','x')` em coluna bigint → falha silenciosa; use TRUNCATE/`.gte`.
 - Paginação por offset sem `.order()` estável → duplica/pula linhas.
 - `alert()` / `new Date("yyyy-mm-dd")` direto.
+- `CREATE OR REPLACE VIEW` só aceita adicionar coluna nova no **FINAL**
+  da lista do SELECT. Inserir no meio (ex: antes de `poly_geojson`/
+  `geo_geojson`) muda a posição das colunas seguintes e o Postgres
+  rejeita com `cannot change name of view column "X" to "Y"`. Sempre
+  que alterar `quadras_geo`/`locais_geo`/`tces_geo`/etc. numa migration,
+  coloque a coluna nova DEPOIS da(s) coluna(s) de geometria existente(s).
 
 ## Rodando testes
 

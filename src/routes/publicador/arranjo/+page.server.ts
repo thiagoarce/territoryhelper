@@ -6,6 +6,28 @@ import type { ArranjoBase } from '$lib/arranjos';
 
 export interface ArranjoLinha extends ArranjoBase {}
 
+export interface TpPontoLite {
+  id: number;
+  nome: string;
+  endereco: string | null;
+}
+
+export interface TpTurnoLinha {
+  id: number;
+  ponto_id: number;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fim: string;
+  vagas: number;
+  ativo: boolean;
+}
+
+export interface TpEscalaLinha {
+  turno_id: number;
+  data: string;
+  publicador_id: string;
+}
+
 export interface ModalidadeLite {
   id: number;
   nome: string;
@@ -32,11 +54,19 @@ export interface ParteLinha {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>, publicadores: [], partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>, tcesMap: {} as Record<string, string>, quadrasGeo: [] as QuadraGeo[], minhaId: '', podeCoordenar: false };
+  if (!locals.user) return {
+    arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>,
+    publicadores: [], partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>,
+    tcesMap: {} as Record<string, string>, quadrasGeo: [] as QuadraGeo[], minhaId: '', podeCoordenar: false,
+    tpTurnos: [] as TpTurnoLinha[], tpPontos: {} as Record<number, TpPontoLite>, tpEscala: [] as TpEscalaLinha[]
+  };
 
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
-  const [arranjos, modalidades, { data: profs }, publicadores, partesRes] = await Promise.all([
+  const escalaAte = new Date(Date.now() + 370 * 86400000).toISOString().slice(0, 10);
+  const escalaDesde = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+
+  const [arranjos, modalidades, { data: profs }, publicadores, partesRes, tpTurnosRes, tpPontosRes, tpEscalaRes] = await Promise.all([
     selectAll<ArranjoLinha>(
       locals.supabase
         .from('arranjos')
@@ -55,8 +85,20 @@ export const load: PageServerLoad = async ({ locals }) => {
     locals.supabase
       .from('arranjo_partes')
       .select('id, arranjo_id, quadras_ids, locais_ids, publicadores, notas')
-      .order('criada_em')
+      .order('criada_em'),
+    // Turnos de TP recorrentes — intercalados na Agenda (spec TP2)
+    locals.supabase.from('tp_turnos').select('*').eq('ativo', true),
+    locals.supabase.from('tp_pontos').select('id, nome, endereco').eq('ativo', true),
+    selectAll<TpEscalaLinha>(
+      locals.supabase.from('tp_escala').select('turno_id, data, publicador_id')
+        .gte('data', escalaDesde).lte('data', escalaAte)
+    )
   ]);
+
+  const tpTurnos = (tpTurnosRes.data ?? []) as TpTurnoLinha[];
+  const tpPontos: Record<number, TpPontoLite> = {};
+  for (const p of (tpPontosRes.data ?? []) as any[]) tpPontos[p.id] = { id: p.id, nome: p.nome, endereco: p.endereco };
+  const tpEscala = (tpEscalaRes ?? []) as TpEscalaLinha[];
 
   const dirigentes: Record<string, string> = {};
   const nomesPorId: Record<string, string> = {};
@@ -117,7 +159,10 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
-  return { arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, quadrasGeo, minhaId: locals.user.id, podeCoordenar };
+  return {
+    arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, quadrasGeo,
+    minhaId: locals.user.id, podeCoordenar, tpTurnos, tpPontos, tpEscala
+  };
 };
 
 export const actions: Actions = {
@@ -261,5 +306,42 @@ export const actions: Actions = {
     if (error) return fail(400, { erro: error.message });
     const interessado = !!data;
     return { ok: true, msg: interessado ? 'Interesse registrado' : 'Interesse removido', interessado };
+  },
+
+  // Inscrição em turno de TP numa data concreta. Vaga validada na ACTION
+  // (count < vagas), não em constraint — corrida aceitável nesse volume.
+  inscreverTurno: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const turnoId = Number(fd.get('turno_id') ?? 0);
+    const dataOc = String(fd.get('data') ?? '').trim();
+    if (!turnoId || !dataOc) return fail(400, { erro: 'turno_id e data obrigatórios' });
+
+    const { data: turno, error: errT } = await locals.supabase
+      .from('tp_turnos').select('vagas').eq('id', turnoId).single();
+    if (errT || !turno) return fail(404, { erro: 'Turno não encontrado' });
+
+    const { count } = await locals.supabase
+      .from('tp_escala').select('id', { count: 'exact', head: true })
+      .eq('turno_id', turnoId).eq('data', dataOc);
+    if ((count ?? 0) >= turno.vagas) return fail(409, { erro: 'Turno sem vagas nessa data' });
+
+    const { error } = await locals.supabase
+      .from('tp_escala').insert({ turno_id: turnoId, data: dataOc, publicador_id: locals.user.id });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Inscrito no turno' };
+  },
+
+  sairTurno: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const turnoId = Number(fd.get('turno_id') ?? 0);
+    const dataOc = String(fd.get('data') ?? '').trim();
+    if (!turnoId || !dataOc) return fail(400, { erro: 'turno_id e data obrigatórios' });
+    const { error } = await locals.supabase
+      .from('tp_escala').delete()
+      .eq('turno_id', turnoId).eq('data', dataOc).eq('publicador_id', locals.user.id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Saiu do turno' };
   }
 };
