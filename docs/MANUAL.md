@@ -327,3 +327,131 @@ Aba Polígonos → botão **🔤 Renomear**.
 4. Tooltip muda em tempo real
 5. Confirmar só habilita quando todas estão atribuídas
 6. Atualiza em cascata: Quadras, Dados Brutos, Territórios, Designações, Registros
+
+---
+
+# Funcionalidades novas — Designações, Campanhas v2, Testemunho Público, Publicações
+
+## Realocar quadras de um arranjo que não terminou tudo
+
+Onde: **Designações** (`/admin/designacoes`), card de qualquer arranjo com quadras.
+
+1. No card do arranjo, botão **Realocar** (ícone de duas setas)
+2. Marca as quadras que NÃO foram terminadas (viram azuis)
+3. Escolhe o arranjo de destino no select
+4. Confirma — as quadras marcadas saem do arranjo de origem e entram no
+   destino. As demais continuam onde estavam. Nenhum dos dois eventos é
+   apagado.
+
+Também dá pra:
+- **Limpar** — esvazia todo o território do arranjo (quadras + prédios +
+  TCE) sem apagar o evento (data/dirigente continuam na agenda)
+- **Apagar** — remove uma designação pessoal ou de cartas por completo
+
+**Trava automática:** uma quadra nunca pode estar em dois arranjos com
+data futura ao mesmo tempo (ou sem data). Se você tentar designar,
+anexar ou realocar uma quadra que já está comprometida, o app bloqueia
+e mostra em qual arranjo ela está.
+
+## Reserva de quadras pra campanha ("quarentena")
+
+Objetivo: descansar o território antes da campanha começar.
+
+Onde: **Visão Geral** (`/admin`), quando existe uma campanha **planejada**
+(criada mas ainda não iniciada).
+
+1. Seleciona as quadras no mapa (clique múltiplo)
+2. Na barra inferior, botão roxo **Reservar p/ [nome da campanha]**
+3. As quadras reservadas ganham um contorno tracejado roxo no mapa
+4. Enquanto a campanha não começa, essas quadras ficam bloqueadas pra
+   designação/arranjo (como uma trava normal)
+5. No dia que a campanha começa, a reserva para de bloquear sozinha —
+   vira só um lembrete visual de quais quadras são "da campanha"
+6. Botão **Liberar reserva** desfaz a qualquer momento
+
+Ao criar um arranjo **durante** a campanha (`/admin/arranjos`), as
+quadras reservadas aparecem como chips clicáveis acima do campo de
+quadras — um toque adiciona ao território do arranjo.
+
+## Termômetro de ritmo + mapa "Só a campanha"
+
+Onde: **Campanha** (`/admin/campanha`), com uma campanha ativa e meta
+semanal definida.
+
+- Card **Ritmo**: mostra quantas quadras faltam, quantos dias restam, o
+  ritmo atual (quadras/dia) e o ritmo necessário pra bater a meta. Selo
+  verde (**Ritmo adequado**), âmbar (**Atenção**) ou vermelho (**Risco
+  de não concluir**) + uma projeção de quando a campanha terminaria no
+  ritmo atual.
+- Mapa do período tem dois botões: **Só a campanha** (verde forte =
+  concluída durante a campanha, cinza = resto — não mistura com
+  histórico antigo) e **Histórico completo** (coloração normal por
+  recência, mostra conclusões de antes da campanha também).
+
+## Campanha planejada + inscrição antecipada em arranjo
+
+- Quando existe uma campanha planejada (ainda não começou), o **home do
+  campo** mostra um card roxo "Faltam N dias — [nome]" que leva direto
+  pra Agenda já filtrada nos próximos 3 meses.
+- Em qualquer arranjo (Agenda do campo), botão **Quero participar** —
+  qualquer publicador sinaliza interesse numa saída futura sem que isso
+  crie uma parte automaticamente. O dirigente vê a lista de
+  interessados no card.
+- No sheet **Repartir**, os publicadores que sinalizaram interesse
+  aparecem primeiro na lista, com um selo "interessado".
+
+## Testemunho público (carrinhos)
+
+### Cadastrar pontos e turnos (admin)
+
+Onde: **Testemunho público** (`/admin/tp`, novo item no menu Administrar).
+
+1. Botão **+ Ponto** — nome, endereço, notas (onde pega o carrinho,
+   chave, etc.) e localização (botão "Usar minha localização" pega o
+   GPS do celular)
+2. Dentro do ponto, botão **+ Turno** — dia da semana, horário de
+   início/fim, quantidade de vagas
+3. A lista mostra quem já está escalado na semana corrente pra cada
+   turno, e marca em vermelho quando falta gente (vagas > inscritos)
+
+### Se inscrever num turno (campo)
+
+Onde: aba **Agenda** (antiga "Arranjo"), os turnos de TP aparecem
+intercalados com os arranjos normais, com uma faixa/ícone de megafone.
+
+1. Encontra o turno no dia desejado
+2. Botão **Me inscrever** (se tiver vaga) ou **Sair do turno** (se já
+   estiver inscrito)
+3. A home do campo mostra um card teal "Seus turnos de TP (próximos 7
+   dias)" com atalho rápido pra Agenda
+
+A inscrição é por **data concreta**, não por turno genérico — dá pra
+faltar uma semana sem sair da escala fixa, e fica histórico real de
+quem trabalhou quando.
+
+## Publicações e suprimento de campanha
+
+Onde: **Campanha** (`/admin/campanha`), seção **Suprimento**.
+
+1. Botão **Catálogo** — cadastra as publicações usadas (nome + código
+   opcional), independente de campanha
+2. Botão **Adicionar** — escolhe uma publicação do catálogo e define a
+   quantidade necessária pra campanha atual
+3. Cada linha tem os campos **Necessária**, **Em mãos** e o checkbox
+   **Pedido feito** — edita direto na tela, sem precisar salvar botão
+   separado
+4. Um campo de notas em texto livre (ex: "20 convites por publicador")
+5. Se faltar quantidade e a campanha começar em menos de 30 dias, a
+   linha fica com borda vermelha de alerta
+
+No form de período da campanha (**+ Período** / editar), dá pra
+escolher uma **publicação principal** — quando a campanha está em
+andamento, a nota de suprimento dessa publicação aparece no card da
+campanha na home do campo (aviso de "levar X" pros publicadores).
+
+## Migrations dessa leva (rodar em `/admin/dev/sql`, em ordem)
+
+- `034_reserva_campanha.sql` — reserva de quadras
+- `035_arranjo_interessados.sql` — inscrição antecipada em arranjo
+- `036_testemunho_publico.sql` — pontos/turnos/escala de TP
+- `037_publicacoes.sql` — catálogo de publicações + suprimento
