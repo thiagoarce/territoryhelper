@@ -2,6 +2,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { toast } from '$lib/ui/toast.svelte';
 
   let { form }: { form: any } = $props();
   let arquivosSelecionados = $state<File[]>([]);
@@ -19,7 +20,7 @@
     if (!ev.dataTransfer) return;
     const files = Array.from(ev.dataTransfer.files).filter((f) => f.name.endsWith('.sql'));
     if (files.length === 0) {
-      alert('Apenas arquivos .sql');
+      toast.warn('Apenas arquivos .sql');
       return;
     }
     arquivosSelecionados = files;

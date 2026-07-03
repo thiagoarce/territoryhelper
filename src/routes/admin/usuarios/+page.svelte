@@ -2,6 +2,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { toast } from '$lib/ui/toast.svelte';
   import type { UsuarioComEmail, Role } from '$lib/types';
 
   let {
@@ -179,8 +180,12 @@
         if (result.type === 'success') {
           const tok = (result.data as any)?.token;
           const url = `${window.location.origin}/convite/${tok}`;
-          try { await navigator.clipboard.writeText(url); } catch {}
-          alert('Convite criado! Link copiado:\n' + url);
+          try {
+            await navigator.clipboard.writeText(url);
+            toast.success('Convite criado — link copiado pra área de transferência');
+          } catch {
+            toast.success('Convite criado: ' + url);
+          }
         }
       }}
       class="max-w-md space-y-3 rounded-lg border border-slate-200 bg-white p-4"
@@ -227,7 +232,7 @@
                       type="button"
                       onclick={async () => {
                         const url = `${window.location.origin}/convite/${c.token}`;
-                        try { await navigator.clipboard.writeText(url); alert('Link copiado'); } catch { alert(url); }
+                        try { await navigator.clipboard.writeText(url); toast.success('Link copiado'); } catch { toast.info(url); }
                       }}
                       class="text-primary-700 hover:underline"
                     ><Icon nome="clipboard" size={14} /> Copiar link</button>
