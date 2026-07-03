@@ -81,7 +81,7 @@
     else toast.error('Falhou');
   }
 
-  let mapaRef: { exportarPng: () => string | null; centralizarEmQuadra: (q: QuadraGeo) => void } | null = $state(null);
+  let mapaRef: { exportarPng: () => Promise<string | null>; centralizarEmQuadra: (q: QuadraGeo) => void } | null = $state(null);
 
   // POIs viram marcadores no mapa (specs Fase 3 — "renderizar no mapa")
   const poisMarcadores = $derived(
@@ -95,8 +95,8 @@
     }))
   );
 
-  function exportarMapa() {
-    const png = mapaRef?.exportarPng();
+  async function exportarMapa() {
+    const png = await mapaRef?.exportarPng();
     if (!png) {
       toast.warn('Não foi possível exportar');
       return;

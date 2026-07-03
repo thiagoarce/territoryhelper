@@ -31,7 +31,7 @@
       emoji: '✉'
     }));
 
-  let mapaRef: { exportarPng: () => string | null } | null = $state(null);
+  let mapaRef: { exportarPng: () => Promise<string | null> } | null = $state(null);
 
   const titulo: string = t.tipo === 'arranjo' ? (t.titulo ?? 'Arranjo') : `Território de ${t.titulo}`;
   const urlPagina = $derived(typeof window !== 'undefined' ? window.location.href : '');
@@ -52,7 +52,7 @@
   }
 
   async function compartilharComImagem() {
-    const png = mapaRef?.exportarPng();
+    const png = await mapaRef?.exportarPng();
     if (!png) { compartilharLink(); return; }
     try {
       const blob = await (await fetch(png)).blob();

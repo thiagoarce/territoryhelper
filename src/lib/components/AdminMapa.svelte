@@ -54,15 +54,31 @@
   }
 
   // Expõe o canvas pra screenshot. Chamado de fora via bind:this.
-  export function exportarPng(): string | null {
-    if (!mapa) return null;
-    try {
-      const canvas = mapa.getCanvas();
-      return canvas.toDataURL('image/png');
-    } catch (e) {
-      console.warn('exportar png falhou:', e);
-      return null;
-    }
+  // WebGL: toDataURL fora do frame de render devolve canvas PRETO —
+  // força um repaint e captura dentro do evento 'render'.
+  export function exportarPng(): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (!mapa) return resolve(null);
+      let resolvido = false;
+      const capturar = () => {
+        if (resolvido) return;
+        resolvido = true;
+        try {
+          resolve(mapa.getCanvas().toDataURL('image/png'));
+        } catch (e) {
+          console.warn('exportar png falhou:', e);
+          resolve(null);
+        }
+      };
+      try {
+        mapa.once('render', capturar);
+        mapa.triggerRepaint();
+        // fallback se o evento não disparar (mapa parado sem repaint)
+        setTimeout(capturar, 1500);
+      } catch {
+        capturar();
+      }
+    });
   }
 
   // Centraliza mapa na quadra (usada pelo dirigente ao clicar em Estacionar)
