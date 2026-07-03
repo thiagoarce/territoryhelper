@@ -32,6 +32,18 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 - `src/lib/server/queries.ts` — helpers de query. **`selectAll<T>()`** pagina
   além do limite 1000 do PostgREST + dedup por id.
 - `src/lib/ui/` — primitives: `Button`, `Card`, `BottomSheet`, `toast.svelte.ts`
+- `src/lib/offline/` — fila de escrita offline (IndexedDB). `postComFila(url,
+  formData)` tenta o POST normal; se a rede falhar de verdade (não um erro
+  do servidor), enfileira e devolve `{offline:true}` em vez de derrubar a
+  UI. `flushFila()` reenvia tudo quando a conexão volta (chamado no root
+  layout, on mount + evento `online`). Usado em `/predio/[id]` (registrar
+  desfecho + toggle cartas — os fluxos de maior frequência com sinal
+  ruim); estenda pra outros fluxos com o mesmo `postComFila` quando
+  precisar.
+- `src/lib/server/posse.ts` — helper único e puro de "esse publicador pode
+  trabalhar essa quadra?", espelhando as mesmas cláusulas de
+  `pode_editar_local` (RLS). `guards.ts::exigirQuadraDesignada` só busca
+  os booleans (via query) e delega a decisão pra cá.
 - `src/hooks.server.ts` — client Supabase + sessão em `locals`
 - `supabase/migrations/` — SQL numerado. Aplicar via `/admin/dev/sql` (RPC
   `exec_sql`) ou painel Supabase.

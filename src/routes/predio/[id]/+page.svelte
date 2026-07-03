@@ -5,6 +5,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { postComFila } from '$lib/offline';
 
   interface UnidadeEnriched {
     id: number;
@@ -62,6 +63,57 @@
 
   function unidadeVisitada(u: UnidadeEnriched): boolean {
     return !!u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo';
+  }
+
+  // Escrita resiliente a sinal ruim: tenta enviar, se a rede falhar de
+  // verdade enfileira em IndexedDB (sincroniza sozinho quando voltar —
+  // ver $lib/offline). Overlay local dá feedback otimista imediato.
+  let overrideDesfecho = $state<Record<number, string>>({});
+  let overrideCartas = $state<Record<number, Partial<Record<'carta_entregue' | 'desocupado' | 'nao_escrever', boolean>>>>({});
+
+  function tipoEfetivo(u: UnidadeEnriched): string | null {
+    return u.id in overrideDesfecho ? (overrideDesfecho[u.id] || null) : u.ultimo_tipo;
+  }
+  function campoEfetivo(u: UnidadeEnriched, campo: 'carta_entregue' | 'desocupado' | 'nao_escrever'): boolean {
+    const ov = overrideCartas[u.id];
+    if (ov && campo in ov) return !!ov[campo];
+    return campo === 'carta_entregue' ? !!u.carta_entregue : !!(u as any)[campo];
+  }
+
+  async function marcarDesfecho(u: UnidadeEnriched, tipo: string) {
+    const novoTipo = tipoEfetivo(u) === tipo ? '' : tipo;
+    overrideDesfecho = { ...overrideDesfecho, [u.id]: novoTipo };
+    const fd = new FormData();
+    fd.append('unidade_id', String(u.id));
+    fd.append('tipo', novoTipo);
+    const r = await postComFila('?/marcarDesfecho', fd);
+    if (!r.ok && r.offline) {
+      toast.info('Salvo offline — sincroniza quando o sinal voltar');
+    } else if (!r.ok) {
+      toast.error(r.erro);
+      const { [u.id]: _omit, ...resto } = overrideDesfecho; overrideDesfecho = resto;
+    } else {
+      const { [u.id]: _omit, ...resto } = overrideDesfecho; overrideDesfecho = resto;
+      await invalidateAll();
+    }
+  }
+
+  async function toggleCarta(u: UnidadeEnriched, campo: 'carta_entregue' | 'desocupado' | 'nao_escrever') {
+    const novoValor = !campoEfetivo(u, campo);
+    overrideCartas = { ...overrideCartas, [u.id]: { ...(overrideCartas[u.id] ?? {}), [campo]: novoValor } };
+    const fd = new FormData();
+    fd.append('unidade_id', String(u.id));
+    fd.append('campo', campo);
+    const r = await postComFila('?/toggle', fd);
+    if (!r.ok && r.offline) {
+      toast.info('Salvo offline — sincroniza quando o sinal voltar');
+    } else if (!r.ok) {
+      toast.error(r.erro);
+      const atual = { ...overrideCartas }; delete atual[u.id]; overrideCartas = atual;
+    } else {
+      const atual = { ...overrideCartas }; delete atual[u.id]; overrideCartas = atual;
+      await invalidateAll();
+    }
   }
 
   const visitadas = $derived(data.predio.unidades.filter(unidadeVisitada).length);
@@ -182,30 +234,25 @@
         <div class="flex items-center justify-between gap-2">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold text-sm">{u.complemento || `Apto ${u.id}`}</div>
-            {#if modo === 'cartas' && u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue}</div>{/if}
-            {#if modo === 'casa' && u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
-              <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">{u.ultimo_tipo}</span>
+            {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue ?? 'hoje'}</div>{/if}
+            {#if modo === 'casa' && tipoEfetivo(u) && tipoEfetivo(u) !== 'desfeito' && tipoEfetivo(u) !== 'carta_undo'}
+              <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{tipoEfetivo(u)}</span>
             {/if}
           </div>
 
           {#if modo === 'cartas'}
             <div class="flex gap-1">
               {#each [
-                { c: 'carta_entregue', icone: 'mail', ativo: !!u.carta_entregue, cls: 'bg-purple-600' },
-                { c: 'desocupado', icone: 'door-closed', ativo: u.desocupado, cls: 'bg-slate-600' },
-                { c: 'nao_escrever', icone: 'ban', ativo: u.nao_escrever, cls: 'bg-red-600' }
+                { c: 'carta_entregue' as const, icone: 'mail', cls: 'bg-purple-600' },
+                { c: 'desocupado' as const, icone: 'door-closed', cls: 'bg-slate-600' },
+                { c: 'nao_escrever' as const, icone: 'ban', cls: 'bg-red-600' }
               ] as opt}
-                <form method="POST" action="?/toggle"
-                  use:enhance={() => async ({ result, update }) => {
-                    await update();
-                    if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
-                    await invalidateAll();
-                  }}
-                >
-                  <input type="hidden" name="unidade_id" value={u.id} />
-                  <input type="hidden" name="campo" value={opt.c} />
-                  <button class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
-                </form>
+                {@const ativo = campoEfetivo(u, opt.c)}
+                <button
+                  type="button"
+                  onclick={() => toggleCarta(u, opt.c)}
+                  class="px-3 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
+                ><Icon nome={opt.icone} size={18} /></button>
               {/each}
             </div>
           {:else}
@@ -216,18 +263,12 @@
                 { t: 'naoAtendeu', icone: 'hand', cls: 'bg-slate-600' },
                 { t: 'carta', icone: 'mail', cls: 'bg-purple-600' }
               ] as opt}
-                {@const ativo = u.ultimo_tipo === opt.t}
-                <form method="POST" action="?/marcarDesfecho"
-                  use:enhance={() => async ({ result, update }) => {
-                    await update();
-                    if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
-                    await invalidateAll();
-                  }}
-                >
-                  <input type="hidden" name="unidade_id" value={u.id} />
-                  <input type="hidden" name="tipo" value={ativo ? '' : opt.t} />
-                  <button class="px-2.5 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
-                </form>
+                {@const ativo = tipoEfetivo(u) === opt.t}
+                <button
+                  type="button"
+                  onclick={() => marcarDesfecho(u, opt.t)}
+                  class="px-2.5 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
+                ><Icon nome={opt.icone} size={18} /></button>
               {/each}
             </div>
           {/if}

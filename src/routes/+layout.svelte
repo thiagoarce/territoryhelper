@@ -5,12 +5,36 @@
   import type { Snippet } from 'svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
   import InstallPrompt from '$lib/components/InstallPrompt.svelte';
+  import { toast } from '$lib/ui/toast.svelte';
+  import { invalidateAll } from '$app/navigation';
+  import { flushFila, contarFila } from '$lib/offline';
+  import { onMount } from 'svelte';
 
   // Recarrega buscando a versão nova. skipWaiting no SW garante que o
   // service worker novo assume; o reload traz os assets novos.
   function atualizarApp() {
     location.reload();
   }
+
+  // Fila offline (registro/cartas em /predio/[id] com sinal ruim): tenta
+  // sincronizar ao carregar a página e sempre que a conexão voltar.
+  let pendentesOffline = $state(0);
+  async function sincronizarFila() {
+    const antes = await contarFila();
+    if (antes === 0) return;
+    const { sincronizadas, restantes } = await flushFila();
+    pendentesOffline = restantes;
+    if (sincronizadas > 0) {
+      toast.success(`${sincronizadas} ação(ões) sincronizada(s)`);
+      await invalidateAll();
+    }
+  }
+  onMount(() => {
+    sincronizarFila();
+    contarFila().then((n) => (pendentesOffline = n));
+    window.addEventListener('online', sincronizarFila);
+    return () => window.removeEventListener('online', sincronizarFila);
+  });
 
   let { data, children }: { data: { profile: any }; children: Snippet } = $props();
 
@@ -113,6 +137,15 @@
       onclick={atualizarApp}
       class="text-sm font-semibold bg-white text-primary-700 px-3 py-1 rounded-lg hover:bg-primary-50"
     >Atualizar</button>
+  </div>
+{/if}
+
+<!-- Aviso de ações pendentes de sincronizar (sinal ruim em campo) -->
+{#if pendentesOffline > 0}
+  <div class="fixed top-0 left-0 right-0 z-[59] bg-amber-600 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
+    <Icon nome="refresh" size={14} />
+    <span class="flex-1">{pendentesOffline} ação(ões) salva(s) offline — sincroniza sozinho quando o sinal voltar</span>
+    <button type="button" onclick={sincronizarFila} class="text-xs font-semibold bg-white/20 px-2 py-1 rounded hover:bg-white/30">Tentar agora</button>
   </div>
 {/if}
 

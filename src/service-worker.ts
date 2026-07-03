@@ -28,7 +28,13 @@ sw.addEventListener('activate', (event) => {
 // Fetch strategy:
 // - GET de build/files: cache-first (são versionados pelo hash)
 // - GET de outros (rotas SSR + API): network-first com fallback pro cache
-// - POST/PUT/DELETE: nunca cacheia (passa direto)
+//   (offline mostra a última página visitada, mesmo que os dados envelheçam)
+// - POST/PUT/DELETE: nunca cacheia (passa direto) — a FILA de escrita
+//   offline (registrar/marcar carta com sinal ruim) não vive aqui, vive
+//   em $lib/offline (IndexedDB) e é acionada pelos próprios call sites
+//   (postComFila) + sincronizada no root layout ao reconectar. Manter o
+//   SW livre de lógica de negócio evita duplicar a decisão de retry aqui
+//   e lá.
 sw.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);

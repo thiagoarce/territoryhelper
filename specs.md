@@ -139,16 +139,34 @@ O app deve crescer pra cobrir tudo do superintendente de serviço:
   progresso individual do publicador, comparativo com campanhas
   anteriores, compartilhamento.
 
-## Polimentos futuros (fora do specs original)
+## Polimentos futuros (fora do specs original) — todos ✅ concluídos
 * ✅ Distribuir arranjo com subconjuntos — resolvido pelo sistema de
   Partes (`arranjo_partes` / Repartir), que substituiu o antigo
   `distribuirQuadras` (que dava TODAS as quadras pra cada publicador).
 * ~~Rename `/publicador/*` → `/campo/*`~~ — descartado, "publicador" já
   é um nome bom o suficiente.
-* PNG export em lote (múltiplas quadras selecionadas).
-* Multi-publicador por designação (`designacao_publicadores` já existe;
-  UI ainda opera 1-a-1).
-* Offline-first: cache de leitura + fila de escrita no service worker
-  (confiabilidade em campo com sinal ruim).
-* Testes de fluxo ponta-a-ponta (delegação, designar cartas) + helper
-  único de posse de quadra espelhando `pode_editar_local`.
+* ✅ PNG export em lote — mapa estratégico, modo seleção → "PNG em lote"
+  centraliza em cada quadra selecionada e baixa 1 PNG por quadra.
+* ✅ Multi-publicador por designação — UI multi-select já existia na
+  Visão Geral; portado pro hub `/admin/designacoes` também. No caminho,
+  achado e corrigido um bug real: RLS (`pode_editar_local`) e o guard só
+  reconheciam o LÍDER da designação — participante (dupla/trio) tomava
+  403 ao tentar trabalhar. Migration 038.
+* ✅ Offline-first (escopo direcionado) — `$lib/offline`: fila de escrita
+  em IndexedDB (`postComFila`/`flushFila`), aplicada nos dois fluxos de
+  maior frequência em campo (`/predio/[id]`: registrar desfecho casa-em-
+  casa + toggle de cartas). Falha de rede enfileira em vez de mostrar
+  erro; sincroniza sozinho ao reconectar (root layout escuta `online`).
+  Cache de leitura (GET network-first com fallback pro cache) já existia
+  no service worker. Não cobre TODAS as escritas do app — é a base
+  reutilizável (`postComFila`) pra estender a outros fluxos quando
+  precisar.
+* ✅ Testes de fluxo + helper único de posse de quadra — a suíte antiga em
+  `tests/` era 100% da era Google Apps Script (arquivos `.gs` que nem
+  existem mais) e o CI vinha falhando em silêncio em todo push desde a
+  reescrita. Suíte nova (`tests/*.test.ts`, roda via `npm test`) cobre
+  lógica pura: `$lib/server/posse.ts` (decisão de posse de quadra,
+  espelhando as 5 cláusulas de `pode_editar_local`), `diasDesde`,
+  `statusCampanha`, expansão de ocorrências de arranjo/TP. Não há
+  integração contra Supabase real (precisaria de projeto de teste com
+  seed, que não existe neste repo).
