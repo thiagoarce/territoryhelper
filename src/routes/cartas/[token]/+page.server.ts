@@ -13,32 +13,20 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
     }
   });
 
-  const { data: tok, error: errT } = await supa
-    .from('cartas_tokens')
-    .select('local_id, expira_em')
-    .eq('token', params.token)
-    .maybeSingle();
-  if (errT) throw errT;
-  if (!tok) throw error(404, 'Link inválido ou expirado');
-  if (tok.expira_em && new Date(tok.expira_em) < new Date()) {
-    throw error(410, 'Link expirado');
+  // RPC security definer — resolve token + devolve local/unidades sem
+  // depender de RLS (que só libera SELECT em locais/unidades pra
+  // `authenticated`; visitante deslogado com token válido tomava 404).
+  const { data, error: errT } = await supa.rpc('carta_publica_dados' as any, { p_token: params.token });
+  if (errT) {
+    if (errT.message?.includes('expirado')) throw error(410, 'Link expirado');
+    throw error(404, 'Link inválido ou expirado');
   }
 
-  const { data: local } = await supa
-    .from('locais')
-    .select('id, logradouro, numero, nome, tipo_entrada, acesso_caixas, acesso_interfones, irmao_mora, nome_irmao, notas')
-    .eq('id', tok.local_id)
-    .maybeSingle();
+  const local = (data as any)?.local ?? null;
+  const unidades = (data as any)?.unidades ?? [];
   if (!local) throw error(404, 'Prédio não encontrado');
 
-  const { data: unidades } = await supa
-    .from('unidades')
-    .select('id, complemento, carta_entregue, desocupado, nao_escrever, nota')
-    .eq('local_id', tok.local_id)
-    .order('ordem', { ascending: true, nullsFirst: false })
-    .order('complemento');
-
-  return { token: params.token, local, unidades: unidades ?? [] };
+  return { token: params.token, local, unidades };
 };
 
 export const actions: Actions = {
