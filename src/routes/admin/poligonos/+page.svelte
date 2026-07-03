@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaPoligonos from '$lib/components/MapaPoligonos.svelte';
@@ -396,7 +397,7 @@
           };
         }}
       >
-        <Button variant="primary" type="submit" loading={salvando}>⚡ Auto-vincular {stats.semQuadra} endereço(s)</Button>
+        <Button variant="primary" type="submit" loading={salvando}><Icon nome="zap" size={14} /> Auto-vincular {stats.semQuadra} endereço(s)</Button>
       </form>
     {/if}
   {/if}
@@ -405,12 +406,12 @@
   {#if modo === 'auditar'}
     {#if totalProblemas === 0}
       <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
-        ✓ Nada pra auditar — todas as quadras consistentes
+        <Icon nome="check" size={14} /> Nada pra auditar — todas as quadras consistentes
       </div>
     {:else}
       <div class="space-y-2 max-h-60 overflow-y-auto rounded-lg border border-slate-200 p-2">
         {#if data.quadrasOrfas.length > 0}
-          <div class="text-xs font-semibold text-orange-700">◇ Quadras sem território ({data.quadrasOrfas.length})</div>
+          <div class="text-xs font-semibold text-orange-700"><Icon nome="shapes" size={14} /> Quadras sem território ({data.quadrasOrfas.length})</div>
           <div class="flex flex-wrap gap-1">
             {#each data.quadrasOrfas as qid}
               <button
@@ -422,7 +423,7 @@
           </div>
         {/if}
         {#if data.quadrasMultiCluster.length > 0}
-          <div class="text-xs font-semibold text-amber-700 mt-2">⚠ Múltiplos clusters IBGE ({data.quadrasMultiCluster.length})</div>
+          <div class="text-xs font-semibold text-amber-700 mt-2"><Icon nome="alert" size={14} /> Múltiplos clusters IBGE ({data.quadrasMultiCluster.length})</div>
           {#each data.quadrasMultiCluster as item}
             <button
               onclick={() => destacarQuadra(item.quadra_id)}
@@ -485,7 +486,7 @@
               <span class="w-2.5 h-2.5 rounded-full shrink-0" style:background-color={t.status === 'aberto' ? '#9333ea' : '#94a3b8'}></span>
               <span class="font-medium truncate">{t.nome}</span>
               {#if t.publicador_nome}
-                <span class="text-blue-600 truncate">👤 {t.publicador_nome}</span>
+                <span class="text-blue-600 truncate"><Icon nome="user" size={14} /> {t.publicador_nome}</span>
               {:else}
                 <span class="text-slate-400">{t.status}</span>
               {/if}
@@ -494,12 +495,12 @@
               {#if t.status === 'aberto'}
                 <form method="POST" action="?/alterarStatusTce" use:enhance={() => async ({ result, update }) => { await update(); if (result.type==='success'){ toast.success('Concluído'); await invalidateAll(); } }}>
                   <input type="hidden" name="id" value={t.id} /><input type="hidden" name="status" value="concluido" />
-                  <button type="submit" class="text-green-700 hover:underline">✓</button>
+                  <button type="submit" class="text-green-700 hover:underline"><Icon nome="check" size={14} /></button>
                 </form>
               {/if}
               <form method="POST" action="?/deletarTce" use:enhance={() => async ({ result, update }) => { await update(); if (result.type==='success'){ toast.warn('Removido'); await invalidateAll(); } }} onsubmit={(e) => { if (!confirm(`Deletar TCE "${t.nome}"?`)) e.preventDefault(); }}>
                 <input type="hidden" name="id" value={t.id} />
-                <button type="submit" class="text-red-600 hover:underline">🗑</button>
+                <button type="submit" class="text-red-600 hover:underline"><Icon nome="trash" size={14} /></button>
               </form>
             </div>
           </div>
@@ -550,7 +551,7 @@
   <!-- Sub-toolbar do modo Quadras: desenhar / juntar -->
   {#if modo === 'quadras' && desenhoAtivo === 'off'}
     <div class="flex items-center gap-2">
-      <Button variant="secondary" size="sm" onclick={iniciarNova}>✏ Desenhar nova quadra</Button>
+      <Button variant="secondary" size="sm" onclick={iniciarNova}><Icon nome="pencil" size={14} /> Desenhar nova quadra</Button>
       <button
         onclick={() => { juntarAtivo = !juntarAtivo; selecionadasQuadras = new Set(); }}
         class="text-sm px-3 py-1.5 rounded-lg border transition-colors"
@@ -558,7 +559,7 @@
         class:border-primary-500={juntarAtivo}
         class:text-primary-700={juntarAtivo}
         class:border-slate-300={!juntarAtivo}
-      >🔗 Juntar quadras</button>
+      ><Icon nome="link" size={14} /> Juntar quadras</button>
     </div>
   {/if}
 
@@ -604,7 +605,7 @@
       onsubmit={(e) => { if (!confirm(`Remover quadra de ${selecionadosLocais.size} endereço(s)?`)) e.preventDefault(); }}
     >
       {#each [...selecionadosLocais] as id}<input type="hidden" name="local_ids" value={id} />{/each}
-      <Button variant="ghost" size="sm" type="submit">↺ Desvincular</Button>
+      <Button variant="ghost" size="sm" type="submit"><Icon nome="undo" size={14} /> Desvincular</Button>
     </form>
 
     <form
@@ -630,7 +631,7 @@
     >
       {#each [...selecionadosLocais] as id}<input type="hidden" name="local_ids" value={id} />{/each}
       <input type="hidden" name="ativar" value="true" />
-      <Button variant="ghost" size="sm" type="submit">✓ Ativar</Button>
+      <Button variant="ghost" size="sm" type="submit"><Icon nome="check" size={14} /> Ativar</Button>
     </form>
 
     <Button variant="ghost" size="sm" onclick={limparSelecao} class="ml-auto">Limpar</Button>
@@ -671,7 +672,7 @@
       }}
     >
       {#each [...selecionadasQuadras] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
-      <Button variant="ghost" size="sm" type="submit">↺ Tirar do território</Button>
+      <Button variant="ghost" size="sm" type="submit"><Icon nome="undo" size={14} /> Tirar do território</Button>
     </form>
 
     <Button variant="ghost" size="sm" onclick={limparQuadras} class="ml-auto">Limpar</Button>
@@ -729,7 +730,7 @@
       class="ml-auto"
     >
       {#each [...selecionadasQuadras] as id}<input type="hidden" name="ids" value={id} />{/each}
-      <Button variant="primary" size="sm" type="submit" loading={salvando} disabled={selecionadasQuadras.size < 2}>🔗 Juntar (mantém {[...selecionadasQuadras][0] ?? ''})</Button>
+      <Button variant="primary" size="sm" type="submit" loading={salvando} disabled={selecionadasQuadras.size < 2}><Icon nome="link" size={14} /> Juntar (mantém {[...selecionadasQuadras][0] ?? ''})</Button>
     </form>
     <Button variant="ghost" size="sm" onclick={() => (selecionadasQuadras = new Set())}>Limpar</Button>
   </div>
@@ -739,7 +740,7 @@
 {#if modo === 'tce' && selecionadosLocais.size > 0}
   <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
     <div class="text-sm font-medium"><strong>{selecionadosLocais.size}</strong> comércio(s)</div>
-    <Button variant="primary" size="sm" onclick={() => { novoTceNome = ''; sheetCriarTce = true; }}>🏪 Criar TCE</Button>
+    <Button variant="primary" size="sm" onclick={() => { novoTceNome = ''; sheetCriarTce = true; }}><Icon nome="store" size={14} /> Criar TCE</Button>
     <Button variant="ghost" size="sm" onclick={limparSelecao} class="ml-auto">Limpar</Button>
   </div>
 {/if}
@@ -903,7 +904,7 @@
         class="border-t border-slate-100 pt-3"
       >
         <input type="hidden" name="id" value={terrEdit.id} />
-        <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Deletar território (quadras viram órfãs)</button>
+        <button type="submit" class="text-sm text-red-700 hover:underline"><Icon nome="trash" size={14} /> Deletar território (quadras viram órfãs)</button>
       </form>
     </div>
   {/if}
@@ -955,7 +956,7 @@
 
       <!-- Ativa/Inativa -->
       <div class="grid grid-cols-2 gap-2">
-        {#each [{ v: true, label: '✓ Ativa' }, { v: false, label: '∅ Inativa' }] as opt}
+        {#each [{ v: true, label: 'Ativa' }, { v: false, label: '∅ Inativa' }] as opt}
           <form
             method="POST"
             action="?/alterarStatusQuadra"
@@ -1007,8 +1008,8 @@
 
       <!-- Geometria: editar forma / dividir -->
       <div class="border-t border-slate-100 pt-3 grid grid-cols-2 gap-2">
-        <Button variant="secondary" onclick={() => iniciarEditarForma(quadraSel!)}>✏ Editar forma</Button>
-        <Button variant="secondary" onclick={() => iniciarSplit(quadraSel!)}>✂ Dividir</Button>
+        <Button variant="secondary" onclick={() => iniciarEditarForma(quadraSel!)}><Icon nome="pencil" size={14} /> Editar forma</Button>
+        <Button variant="secondary" onclick={() => iniciarSplit(quadraSel!)}><Icon nome="scissors" size={14} /> Dividir</Button>
       </div>
 
       <!-- Excluir quadra -->
@@ -1023,7 +1024,7 @@
         onsubmit={(e) => { if (!confirm(`Excluir quadra ${quadraSel?.id}? Os endereços ficam sem quadra.`)) e.preventDefault(); }}
       >
         <input type="hidden" name="id" value={quadraSel.id} />
-        <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Excluir quadra</button>
+        <button type="submit" class="text-sm text-red-700 hover:underline"><Icon nome="trash" size={14} /> Excluir quadra</button>
       </form>
 
       <Button variant="ghost" onclick={() => (sheetQuadra = false)} class="w-full">Fechar</Button>

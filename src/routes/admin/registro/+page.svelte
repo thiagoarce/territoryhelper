@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
@@ -199,7 +200,7 @@
         bind:value={dataConclusao}
         class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
       />
-      <Button variant="success" size="sm" type="submit" loading={salvando}>✓ Concluir</Button>
+      <Button variant="success" size="sm" type="submit" loading={salvando}><Icon nome="check" size={14} /> Concluir</Button>
     </form>
     <form
       method="POST"
@@ -214,7 +215,7 @@
       }}
     >
       {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
-      <Button variant="secondary" size="sm" type="submit" title="Desfaz a última conclusão e volta pra penúltima">↻ Reverter</Button>
+      <Button variant="secondary" size="sm" type="submit" title="Desfaz a última conclusão e volta pra penúltima"><Icon nome="refresh" size={14} /> Reverter</Button>
     </form>
     <form
       method="POST"
@@ -230,7 +231,7 @@
       onsubmit={(e) => { if (!confirm(`Apagar TODO o histórico de ${selecionadas.size} quadra(s)? Não dá pra desfazer.`)) e.preventDefault(); }}
     >
       {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
-      <Button variant="ghost" size="sm" type="submit" title="APAGA todo histórico e marca como pendente">🗑 Limpar</Button>
+      <Button variant="ghost" size="sm" type="submit" title="APAGA todo histórico e marca como pendente"><Icon nome="trash" size={14} /> Limpar</Button>
     </form>
     <Button variant="ghost" size="sm" onclick={limpar}>Cancelar</Button>
     </div>
@@ -281,7 +282,7 @@
 </BottomSheet>
 
 <!-- Sheet: conflito de data anterior -->
-<BottomSheet open={conflito !== null} title="⚠ Data anterior detectada">
+<BottomSheet open={conflito !== null} title="Data anterior detectada">
   {#if conflito}
     <div class="space-y-3 text-sm">
       <p class="text-slate-600">
@@ -300,15 +301,15 @@
       <p class="text-xs text-slate-500">O que fazer?</p>
       <div class="flex flex-col gap-2">
         <Button variant="primary" onclick={() => reSubmeter('historico')} loading={salvando}>
-          📜 Só adicionar ao histórico
+          <Icon nome="file-text" size={14} /> Só adicionar ao histórico
           <span class="block text-xs font-normal opacity-70">Mantém a última como atual</span>
         </Button>
         <Button variant="secondary" onclick={() => reSubmeter('substituir')} loading={salvando}>
-          🔄 Substituir a última
+          <Icon nome="refresh" size={14} /> Substituir a última
           <span class="block text-xs font-normal opacity-70">Apaga a última e usa essa</span>
         </Button>
         <Button variant="ghost" onclick={() => (conflito = null)}>
-          ❌ Cancelar (foi erro)
+          <Icon nome="x" size={14} /> Cancelar (foi erro)
         </Button>
       </div>
     </div>

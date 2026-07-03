@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -22,9 +23,9 @@
   let filtroStatus = $state<FiltroStatus>('abertas');
   let busca = $state('');
 
-  const TIPO_META: Record<string, { label: string; emoji: string; cls: string }> = {
-    pessoal: { label: 'Pessoal', emoji: '🎯', cls: 'bg-blue-100 text-blue-700' },
-    cartas: { label: 'Cartas', emoji: '✉', cls: 'bg-purple-100 text-purple-700' }
+  const TIPO_META: Record<string, { label: string; icone: 'target' | 'mail'; cls: string }> = {
+    pessoal: { label: 'Pessoal', icone: 'target' as const, cls: 'bg-blue-100 text-blue-700' },
+    cartas: { label: 'Cartas', icone: 'mail' as const, cls: 'bg-purple-100 text-purple-700' }
   };
 
   function statusOk(s: string): boolean {
@@ -135,7 +136,7 @@
   <div>
     <h1 class="text-2xl font-bold">Designações</h1>
     <p class="text-sm text-slate-500">
-      Gestão central — 🎯 {stats.pessoal} pessoais · ✉ {stats.cartas} cartas · 🏪 {stats.tce} TCEs · 🎪 {data.arranjos.length} arranjo(s)
+      Gestão central — <Icon nome="target" size={14} /> {stats.pessoal} pessoais · <Icon nome="mail" size={14} /> {stats.cartas} cartas · <Icon nome="store" size={14} /> {stats.tce} TCEs · <Icon nome="tent" size={14} /> {data.arranjos.length} arranjo(s)
     </p>
   </div>
 
@@ -148,7 +149,7 @@
 
   <!-- Filtro tipo -->
   <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5 overflow-x-auto">
-    {#each [['todas', 'Todas'], ['pessoal', '🎯 Pessoal'], ['cartas', '✉ Cartas'], ['tce', '🏪 TCE'], ['arranjo', '🎪 Arranjos']] as [k, l]}
+    {#each [['todas', 'Todas'], ['pessoal', 'Pessoal'], ['cartas', 'Cartas'], ['tce', 'TCE'], ['arranjo', 'Arranjos']] as [k, l]}
       <button
         onclick={() => (filtroTipo = k as FiltroTipo)}
         class="flex-1 px-2 py-1.5 text-xs rounded whitespace-nowrap transition-colors"
@@ -183,7 +184,7 @@
         <div class="flex items-start gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium {meta.cls}">{meta.emoji} {meta.label}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium {meta.cls}"><Icon nome={meta.icone} size={12} /> {meta.label}</span>
               <span class="font-semibold text-sm">{d.publicador_nome ?? '(sem publicador)'}</span>
               {#if d.status !== 'aberta'}
                 <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{d.status}</span>
@@ -204,7 +205,7 @@
               <div class="mt-1.5 flex flex-wrap gap-1">
                 {#each d.predios as p}
                   <a href="/predio/{p.id}" class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded hover:bg-purple-200 truncate max-w-[200px]">
-                    ✉ {p.nome || `${p.logradouro}, ${p.numero}`}
+                    <Icon nome="mail" size={14} /> {p.nome || `${p.logradouro}, ${p.numero}`}
                   </a>
                 {/each}
               </div>
@@ -214,13 +215,13 @@
           <div class="flex flex-col gap-1 items-end shrink-0">
             {#if d.status === 'aberta'}
               <button type="button" onclick={() => acaoRapida('mudarStatus', d.id, { status: 'concluida' })}
-                class="text-xs text-green-700 hover:underline">✓ Concluir</button>
+                class="text-xs text-green-700 hover:underline"><Icon nome="check" size={14} /> Concluir</button>
             {:else}
               <button type="button" onclick={() => acaoRapida('mudarStatus', d.id, { status: 'aberta' })}
-                class="text-xs text-primary-700 hover:underline">↺ Reabrir</button>
+                class="text-xs text-primary-700 hover:underline"><Icon nome="undo" size={14} /> Reabrir</button>
             {/if}
-            <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline">✏ Editar</button>
-            <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)">📤 Link</button>
+            <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
+            <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
           </div>
         </div>
       </Card>
@@ -232,14 +233,14 @@
         <div class="flex items-start gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-100 text-green-700">🎪 Arranjo</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-100 text-green-700"><Icon nome="tent" size={14} /> Arranjo</span>
               <span class="font-semibold text-sm">{a.nome ?? 'Arranjo'}</span>
-              <span class="text-xs text-slate-500">👤 {a.dirigente_nome ?? '(sem dirigente)'}</span>
+              <span class="text-xs text-slate-500"><Icon nome="user" size={14} /> {a.dirigente_nome ?? '(sem dirigente)'}</span>
             </div>
             <div class="text-xs text-slate-500 mt-1">
               {#if a.data}{fmtData(a.data)}{/if}
               {#if a.hora_inicio}· {a.hora_inicio.substring(0, 5)}{/if}
-              {#if a.local_endereco}· 📍 {a.local_endereco}{/if}
+              {#if a.local_endereco}· <Icon nome="map-pin" size={14} /> {a.local_endereco}{/if}
             </div>
             {#if a.quadras_ids.length > 0}
               <div class="mt-1.5 flex flex-wrap gap-1">
@@ -249,14 +250,14 @@
               </div>
             {/if}
             <div class="mt-1 flex gap-2 text-xs text-slate-500">
-              {#if a.cartas_locais_ids.length > 0}<span>✉ {a.cartas_locais_ids.length} prédio(s)</span>{/if}
-              {#if a.tce_id}<span>🏪 TCE {a.tce_id}</span>{/if}
+              {#if a.cartas_locais_ids.length > 0}<span><Icon nome="mail" size={14} /> {a.cartas_locais_ids.length} prédio(s)</span>{/if}
+              {#if a.tce_id}<span><Icon nome="store" size={14} /> TCE {a.tce_id}</span>{/if}
             </div>
           </div>
           <div class="flex flex-col gap-1 items-end shrink-0">
-            <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline">✏ Editar</a>
+            <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</a>
             <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
-              class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)">📤 Link</button>
+              class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
           </div>
         </div>
       </Card>
@@ -268,7 +269,7 @@
         <div class="flex items-start gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-orange-100 text-orange-700">🏪 TCE</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-orange-100 text-orange-700"><Icon nome="store" size={14} /> TCE</span>
               <span class="font-semibold text-sm">{t.nome}</span>
               <span class="text-xs text-slate-500">{t.publicador_nome ?? '(sem publicador)'}</span>
               {#if t.status !== 'aberto'}
@@ -283,12 +284,12 @@
           <div class="flex flex-col gap-1 items-end shrink-0">
             {#if t.status === 'aberto'}
               <button type="button" onclick={() => acaoRapida('mudarStatusTce', t.id, { status: 'concluido' })}
-                class="text-xs text-green-700 hover:underline">✓ Concluir</button>
+                class="text-xs text-green-700 hover:underline"><Icon nome="check" size={14} /> Concluir</button>
               <button type="button" onclick={() => acaoRapida('mudarStatusTce', t.id, { status: 'cancelado' })}
-                class="text-xs text-red-600 hover:underline">✗ Cancelar</button>
+                class="text-xs text-red-600 hover:underline"><Icon nome="x" size={14} /> Cancelar</button>
             {:else}
               <button type="button" onclick={() => acaoRapida('mudarStatusTce', t.id, { status: 'aberto' })}
-                class="text-xs text-primary-700 hover:underline">↺ Reabrir</button>
+                class="text-xs text-primary-700 hover:underline"><Icon nome="undo" size={14} /> Reabrir</button>
             {/if}
           </div>
         </div>
@@ -297,7 +298,7 @@
 
     {#if designacoesFiltradas.length === 0 && tcesFiltrados.length === 0 && arranjosFiltrados.length === 0}
       <div class="text-center py-10">
-        <div class="text-5xl mb-3 opacity-60">📋</div>
+        <div class="text-5xl mb-3 opacity-60"><Icon nome="clipboard" size={40} class="mx-auto text-slate-300" /></div>
         <div class="text-slate-500">Nenhuma designação nesse filtro.</div>
         <p class="text-xs text-slate-400 mt-1">Designe quadras na Visão Geral ou cartas em Prédios. Saídas em grupo são arranjos (gestão em /admin/arranjos).</p>
       </div>
@@ -347,7 +348,7 @@
       <div class="flex gap-2 pt-2">
         <Button variant="secondary" onclick={() => apagarDesignacao(editando!)} class="text-red-600">Apagar</Button>
         {#if editando.status === 'aberta'}
-          <Button variant="secondary" onclick={() => { acaoRapida('mudarStatus', editando!.id, { status: 'cancelada' }); sheetEditar = false; }}>✗ Cancelar desig.</Button>
+          <Button variant="secondary" onclick={() => { acaoRapida('mudarStatus', editando!.id, { status: 'cancelada' }); sheetEditar = false; }}><Icon nome="x" size={14} /> Cancelar desig.</Button>
         {/if}
         <Button variant="primary" type="submit" loading={salvandoEditar} class="flex-1">Salvar</Button>
       </div>

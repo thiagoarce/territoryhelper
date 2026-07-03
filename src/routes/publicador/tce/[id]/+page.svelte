@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
@@ -16,9 +17,9 @@
   const feitos = $derived(data.enderecos.filter((e) => e.ultimoTipo || e.cartaEntregue).length);
 
   function rotuloDesfecho(t: string | null): string {
-    if (t === 'conversou') return '✓ conversou';
-    if (t === 'semConversa') return '📞 sem palestra';
-    if (t === 'naoAtendeu') return '🚪 não atendeu';
+    if (t === 'conversou') return 'conversou';
+    if (t === 'semConversa') return 'sem palestra';
+    if (t === 'naoAtendeu') return 'não atendeu';
     return '';
   }
 </script>
@@ -26,7 +27,7 @@
 <div class="p-4 space-y-3 pb-24">
   <div>
     <a href="/publicador" class="text-sm text-primary-700">← Voltar</a>
-    <h1 class="text-2xl font-bold mt-1">🏪 {data.tce.nome}</h1>
+    <h1 class="text-2xl font-bold mt-1"><Icon nome="store" size={14} /> {data.tce.nome}</h1>
     <p class="text-sm text-slate-500">
       {data.enderecos.length} endereço(s) · {feitos} trabalhado(s)
       {#if data.tce.prazo}· prazo {data.tce.prazo}{/if}
@@ -51,7 +52,7 @@
         {/if}
 
         <div class="mt-2 flex gap-1.5 flex-wrap">
-          {#each [['naoAtendeu', '🚪'], ['semConversa', '📞'], ['conversou', '✓']] as [tipo, icon]}
+          {#each [['naoAtendeu', ''], ['semConversa', ''], ['conversou', '']] as [tipo, icon]}
             <form
               method="POST"
               action="?/marcarDesfecho"
@@ -88,7 +89,7 @@
               class:border-purple-500={e.cartaEntregue}
               class:border-slate-200={!e.cartaEntregue}
               title="Carta entregue"
-            >✉</button>
+            ><Icon nome="mail" size={14} /></button>
           </form>
         </div>
       </div>
@@ -111,7 +112,7 @@
       onsubmit={(e) => { if (!confirm('Concluir este TCE?')) e.preventDefault(); }}
     >
       <input type="hidden" name="id" value={data.tce.id} />
-      <Button variant="success" type="submit" class="w-full">✓ Concluir TCE</Button>
+      <Button variant="success" type="submit" class="w-full"><Icon nome="check" size={14} /> Concluir TCE</Button>
     </form>
   </div>
 {/if}

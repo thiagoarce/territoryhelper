@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { goto, invalidateAll } from '$app/navigation';
   import { enhance } from '$app/forms';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -75,9 +76,9 @@
   />
   <div class="flex flex-wrap gap-2 items-center text-sm">
     {#if lat == null || lng == null}
-      <Button variant="secondary" size="sm" onclick={usarLocalizacao} loading={carregandoGPS}>📍 Usar minha localização</Button>
+      <Button variant="secondary" size="sm" onclick={usarLocalizacao} loading={carregandoGPS}><Icon nome="map-pin" size={14} /> Usar minha localização</Button>
     {:else}
-      <span class="text-xs bg-green-50 border border-green-200 text-green-800 px-2 py-1 rounded">📍 GPS ativo · {lat.toFixed(4)}, {lng.toFixed(4)}</span>
+      <span class="text-xs bg-green-50 border border-green-200 text-green-800 px-2 py-1 rounded"><Icon nome="map-pin" size={14} /> GPS ativo · {lat.toFixed(4)}, {lng.toFixed(4)}</span>
       <button type="button" onclick={limparGeo} class="text-xs text-red-600 hover:underline">Limpar</button>
     {/if}
   </div>
@@ -116,7 +117,7 @@
               <div class="flex items-center gap-2">
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium truncate">
-                    {#if l.tipo === 'predio'}🏢{:else if l.tipo === 'comercio'}🏪{:else}🏠{/if}
+                    {#if l.tipo === 'predio'}<Icon nome="building" size={14} />{:else if l.tipo === 'comercio'}<Icon nome="store" size={14} />{:else}<Icon nome="home" size={14} />{/if}
                     {l.nome || `${l.logradouro}, ${l.numero}`}
                   </div>
                   <div class="text-xs text-slate-500 truncate">{l.logradouro}, {l.numero}{l.quadra_id ? ' · Q' + l.quadra_id : ''}</div>
@@ -134,7 +135,7 @@
     {#if data.quadras.length === 0 && data.locais.length === 0}
       <div class="text-center py-8">
         <div class="text-slate-400 mb-3">Nada encontrado.</div>
-        <Button variant="primary" onclick={abrirCriar}>➕ Criar prédio pendente</Button>
+        <Button variant="primary" onclick={abrirCriar}><Icon nome="plus" size={14} /> Criar prédio pendente</Button>
         <p class="text-xs text-slate-500 mt-2">Você cria; admin depois valida e associa à quadra correta.</p>
       </div>
     {:else}
@@ -183,11 +184,11 @@
     <div>
       <span class="block text-sm font-medium mb-2">Portaria</span>
       <div class="grid grid-cols-3 gap-2">
-        {#each [{ v: 'porteiro', l: 'Porteiro', i: '👮' }, { v: 'eletronica', l: 'Eletrônica', i: '🔘' }, { v: 'sem', l: 'Sem', i: '🚪' }] as opt}
+        {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem', icone: 'door' }] as opt}
           <label class="cursor-pointer">
             <input type="radio" name="tipo_entrada" value={opt.v} class="peer sr-only" />
             <div class="text-center text-sm px-2 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">
-              <div class="text-lg">{opt.i}</div>
+              <div><Icon nome={opt.icone} size={18} /></div>
               <div class="text-xs">{opt.l}</div>
             </div>
           </label>
@@ -207,7 +208,7 @@
     </div>
 
     <div class="text-xs text-amber-800 bg-amber-50 rounded p-2 border border-amber-200">
-      ⚠ Fica marcado como <strong>pendente</strong>. Admin valida depois em /admin/predios (associa quadra correta, ajusta geo).
+      <Icon nome="alert" size={14} /> Fica marcado como <strong>pendente</strong>. Admin valida depois em /admin/predios (associa quadra correta, ajusta geo).
     </div>
 
     <div class="flex gap-2 pt-2">

@@ -279,7 +279,7 @@
         type: 'symbol',
         source: 'alocadas',
         layout: {
-          'text-field': '🔒',
+          'text-field': '',
           'text-size': 14,
           'text-offset': [0.8, -0.8],
           'text-allow-overlap': true
@@ -380,7 +380,7 @@
         return `<div style="font:13px system-ui; min-width:160px;">
           <div style="font-weight:700; font-size:15px; margin-bottom:2px;">${q.id}</div>
           ${territorioLabel ? `<div style="color:#64748b; font-size:11px;">${territorioLabel}</div>` : ''}
-          <div style="color:#475569; font-size:11px; margin-top:2px;">📍 ${q.qtd_locais} endereço${q.qtd_locais === 1 ? '' : 's'}</div>
+          <div style="color:#475569; font-size:11px; margin-top:2px;">${q.qtd_locais} endereço${q.qtd_locais === 1 ? '' : 's'}</div>
           <div style="margin-top:6px; padding-top:6px; border-top:1px solid #e2e8f0;">
             ${dias == null
               ? `<div style="color:#94a3b8; font-size:11px; font-style:italic;">nunca concluída</div>`

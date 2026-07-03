@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
@@ -145,7 +146,7 @@
       onclick={alternarModo}
       class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100"
       title={modoSimples ? 'Voltar ao modo avançado' : 'Modo simples (botões grandes)'}
-    >{modoSimples ? '🔍 Avançado' : 'ⓢ Simples'}</button>
+    >{modoSimples ? 'Avançado' : 'ⓢ Simples'}</button>
   </div>
 </div>
 
@@ -154,7 +155,7 @@
   <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
     {#if data.quadra.data_conclusao}
       <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-sm text-green-700 flex-1">✓ Concluída em <strong>{data.quadra.data_conclusao}</strong></span>
+        <span class="text-sm text-green-700 flex-1"><Icon nome="check" size={14} /> Concluída em <strong>{data.quadra.data_conclusao}</strong></span>
         <form
           method="POST"
           action="?/desfazerConclusao"
@@ -181,7 +182,7 @@
         <label for="data-conc" class="text-sm text-slate-600">Concluir em</label>
         <input id="data-conc" type="date" name="data" bind:value={dataConclusao}
           class="rounded border border-slate-300 px-2 py-1 text-sm" />
-        <Button variant="success" size="sm" type="submit" loading={salvandoConclusao}>✓ Marcar concluída</Button>
+        <Button variant="success" size="sm" type="submit" loading={salvandoConclusao}><Icon nome="check" size={14} /> Marcar concluída</Button>
       </form>
     {/if}
   </div>
@@ -238,27 +239,27 @@
                     onclick={() => togglePredio(l.id)}
                     class="flex-1 px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-50"
                   >
-                    <span class="text-xl">🏢</span>
+                    <span class="text-xl"><Icon nome="building" size={14} /></span>
                     <div class="flex-1 min-w-0">
                       <div class="font-semibold truncate flex items-center gap-1">
                         {l.nome || `${l.logradouro}, ${l.numero}`}
                         {#if l.tipo_entrada === 'porteiro'}<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Porteiro</span>{/if}
                         {#if l.tipo_entrada === 'eletronica'}<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Eletrônica</span>{/if}
-                        {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-xs">👤</span>{/if}
+                        {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-xs"><Icon nome="user" size={14} /></span>{/if}
                         {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
                       </div>
                       <div class="text-xs text-slate-500">
                         {l.logradouro}, {l.numero} · {l.unidades.length} unidades · {l.unidades.filter(unidadeFeita).length} feitas
                       </div>
                     </div>
-                    <span class="text-slate-400 text-lg">{abertos.has(l.id) ? '▼' : '▶'}</span>
+                    <span class="text-slate-400">{#if abertos.has(l.id)}<Icon nome="chevron-down" size={16} />{:else}<Icon nome="chevron-down" size={16} class="inline-block -rotate-90" />{/if}</span>
                   </button>
                   <button
                     type="button"
                     onclick={() => abrirEditar(l)}
                     aria-label="Editar prédio"
                     class="px-3 text-slate-400 hover:text-primary-600 hover:bg-slate-50 border-l border-slate-100"
-                  >✎</button>
+                  ><Icon nome="pencil" size={14} /></button>
                 </div>
                 {#if abertos.has(l.id)}
                   <div class="border-t border-slate-100">
@@ -267,7 +268,7 @@
                         <div class="flex items-center justify-between gap-2 mb-1">
                           <span class="font-mono text-sm">
                             {u.complemento || `Apto ${u.id}`}
-                            {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue">✉</span>{/if}
+                            {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue"><Icon nome="mail" size={14} /></span>{/if}
                           </span>
                           {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
                             <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
@@ -288,9 +289,9 @@
                       <div class="flex-1 min-w-0">
                         <div class="font-semibold truncate flex items-center gap-1">
                           {l.nome || `${l.logradouro}, ${l.numero}`}
-                          {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm">👤</span>{/if}
+                          {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm"><Icon nome="user" size={14} /></span>{/if}
                           {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
-                          {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue">✉</span>{/if}
+                          {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue"><Icon nome="mail" size={14} /></span>{/if}
                         </div>
                         <div class="text-xs text-slate-500">
                           {l.tipo} · {l.logradouro}, {l.numero}{u.complemento ? ' · ' + u.complemento : ''}
@@ -307,7 +308,7 @@
                           onclick={() => abrirEditar(l)}
                           aria-label="Editar"
                           class="text-slate-400 hover:text-primary-600 px-1"
-                        >✎</button>
+                        ><Icon nome="pencil" size={14} /></button>
                       </div>
                     </div>
                     {@render botoes(u)}
@@ -341,9 +342,9 @@
   {@const cartaMarcada = !!u.carta_entregue}
   <div class="flex gap-1 flex-wrap" class:grid={modoSimples} class:grid-cols-2={modoSimples} class:gap-2={modoSimples}>
     {#each [
-      { tipo: 'naoAtendeu', icon: '🚪', label: 'Não atendeu' },
-      { tipo: 'semConversa', icon: '📞', label: 'Sem palestra' },
-      { tipo: 'conversou', icon: '✓', label: 'Conversou' }
+      { tipo: 'naoAtendeu', icone: 'hand', label: 'Não atendeu' },
+      { tipo: 'semConversa', icone: 'door', label: 'Sem palestra' },
+      { tipo: 'conversou', icone: 'chat', label: 'Conversou' }
     ] as opt}
       {@const ativo = u.ultimo_tipo === opt.tipo}
       <form
@@ -358,7 +359,7 @@
           title={opt.label}
           class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {ativo ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-100'}"
         >
-          {opt.icon} <span class={modoSimples ? '' : 'hidden sm:inline'}>{opt.label}</span>
+          <Icon nome={opt.icone} size={16} /> <span class={modoSimples ? '' : 'hidden sm:inline'}>{opt.label}</span>
         </button>
       </form>
     {/each}
@@ -374,7 +375,7 @@
         title="Carta entregue"
         class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {cartaMarcada ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-300 hover:bg-slate-100'}"
       >
-        ✉ <span class={modoSimples ? '' : 'hidden sm:inline'}>Carta</span>
+        <Icon nome="mail" size={14} /> <span class={modoSimples ? '' : 'hidden sm:inline'}>Carta</span>
       </button>
     </form>
   </div>

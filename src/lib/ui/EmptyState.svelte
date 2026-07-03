@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte';
 
   let {
-    icon = '📭',
+    icon = '',
     titulo,
     descricao,
     children

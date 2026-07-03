@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { deserialize } from '$app/forms';
@@ -243,7 +244,7 @@
     {#if ocorrencias.length === 0}
       <Card padding="md">
         <div class="text-center py-8">
-          <div class="text-4xl mb-2 opacity-50">📅</div>
+          <div class="text-4xl mb-2 opacity-50"><Icon nome="calendar" size={40} class="mx-auto text-slate-300" /></div>
           <div class="font-medium">Nenhum arranjo no período</div>
           <div class="text-sm text-slate-500">Use "+ Novo arranjo" pra marcar uma saída.</div>
         </div>
@@ -276,9 +277,9 @@
                         {#if m}<span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{tipoLabel(m.tipo_territorio)}</span>{/if}
                       </div>
                       <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                        {#if oc.arranjo.hora_inicio}<span>🕒 {oc.arranjo.hora_inicio.substring(0, 5)}{oc.arranjo.hora_fim ? `–${oc.arranjo.hora_fim.substring(0, 5)}` : ''}</span>{/if}
-                        {#if oc.arranjo.local_endereco}<span class="truncate">📍 {oc.arranjo.local_endereco}</span>{/if}
-                        {#if oc.arranjo.dirigente_id}<span>👤 {dirigenteNome(oc.arranjo.dirigente_id)}</span>{/if}
+                        {#if oc.arranjo.hora_inicio}<span><Icon nome="clock" size={14} /> {oc.arranjo.hora_inicio.substring(0, 5)}{oc.arranjo.hora_fim ? `–${oc.arranjo.hora_fim.substring(0, 5)}` : ''}</span>{/if}
+                        {#if oc.arranjo.local_endereco}<span class="truncate"><Icon nome="map-pin" size={14} /> {oc.arranjo.local_endereco}</span>{/if}
+                        {#if oc.arranjo.dirigente_id}<span><Icon nome="user" size={14} /> {dirigenteNome(oc.arranjo.dirigente_id)}</span>{/if}
                       </div>
                       {#if (oc.arranjo.quadras_ids?.length ?? 0) > 0}
                         <div class="mt-1.5 flex flex-wrap gap-1">
@@ -292,7 +293,7 @@
                           {#each oc.arranjo.cartas_locais_ids ?? [] as pid}
                             {@const p = data.prediosMap[pid]}
                             <a href="/predio/{pid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded hover:bg-purple-200 truncate max-w-[220px]">
-                              ✉ {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${pid}`)}
+                              <Icon nome="mail" size={14} /> {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${pid}`)}
                               {#if p} · {p.qtd_entregues}/{p.qtd_aptos}{/if}
                             </a>
                           {/each}
@@ -300,7 +301,7 @@
                       {/if}
                       {#if oc.arranjo.arquivo_url}
                         <div class="mt-1">
-                          <a href={oc.arranjo.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline">📎 {oc.arranjo.arquivo_nome || 'arquivo'}</a>
+                          <a href={oc.arranjo.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline"><Icon nome="paperclip" size={14} /> {oc.arranjo.arquivo_nome || 'arquivo'}</a>
                         </div>
                       {/if}
                       {#if oc.arranjo.notas}
@@ -340,7 +341,7 @@
     {#if data.modalidades.length === 0}
       <Card padding="md">
         <div class="text-center py-8">
-          <div class="text-4xl mb-2 opacity-50">🏷</div>
+          <div class="text-4xl mb-2 opacity-50"><Icon nome="tag" size={40} class="mx-auto text-slate-300" /></div>
           <div class="font-medium">Sem modalidades</div>
           <div class="text-sm text-slate-500">Crie ao menos uma (Cartas, Pregação, Testemunho Público...).</div>
         </div>
@@ -358,9 +359,9 @@
                 </div>
                 <div class="text-xs text-slate-500 mt-0.5">{tipoLabel(m.tipo_territorio)}</div>
                 <div class="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                  {#if m.default_dia_semana !== null}<span>📅 {DIAS[m.default_dia_semana]}</span>{/if}
-                  {#if m.default_hora}<span>🕒 {m.default_hora.substring(0, 5)}</span>{/if}
-                  {#if m.default_local}<span class="truncate">📍 {m.default_local}</span>{/if}
+                  {#if m.default_dia_semana !== null}<span><Icon nome="calendar" size={14} /> {DIAS[m.default_dia_semana]}</span>{/if}
+                  {#if m.default_hora}<span><Icon nome="clock" size={14} /> {m.default_hora.substring(0, 5)}</span>{/if}
+                  {#if m.default_local}<span class="truncate"><Icon nome="map-pin" size={14} /> {m.default_local}</span>{/if}
                 </div>
               </div>
               <div class="flex flex-col gap-1 items-end">
@@ -581,7 +582,7 @@
           </div>
           {#if arrEditando.dia_semana !== null && arrEditando.dia_semana !== undefined && arrEditando.data_fim}
             <div class="text-xs text-slate-600 bg-white rounded p-2 border border-slate-200">
-              📅 Vai gerar <strong>{previewQtd}</strong> arranjo(s) (toda {DIAS[arrEditando.dia_semana!]} até {new Date(arrEditando.data_fim + 'T12:00:00').toLocaleDateString('pt-BR')})
+              <Icon nome="calendar" size={14} /> Vai gerar <strong>{previewQtd}</strong> arranjo(s) (toda {DIAS[arrEditando.dia_semana!]} até {new Date(arrEditando.data_fim + 'T12:00:00').toLocaleDateString('pt-BR')})
             </div>
           {/if}
         {:else}
@@ -628,7 +629,7 @@
         <div class="text-xs uppercase tracking-wider font-semibold text-slate-500">Território (misto — preencha o que a saída tiver)</div>
 
         <div>
-          <label for="quadras_ids" class="block text-sm font-medium mb-1">🚪 Quadras (casa em casa)</label>
+          <label for="quadras_ids" class="block text-sm font-medium mb-1"><Icon nome="door" size={14} /> Quadras (casa em casa)</label>
           <input
             id="quadras_ids"
             name="quadras_ids"
@@ -639,7 +640,7 @@
         </div>
 
         <div>
-          <span class="block text-sm font-medium mb-1">✉ Prédios (cartas) — {(arrEditando.cartas_locais_ids ?? []).length} selecionado(s)</span>
+          <span class="block text-sm font-medium mb-1"><Icon nome="mail" size={14} /> Prédios (cartas) — {(arrEditando.cartas_locais_ids ?? []).length} selecionado(s)</span>
           <input id="cartas_locais_ids" name="cartas_locais_ids" type="hidden" value={(arrEditando.cartas_locais_ids ?? []).join(',')} />
           <details class="border border-slate-200 rounded-lg">
             <summary class="px-3 py-2 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">Escolher prédios (ou anexe por /admin/predios)</summary>
@@ -667,18 +668,18 @@
         </div>
 
         <div>
-          <label for="tce_id" class="block text-sm font-medium mb-1">🏪 TCE (comercial)</label>
+          <label for="tce_id" class="block text-sm font-medium mb-1"><Icon nome="store" size={14} /> TCE (comercial)</label>
           <select id="tce_id" name="tce_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={(arrEditando as any).tce_id ?? ''}>
             <option value="">— nenhum —</option>
             {#each data.tces as t}<option value={t.id}>{t.nome}</option>{/each}
           </select>
         </div>
 
-        <p class="text-xs text-slate-500">📍 Ponto fixo (TP/carrinho/praça) usa o campo "Local" acima.</p>
+        <p class="text-xs text-slate-500"><Icon nome="map-pin" size={14} /> Ponto fixo (TP/carrinho/praça) usa o campo "Local" acima.</p>
       </div>
 
       <div>
-        <span class="block text-sm font-medium mb-1">📎 Arquivo (PDF/imagem, opcional)</span>
+        <span class="block text-sm font-medium mb-1"><Icon nome="paperclip" size={14} /> Arquivo (PDF/imagem, opcional)</span>
         <input
           type="file"
           accept=".pdf,.png,.jpg,.jpeg,.webp"
@@ -686,11 +687,11 @@
           class="w-full text-sm"
         />
         {#if arquivoFile}
-          <Button variant="secondary" onclick={uploadArquivo} loading={uploadando} class="mt-2 w-full">⬆ Enviar arquivo</Button>
+          <Button variant="secondary" onclick={uploadArquivo} loading={uploadando} class="mt-2 w-full"><Icon nome="share" size={14} /> Enviar arquivo</Button>
         {/if}
         {#if arrEditando.arquivo_url}
           <div class="mt-2 text-xs text-slate-600">
-            <a href={arrEditando.arquivo_url} target="_blank" rel="noopener" class="text-primary-700 hover:underline">📎 {arrEditando.arquivo_nome || 'arquivo'}</a>
+            <a href={arrEditando.arquivo_url} target="_blank" rel="noopener" class="text-primary-700 hover:underline"><Icon nome="paperclip" size={14} /> {arrEditando.arquivo_nome || 'arquivo'}</a>
           </div>
         {/if}
         <input type="hidden" name="arquivo_url" value={arrEditando.arquivo_url ?? ''} />

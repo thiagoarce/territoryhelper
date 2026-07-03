@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { onMount } from 'svelte';
   import Button from '$lib/ui/Button.svelte';
 
@@ -39,7 +40,7 @@
 
 {#if installable && !dispensado}
   <div class="fixed bottom-20 md:bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-40 bg-white border border-slate-200 rounded-xl shadow-lg p-4 flex items-center gap-3">
-    <div class="text-2xl">📱</div>
+    <div class="text-2xl"><Icon nome="smartphone" size={14} /></div>
     <div class="flex-1 min-w-0">
       <div class="font-semibold text-sm">Instalar o app</div>
       <div class="text-xs text-slate-500">Acesso rápido + funciona offline</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -49,11 +50,11 @@
       <span class="block text-sm font-medium mb-1">Tipo</span>
       <div class="grid grid-cols-5 gap-1">
         {#each [
-          { v: 'casa', label: '🏠 Casa' },
-          { v: 'predio', label: '🏢 Prédio' },
-          { v: 'comercio', label: '🏪 Comércio' },
-          { v: 'coletivo', label: '🏨 Coletivo' },
-          { v: 'terreno', label: '◻ Terreno' }
+          { v: 'casa', label: 'Casa' },
+          { v: 'predio', label: 'Prédio' },
+          { v: 'comercio', label: 'Comércio' },
+          { v: 'coletivo', label: 'Coletivo' },
+          { v: 'terreno', label: 'Terreno' }
         ] as opt}
           <label class="cursor-pointer">
             <input type="radio" name="tipo" value={opt.v} bind:group={tipo} class="peer sr-only" />
@@ -111,7 +112,7 @@
     <div>
       <div class="flex items-center justify-between mb-1">
         <span class="text-sm font-medium">Coordenadas (opcional)</span>
-        <button type="button" onclick={tentarUsarGps} class="text-xs text-primary-700 hover:underline">📍 Usar minha localização</button>
+        <button type="button" onclick={tentarUsarGps} class="text-xs text-primary-700 hover:underline"><Icon nome="map-pin" size={14} /> Usar minha localização</button>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <input id="add-lat" name="lat" type="number" step="any" value={latGps ?? ''} placeholder="latitude" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />

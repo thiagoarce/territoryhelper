@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -28,11 +29,11 @@
   });
 
   const TIPOS = [
-    { v: 'casa', label: 'Casa', icon: '🏠' },
-    { v: 'predio', label: 'Prédio', icon: '🏢' },
-    { v: 'comercio', label: 'Comércio', icon: '🏪' },
-    { v: 'coletivo', label: 'Coletivo', icon: '🏨' },
-    { v: 'terreno', label: 'Terreno', icon: '🟫' }
+    { v: 'casa', icone: 'home', label: 'Casa' },
+    { v: 'predio', icone: 'building', label: 'Prédio' },
+    { v: 'comercio', icone: 'store', label: 'Comércio' },
+    { v: 'coletivo', icone: 'hotel', label: 'Coletivo' },
+    { v: 'terreno', icone: 'square', label: 'Terreno' }
   ] as const;
 
   async function uploadFoto(ev: Event) {
@@ -110,7 +111,7 @@
         </div>
       {:else}
         <label class="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">
-          📷 {uploadingFoto ? 'Enviando...' : 'Adicionar foto'}
+          <Icon nome="camera" size={14} /> {uploadingFoto ? 'Enviando...' : 'Adicionar foto'}
           <input type="file" accept="image/*" onchange={uploadFoto} class="hidden" disabled={uploadingFoto} />
         </label>
       {/if}
@@ -123,7 +124,7 @@
             <label class="cursor-pointer">
               <input type="radio" name="tipo" value={t.v} bind:group={tipoSel} class="peer sr-only" />
               <div class="text-center px-1 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">
-                <div class="text-xl">{t.icon}</div>
+                <div><Icon nome={t.icone} size={20} /></div>
                 <div class="text-[10px]">{t.label}</div>
               </div>
             </label>
@@ -133,7 +134,7 @@
 
       <div>
         <label for="nome" class="block text-sm font-medium text-slate-700 mb-1">
-          {tipoSel === 'comercio' ? '🏪 Nome do estabelecimento' : '🏢 Nome do edifício'}
+          {tipoSel === 'comercio' ? 'Nome do estabelecimento' : 'Nome do edifício'}
         </label>
         <input
           id="nome"
@@ -150,14 +151,14 @@
           <span class="block text-sm font-medium text-slate-700 mb-2">Entrada do prédio</span>
           <div class="grid grid-cols-3 gap-2">
             {#each [
-              { v: 'porteiro', label: 'Porteiro', icon: '👮' },
-              { v: 'eletronica', label: 'Eletrônica', icon: '🔘' },
-              { v: 'sem', label: 'Sem portaria', icon: '🚪' }
+              { v: 'porteiro', icone: 'shield', label: 'Porteiro' },
+              { v: 'eletronica', icone: 'circle-dot', label: 'Eletrônica' },
+              { v: 'sem', icone: 'door', label: 'Sem portaria' }
             ] as opt}
               <label class="cursor-pointer">
                 <input type="radio" name="tipo_entrada" value={opt.v} checked={local.tipo_entrada === opt.v} class="peer sr-only" />
                 <div class="text-center text-sm px-3 py-3 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 hover:bg-slate-50">
-                  <div class="text-xl mb-0.5">{opt.icon}</div>
+                  <div class="mb-0.5"><Icon nome={opt.icone} size={20} /></div>
                   <div class="text-xs">{opt.label}</div>
                 </div>
               </label>
@@ -168,11 +169,11 @@
         <div class="grid grid-cols-2 gap-2">
           <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" name="acesso_caixas" checked={local.acesso_caixas} class="w-4 h-4 rounded" />
-            <span class="text-sm">📬 Acesso caixas</span>
+            <span class="text-sm"><Icon nome="inbox" size={14} /> Acesso caixas</span>
           </label>
           <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" name="acesso_interfones" checked={local.acesso_interfones} class="w-4 h-4 rounded" />
-            <span class="text-sm">📞 Interfones</span>
+            <span class="text-sm"><Icon nome="phone" size={14} /> Interfones</span>
           </label>
         </div>
       {/if}
@@ -181,7 +182,7 @@
       <div class="rounded-lg bg-amber-50 border border-amber-200 p-3">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" name="irmao_mora" bind:checked={irmaoMora} class="w-4 h-4 rounded" />
-          <span class="text-sm font-medium">👤 Irmão mora aqui</span>
+          <span class="text-sm font-medium"><Icon nome="user" size={14} /> Irmão mora aqui</span>
         </label>
         {#if irmaoMora}
           <input
@@ -195,11 +196,11 @@
 
       <label class="flex items-center gap-2 p-3 border border-red-200 bg-red-50 rounded-lg cursor-pointer">
         <input type="checkbox" name="nao_visitar" checked={local.nao_visitar} class="w-4 h-4 rounded" />
-        <span class="text-sm font-medium text-red-700">🚫 Não visitar</span>
+        <span class="text-sm font-medium text-red-700"><Icon nome="ban" size={14} /> Não visitar</span>
       </label>
 
       <div>
-        <label for="notas" class="block text-sm font-medium text-slate-700 mb-1">📝 Notas</label>
+        <label for="notas" class="block text-sm font-medium text-slate-700 mb-1"><Icon nome="file-text" size={14} /> Notas</label>
         <textarea
           id="notas"
           name="notas"

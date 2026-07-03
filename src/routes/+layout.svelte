@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import '../app.css';
   import { page, updated } from '$app/stores';
   import type { Snippet } from 'svelte';
@@ -106,7 +107,7 @@
 <!-- Banner de versão nova (PWA não atualiza sozinho sem reload) -->
 {#if $updated}
   <div class="fixed top-0 left-0 right-0 z-[60] bg-primary-700 text-white px-4 py-2.5 flex items-center gap-3 shadow-lg">
-    <span class="text-sm flex-1">✨ Nova versão disponível</span>
+    <span class="text-sm flex-1"><Icon nome="sparkles" size={14} /> Nova versão disponível</span>
     <button
       type="button"
       onclick={atualizarApp}
@@ -157,7 +158,7 @@
         <button onclick={() => (drawerAberto = false)} class="w-9 h-9 rounded-lg border border-dashed border-slate-300 hover:bg-slate-100 flex items-center justify-center" aria-label="Fechar">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6l-12 12" stroke-linecap="round"/></svg>
         </button>
-        <div class="w-9 h-9 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700">📁</div>
+        <div class="w-9 h-9 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700"><Icon nome="map" size={18} /></div>
         <h2 class="text-lg font-bold flex-1">Território</h2>
       </div>
 
@@ -181,7 +182,7 @@
                 <span class="absolute left-0 top-0 bottom-0 w-1 bg-primary-600"></span>
               {/if}
               <span class="w-5 text-center text-slate-500">
-                {#if link.icon === 'map'}🗺{:else if link.icon === 'polygon'}◇{:else if link.icon === 'clipboard'}📋{:else if link.icon === 'building'}✉{:else if link.icon === 'chart'}📊{:else if link.icon === 'calendar'}📅{:else if link.icon === 'people'}◉{:else if link.icon === 'history'}◴{:else if link.icon === 'wrench'}⚙{:else if link.icon === 'eye'}👁{:else}·{/if}
+                {#if link.icon === 'map'}<Icon nome="map" size={18} />{:else if link.icon === 'polygon'}<Icon nome="shapes" size={18} />{:else if link.icon === 'clipboard'}<Icon nome="clipboard" size={18} />{:else if link.icon === 'building'}<Icon nome="building" size={18} />{:else if link.icon === 'chart'}<Icon nome="chart" size={18} />{:else if link.icon === 'calendar'}<Icon nome="calendar" size={18} />{:else if link.icon === 'people'}<Icon nome="users" size={18} />{:else if link.icon === 'history'}<Icon nome="history" size={18} />{:else if link.icon === 'wrench'}<Icon nome="settings" size={18} />{:else if link.icon === 'eye'}<Icon nome="eye" size={18} />{:else}·{/if}
               </span>
               <span>{link.label}</span>
             </a>
@@ -195,7 +196,7 @@
           onclick={() => (drawerAberto = false)}
           class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
         >
-          <span class="w-5 text-center text-slate-500">◉</span>
+          <span class="w-5 text-center text-slate-500"><Icon nome="user" size={14} /></span>
           <span>Perfil</span>
         </a>
         <form action="/logout" method="POST" class="px-4 py-1">

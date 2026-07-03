@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
   import Button from '$lib/ui/Button.svelte';
@@ -28,7 +29,7 @@
       lat: p.geo_geojson.coordinates[1],
       lng: p.geo_geojson.coordinates[0],
       nome: p.nome || `${p.logradouro ?? ''}, ${p.numero ?? ''}`,
-      emoji: '✉'
+      emoji: '•'
     }));
 
   let mapaRef: { exportarPng: () => Promise<string | null> } | null = $state(null);
@@ -41,7 +42,7 @@
     if (t.tipo === 'arranjo' && t.data) {
       partes.push(new Date(t.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }) + (t.hora_inicio ? ` às ${t.hora_inicio.substring(0, 5)}` : ''));
     }
-    if (t.local_endereco) partes.push(`📍 ${t.local_endereco}`);
+    if (t.local_endereco) partes.push(`${t.local_endereco}`);
     if ((t.quadras ?? []).length > 0) partes.push(`Quadras: ${(t.quadras as any[]).map((q) => q.id).join(', ')}`);
     return partes.join('\n');
   }
@@ -89,12 +90,12 @@
     <h1 class="text-xl font-bold">{titulo}</h1>
     <div class="text-sm opacity-90 mt-1 space-y-0.5">
       {#if t.tipo === 'arranjo' && t.data}
-        <div>📅 {new Date(t.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}{t.hora_inicio ? ` · ${t.hora_inicio.substring(0, 5)}` : ''}</div>
+        <div><Icon nome="calendar" size={14} /> {new Date(t.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}{t.hora_inicio ? ` · ${t.hora_inicio.substring(0, 5)}` : ''}</div>
       {/if}
       {#if t.prazo}
-        <div>⏳ Prazo: {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+        <div><Icon nome="hourglass" size={14} /> Prazo: {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
       {/if}
-      {#if t.local_endereco}<div>📍 {t.local_endereco}</div>{/if}
+      {#if t.local_endereco}<div><Icon nome="map-pin" size={14} /> {t.local_endereco}</div>{/if}
     </div>
     {#if t.notas}<p class="mt-2 text-sm bg-white/10 rounded p-2 italic">{t.notas}</p>{/if}
   </div>
@@ -107,14 +108,14 @@
 
     <!-- Compartilhar -->
     <div class="flex gap-2">
-      <Button variant="primary" onclick={compartilharComImagem} class="flex-1">📤 Compartilhar com imagem</Button>
-      <Button variant="secondary" onclick={compartilharLink} class="flex-1">🔗 Só o link</Button>
+      <Button variant="primary" onclick={compartilharComImagem} class="flex-1"><Icon nome="share" size={14} /> Compartilhar com imagem</Button>
+      <Button variant="secondary" onclick={compartilharLink} class="flex-1"><Icon nome="link" size={14} /> Só o link</Button>
     </div>
 
     <!-- Lista textual (pra quem não carrega o mapa) -->
     {#if (t.quadras ?? []).length > 0}
       <div class="rounded-lg border border-slate-200 bg-white p-3">
-        <div class="text-xs uppercase tracking-wider font-semibold text-slate-500 mb-2">🚪 Quadras ({t.quadras.length})</div>
+        <div class="text-xs uppercase tracking-wider font-semibold text-slate-500 mb-2"><Icon nome="door" size={14} /> Quadras ({t.quadras.length})</div>
         <div class="flex flex-wrap gap-1.5">
           {#each t.quadras as q}
             <span class="text-sm font-mono px-2 py-1 rounded border border-slate-200" style="border-left: 4px solid {q.color ?? '#3b82f6'}">{q.id}</span>
@@ -125,7 +126,7 @@
 
     {#if (t.predios ?? []).length > 0}
       <div class="rounded-lg border border-slate-200 bg-white p-3">
-        <div class="text-xs uppercase tracking-wider font-semibold text-slate-500 mb-2">✉ Prédios ({t.predios.length})</div>
+        <div class="text-xs uppercase tracking-wider font-semibold text-slate-500 mb-2"><Icon nome="mail" size={14} /> Prédios ({t.predios.length})</div>
         <ul class="divide-y divide-slate-100">
           {#each t.predios as p}
             <li class="py-1.5 text-sm">
@@ -139,7 +140,7 @@
 
     {#if t.tce}
       <div class="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm">
-        🏪 Território comercial: <strong>{t.tce.nome}</strong>
+        <Icon nome="store" size={14} /> Território comercial: <strong>{t.tce.nome}</strong>
       </div>
     {/if}
 

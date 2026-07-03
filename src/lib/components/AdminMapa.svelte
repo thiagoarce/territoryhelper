@@ -92,7 +92,7 @@
   }
 
   // Atualiza filtros das camadas de destaque/seleção quando os props mudam.
-  // ⚠ deps lidas ANTES do early-return (regra dos runes).
+  // deps lidas ANTES do early-return (regra dos runes).
   $effect(() => {
     const ids = [...destacarIds];
     const ok = carregado;
@@ -119,7 +119,7 @@
       el.title = p.nome;
       el.setAttribute('aria-label', p.nome);
       el.style.cssText = 'width:32px;height:32px;border-radius:50%;background:white;border:2px solid #2563eb;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0;';
-      el.textContent = p.emoji;
+      el.textContent = p.emoji || '•';
       if (p.url) {
         el.addEventListener('click', (e) => {
           e.stopPropagation();

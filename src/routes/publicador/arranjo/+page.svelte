@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
@@ -146,7 +147,7 @@
   {#if ocorrencias.length === 0}
     <Card padding="md">
       <div class="text-center py-8">
-        <div class="text-4xl mb-2 opacity-50">📅</div>
+        <div class="text-4xl mb-2 opacity-50"><Icon nome="calendar" size={40} class="mx-auto text-slate-300" /></div>
         <div class="font-medium">Sem arranjos esta semana</div>
         <div class="text-sm text-slate-500">Quando uma saída for marcada, aparece aqui.</div>
       </div>
@@ -172,9 +173,9 @@
                         {#if m}<span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{m.nome}</span>{/if}
                       </div>
                       <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                        {#if a.hora_inicio}<span>🕒 {a.hora_inicio.substring(0, 5)}{a.hora_fim ? `–${a.hora_fim.substring(0, 5)}` : ''}</span>{/if}
-                        {#if a.local_endereco}<span class="truncate">📍 {a.local_endereco}</span>{/if}
-                        {#if a.dirigente_id}<span>👤 {data.dirigentes[a.dirigente_id] ?? '?'}</span>{/if}
+                        {#if a.hora_inicio}<span><Icon nome="clock" size={14} /> {a.hora_inicio.substring(0, 5)}{a.hora_fim ? `–${a.hora_fim.substring(0, 5)}` : ''}</span>{/if}
+                        {#if a.local_endereco}<span class="truncate"><Icon nome="map-pin" size={14} /> {a.local_endereco}</span>{/if}
+                        {#if a.dirigente_id}<span><Icon nome="user" size={14} /> {data.dirigentes[a.dirigente_id] ?? '?'}</span>{/if}
                       </div>
                       {#if (a.quadras_ids?.length ?? 0) > 0}
                         <div class="mt-1.5 flex flex-wrap gap-1">
@@ -188,7 +189,7 @@
                           {#each a.cartas_locais_ids ?? [] as pid}
                             {@const p = data.prediosMap[pid]}
                             <a href="/predio/{pid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded hover:bg-purple-200 truncate max-w-[220px]">
-                              ✉ {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${pid}`)}
+                              <Icon nome="mail" size={14} /> {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${pid}`)}
                               {#if p} · {p.qtd_entregues}/{p.qtd_aptos}{/if}
                             </a>
                           {/each}
@@ -196,17 +197,17 @@
                       {/if}
                       {#if (a as any).tce_id && data.tcesMap[(a as any).tce_id]}
                         <div class="mt-1.5">
-                          <span class="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded">🏪 TCE: {data.tcesMap[(a as any).tce_id]}</span>
+                          <span class="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded"><Icon nome="store" size={14} /> TCE: {data.tcesMap[(a as any).tce_id]}</span>
                         </div>
                       {/if}
                       {#if a.arquivo_url}
-                        <div class="mt-1"><a href={a.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline">📎 {a.arquivo_nome || 'arquivo'}</a></div>
+                        <div class="mt-1"><a href={a.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline"><Icon nome="paperclip" size={14} /> {a.arquivo_nome || 'arquivo'}</a></div>
                       {/if}
                       {#if a.notas}<div class="mt-1 text-xs italic text-slate-500">{a.notas}</div>{/if}
 
                       {#if data.podeCoordenar}
                         <button type="button" onclick={() => abrirLinkPublico(a.id)}
-                          class="mt-1.5 text-xs text-primary-700 hover:underline">📤 Link público (WhatsApp c/ mapa)</button>
+                          class="mt-1.5 text-xs text-primary-700 hover:underline"><Icon nome="share" size={14} /> Link público (WhatsApp c/ mapa)</button>
                       {/if}
 
                       <!-- Minha parte (destaque pro publicador) -->
@@ -220,7 +221,7 @@
                             {#each minhaParte.locais_ids as lid}
                               {@const p = data.prediosMap[lid]}
                               <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-200 truncate max-w-[180px]">
-                                ✉ {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${lid}`)}
+                                <Icon nome="mail" size={14} /> {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${lid}`)}
                               </a>
                             {/each}
                           </div>
@@ -243,14 +244,14 @@
                                 <span class="font-mono">{pt.quadras_ids.join(', ')}</span>
                                 {#if pt.locais_ids.length > 0}{pt.quadras_ids.length > 0 ? ' + ' : ''}{pt.locais_ids.length} prédio(s){/if}
                               </span>
-                              <button type="button" onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0">🗑</button>
+                              <button type="button" onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0"><Icon nome="trash" size={14} /></button>
                             </div>
                           {/each}
                         </div>
                       {/if}
                       {#if (a.quadras_ids?.length ?? 0) > 0 || (a.cartas_locais_ids?.length ?? 0) > 0}
                         <div class="mt-2 pt-2 border-t border-slate-100">
-                          <Button variant="primary" onclick={() => abrirRepartir(a)} class="w-full">✂ Repartir território</Button>
+                          <Button variant="primary" onclick={() => abrirRepartir(a)} class="w-full"><Icon nome="scissors" size={14} /> Repartir território</Button>
                         </div>
                       {/if}
                     {:else}
@@ -266,7 +267,7 @@
                           onsubmit={(e) => { if (!confirm('Assumir a dirigência deste arranjo?')) e.preventDefault(); }}
                         >
                           <input type="hidden" name="arranjo_id" value={a.id} />
-                          <Button variant="secondary" type="submit" class="w-full">👋 Assumir dirigência</Button>
+                          <Button variant="secondary" type="submit" class="w-full"><Icon nome="hand" size={14} /> Assumir dirigência</Button>
                         </form>
                       </div>
                     {/if}
@@ -296,7 +297,7 @@
             ...confQ.map((q) => `${q} (com ${donosDoItem(q, null).join(' / ')})`),
             ...confL.map((l) => `prédio #${l} (com ${donosDoItem(null, l).join(' / ')})`)
           ].join(', ');
-          if (!confirm(`⚠ Já repartido: ${detalhes}.\n\nRepartir de novo mesmo assim? Os dois vão trabalhar o mesmo lugar.`)) {
+          if (!confirm(`Já repartido: ${detalhes}.\n\nRepartir de novo mesmo assim? Os dois vão trabalhar o mesmo lugar.`)) {
             cancel();
             return;
           }
@@ -358,7 +359,7 @@
               {@const emParte = jaRepartidas.l.has(lid)}
               <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm" class:opacity-50={emParte && !locaisSel.has(lid)}>
                 <input type="checkbox" checked={locaisSel.has(lid)} onchange={() => toggleLocal(lid)} class="w-4 h-4 rounded" />
-                <span class="flex-1 truncate">✉ {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${lid}`)}</span>
+                <span class="flex-1 truncate"><Icon nome="mail" size={14} /> {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${lid}`)}</span>
               </label>
             {/each}
           </div>

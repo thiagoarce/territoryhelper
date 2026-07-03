@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
@@ -131,7 +132,7 @@
       onclick={() => (sheetDesignacoes = true)}
       class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium flex items-center gap-1.5"
     >
-      🔒 Designações
+      <Icon nome="lock" size={14} /> Designações
       {#if stats.abertas > 0}
         <span class="bg-blue-700 text-white rounded-full text-[10px] px-1.5 min-w-[18px] text-center">{stats.abertas}</span>
       {/if}
@@ -212,10 +213,10 @@
       <strong>{selecionadas.size}</strong> quadra(s) selecionada(s)
     </div>
     <div class="flex gap-2 ml-auto flex-wrap justify-end">
-      <Button variant="primary" size="sm" onclick={() => (sheetDesignar = true)}>📤 Designar</Button>
-      <Button variant="secondary" size="sm" onclick={() => (sheetArranjo = true)}>📅 Anexar a arranjo</Button>
+      <Button variant="primary" size="sm" onclick={() => (sheetDesignar = true)}><Icon nome="share" size={14} /> Designar</Button>
+      <Button variant="secondary" size="sm" onclick={() => (sheetArranjo = true)}><Icon nome="calendar" size={14} /> Anexar a arranjo</Button>
       {#if selEmArranjo.length > 0}
-        <Button variant="secondary" size="sm" onclick={liberarDeArranjo} class="text-amber-700">🔓 Liberar de arranjo ({selEmArranjo.length})</Button>
+        <Button variant="secondary" size="sm" onclick={liberarDeArranjo} class="text-amber-700"><Icon nome="unlock" size={14} /> Liberar de arranjo ({selEmArranjo.length})</Button>
       {/if}
       <Button variant="secondary" size="sm" onclick={limparSelecao}>Limpar</Button>
     </div>
@@ -270,14 +271,14 @@
   <!-- TCEs: designar aqui também (designações num lugar só) -->
   {#if data.tces.length > 0}
     <div class="mt-4 pt-3 border-t border-slate-100">
-      <div class="text-xs font-semibold text-slate-500 uppercase mb-2">🏪 TCEs</div>
+      <div class="text-xs font-semibold text-slate-500 uppercase mb-2"><Icon nome="store" size={14} /> TCEs</div>
       <ul class="space-y-2">
         {#each data.tces as t}
           <li class="rounded-lg border border-purple-200 p-3 flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="font-medium truncate">{t.nome}</div>
               <div class="text-xs text-slate-500">
-                {#if t.publicador_nome}👤 {t.publicador_nome}{:else}sem designação{/if}
+                {#if t.publicador_nome}<Icon nome="user" size={14} /> {t.publicador_nome}{:else}sem designação{/if}
                 {#if t.prazo}· prazo {t.prazo}{/if}
               </div>
             </div>
@@ -479,7 +480,7 @@
 <BottomSheet bind:open={sheetArranjo} title="Anexar quadras a um arranjo">
   {#if data.arranjosQuadras.length === 0}
     <div class="text-center py-8 text-slate-500">
-      <div class="text-4xl mb-2 opacity-50">📅</div>
+      <div class="text-4xl mb-2 opacity-50"><Icon nome="calendar" size={40} class="mx-auto text-slate-300" /></div>
       <div class="font-medium">Nenhum arranjo de quadras</div>
       <div class="text-sm">Cria um arranjo do tipo "quadras" em <a href="/admin/arranjos" class="text-primary-700 hover:underline">/admin/arranjos</a>.</div>
     </div>

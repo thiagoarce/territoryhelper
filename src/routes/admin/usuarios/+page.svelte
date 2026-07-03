@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import type { UsuarioComEmail, Role } from '$lib/types';
@@ -40,7 +41,7 @@
 
 <!-- Abas -->
 <div class="mt-4 flex gap-2 border-b border-slate-200 flex-wrap">
-  {#each [['lista', 'Lista'], ['criar', '+ 1 usuário'], ['convite', '🔗 Convite'], ['lote', 'Em lote']] as [k, label]}
+  {#each [['lista', 'Lista'], ['criar', '+ 1 usuário'], ['convite', 'Convite'], ['lote', 'Em lote']] as [k, label]}
     <button
       onclick={() => (abaAtiva = k as any)}
       class="border-b-2 px-3 py-2 text-sm font-medium"
@@ -218,9 +219,9 @@
                 <div class="text-xs text-slate-500 truncate">{c.email}</div>
                 <div class="text-xs mt-1">
                   {#if c.usado_em}
-                    <span class="text-green-700">✓ Usado em {new Date(c.usado_em).toLocaleDateString('pt-BR')}</span>
+                    <span class="text-green-700"><Icon nome="check" size={14} /> Usado em {new Date(c.usado_em).toLocaleDateString('pt-BR')}</span>
                   {:else if c.expira_em && new Date(c.expira_em) < new Date()}
-                    <span class="text-red-700">⏱ Expirado</span>
+                    <span class="text-red-700"><Icon nome="timer" size={14} /> Expirado</span>
                   {:else}
                     <button
                       type="button"
@@ -229,7 +230,7 @@
                         try { await navigator.clipboard.writeText(url); alert('Link copiado'); } catch { alert(url); }
                       }}
                       class="text-primary-700 hover:underline"
-                    >📋 Copiar link</button>
+                    ><Icon nome="clipboard" size={14} /> Copiar link</button>
                   {/if}
                 </div>
               </div>
@@ -286,7 +287,7 @@ admin@cong.com,trocar123,Admin Cong,admin`}
           {#each form.lote.resultados as r}
             <li class="flex gap-2">
               <span class:text-green-700={r.status === 'ok'} class:text-red-700={r.status === 'erro'}>
-                {r.status === 'ok' ? '✓' : '✗'}
+                <Icon nome={r.status === 'ok' ? 'check' : 'x'} size={14} />
               </span>
               <span class="font-mono text-xs text-slate-500">L{r.linha}</span>
               <span class="font-medium">{r.email}</span>

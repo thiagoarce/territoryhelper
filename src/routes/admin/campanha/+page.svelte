@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
@@ -35,12 +36,12 @@
   function editarPeriodo(p: CampanhaPeriodo) { periodoEdit = p; sheetPeriodo = true; }
 
   const MODALIDADES = [
-    { v: 'casa', label: 'Casa em casa', icon: '🏠' },
-    { v: 'comercial', label: 'Comercial', icon: '🏪' },
-    { v: 'rural', label: 'Rural', icon: '🌾' },
-    { v: 'cartas', label: 'Cartas', icon: '✉' },
-    { v: 'telefone', label: 'Telefone', icon: '📞' },
-    { v: 'publico', label: 'Testemunho público', icon: '📢' }
+    { v: 'casa', icone: 'home', label: 'Casa em casa' },
+    { v: 'comercial', icone: 'store', label: 'Comercial' },
+    { v: 'rural', icone: 'wheat', label: 'Rural' },
+    { v: 'cartas', icone: 'mail', label: 'Cartas' },
+    { v: 'telefone', icone: 'phone', label: 'Telefone' },
+    { v: 'publico', icone: 'megaphone', label: 'Testemunho público' }
   ];
 
   const porModalidade = $derived.by(() => {
@@ -201,7 +202,7 @@
   {:else}
     <Card padding="md">
       <div class="text-center py-4 text-slate-500">
-        <div class="text-3xl mb-2">📅</div>
+        <div class="text-3xl mb-2"><Icon nome="calendar" size={14} /></div>
         <div class="font-medium">Sem campanha ativa</div>
         <div class="text-sm">Cria um período pra ver mapa do progresso e gráfico semanal.</div>
         <button onclick={novoPeriodo} class="mt-3 text-sm text-primary-700 hover:underline">+ Criar período</button>
@@ -252,7 +253,7 @@
         {#if objs.length > 0}
           <div>
             <h3 class="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-2">
-              <span>{mod.icon}</span> {mod.label}
+              <span><Icon nome={mod.icone} size={16} /></span> {mod.label}
               <span class="text-slate-400 font-normal">· {objs.length}</span>
             </h3>
             <div class="space-y-2">
@@ -266,7 +267,7 @@
                       </div>
                       <div class="font-medium text-sm">{o.titulo}</div>
                       {#if o.descricao}<div class="text-xs text-slate-600 mt-0.5">{o.descricao}</div>{/if}
-                      {#if o.link}<a href={o.link} target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline">🔗 link</a>{/if}
+                      {#if o.link}<a href={o.link} target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline"><Icon nome="link" size={14} /> link</a>{/if}
                     </div>
                     <button onclick={() => editarObj(o)} class="text-xs text-primary-700 hover:underline">Editar</button>
                   </div>
@@ -371,7 +372,7 @@
           <label for="modalidade" class="block text-sm font-medium mb-1">Modalidade</label>
           <select name="modalidade" id="modalidade" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
             {#each MODALIDADES as m}
-              <option value={m.v}>{m.icon} {m.label}</option>
+              <option value={m.v}>{m.label}</option>
             {/each}
           </select>
         </div>
@@ -416,7 +417,7 @@
       class="mt-3"
     >
       <input type="hidden" name="id" value={editando.id} />
-      <button type="submit" class="text-sm text-red-700 hover:underline">🗑 Excluir</button>
+      <button type="submit" class="text-sm text-red-700 hover:underline"><Icon nome="trash" size={14} /> Excluir</button>
     </form>
   {/if}
 </BottomSheet>

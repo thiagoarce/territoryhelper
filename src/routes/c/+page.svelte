@@ -1,13 +1,14 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   let { data }: { data: { objetivos: any[] } } = $props();
 
   const MOD_INFO: Record<string, { label: string; icon: string; cor: string }> = {
-    casa: { label: 'Casa em casa', icon: '🏠', cor: 'from-blue-500 to-blue-700' },
-    comercial: { label: 'Comercial', icon: '🏪', cor: 'from-emerald-500 to-emerald-700' },
-    rural: { label: 'Rural', icon: '🌾', cor: 'from-amber-500 to-amber-700' },
-    cartas: { label: 'Cartas', icon: '✉', cor: 'from-purple-500 to-purple-700' },
-    telefone: { label: 'Telefone', icon: '📞', cor: 'from-cyan-500 to-cyan-700' },
-    publico: { label: 'Testemunho público', icon: '📢', cor: 'from-pink-500 to-pink-700' }
+    casa: { icone: 'home', label: 'Casa em casa', cor: 'from-blue-500 to-blue-700' },
+    comercial: { icone: 'store', label: 'Comercial', cor: 'from-emerald-500 to-emerald-700' },
+    rural: { icone: 'wheat', label: 'Rural', cor: 'from-amber-500 to-amber-700' },
+    cartas: { icone: 'mail', label: 'Cartas', cor: 'from-purple-500 to-purple-700' },
+    telefone: { icone: 'phone', label: 'Telefone', cor: 'from-cyan-500 to-cyan-700' },
+    publico: { icone: 'megaphone', label: 'Testemunho público', cor: 'from-pink-500 to-pink-700' }
   };
 
   const porMod = $derived.by(() => {
@@ -42,7 +43,7 @@
           {@const info = MOD_INFO[mod] ?? { label: mod, icon: '·', cor: 'from-slate-500 to-slate-700' }}
           <section>
             <h2 class="text-sm font-semibold text-slate-600 uppercase mb-3 flex items-center gap-2">
-              <span class="text-2xl">{info.icon}</span>
+              <span><Icon nome={info.icone} size={24} /></span>
               {info.label}
             </h2>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -54,7 +55,7 @@
                     {#if o.descricao}<p class="text-sm text-slate-600 mt-1">{o.descricao}</p>{/if}
                     {#if o.link}
                       <a href={o.link} target="_blank" rel="noopener" class="text-sm text-blue-600 hover:underline mt-2 inline-block">
-                        🔗 Saiba mais
+                        <Icon nome="link" size={14} /> Saiba mais
                       </a>
                     {/if}
                   </div>

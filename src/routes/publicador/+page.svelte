@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { deserialize } from '$app/forms';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
@@ -108,14 +109,14 @@
 <div class="p-4">
 {#if data.arranjosQueDirijo.length > 0}
   <div class="mb-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2">🎪 Você dirige</div>
+    <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2"><Icon nome="tent" size={14} /> Você dirige</div>
     {#each data.arranjosQueDirijo as a}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-medium">{a.nome}</span>
           <span class="text-xs text-primary-700 font-medium">{fmtDia(a.data)}{a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}</span>
         </div>
-        {#if a.local_endereco}<div class="text-xs text-slate-500 mt-0.5">📍 {a.local_endereco}</div>{/if}
+        {#if a.local_endereco}<div class="text-xs text-slate-500 mt-0.5"><Icon nome="map-pin" size={14} /> {a.local_endereco}</div>{/if}
         <div class="flex flex-wrap gap-1.5 mt-1.5">
           {#each a.quadras_ids as qid}
             {@const q = data.quadrasMap[qid]}
@@ -126,16 +127,16 @@
             </a>
           {/each}
           {#each a.cartas_locais_ids as lid}
-            <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200">✉ #{lid}</a>
+            <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
           {/each}
           {#if a.tce_id}
-            <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200">🏪 {a.tce_id}</span>
+            <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {a.tce_id}</span>
           {/if}
         </div>
         <div class="mt-2 flex items-center gap-3">
-          <a href="/publicador/arranjo" class="text-xs font-medium text-primary-700 hover:underline">✂ Repartir território →</a>
+          <a href="/publicador/arranjo" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
           <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
-            class="text-xs font-medium text-primary-700 hover:underline">📤 Compartilhar</button>
+            class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="share" size={14} /> Compartilhar</button>
         </div>
       </div>
     {/each}
@@ -144,7 +145,7 @@
 
 {#if data.minhasPartes.length > 0}
   <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2">🚶 Pregação em grupo — sua parte</div>
+    <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2"><Icon nome="walk" size={14} /> Pregação em grupo — sua parte</div>
     {#each data.minhasPartes as p}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
         <div class="flex items-center gap-2 flex-wrap">
@@ -155,7 +156,7 @@
           {#if p.dirigente_nome}Dirigente: {p.dirigente_nome}{/if}
           {#if p.colegas.length > 0} · com {p.colegas.join(', ')}{/if}
         </div>
-        {#if p.local_endereco}<div class="text-xs text-slate-500">📍 {p.local_endereco}</div>{/if}
+        {#if p.local_endereco}<div class="text-xs text-slate-500"><Icon nome="map-pin" size={14} /> {p.local_endereco}</div>{/if}
         <div class="flex flex-wrap gap-1.5 mt-1.5">
           {#each p.quadras_ids as qid}
             {@const q = data.quadrasMap[qid]}
@@ -166,7 +167,7 @@
             </a>
           {/each}
           {#each p.locais_ids as lid}
-            <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:bg-amber-200">✉ #{lid}</a>
+            <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:bg-amber-200"><Icon nome="mail" size={14} /> #{lid}</a>
           {/each}
         </div>
       </div>
@@ -217,7 +218,7 @@
 <!-- TCEs designados -->
 {#if data.tces && data.tces.length > 0}
   <div class="mt-4">
-    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">🏪 Territórios comerciais</h2>
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2"><Icon nome="store" size={14} /> Territórios comerciais</h2>
     <div class="space-y-2">
       {#each data.tces as t}
         <a href="/publicador/tce/{t.id}" class="block rounded-lg border border-purple-200 bg-purple-50 p-3 hover:bg-purple-100 transition-colors">
@@ -281,7 +282,7 @@
         </div>
       {/if}
       <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)}
-        class="ml-auto text-xs text-primary-700 hover:underline" title="Link público com mapa (WhatsApp)">📤 Compartilhar</button>
+        class="ml-auto text-xs text-primary-700 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Compartilhar</button>
     </div>
   </div>
 {/snippet}
@@ -289,7 +290,7 @@
 <div class="mt-4 space-y-4">
   <section>
     <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
-      🎯 Território pessoal
+      <Icon nome="target" size={14} /> Território pessoal
       <span class="text-xs text-slate-400 normal-case font-normal">({pessoais.length})</span>
     </h2>
     {#if pessoais.length === 0}
@@ -304,7 +305,7 @@
   {#if data.cartasDesignadas && data.cartasDesignadas.length > 0}
     <section>
       <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
-        ✉ Cartas designadas
+        <Icon nome="mail" size={14} /> Cartas designadas
         <span class="text-xs text-slate-400 normal-case font-normal">({data.cartasDesignadas.reduce((s, c) => s + c.predios.length, 0)} prédio(s))</span>
       </h2>
       <div class="grid gap-3">
@@ -317,7 +318,7 @@
               {#each c.predios as p}
                 <a href="/predio/{p.id}"
                   class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-purple-300 bg-white text-purple-900 hover:bg-purple-100 max-w-[240px]">
-                  <span>✉</span>
+                  <span><Icon nome="mail" size={14} /></span>
                   <span class="truncate">{p.nome || `${p.logradouro}, ${p.numero}`}</span>
                   <span class="text-[10px] text-purple-500 shrink-0">{p.qtd_entregues}/{p.qtd_aptos}</span>
                 </a>

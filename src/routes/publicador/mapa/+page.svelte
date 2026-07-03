@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
@@ -207,19 +208,19 @@
   </div>
   <div class="flex gap-2 flex-wrap">
     <div class="flex border border-slate-300 rounded-lg overflow-hidden text-sm">
-      <button onclick={() => (visao = 'mapa')} class="px-3 py-1.5 {visao === 'mapa' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}">🗺 Mapa</button>
-      <button onclick={() => (visao = 'lista')} class="px-3 py-1.5 {visao === 'lista' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}">☰ Lista</button>
+      <button onclick={() => (visao = 'mapa')} class="px-3 py-1.5 {visao === 'mapa' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}"><Icon nome="map" size={14} /> Mapa</button>
+      <button onclick={() => (visao = 'lista')} class="px-3 py-1.5 {visao === 'lista' ? 'bg-primary-600 text-white' : 'bg-white hover:bg-slate-50'}"><Icon nome="menu" size={14} /> Lista</button>
     </div>
     {#if visao === 'mapa'}
-      <Button variant="secondary" size="sm" onclick={exportarMapa}>📸 PNG</Button>
+      <Button variant="secondary" size="sm" onclick={exportarMapa}><Icon nome="camera" size={14} /> PNG</Button>
       <Button
         variant={modoSelecao ? 'primary' : 'secondary'}
         size="sm"
         onclick={toggleModoSelecao}
-      >{modoSelecao ? '✓ Selecionando…' : '☑ Selecionar'}</Button>
+      >{modoSelecao ? 'Selecionando…' : 'Selecionar'}</Button>
     {/if}
     {#if data.meusArranjos.length > 0}
-      <Button variant="primary" size="sm" onclick={() => abrirRepartir()}>✂ Repartir</Button>
+      <Button variant="primary" size="sm" onclick={() => abrirRepartir()}><Icon nome="scissors" size={14} /> Repartir</Button>
     {/if}
   </div>
 </div>
@@ -240,7 +241,7 @@
   {#if pois.length > 0}
     <div class="mt-2 flex items-center gap-2 flex-wrap text-xs">
       <span class="font-medium">{pois.length} POI(s) no mapa</span>
-      <button type="button" onclick={limparPOIs} class="text-red-600 hover:underline">🧹 Limpar</button>
+      <button type="button" onclick={limparPOIs} class="text-red-600 hover:underline"><Icon nome="eraser" size={14} /> Limpar</button>
     </div>
   {/if}
 {:else}
@@ -282,7 +283,7 @@
         </div>
         <div class="text-xs text-slate-500 truncate">{q.territorio_nome ?? '—'}</div>
         {#if q.data_conclusao}
-          <div class="text-[10px] text-green-600 mt-1">✓ {q.data_conclusao}</div>
+          <div class="text-[10px] text-green-600 mt-1"><Icon nome="check" size={14} /> {q.data_conclusao}</div>
         {/if}
       </button>
     {/each}
@@ -306,7 +307,7 @@
     </div>
     <div class="flex gap-2 ml-auto">
       {#if data.meusArranjos.length > 0}
-        <Button variant="primary" size="sm" onclick={repartirSelecao}>✂ Repartir ({selecaoMapa.size})</Button>
+        <Button variant="primary" size="sm" onclick={repartirSelecao}><Icon nome="scissors" size={14} /> Repartir ({selecaoMapa.size})</Button>
       {:else}
         <span class="text-xs text-slate-500 self-center">Crie/assuma um arranjo pra repartir</span>
       {/if}
@@ -345,10 +346,10 @@
 
       {#if designacoesQuadra.length > 0}
         <div class="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm">
-          <strong>⚠ Quadra em designação aberta:</strong>
+          <strong><Icon nome="alert" size={14} /> Quadra em designação aberta:</strong>
           <ul class="mt-1 space-y-1">
             {#each designacoesQuadra as d}
-              <li>📌 {d.publicador_nome ?? '(sem publicador)'}{d.prazo ? ` · prazo ${d.prazo}` : ''}</li>
+              <li><Icon nome="pin" size={14} /> {d.publicador_nome ?? '(sem publicador)'}{d.prazo ? ` · prazo ${d.prazo}` : ''}</li>
             {/each}
           </ul>
         </div>
@@ -359,7 +360,7 @@
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm font-medium">Estacionar perto</span>
           <Button variant="ghost" size="sm" onclick={buscarEstacionamentos} loading={buscandoPOIs}>
-            🅿️ Buscar
+            <Icon nome="parking" size={14} /> Buscar
           </Button>
         </div>
         {#if pois.length > 0}
@@ -382,7 +383,7 @@
 
       {#if quadraSel.data_conclusao}
         <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm">
-          ✓ Concluída em <strong>{quadraSel.data_conclusao}</strong>
+          <Icon nome="check" size={14} /> Concluída em <strong>{quadraSel.data_conclusao}</strong>
         </div>
         <form
           method="POST"
@@ -434,7 +435,7 @@
               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
           </div>
-          <Button variant="success" type="submit" loading={salvando} class="w-full">✓ Marcar como concluída</Button>
+          <Button variant="success" type="submit" loading={salvando} class="w-full"><Icon nome="check" size={14} /> Marcar como concluída</Button>
         </form>
       {/if}
     </div>
@@ -449,7 +450,7 @@
         {@const arr = data.meusArranjos.find((a) => a.id === pt.arranjo_id)}
         <div class="flex items-center gap-2 text-sm bg-white rounded p-2">
           <div class="flex-1 min-w-0">
-            <div class="font-medium">👤 {pt.publicadores.map((id) => pubById[id] ?? '?').join(' + ')}</div>
+            <div class="font-medium"><Icon nome="user" size={14} /> {pt.publicadores.map((id) => pubById[id] ?? '?').join(' + ')}</div>
             <div class="text-xs text-slate-500">
               {arr?.nome ?? 'Arranjo'}{arr?.data ? ` · ${new Date(arr.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
             </div>
@@ -458,11 +459,11 @@
                 <span class="text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
               {/each}
               {#if pt.locais_ids.length > 0}
-                <span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">✉ {pt.locais_ids.length} prédio(s)</span>
+                <span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded"><Icon nome="mail" size={14} /> {pt.locais_ids.length} prédio(s)</span>
               {/if}
             </div>
           </div>
-          <button type="button" onclick={() => apagarParte(pt.id)} class="text-xs text-red-600 hover:underline">🗑</button>
+          <button type="button" onclick={() => apagarParte(pt.id)} class="text-xs text-red-600 hover:underline"><Icon nome="trash" size={14} /></button>
         </div>
       {/each}
     </div>

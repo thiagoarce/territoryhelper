@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Toaster from '$lib/ui/Toaster.svelte';
@@ -24,11 +25,11 @@
 
     <!-- Badges -->
     <div class="mt-3 flex flex-wrap gap-1.5 text-xs">
-      {#if data.local.tipo_entrada === 'porteiro'}<span class="bg-white/20 px-2 py-1 rounded">🚪 Porteiro</span>{/if}
-      {#if data.local.tipo_entrada === 'eletronica'}<span class="bg-white/20 px-2 py-1 rounded">🔌 Eletrônica</span>{/if}
-      {#if data.local.acesso_caixas}<span class="bg-white/20 px-2 py-1 rounded">📬 Caixas</span>{/if}
-      {#if data.local.acesso_interfones}<span class="bg-white/20 px-2 py-1 rounded">📞 Interfones</span>{/if}
-      {#if data.local.irmao_mora}<span class="bg-white/20 px-2 py-1 rounded">👤 Irmão{data.local.nome_irmao ? `: ${data.local.nome_irmao}` : ''}</span>{/if}
+      {#if data.local.tipo_entrada === 'porteiro'}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="door" size={14} /> Porteiro</span>{/if}
+      {#if data.local.tipo_entrada === 'eletronica'}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="plug" size={14} /> Eletrônica</span>{/if}
+      {#if data.local.acesso_caixas}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="inbox" size={14} /> Caixas</span>{/if}
+      {#if data.local.acesso_interfones}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="phone" size={14} /> Interfones</span>{/if}
+      {#if data.local.irmao_mora}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="user" size={14} /> Irmão{data.local.nome_irmao ? `: ${data.local.nome_irmao}` : ''}</span>{/if}
     </div>
 
     <!-- Progresso -->
@@ -65,13 +66,13 @@
         <div class="flex items-center justify-between gap-3">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold">{u.complemento || `Apto ${u.id}`}</div>
-            {#if u.carta_entregue}<div class="text-xs text-purple-700">✉ {u.carta_entregue}</div>{/if}
+            {#if u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue}</div>{/if}
           </div>
           <div class="flex gap-1">
             {#each [
-              { c: 'carta_entregue', e: '✉', ativo: !!u.carta_entregue, cls: 'bg-purple-600' },
-              { c: 'desocupado', e: '🏚', ativo: u.desocupado, cls: 'bg-slate-600' },
-              { c: 'nao_escrever', e: '🚫', ativo: u.nao_escrever, cls: 'bg-red-600' }
+              { c: 'carta_entregue', icone: 'mail', ativo: !!u.carta_entregue, cls: 'bg-purple-600' },
+              { c: 'desocupado', icone: 'door-closed', ativo: u.desocupado, cls: 'bg-slate-600' },
+              { c: 'nao_escrever', icone: 'ban', ativo: u.nao_escrever, cls: 'bg-red-600' }
             ] as opt}
               <form
                 method="POST"
@@ -84,9 +85,7 @@
               >
                 <input type="hidden" name="unidade_id" value={u.id} />
                 <input type="hidden" name="campo" value={opt.c} />
-                <button class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}">
-                  {opt.e}
-                </button>
+                <button class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
               </form>
             {/each}
           </div>

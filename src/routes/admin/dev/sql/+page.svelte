@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
 
@@ -45,7 +46,7 @@
 </p>
 
 <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-  <strong>⚠️ Atenção:</strong> só admin pode usar. Roda SQL bruto no banco — verifica os arquivos antes.
+  <strong><Icon nome="alert" size={14} /> Atenção:</strong> só admin pode usar. Roda SQL bruto no banco — verifica os arquivos antes.
   Os arquivos rodam em <strong>ordem alfabética</strong> (por isso o prefixo 01_, 02_, ...).
 </div>
 
@@ -76,7 +77,7 @@
     class:bg-primary-50={dragOver}
     class:border-slate-300={!dragOver}
   >
-    <div class="text-4xl mb-2">📁</div>
+    <div class="text-4xl mb-2"><Icon nome="folder" size={40} class="mx-auto text-slate-300" /></div>
     <div class="font-medium">Arraste os arquivos .sql aqui</div>
     <div class="text-sm text-slate-500 mt-1">ou clique pra escolher</div>
   </button>
@@ -127,7 +128,7 @@
       {#each form.resultados as r}
         <li class="flex items-start gap-2 border-b border-slate-100 pb-2 last:border-b-0">
           <span class="text-lg" class:text-green-600={r.status === 'ok'} class:text-red-600={r.status === 'erro'}>
-            {r.status === 'ok' ? '✓' : '✗'}
+            <Icon nome={r.status === 'ok' ? 'check' : 'x'} size={14} />
           </span>
           <div class="flex-1 min-w-0">
             <div class="font-medium">{r.nome} <span class="text-xs text-slate-500">({r.tamanhoKB} KB · {r.duracaoMs}ms)</span></div>

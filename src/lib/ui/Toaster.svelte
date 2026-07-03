@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon, { type NomeIcone } from './Icon.svelte';
   import { toast, type ToastTipo } from './toast.svelte';
   import { fly } from 'svelte/transition';
 
@@ -9,11 +10,11 @@
     info: 'bg-slate-800 text-white'
   };
 
-  const icones: Record<ToastTipo, string> = {
-    success: '✓',
-    error: '✕',
-    warn: '⚠',
-    info: 'ℹ'
+  const icones: Record<ToastTipo, NomeIcone> = {
+    success: 'check',
+    error: 'x',
+    warn: 'alert',
+    info: 'info'
   };
 </script>
 
@@ -25,7 +26,7 @@
       transition:fly={{ x: 20, duration: 200 }}
       class="pointer-events-auto flex items-center gap-2 rounded-lg shadow-lg px-4 py-3 text-sm font-medium hover:opacity-90 {cores[item.tipo]}"
     >
-      <span class="text-lg">{icones[item.tipo]}</span>
+      <span><Icon nome={icones[item.tipo]} size={18} /></span>
       <span class="text-left">{item.msg}</span>
     </button>
   {/each}

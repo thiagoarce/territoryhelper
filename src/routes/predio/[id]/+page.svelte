@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -104,32 +105,32 @@
       <button type="button" onclick={voltar} class="text-xs opacity-90 hover:opacity-100">← Voltar</button>
       <div class="ml-auto flex gap-1">
         <button type="button" onclick={() => (sheetEditar = true)} title="Editar prédio"
-          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center">✏</button>
+          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="pencil" size={14} /></button>
         <button type="button" onclick={compartilharWhatsApp} title="Compartilhar cartas"
-          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center">📤</button>
+          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="share" size={14} /></button>
       </div>
     </div>
     <h1 class="text-xl font-bold">{data.predio.nome || `${data.predio.logradouro}, ${data.predio.numero}`}</h1>
     <div class="text-sm opacity-90 mt-0.5">{data.predio.logradouro}, {data.predio.numero}</div>
 
     <div class="mt-3 flex flex-wrap gap-1.5 text-xs">
-      {#if data.predio.tipo_entrada === 'porteiro'}<span class="bg-white/20 px-2 py-1 rounded">🚪 Porteiro</span>{/if}
-      {#if data.predio.tipo_entrada === 'eletronica'}<span class="bg-white/20 px-2 py-1 rounded">🔌 Eletrônica</span>{/if}
-      {#if data.predio.acesso_caixas}<span class="bg-white/20 px-2 py-1 rounded">📬 Caixas</span>{/if}
-      {#if data.predio.acesso_interfones}<span class="bg-white/20 px-2 py-1 rounded">📞 Interfones</span>{/if}
-      {#if data.predio.irmao_mora}<span class="bg-white/20 px-2 py-1 rounded">👤 Irmão{data.predio.nome_irmao ? `: ${data.predio.nome_irmao}` : ''}</span>{/if}
+      {#if data.predio.tipo_entrada === 'porteiro'}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="door" size={14} /> Porteiro</span>{/if}
+      {#if data.predio.tipo_entrada === 'eletronica'}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="plug" size={14} /> Eletrônica</span>{/if}
+      {#if data.predio.acesso_caixas}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="inbox" size={14} /> Caixas</span>{/if}
+      {#if data.predio.acesso_interfones}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="phone" size={14} /> Interfones</span>{/if}
+      {#if data.predio.irmao_mora}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="user" size={14} /> Irmão{data.predio.nome_irmao ? `: ${data.predio.nome_irmao}` : ''}</span>{/if}
     </div>
 
     <!-- Progresso duplo (visitados + entregues) -->
     <div class="mt-4 grid grid-cols-2 gap-3">
       <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>🚪 Visitados</span><span class="font-bold">{visitadas}/{total}</span></div>
+        <div class="flex justify-between text-xs mb-0.5"><span><Icon nome="door" size={14} /> Visitados</span><span class="font-bold">{visitadas}/{total}</span></div>
         <div class="h-1.5 rounded-full bg-white/20 overflow-hidden">
           <div class="h-full bg-white" style:width="{total === 0 ? 0 : (visitadas / total) * 100}%"></div>
         </div>
       </div>
       <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>✉ Cartas</span><span class="font-bold">{entregues}/{total}</span></div>
+        <div class="flex justify-between text-xs mb-0.5"><span><Icon nome="mail" size={14} /> Cartas</span><span class="font-bold">{entregues}/{total}</span></div>
         <div class="h-1.5 rounded-full bg-white/20 overflow-hidden">
           <div class="h-full bg-white" style:width="{total === 0 ? 0 : (entregues / total) * 100}%"></div>
         </div>
@@ -150,7 +151,7 @@
         class:text-white={modo === 'casa'}
         class:font-medium={modo === 'casa'}
         class:text-slate-600={modo !== 'casa'}
-      >🚪 Casa em casa</button>
+      ><Icon nome="door" size={14} /> Casa em casa</button>
       <button
         type="button"
         onclick={() => trocarModo('cartas')}
@@ -159,7 +160,7 @@
         class:text-white={modo === 'cartas'}
         class:font-medium={modo === 'cartas'}
         class:text-slate-600={modo !== 'cartas'}
-      >✉ Cartas</button>
+      ><Icon nome="mail" size={14} /> Cartas</button>
     </div>
   </div>
 
@@ -181,7 +182,7 @@
         <div class="flex items-center justify-between gap-2">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold text-sm">{u.complemento || `Apto ${u.id}`}</div>
-            {#if modo === 'cartas' && u.carta_entregue}<div class="text-xs text-purple-700">✉ {u.carta_entregue}</div>{/if}
+            {#if modo === 'cartas' && u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue}</div>{/if}
             {#if modo === 'casa' && u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
               <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">{u.ultimo_tipo}</span>
             {/if}
@@ -190,9 +191,9 @@
           {#if modo === 'cartas'}
             <div class="flex gap-1">
               {#each [
-                { c: 'carta_entregue', e: '✉', ativo: !!u.carta_entregue, cls: 'bg-purple-600' },
-                { c: 'desocupado', e: '🏚', ativo: u.desocupado, cls: 'bg-slate-600' },
-                { c: 'nao_escrever', e: '🚫', ativo: u.nao_escrever, cls: 'bg-red-600' }
+                { c: 'carta_entregue', icone: 'mail', ativo: !!u.carta_entregue, cls: 'bg-purple-600' },
+                { c: 'desocupado', icone: 'door-closed', ativo: u.desocupado, cls: 'bg-slate-600' },
+                { c: 'nao_escrever', icone: 'ban', ativo: u.nao_escrever, cls: 'bg-red-600' }
               ] as opt}
                 <form method="POST" action="?/toggle"
                   use:enhance={() => async ({ result, update }) => {
@@ -203,17 +204,17 @@
                 >
                   <input type="hidden" name="unidade_id" value={u.id} />
                   <input type="hidden" name="campo" value={opt.c} />
-                  <button class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}">{opt.e}</button>
+                  <button class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
                 </form>
               {/each}
             </div>
           {:else}
             <div class="flex gap-1">
               {#each [
-                { t: 'conversou', e: '💬', cls: 'bg-green-600' },
-                { t: 'semConversa', e: '🚪', cls: 'bg-amber-600' },
-                { t: 'naoAtendeu', e: '👋', cls: 'bg-slate-600' },
-                { t: 'carta', e: '✉', cls: 'bg-purple-600' }
+                { t: 'conversou', icone: 'chat', cls: 'bg-green-600' },
+                { t: 'semConversa', icone: 'door', cls: 'bg-amber-600' },
+                { t: 'naoAtendeu', icone: 'hand', cls: 'bg-slate-600' },
+                { t: 'carta', icone: 'mail', cls: 'bg-purple-600' }
               ] as opt}
                 {@const ativo = u.ultimo_tipo === opt.t}
                 <form method="POST" action="?/marcarDesfecho"
@@ -225,7 +226,7 @@
                 >
                   <input type="hidden" name="unidade_id" value={u.id} />
                   <input type="hidden" name="tipo" value={ativo ? '' : opt.t} />
-                  <button class="px-2.5 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}">{opt.e}</button>
+                  <button class="px-2.5 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
                 </form>
               {/each}
             </div>
@@ -258,11 +259,11 @@
     <div>
       <span class="block text-sm font-medium mb-2">Portaria</span>
       <div class="grid grid-cols-3 gap-2">
-        {#each [{ v: 'porteiro', l: 'Porteiro', i: '👮' }, { v: 'eletronica', l: 'Eletrônica', i: '🔘' }, { v: 'sem', l: 'Sem', i: '🚪' }] as opt}
+        {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem', icone: 'door' }] as opt}
           <label class="cursor-pointer">
             <input type="radio" name="tipo_entrada" value={opt.v} checked={data.predio.tipo_entrada === opt.v} class="peer sr-only" />
             <div class="text-center text-sm px-2 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">
-              <div class="text-lg">{opt.i}</div>
+              <div><Icon nome={opt.icone} size={18} /></div>
               <div class="text-xs">{opt.l}</div>
             </div>
           </label>
@@ -273,18 +274,18 @@
     <div class="grid grid-cols-2 gap-2">
       <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg cursor-pointer">
         <input type="checkbox" name="acesso_caixas" checked={data.predio.acesso_caixas} class="w-4 h-4 rounded" />
-        <span class="text-sm">📬 Caixas</span>
+        <span class="text-sm"><Icon nome="inbox" size={14} /> Caixas</span>
       </label>
       <label class="flex items-center gap-2 p-3 border border-slate-200 rounded-lg cursor-pointer">
         <input type="checkbox" name="acesso_interfones" checked={data.predio.acesso_interfones} class="w-4 h-4 rounded" />
-        <span class="text-sm">📞 Interfones</span>
+        <span class="text-sm"><Icon nome="phone" size={14} /> Interfones</span>
       </label>
     </div>
 
     <div class="rounded-lg bg-amber-50 border border-amber-200 p-3">
       <label class="flex items-center gap-2 cursor-pointer">
         <input type="checkbox" name="irmao_mora" bind:checked={irmaoMora} class="w-4 h-4 rounded" />
-        <span class="text-sm font-medium">👤 Irmão mora aqui</span>
+        <span class="text-sm font-medium"><Icon nome="user" size={14} /> Irmão mora aqui</span>
       </label>
       {#if irmaoMora}
         <input name="nome_irmao" value={data.predio.nome_irmao ?? ''} placeholder="Nome do irmão" class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
@@ -292,7 +293,7 @@
     </div>
 
     <div>
-      <label for="notas" class="block text-sm font-medium mb-1">📝 Notas</label>
+      <label for="notas" class="block text-sm font-medium mb-1"><Icon nome="file-text" size={14} /> Notas</label>
       <textarea id="notas" name="notas" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{data.predio.notas ?? ''}</textarea>
     </div>
 

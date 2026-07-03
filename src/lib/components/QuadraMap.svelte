@@ -20,11 +20,11 @@
   let watchId: number | null = null;
 
   function pontoEmojiPorTipo(tipo: string): string {
-    if (tipo === 'predio') return '🏢';
-    if (tipo === 'comercio') return '🏪';
-    if (tipo === 'coletivo') return '🏨';
-    if (tipo === 'terreno') return '◻';
-    return '🏠';
+    if (tipo === 'predio') return '';
+    if (tipo === 'comercio') return '';
+    if (tipo === 'coletivo') return '';
+    if (tipo === 'terreno') return '';
+    return '';
   }
 
   onMount(async () => {

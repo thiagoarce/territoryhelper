@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/ui/Icon.svelte';
   import { goto, invalidateAll } from '$app/navigation';
   import { enhance, deserialize } from '$app/forms';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -175,10 +176,10 @@
     <div>
       <h1 class="text-2xl font-bold">Prédios — Cartas</h1>
       <p class="text-sm text-slate-500">
-        {filtrados.length} de {data.predios.length} · 🏢 {stats.residencial} residenciais · 🏪 {stats.comercial} comerciais
+        {filtrados.length} de {data.predios.length} · <Icon nome="building" size={14} /> {stats.residencial} residenciais · <Icon nome="store" size={14} /> {stats.comercial} comerciais
       </p>
     </div>
-    <Button variant="primary" size="sm" onclick={() => (sheetCriar = true)}>➕ Novo</Button>
+    <Button variant="primary" size="sm" onclick={() => (sheetCriar = true)}><Icon nome="plus" size={14} /> Novo</Button>
   </div>
 
   <input
@@ -190,7 +191,7 @@
 
   <!-- Tabs por tipo -->
   <div class="mt-2 flex gap-1 rounded-lg bg-slate-100 p-0.5">
-    {#each [['todos', `Todos (${data.predios.filter(p => !p.pendente).length})`], ['residencial', `🏢 Residencial (${stats.residencial})`], ['comercial', `🏪 Comercial (${stats.comercial})`]] as [k, l]}
+    {#each [['todos', `Todos (${data.predios.filter(p => !p.pendente).length})`], ['residencial', `Residencial (${stats.residencial})`], ['comercial', `Comercial (${stats.comercial})`]] as [k, l]}
       <button
         onclick={() => (filtroTipo = k as any)}
         class="flex-1 px-2 py-1.5 text-xs rounded transition-colors"
@@ -208,15 +209,15 @@
       onclick={() => (mostrarFiltros = !mostrarFiltros)}
       class="text-sm px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 flex items-center gap-1.5"
     >
-      ⚙ Filtros{#if filtrosAtivos > 0}<span class="bg-primary-600 text-white text-[10px] px-1.5 rounded-full">{filtrosAtivos}</span>{/if}
+      <Icon nome="settings" size={14} /> Filtros{#if filtrosAtivos > 0}<span class="bg-primary-600 text-white text-[10px] px-1.5 rounded-full">{filtrosAtivos}</span>{/if}
     </button>
     {#if filtrosAtivos > 0}
       <button onclick={limparFiltros} class="text-xs text-slate-500 hover:underline">Limpar</button>
     {/if}
     {#if lat == null || lng == null}
-      <Button variant="secondary" size="sm" onclick={usarLocalizacao} loading={carregandoGPS}>📍 Proximidade</Button>
+      <Button variant="secondary" size="sm" onclick={usarLocalizacao} loading={carregandoGPS}><Icon nome="map-pin" size={14} /> Proximidade</Button>
     {:else}
-      <span class="text-xs bg-green-50 border border-green-200 text-green-800 px-2 py-1 rounded">📍 GPS</span>
+      <span class="text-xs bg-green-50 border border-green-200 text-green-800 px-2 py-1 rounded"><Icon nome="map-pin" size={14} /> GPS</span>
       <button type="button" onclick={limparGeo} class="text-xs text-red-600 hover:underline">Limpar GPS</button>
     {/if}
     {#if stats.pendentes > 0}
@@ -230,7 +231,7 @@
         class:border-amber-300={!soPendentes}
         class:bg-amber-50={!soPendentes}
         class:text-amber-700={!soPendentes}
-      >⏳ Pendentes ({stats.pendentes})</button>
+      ><Icon nome="hourglass" size={14} /> Pendentes ({stats.pendentes})</button>
     {/if}
   </div>
 
@@ -239,7 +240,7 @@
       <div>
         <span class="block text-xs font-medium text-slate-600 mb-1">Portaria</span>
         <div class="flex gap-1 flex-wrap">
-          {#each [['todos', 'Todos'], ['porteiro', '👮 Porteiro'], ['eletronica', '🔘 Eletrônica'], ['sem', '🚪 Sem'], ['sem_info', 'Sem info']] as [k, l]}
+          {#each [['todos', 'Todos'], ['porteiro', 'Porteiro'], ['eletronica', 'Eletrônica'], ['sem', 'Sem'], ['sem_info', 'Sem info']] as [k, l]}
             <button
               onclick={() => (filtroPortaria = k as any)}
               class="text-xs px-2 py-1 rounded border"
@@ -256,15 +257,15 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label class="flex items-center gap-2 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg">
           <input type="checkbox" bind:checked={soComIrmao} class="w-4 h-4 rounded" />
-          <span class="text-sm">👤 Só com irmão</span>
+          <span class="text-sm"><Icon nome="user" size={14} /> Só com irmão</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg">
           <input type="checkbox" bind:checked={soComCaixas} class="w-4 h-4 rounded" />
-          <span class="text-sm">📬 Só com caixas</span>
+          <span class="text-sm"><Icon nome="inbox" size={14} /> Só com caixas</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg">
           <input type="checkbox" bind:checked={soComInterfone} class="w-4 h-4 rounded" />
-          <span class="text-sm">📞 Só com interfone</span>
+          <span class="text-sm"><Icon nome="phone" size={14} /> Só com interfone</span>
         </label>
       </div>
     </div>
@@ -294,10 +295,10 @@
           class="flex-1 text-left min-w-0"
         >
           <div class="font-semibold truncate flex items-center gap-1.5">
-            <span title={p.tipo === 'comercio' ? 'Comercial' : 'Residencial'}>{p.tipo === 'comercio' ? '🏪' : '🏢'}</span>
+            <span title={p.tipo === 'comercio' ? 'Comercial' : 'Residencial'}>{#if p.tipo === 'comercio'}<Icon nome="store" size={14} />{:else}<Icon nome="building" size={14} />{/if}</span>
             {p.nome || `${p.logradouro}, ${p.numero}`}
-            {#if p.irmao_mora}<span title="Irmão mora">👤</span>{/if}
-            {#if p.pendente}<span class="text-[9px] bg-amber-600 text-white px-1.5 py-0.5 rounded font-medium">⏳ pendente</span>{/if}
+            {#if p.irmao_mora}<span title="Irmão mora"><Icon nome="user" size={14} /></span>{/if}
+            {#if p.pendente}<span class="text-[9px] bg-amber-600 text-white px-1.5 py-0.5 rounded font-medium"><Icon nome="hourglass" size={14} /> pendente</span>{/if}
           </div>
           <div class="text-xs text-slate-500 truncate mt-0.5">
             {p.logradouro}, {p.numero} · {p.qtd_aptos} {p.tipo === 'comercio' ? 'unidade' : 'apto'}(s)
@@ -307,8 +308,8 @@
           <div class="mt-2 flex gap-1 flex-wrap">
             {#if p.tipo_entrada === 'porteiro'}<span class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Porteiro</span>{/if}
             {#if p.tipo_entrada === 'eletronica'}<span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Eletrônica</span>{/if}
-            {#if p.acesso_caixas}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">📬</span>{/if}
-            {#if p.acesso_interfones}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">📞</span>{/if}
+            {#if p.acesso_caixas}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded"><Icon nome="inbox" size={14} /></span>{/if}
+            {#if p.acesso_interfones}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded"><Icon nome="phone" size={14} /></span>{/if}
             <span class="text-[10px] text-slate-500 ml-auto">{p.qtd_carta_entregue}/{p.qtd_aptos} entregues</span>
           </div>
           <div class="mt-1 h-1 rounded-full bg-slate-100 overflow-hidden">
@@ -326,9 +327,9 @@
       </div>
     {:else}
       <div class="text-center py-8">
-        <div class="text-4xl mb-2 opacity-60">🏢</div>
+        <div class="text-4xl mb-2 opacity-60"><Icon nome="building" size={40} class="mx-auto text-slate-300" /></div>
         <div class="text-slate-500 mb-3">Nenhum prédio bate</div>
-        <Button variant="primary" onclick={() => (sheetCriar = true)}>➕ Criar prédio pendente</Button>
+        <Button variant="primary" onclick={() => (sheetCriar = true)}><Icon nome="plus" size={14} /> Criar prédio pendente</Button>
       </div>
     {/each}
   </div>
@@ -339,7 +340,7 @@
   <div class="fixed bottom-14 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex items-center gap-2 flex-wrap">
     <div class="text-sm font-medium"><strong>{selecionados.size}</strong> prédio(s) selecionado(s)</div>
     <div class="flex gap-2 ml-auto flex-wrap">
-      <Button variant="primary" size="sm" onclick={abrirDesignar}>🎯 Designar cartas</Button>
+      <Button variant="primary" size="sm" onclick={abrirDesignar}><Icon nome="target" size={14} /> Designar cartas</Button>
       <Button variant="secondary" size="sm" onclick={limparSel}>Limpar</Button>
     </div>
   </div>
@@ -433,11 +434,11 @@
     <div>
       <span class="block text-sm font-medium mb-2">Portaria</span>
       <div class="grid grid-cols-3 gap-2">
-        {#each [{ v: 'porteiro', l: 'Porteiro', i: '👮' }, { v: 'eletronica', l: 'Eletrônica', i: '🔘' }, { v: 'sem', l: 'Sem', i: '🚪' }] as opt}
+        {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem', icone: 'door' }] as opt}
           <label class="cursor-pointer">
             <input type="radio" name="tipo_entrada" value={opt.v} class="peer sr-only" />
             <div class="text-center text-sm px-2 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">
-              <div class="text-lg">{opt.i}</div>
+              <div><Icon nome={opt.icone} size={18} /></div>
               <div class="text-xs">{opt.l}</div>
             </div>
           </label>
@@ -457,7 +458,7 @@
     </div>
 
     <div class="text-xs text-amber-800 bg-amber-50 rounded p-2 border border-amber-200">
-      ⚠ Fica marcado como <strong>pendente</strong>. Admin valida depois.
+      <Icon nome="alert" size={14} /> Fica marcado como <strong>pendente</strong>. Admin valida depois.
     </div>
 
     <div class="flex gap-2 pt-2">
