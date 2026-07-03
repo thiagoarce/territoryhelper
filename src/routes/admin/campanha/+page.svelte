@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
   import Card from '$lib/ui/Card.svelte';
@@ -9,7 +9,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import type { Campanha } from '$lib/types';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { CampanhaPeriodo } from './$types';
+  import type { CampanhaPeriodo, Publicacao, Suprimento } from './$types';
 
   let { data, form }: {
     data: {
@@ -30,6 +30,8 @@
         status: 'ok' | 'atencao' | 'risco' | 'sem_meta';
         projecaoIso: string | null;
       } | null;
+      publicacoes: Publicacao[];
+      suprimentos: Suprimento[];
     };
     form: any;
   } = $props();
@@ -42,6 +44,79 @@
   let periodoEdit: CampanhaPeriodo | null = $state(null);
   let salvando = $state(false);
   let selecionadas = $state<Set<string>>(new Set());
+
+  // Suprimento
+  let sheetPublicacoes = $state(false);
+  let novaPubNome = $state('');
+  let novaPubCodigo = $state('');
+  let salvandoPub = $state(false);
+  let sheetAddSuprimento = $state(false);
+  let pubParaSuprimento = $state('');
+  let qtdNecessariaNova = $state(0);
+  let salvandoSuprimento = $state(false);
+
+  const publicacoesForaDaCampanha = $derived(
+    data.publicacoes.filter((p) => p.ativo && !data.suprimentos.some((s) => s.publicacao_id === p.id))
+  );
+
+  async function acaoRapida(action: string, params: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(params)) fd.append(k, v);
+    const res = await fetch(`?/${action}`, { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Feito')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  async function criarPublicacao() {
+    if (!novaPubNome.trim()) return;
+    salvandoPub = true;
+    await acaoRapida('criarPublicacao', { nome: novaPubNome.trim(), codigo: novaPubCodigo.trim() });
+    salvandoPub = false;
+    novaPubNome = ''; novaPubCodigo = '';
+  }
+
+  function abrirAddSuprimento() {
+    pubParaSuprimento = '';
+    qtdNecessariaNova = 0;
+    sheetAddSuprimento = true;
+  }
+
+  async function adicionarSuprimento() {
+    if (!pubParaSuprimento || !data.ativa) return;
+    salvandoSuprimento = true;
+    await acaoRapida('criarSuprimento', {
+      campanha_id: String(data.ativa.id),
+      publicacao_id: pubParaSuprimento,
+      qtd_necessaria: String(qtdNecessariaNova)
+    });
+    salvandoSuprimento = false;
+    sheetAddSuprimento = false;
+  }
+
+  async function atualizarSuprimento(s: Suprimento, patch: Partial<Suprimento>) {
+    const merged = { ...s, ...patch };
+    await acaoRapida('atualizarSuprimento', {
+      id: String(s.id),
+      qtd_necessaria: String(merged.qtd_necessaria),
+      qtd_em_maos: String(merged.qtd_em_maos),
+      pedido_feito: merged.pedido_feito ? 'on' : '',
+      notas: merged.notas ?? ''
+    });
+  }
+
+  async function apagarSuprimento(id: number) {
+    if (!confirm('Remover esse item do suprimento?')) return;
+    await acaoRapida('apagarSuprimento', { id: String(id) });
+  }
+
+  // Alerta visual: falta suprimento e a campanha começa em <30 dias
+  function suprimentoEmRisco(s: Suprimento): boolean {
+    if (!data.ativa) return false;
+    if (s.qtd_em_maos >= s.qtd_necessaria) return false;
+    const diasParaComecar = Math.ceil((new Date(data.ativa.data_inicio + 'T12:00:00').getTime() - Date.now()) / 86400000);
+    return diasParaComecar <= 30;
+  }
 
   function novoObj() { editando = null; sheetObj = true; }
   function editarObj(o: Campanha) { editando = o; sheetObj = true; }
@@ -216,6 +291,52 @@
         {/if}
       </Card>
     {/if}
+
+    <!-- Suprimento: checklist de publicações pra essa campanha -->
+    <Card padding="md">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase">Suprimento</h2>
+        <div class="flex gap-2">
+          <button onclick={() => (sheetPublicacoes = true)} class="text-xs text-slate-600 hover:underline">Catálogo</button>
+          <button onclick={abrirAddSuprimento} class="text-xs text-primary-700 hover:underline"><Icon nome="plus" size={12} /> Adicionar</button>
+        </div>
+      </div>
+      {#if data.suprimentos.length === 0}
+        <p class="text-xs text-slate-400">Nenhuma publicação associada a essa campanha ainda.</p>
+      {:else}
+        <div class="space-y-2">
+          {#each data.suprimentos as s (s.id)}
+            {@const risco = suprimentoEmRisco(s)}
+            <div class="rounded-lg border {risco ? 'border-red-300 bg-red-50' : 'border-slate-200'} p-2">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="font-medium text-sm">{s.publicacao_nome}</span>
+                {#if risco}<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700"><Icon nome="alert" size={10} /> faltando, campanha perto</span>{/if}
+                <button onclick={() => apagarSuprimento(s.id)} class="text-red-600 hover:underline ml-auto"><Icon nome="trash" size={12} /></button>
+              </div>
+              <div class="flex items-center gap-3 mt-1.5 flex-wrap text-xs">
+                <label class="flex items-center gap-1">Necessária
+                  <input type="number" min="0" value={s.qtd_necessaria} onchange={(e) => atualizarSuprimento(s, { qtd_necessaria: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5" />
+                </label>
+                <label class="flex items-center gap-1">Em mãos
+                  <input type="number" min="0" value={s.qtd_em_maos} onchange={(e) => atualizarSuprimento(s, { qtd_em_maos: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5" />
+                </label>
+                <label class="flex items-center gap-1 cursor-pointer">
+                  <input type="checkbox" checked={s.pedido_feito} onchange={(e) => atualizarSuprimento(s, { pedido_feito: (e.target as HTMLInputElement).checked })} class="w-3.5 h-3.5 rounded" />
+                  Pedido feito
+                </label>
+              </div>
+              <input
+                type="text"
+                placeholder="Notas (ex: qtd sugerida por publicador)"
+                value={s.notas ?? ''}
+                onchange={(e) => atualizarSuprimento(s, { notas: (e.target as HTMLInputElement).value })}
+                class="w-full mt-1.5 rounded border border-slate-200 px-2 py-1 text-xs"
+              />
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </Card>
 
     <!-- Mapa do período -->
     <div>
@@ -430,6 +551,13 @@
       <label for="meta_semanal" class="block text-sm font-medium mb-1">Meta semanal (opcional)</label>
       <input id="meta_semanal" name="meta_semanal" type="number" min="0" value={periodoEdit?.meta_semanal ?? ''} placeholder="Ex: 5 quadras/semana" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
     </div>
+    <div>
+      <label for="publicacao_id" class="block text-sm font-medium mb-1">Publicação principal (opcional)</label>
+      <select id="publicacao_id" name="publicacao_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={periodoEdit?.publicacao_id ?? ''}>
+        <option value="">—</option>
+        {#each data.publicacoes.filter((p) => p.ativo) as p}<option value={p.id}>{p.nome}</option>{/each}
+      </select>
+    </div>
     <div class="flex gap-2 pt-2">
       <Button variant="secondary" onclick={() => (sheetPeriodo = false)} class="flex-1">Cancelar</Button>
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Salvar</Button>
@@ -524,4 +652,51 @@
       <button type="submit" class="text-sm text-red-700 hover:underline"><Icon nome="trash" size={14} /> Excluir</button>
     </form>
   {/if}
+</BottomSheet>
+
+<!-- Sheet: Catálogo de publicações -->
+<BottomSheet bind:open={sheetPublicacoes} title="Catálogo de publicações">
+  <div class="space-y-3">
+    <div class="flex gap-2">
+      <input bind:value={novaPubNome} placeholder="Nome (ex: Convite da Celebração)" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <input bind:value={novaPubCodigo} placeholder="Código (opcional)" class="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <Button variant="primary" loading={salvandoPub} onclick={criarPublicacao}>+</Button>
+    </div>
+    <div class="space-y-1 max-h-80 overflow-y-auto">
+      {#each data.publicacoes as p (p.id)}
+        <div class="flex items-center gap-2 text-sm bg-slate-50 rounded p-2">
+          <span class="flex-1">{p.nome}{#if p.codigo} <span class="text-xs text-slate-400">({p.codigo})</span>{/if}</span>
+          {#if !p.ativo}<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">inativa</span>{/if}
+          <button
+            onclick={() => acaoRapida('atualizarPublicacao', { id: String(p.id), nome: p.nome, codigo: p.codigo ?? '', ativo: p.ativo ? '' : 'on' })}
+            class="text-xs text-primary-700 hover:underline"
+          >{p.ativo ? 'Desativar' : 'Reativar'}</button>
+        </div>
+      {/each}
+      {#if data.publicacoes.length === 0}
+        <p class="text-xs text-slate-400 text-center py-4">Nenhuma publicação cadastrada.</p>
+      {/if}
+    </div>
+  </div>
+</BottomSheet>
+
+<!-- Sheet: Adicionar suprimento à campanha ativa -->
+<BottomSheet bind:open={sheetAddSuprimento} title="Adicionar ao suprimento">
+  <div class="space-y-3">
+    <div>
+      <label for="pub-suprimento" class="block text-sm font-medium mb-1">Publicação</label>
+      <select id="pub-suprimento" bind:value={pubParaSuprimento} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="">— selecione —</option>
+        {#each publicacoesForaDaCampanha as p}<option value={p.id}>{p.nome}</option>{/each}
+      </select>
+      {#if publicacoesForaDaCampanha.length === 0}
+        <p class="text-xs text-slate-400 mt-1">Todas as publicações ativas já estão no suprimento (ou cadastre uma nova no Catálogo).</p>
+      {/if}
+    </div>
+    <div>
+      <label for="qtd-necessaria-nova" class="block text-sm font-medium mb-1">Quantidade necessária</label>
+      <input id="qtd-necessaria-nova" type="number" min="0" bind:value={qtdNecessariaNova} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <Button variant="primary" class="w-full" loading={salvandoSuprimento} disabled={!pubParaSuprimento} onclick={adicionarSuprimento}>Adicionar</Button>
+  </div>
 </BottomSheet>

@@ -10,6 +10,25 @@ export interface CampanhaPeriodo {
   data_alvo: string;
   meta_semanal: number | null;
   ativa: boolean;
+  publicacao_id: number | null;
+}
+
+export interface Publicacao {
+  id: number;
+  nome: string;
+  codigo: string | null;
+  ativo: boolean;
+}
+
+export interface Suprimento {
+  id: number;
+  campanha_id: number;
+  publicacao_id: number;
+  publicacao_nome: string;
+  qtd_necessaria: number;
+  qtd_em_maos: number;
+  pedido_feito: boolean;
+  notas: string | null;
 }
 
 export interface CampanhaHistorico extends CampanhaPeriodo {
@@ -19,19 +38,21 @@ export interface CampanhaHistorico extends CampanhaPeriodo {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const [objRes, periodosRes, quadras, conclusoes] = await Promise.all([
+  const [objRes, periodosRes, quadras, conclusoes, publicacoesRes] = await Promise.all([
     locals.supabase.from('campanha').select('*').order('modalidade').order('ordem'),
     locals.supabase
       .from('campanhas')
-      .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa')
+      .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa, publicacao_id')
       .order('data_inicio', { ascending: false }),
     listarQuadrasComGeo(locals.supabase),
     // Histórico append-only de conclusões — permite medir campanhas PASSADAS
     // (quadras.data_conclusao só guarda a última)
     selectAll<{ quadra_id: string; data_conclusao: string }>(
       locals.supabase.from('quadras_conclusoes').select('quadra_id, data_conclusao').order('id')
-    )
+    ),
+    locals.supabase.from('publicacoes').select('*').order('nome')
   ]);
+  const publicacoes = (publicacoesRes.data ?? []) as Publicacao[];
   const todosObjetivos = (objRes.data ?? []) as Campanha[];
   const periodos = (periodosRes.data ?? []) as CampanhaPeriodo[];
   // SEM fallback: desativar significa desativar. Nenhuma ativa = tela mostra isso.
@@ -132,7 +153,26 @@ export const load: PageServerLoad = async ({ locals }) => {
       .sort((a, b) => a.semana.localeCompare(b.semana));
   }
 
-  return { objetivos, periodos, ativa, historico, quadras, quadrasConcluidasNoPeriodo, conclusoesSemana, ritmo };
+  // Suprimento da campanha ativa — checklist publicação × necessária × em mãos
+  let suprimentos: Suprimento[] = [];
+  if (ativa) {
+    const { data: suprRows } = await locals.supabase
+      .from('campanha_suprimentos')
+      .select('id, campanha_id, publicacao_id, qtd_necessaria, qtd_em_maos, pedido_feito, notas, publicacoes!inner(nome)')
+      .eq('campanha_id', ativa.id);
+    suprimentos = ((suprRows ?? []) as any[]).map((s) => ({
+      id: s.id,
+      campanha_id: s.campanha_id,
+      publicacao_id: s.publicacao_id,
+      publicacao_nome: s.publicacoes?.nome ?? '?',
+      qtd_necessaria: s.qtd_necessaria,
+      qtd_em_maos: s.qtd_em_maos,
+      pedido_feito: s.pedido_feito,
+      notas: s.notas
+    }));
+  }
+
+  return { objetivos, periodos, ativa, historico, quadras, quadrasConcluidasNoPeriodo, conclusoesSemana, ritmo, publicacoes, suprimentos };
 };
 
 const MODALIDADES = ['casa', 'comercial', 'rural', 'cartas', 'telefone', 'publico'] as const;
@@ -197,11 +237,12 @@ export const actions: Actions = {
     const dataInicio = String(fd.get('data_inicio') ?? '').trim();
     const dataAlvo = String(fd.get('data_alvo') ?? '').trim();
     const metaSemanal = Number(fd.get('meta_semanal') ?? 0) || null;
+    const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
     if (!nome || !dataInicio || !dataAlvo) return fail(400, { erro: 'nome + datas obrigatórios' });
     if (id) {
       const { error } = await locals.supabase
         .from('campanhas')
-        .update({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal })
+        .update({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal, publicacao_id: publicacaoId })
         .eq('id', id);
       if (error) return fail(400, { erro: error.message });
     } else {
@@ -209,7 +250,7 @@ export const actions: Actions = {
       await locals.supabase.from('campanhas').update({ ativa: false }).eq('ativa', true);
       const { error } = await locals.supabase
         .from('campanhas')
-        .insert({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal, ativa: true });
+        .insert({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal, publicacao_id: publicacaoId, ativa: true });
       if (error) return fail(400, { erro: error.message });
     }
     return { ok: true, msg: 'Período salvo' };
@@ -232,5 +273,73 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('campanhas').update({ ativa: false }).eq('ativa', true);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Sem campanha ativa' };
+  },
+
+  // Catálogo de publicações (sheet dentro da tela — não merece rota própria)
+  criarPublicacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const nome = String(fd.get('nome') ?? '').trim();
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
+    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
+    const { error } = await locals.supabase.from('publicacoes').insert({ nome, codigo });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Publicação criada' };
+  },
+
+  atualizarPublicacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const nome = String(fd.get('nome') ?? '').trim();
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
+    const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
+    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
+    const { error } = await locals.supabase.from('publicacoes').update({ nome, codigo, ativo }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Publicação atualizada' };
+  },
+
+  // Suprimento: linha campanha × publicação (necessária/em mãos/pedido)
+  criarSuprimento: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const campanhaId = Number(fd.get('campanha_id') ?? 0);
+    const publicacaoId = Number(fd.get('publicacao_id') ?? 0);
+    const qtdNecessaria = Number(fd.get('qtd_necessaria') ?? 0);
+    if (!campanhaId || !publicacaoId) return fail(400, { erro: 'campanha e publicação obrigatórias' });
+    const { error } = await locals.supabase.from('campanha_suprimentos').insert({
+      campanha_id: campanhaId, publicacao_id: publicacaoId, qtd_necessaria: qtdNecessaria
+    });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Suprimento adicionado' };
+  },
+
+  atualizarSuprimento: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const qtdNecessaria = Number(fd.get('qtd_necessaria') ?? 0);
+    const qtdEmMaos = Number(fd.get('qtd_em_maos') ?? 0);
+    const pedidoFeito = fd.get('pedido_feito') === 'on' || fd.get('pedido_feito') === 'true';
+    const notas = String(fd.get('notas') ?? '').trim() || null;
+    const { error } = await locals.supabase
+      .from('campanha_suprimentos')
+      .update({ qtd_necessaria: qtdNecessaria, qtd_em_maos: qtdEmMaos, pedido_feito: pedidoFeito, notas })
+      .eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Suprimento atualizado' };
+  },
+
+  apagarSuprimento: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('campanha_suprimentos').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Suprimento removido' };
   }
 };

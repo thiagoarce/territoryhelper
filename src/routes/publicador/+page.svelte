@@ -15,6 +15,7 @@
     total_meta: number;
     status: 'planejada' | 'em_andamento' | 'encerrada';
     diasParaComecar: number;
+    notasSuprimento: string | null;
   }
 
   interface MinhaParte {
@@ -232,6 +233,9 @@
       <span>{c.concluidas_no_periodo}/{c.total_meta} quadras</span>
       <span>{new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {new Date(c.data_alvo + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
     </div>
+    {#if c.notasSuprimento}
+      <div class="mt-2 pt-2 border-t border-white/20 text-xs opacity-90"><Icon nome="mail" size={12} /> {c.notasSuprimento}</div>
+    {/if}
   </a>
 {/if}
 

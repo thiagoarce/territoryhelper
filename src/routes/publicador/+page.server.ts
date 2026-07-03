@@ -13,6 +13,7 @@ export interface CampanhaAtiva {
   total_meta: number;
   status: StatusCampanha;
   diasParaComecar: number;
+  notasSuprimento: string | null;
 }
 
 export interface MeuTurnoTp {
@@ -33,7 +34,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
       .from('campanhas')
-      .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa')
+      .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa, publicacao_id')
       .eq('ativa', true)
       .maybeSingle(),
     // Partes de arranjo que me incluem (dupla/trio) — válidas pela data do arranjo
@@ -96,12 +97,25 @@ export const load: PageServerLoad = async ({ locals }) => {
     const diasParaComecar = Math.max(0, Math.ceil(
       (new Date(c.data_inicio + 'T12:00:00').getTime() - Date.now()) / 86400000
     ));
+    // Notas de suprimento da publicação principal — texto livre, sem cálculo
+    // (ex: "levar 20 convites por publicador"), pra aparecer no card do campo.
+    let notasSuprimento: string | null = null;
+    if (c.publicacao_id) {
+      const { data: supr } = await locals.supabase
+        .from('campanha_suprimentos')
+        .select('notas')
+        .eq('campanha_id', c.id)
+        .eq('publicacao_id', c.publicacao_id)
+        .maybeSingle();
+      notasSuprimento = supr?.notas ?? null;
+    }
     campanhaAtiva = {
       id: c.id,
       nome: c.nome,
       data_inicio: c.data_inicio,
       data_alvo: c.data_alvo,
       meta_semanal: c.meta_semanal,
+      notasSuprimento,
       concluidas_no_periodo: conclNoPeriodo,
       total_meta: quadras.length,
       status: statusCampanha(c),
