@@ -7,7 +7,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { ocorrenciasDaSemana, agruparPorDia, semanaAtual, DIAS_SEMANA, DIAS_ORDENADOS } from '$lib/arranjos';
+  import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
   import type { QuadraGeo } from '$lib/server/queries';
   import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './$types';
 
@@ -36,9 +36,12 @@
     };
   } = $props();
 
-  const semana = semanaAtual();
-  const ocorrencias = $derived(ocorrenciasDaSemana<ArranjoLinha>(data.arranjos));
-  const ocPorDia = $derived(agruparPorDia(ocorrencias));
+  // Período igual ao admin: semana / mês / 3 meses / ano
+  let periodo = $state<Periodo>('semana');
+  const range = $derived(rangeDoPeriodo(periodo));
+  const ocorrencias = $derived(ocorrenciasEntre<ArranjoLinha>(data.arranjos, range.isoIni, range.isoFim));
+  const ocPorData = $derived(agruparPorData(ocorrencias));
+  const datasOrdenadas = $derived(Object.keys(ocPorData).sort());
   const modById = $derived(Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const)));
   const partesPorArranjo = $derived.by(() => {
     const m: Record<number, ParteLinha[]> = {};
@@ -137,10 +140,27 @@
 <div class="p-4 space-y-3">
   <div>
     <h1 class="text-2xl font-bold">Arranjo</h1>
-    <p class="text-sm text-slate-500">Saídas em grupo desta semana</p>
-    <div class="text-xs text-slate-400 mt-1">
-      {semana.ini.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-      — {semana.fim.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+    <p class="text-sm text-slate-500">Saídas em grupo — planeje com antecedência</p>
+  </div>
+
+  <div class="flex items-center justify-between flex-wrap gap-2">
+    <div class="flex gap-1 bg-slate-100 rounded-lg p-1">
+      {#each [['semana', 'Semana'], ['mes', 'Mês'], ['tres_meses', '3 meses'], ['ano', 'Ano']] as [p, label]}
+        <button
+          type="button"
+          onclick={() => (periodo = p as Periodo)}
+          class="px-3 py-1 text-xs font-medium rounded transition-colors"
+          class:bg-white={periodo === p}
+          class:shadow-sm={periodo === p}
+          class:text-slate-900={periodo === p}
+          class:text-slate-500={periodo !== p}
+        >{label}</button>
+      {/each}
+    </div>
+    <div class="text-xs text-slate-400">
+      {new Date(range.isoIni + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      — {new Date(range.isoFim + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      · {ocorrencias.length} saída(s)
     </div>
   </div>
 
@@ -154,12 +174,14 @@
     </Card>
   {:else}
     <div class="grid gap-3">
-      {#each DIAS_ORDENADOS as dia}
-        {#if (ocPorDia[dia] ?? []).length > 0}
+      {#each datasOrdenadas as dataIso}
+        {#if (ocPorData[dataIso] ?? []).length > 0}
           <div>
-            <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">{DIAS_SEMANA[dia]}</div>
+            <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">
+              {new Date(dataIso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+            </div>
             <div class="grid gap-2">
-              {#each ocPorDia[dia] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
+              {#each ocPorData[dataIso] ?? [] as oc (oc.arranjo.id + '-' + oc.data)}
                 {@const a = oc.arranjo}
                 {@const m = modById[a.modalidade_id]}
                 {@const partesDoArranjo = partesPorArranjo[a.id] ?? []}

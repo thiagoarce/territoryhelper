@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import type { Campanha } from '$lib/types';
-import { listarQuadrasComGeo } from '$lib/server/queries';
+import { listarQuadrasComGeo, selectAll } from '$lib/server/queries';
 
 export interface CampanhaPeriodo {
   id: number;
@@ -12,20 +12,59 @@ export interface CampanhaPeriodo {
   ativa: boolean;
 }
 
+export interface CampanhaHistorico extends CampanhaPeriodo {
+  concluidas: number;
+  meta_total: number | null;   // meta_semanal × semanas do período
+  qtd_objetivos: number;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
-  const [objRes, periodosRes, quadras] = await Promise.all([
+  const [objRes, periodosRes, quadras, conclusoes] = await Promise.all([
     locals.supabase.from('campanha').select('*').order('modalidade').order('ordem'),
     locals.supabase
       .from('campanhas')
       .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa')
       .order('data_inicio', { ascending: false }),
-    listarQuadrasComGeo(locals.supabase)
+    listarQuadrasComGeo(locals.supabase),
+    // Histórico append-only de conclusões — permite medir campanhas PASSADAS
+    // (quadras.data_conclusao só guarda a última)
+    selectAll<{ quadra_id: string; data_conclusao: string }>(
+      locals.supabase.from('quadras_conclusoes').select('quadra_id, data_conclusao').order('id')
+    )
   ]);
-  const objetivos = (objRes.data ?? []) as Campanha[];
+  const todosObjetivos = (objRes.data ?? []) as Campanha[];
   const periodos = (periodosRes.data ?? []) as CampanhaPeriodo[];
-  // Mostra a marcada como ativa; senão, cai pra mais recente (prazo passou mas ninguém desativou).
-  // Pra "esconder", o user clica em Desativar explicitamente, que apaga todos os ativos.
-  const ativa = periodos.find((p) => p.ativa) ?? periodos[0] ?? null;
+  // SEM fallback: desativar significa desativar. Nenhuma ativa = tela mostra isso.
+  const ativa = periodos.find((p) => p.ativa) ?? null;
+
+  // Objetivos SEMPRE pertencem a uma campanha; a tela mostra os da ativa
+  // (legados com campanha_id null aparecem junto pra não sumir dado antigo)
+  const objetivos = todosObjetivos.filter(
+    (o: any) => (ativa && o.campanha_id === ativa.id) || o.campanha_id == null
+  );
+
+  // Conclusões DISTINTAS (quadra única) dentro de um período
+  function concluidasNoPeriodo(inicio: string, alvo: string): number {
+    const set = new Set<string>();
+    for (const c of conclusoes) {
+      if (c.data_conclusao >= inicio && c.data_conclusao <= alvo) set.add(c.quadra_id);
+    }
+    return set.size;
+  }
+  function semanasDoPeriodo(inicio: string, alvo: string): number {
+    const ms = new Date(alvo + 'T12:00:00').getTime() - new Date(inicio + 'T12:00:00').getTime();
+    return Math.max(1, Math.ceil(ms / (7 * 86400000)));
+  }
+
+  // Histórico: campanhas passadas/inativas com resultado (cumprimos a meta?)
+  const historico: CampanhaHistorico[] = periodos
+    .filter((p) => !p.ativa)
+    .map((p) => ({
+      ...p,
+      concluidas: concluidasNoPeriodo(p.data_inicio, p.data_alvo),
+      meta_total: p.meta_semanal ? p.meta_semanal * semanasDoPeriodo(p.data_inicio, p.data_alvo) : null,
+      qtd_objetivos: todosObjetivos.filter((o: any) => o.campanha_id === p.id).length
+    }));
 
   // Conclusões POR SEMANA durante o período ativo (pra gráfico)
   let conclusoesSemana: { semana: string; qtd: number }[] = [];
@@ -53,7 +92,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       .sort((a, b) => a.semana.localeCompare(b.semana));
   }
 
-  return { objetivos, periodos, ativa, quadras, quadrasConcluidasNoPeriodo, conclusoesSemana };
+  return { objetivos, periodos, ativa, historico, quadras, quadrasConcluidasNoPeriodo, conclusoesSemana };
 };
 
 const MODALIDADES = ['casa', 'comercial', 'rural', 'cartas', 'telefone', 'publico'] as const;
@@ -71,9 +110,15 @@ export const actions: Actions = {
     if (!TIPOS.includes(tipo as any)) return fail(400, { erro: 'Tipo inválido' });
     if (!MODALIDADES.includes(modalidade as any)) return fail(400, { erro: 'Modalidade inválida' });
     if (!titulo) return fail(400, { erro: 'Título obrigatório' });
+
+    // Objetivo sempre pertence a uma campanha — a ativa no momento da criação
+    const { data: ativa } = await locals.supabase
+      .from('campanhas').select('id').eq('ativa', true).maybeSingle();
+    if (!ativa) return fail(400, { erro: 'Nenhuma campanha ativa — crie/ative um período antes de adicionar objetivos' });
+
     const { error } = await locals.supabase
       .from('campanha')
-      .insert({ tipo, modalidade, titulo, descricao, link, publico });
+      .insert({ tipo, modalidade, titulo, descricao, link, publico, campanha_id: ativa.id });
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Objetivo criado' };
   },

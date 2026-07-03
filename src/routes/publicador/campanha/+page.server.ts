@@ -16,8 +16,14 @@ export const load: PageServerLoad = async ({ locals }) => {
       .order('ordem')
   ]);
 
-  return {
-    ativa: ativaRes.data ?? null,
-    objetivos: (objetivosRes.data ?? []) as Campanha[]
-  };
+  const ativa = ativaRes.data ?? null;
+  // Objetivos pertencem à campanha ativa (legados sem campanha_id continuam
+  // aparecendo enquanto houver alguma ativa)
+  const objetivos = ativa
+    ? ((objetivosRes.data ?? []) as any[]).filter(
+        (o) => o.campanha_id === (ativa as any).id || o.campanha_id == null
+      )
+    : [];
+
+  return { ativa, objetivos: objetivos as Campanha[] };
 };

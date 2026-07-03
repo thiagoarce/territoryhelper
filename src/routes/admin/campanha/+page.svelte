@@ -210,31 +210,54 @@
     </Card>
   {/if}
 
-  <!-- Lista de outros períodos (só pra trocar de ativo) -->
-  {#if data.periodos.length > 0}
+  <!-- Encerrar a campanha ativa (vira histórico, nunca deleta) -->
+  {#if data.ativa}
+    <form method="POST" action="?/desativarPeriodo" use:enhance={() => async ({ result, update }) => {
+      await update();
+      if (result.type === 'success') { toast.success('Campanha encerrada — foi pro histórico'); await invalidateAll(); }
+      else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+    }} onsubmit={(e) => { if (!confirm(`Encerrar "${data.ativa!.nome}"? Ela vai pro histórico com os resultados (nada é apagado).`)) e.preventDefault(); }}>
+      <Button variant="secondary" type="submit" class="w-full">Encerrar campanha ativa</Button>
+    </form>
+  {/if}
+
+  <!-- Histórico com resultados (metas cumpridas?) -->
+  {#if data.historico.length > 0}
     <div>
-      <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">Histórico</h2>
+      <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">Histórico ({data.historico.length})</h2>
       <div class="space-y-2">
-        {#each data.periodos as p}
+        {#each data.historico as p}
+          {@const pct = p.meta_total ? Math.round((p.concluidas / p.meta_total) * 100) : null}
           <Card padding="sm">
             <div class="flex items-center justify-between gap-2">
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-medium">{p.nome}</span>
-                  {#if p.ativa}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">ativa</span>{/if}
+                  {#if pct !== null}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-medium {pct >= 100 ? 'bg-green-100 text-green-700' : pct >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}">
+                      {pct}% da meta
+                    </span>
+                  {/if}
                 </div>
-                <div class="text-xs text-slate-500">{p.data_inicio} → {p.data_alvo}</div>
-              </div>
-              <div class="flex gap-1">
-                {#if !p.ativa}
-                  <form method="POST" action="?/ativarPeriodo" use:enhance={() => async ({ result, update }) => {
-                    await update();
-                    if (result.type === 'success') { toast.success('Ativada'); await invalidateAll(); }
-                  }}>
-                    <input type="hidden" name="id" value={p.id} />
-                    <button type="submit" class="text-xs text-primary-700 hover:underline">Ativar</button>
-                  </form>
+                <div class="text-xs text-slate-500 mt-0.5">
+                  {new Date(p.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR')} → {new Date(p.data_alvo + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  · <strong>{p.concluidas}</strong> concluída(s){p.meta_total ? ` de ${p.meta_total} (meta)` : ''}
+                  {#if p.qtd_objetivos > 0}· {p.qtd_objetivos} objetivo(s){/if}
+                </div>
+                {#if p.meta_total}
+                  <div class="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden max-w-xs">
+                    <div class="h-full {pct !== null && pct >= 100 ? 'bg-green-500' : 'bg-amber-500'}" style:width="{Math.min(100, pct ?? 0)}%"></div>
+                  </div>
                 {/if}
+              </div>
+              <div class="flex flex-col gap-1 items-end shrink-0">
+                <form method="POST" action="?/ativarPeriodo" use:enhance={() => async ({ result, update }) => {
+                  await update();
+                  if (result.type === 'success') { toast.success('Ativada'); await invalidateAll(); }
+                }}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <button type="submit" class="text-xs text-primary-700 hover:underline">Reativar</button>
+                </form>
                 <button onclick={() => editarPeriodo(p)} class="text-xs text-slate-500 hover:underline">Editar</button>
               </div>
             </div>
