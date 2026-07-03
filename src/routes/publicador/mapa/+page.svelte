@@ -111,6 +111,36 @@
     toast.success('PNG baixado');
   }
 
+  let exportandoLote = $state(false);
+
+  // PNG em lote: centraliza em cada quadra selecionada, uma de cada vez, e
+  // baixa um PNG por quadra. easeTo tem duration 400ms — espera terminar
+  // antes de capturar (senão o frame sai borrado/no meio da animação).
+  async function exportarPngEmLote() {
+    const ids = [...selecaoMapa];
+    if (ids.length === 0 || !mapaRef) return;
+    exportandoLote = true;
+    toast.info(`Exportando ${ids.length} PNG(s)...`);
+    let feitos = 0;
+    for (const qid of ids) {
+      const q = data.quadras.find((x) => x.id === qid);
+      if (!q) continue;
+      mapaRef.centralizarEmQuadra(q);
+      await new Promise((r) => setTimeout(r, 500));
+      const png = await mapaRef.exportarPng();
+      if (png) {
+        const a = document.createElement('a');
+        a.href = png;
+        a.download = `mapa-${qid}.png`;
+        a.click();
+        feitos++;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    exportandoLote = false;
+    toast.success(`${feitos}/${ids.length} PNG(s) exportado(s)`);
+  }
+
   let buscandoPOIs = $state(false);
   let pois: { id: string; lat: number; lng: number; nome: string; categoria: CategoriaPOI; distancia: number }[] = $state([]);
 
@@ -313,6 +343,7 @@
       {:else}
         <span class="text-xs text-slate-500 self-center">Crie/assuma um arranjo pra repartir</span>
       {/if}
+      <Button variant="secondary" size="sm" loading={exportandoLote} onclick={exportarPngEmLote}><Icon nome="camera" size={14} /> PNG em lote</Button>
       <Button variant="secondary" size="sm" onclick={() => (selecaoMapa = new Set())}>Limpar</Button>
     </div>
   </div>
