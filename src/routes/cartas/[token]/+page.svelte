@@ -50,7 +50,7 @@
 
   <!-- Lista -->
   <div class="p-4 space-y-1">
-    {#each data.unidades as u (u.id)}
+    {#each data.unidades as u, indice (u.id)}
       {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : u.carta_entregue ? 'entregue' : 'pendente'}
       <div
         class="rounded-lg border p-3 transition-colors"
@@ -65,7 +65,7 @@
       >
         <div class="flex items-center justify-between gap-3">
           <div class="flex-1 min-w-0">
-            <div class="font-mono font-semibold">{u.complemento || `Apto ${u.id}`}</div>
+            <div class="font-mono font-semibold">{u.complemento || u.nota || `Unidade ${indice + 1}`}</div>
             {#if u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue}</div>{/if}
           </div>
           <div class="flex gap-1">

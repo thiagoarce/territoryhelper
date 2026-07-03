@@ -276,11 +276,11 @@
                 </div>
                 {#if abertos.has(l.id)}
                   <div class="border-t border-slate-100">
-                    {#each visUnidades as u (u.id)}
+                    {#each visUnidades as u, indice (u.id)}
                       <div class="px-3 py-2 border-b border-slate-100 last:border-b-0">
                         <div class="flex items-center justify-between gap-2 mb-1">
                           <span class="font-mono text-sm">
-                            {u.complemento || `Apto ${u.id}`}
+                            {u.complemento || u.nota || `Apto ${indice + 1}`}
                             {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue"><Icon nome="mail" size={14} /></span>{/if}
                           </span>
                           {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}

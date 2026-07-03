@@ -44,7 +44,7 @@ export interface PredioLite {
   id: number;
   logradouro: string | null;
   numero: string | null;
-  nome_estabelecimento: string | null;
+  nome: string | null;
 }
 
 export interface PredioChip {
@@ -93,7 +93,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     safe('predios', selectAll<PredioLite>(
       locals.supabase
         .from('locais')
-        .select('id, logradouro, numero, nome_estabelecimento')
+        .select('id, logradouro, numero, nome')
         .in('tipo', ['predio', 'comercio'])
         .order('logradouro')
         .order('numero')

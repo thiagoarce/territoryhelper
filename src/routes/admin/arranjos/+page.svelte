@@ -682,8 +682,8 @@
                     }}
                     class="w-4 h-4 rounded"
                   />
-                  <span class="flex-1 truncate">{p.nome_estabelecimento ?? '—'}</span>
-                  <span class="text-xs text-slate-400 truncate">{p.logradouro ?? ''} {p.numero ?? ''}</span>
+                  <span class="flex-1 truncate">{p.nome ?? `${p.logradouro ?? ''}, ${p.numero ?? ''}`}</span>
+                  {#if p.nome}<span class="text-xs text-slate-400 truncate">{p.logradouro ?? ''} {p.numero ?? ''}</span>{/if}
                 </label>
               {/each}
             </div>

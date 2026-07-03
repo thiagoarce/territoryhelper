@@ -23,6 +23,7 @@
       predio: {
         id: number;
         nome: string | null;
+        tipo: string;
         logradouro: string;
         numero: string;
         tipo_entrada: string | null;
@@ -70,6 +71,20 @@
 
   function fmtDataCarta(iso: string): string {
     return new Date(iso.substring(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR');
+  }
+
+  // Rótulo de cada unidade na lista. `complemento` (ex: "Apto 101", "Sala 2")
+  // é o dado real; sem ele, cai pra `nota` (texto livre da migração) e só em
+  // último caso pra uma numeração sequencial — nunca o id bruto do banco,
+  // que não tem significado nenhum pra quem olha a tela (ex: comércio com
+  // uma unidade só, sem apto/sala, mostrava "Apto 2656").
+  function rotuloUnidade(u: UnidadeEnriched, indice: number): string {
+    if (u.complemento) return u.complemento;
+    if (u.nota) return u.nota;
+    if (data.predio.tipo === 'comercio') {
+      return data.predio.unidades.length > 1 ? `Unidade ${indice + 1}` : data.predio.nome || 'Estabelecimento';
+    }
+    return `Apto ${indice + 1}`;
   }
 
   function unidadeVisitada(u: UnidadeEnriched): boolean {
@@ -286,7 +301,7 @@
 
   <!-- Lista (swipe esquerda/direita navega entre aptos) -->
   <div class="p-4 space-y-1">
-    {#each data.predio.unidades as u (u.id)}
+    {#each data.predio.unidades as u, indice (u.id)}
       {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : u.carta_entregue ? 'entregue' : 'pendente'}
       <div
         bind:this={cardRefs[u.id]}
@@ -306,7 +321,7 @@
       >
         <div class="flex items-center justify-between gap-2">
           <div class="flex-1 min-w-0">
-            <div class="font-mono font-semibold text-sm">{u.complemento || `Apto ${u.id}`}</div>
+            <div class="font-mono font-semibold text-sm">{rotuloUnidade(u, indice)}</div>
             {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue ? fmtDataCarta(u.carta_entregue) : 'hoje'}</div>{/if}
             {#if modo === 'casa' && tipoEfetivo(u) && tipoEfetivo(u) !== 'desfeito' && tipoEfetivo(u) !== 'carta_undo'}
               <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{rotulos[tipoEfetivo(u)!] ?? tipoEfetivo(u)}</span>
