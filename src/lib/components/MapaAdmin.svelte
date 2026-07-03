@@ -18,6 +18,7 @@
     mostrarRotulos = true,
     mostrarTerritorios = false,
     quadrasAlocadas = [],
+    reservadasIds = [],
     selecionadas = $bindable(new Set<string>()),
     basemap = $bindable<Basemap>('bright'),
     onClick,
@@ -29,6 +30,7 @@
     mostrarRotulos?: boolean;
     mostrarTerritorios?: boolean;
     quadrasAlocadas?: string[];
+    reservadasIds?: string[];
     selecionadas?: Set<string>;
     basemap?: Basemap;
     onClick?: (q: QuadraGeo, multi: boolean) => void;
@@ -78,7 +80,7 @@
   // Quando os dados (quadras / alocadas) mudam, atualiza a fonte GeoJSON.
   // Sem isso, "Concluir quadra" não repintava nada no mapa.
   $effect(() => {
-    void quadras; void quadrasAlocadas;
+    void quadras; void quadrasAlocadas; void reservadasIds;
     if (!mapa || !mapa.getSource || !mapa.getSource('quadras')) return;
     const hoje = Date.now();
     const features = quadras
@@ -117,6 +119,17 @@
           properties: { id: q.id }
         }));
       mapa.getSource('alocadas').setData({ type: 'FeatureCollection', features: alFeatures } as any);
+    }
+    if (mapa.getSource('reservadas')) {
+      const resSet = new Set(reservadasIds);
+      const resFeatures = quadras
+        .filter((q) => q.poly_geojson && resSet.has(q.id))
+        .map((q) => ({
+          type: 'Feature' as const,
+          geometry: q.poly_geojson as any,
+          properties: { id: q.id }
+        }));
+      mapa.getSource('reservadas').setData({ type: 'FeatureCollection', features: resFeatures } as any);
     }
   });
 
@@ -283,6 +296,26 @@
           'text-size': 14,
           'text-offset': [0.8, -0.8],
           'text-allow-overlap': true
+        }
+      });
+
+      // Quadras reservadas pra campanha — contorno tracejado roxo por cima
+      const reservadasFeatures = quadras
+        .filter((q) => q.poly_geojson && reservadasIds.includes(q.id))
+        .map((q) => ({
+          type: 'Feature' as const,
+          geometry: (q.poly_geojson as any),
+          properties: { id: q.id }
+        }));
+      mapa.addSource('reservadas', { type: 'geojson', data: { type: 'FeatureCollection', features: reservadasFeatures } as any });
+      mapa.addLayer({
+        id: 'reservadas-line',
+        type: 'line',
+        source: 'reservadas',
+        paint: {
+          'line-color': '#9333ea',
+          'line-width': 3,
+          'line-dasharray': [2, 1.5]
         }
       });
     }

@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { selectAll, quadrasEmArranjoFuturo, msgConflitoArranjo } from '$lib/server/queries';
+import { statusCampanha } from '$lib/campanhas';
 
 export interface Modalidade {
   id: number;
@@ -105,6 +106,19 @@ export const load: PageServerLoad = async ({ locals }) => {
     .from('tces').select('id, nome, status').eq('status', 'aberto').order('nome');
   const tces = (tcesRes ?? []) as { id: string; nome: string; status: string }[];
 
+  // Campanha em andamento: sugere as quadras já reservadas pra ela como
+  // chips clicáveis no território do arranjo (C1 — reserva de campanha).
+  const { data: campRes } = await locals.supabase
+    .from('campanhas').select('id, nome, data_inicio, data_alvo, ativa').eq('ativa', true).maybeSingle();
+  let quadrasReservadasCampanha: string[] = [];
+  let nomeCampanhaAndamento: string | null = null;
+  if (campRes && statusCampanha(campRes) === 'em_andamento') {
+    nomeCampanhaAndamento = campRes.nome;
+    const { data: qRes } = await locals.supabase
+      .from('quadras').select('id').eq('reservada_campanha_id', campRes.id).order('id');
+    quadrasReservadasCampanha = (qRes ?? []).map((q: any) => q.id as string);
+  }
+
   // Detalhes dos prédios referenciados nos arranjos (pros chips clicáveis)
   const predioIds = Array.from(
     new Set(arranjos.flatMap((a) => a.cartas_locais_ids ?? []).filter((n) => Number.isFinite(n)))
@@ -145,6 +159,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     predios,
     prediosMap,
     tces,
+    quadrasReservadasCampanha,
+    nomeCampanhaAndamento,
     loadErro: null as string | null
   };
 };

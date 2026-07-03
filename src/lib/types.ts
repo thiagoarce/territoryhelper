@@ -45,6 +45,7 @@ export interface Quadra {
   notas: string | null;
   criado_em: string;
   atualizado_em: string;
+  reservada_campanha_id: number | null;
 }
 
 export type LocalTipo = 'predio' | 'casa' | 'comercio' | 'coletivo' | 'terreno';

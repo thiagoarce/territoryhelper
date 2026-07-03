@@ -70,7 +70,7 @@ export async function listarQuadrasComContagem(
   const [quadrasRes, locaisPorQuadra] = await Promise.all([
     supabase
       .from('quadras')
-      .select('id, color, territorio_id, status, ativa, data_conclusao, notas, criado_em, atualizado_em, territorios(nome)')
+      .select('id, color, territorio_id, status, ativa, data_conclusao, notas, criado_em, atualizado_em, reservada_campanha_id, territorios(nome)')
       .order('id'),
     contarLocaisPorQuadra(supabase)
   ]);
@@ -97,7 +97,7 @@ export async function listarQuadrasComGeo(
   const [qRes, locaisPorQuadra, terrRes] = await Promise.all([
     supabase
       .from('quadras_geo')
-      .select('id, color, territorio_id, status, ativa, data_conclusao, notas, poly_geojson')
+      .select('id, color, territorio_id, status, ativa, data_conclusao, notas, reservada_campanha_id, poly_geojson')
       .order('id'),
     contarLocaisPorQuadra(supabase),
     supabase.from('territorios').select('id, nome')
@@ -550,4 +550,39 @@ export function msgConflitoArranjo(
     ([q, a]) => `${q} (em "${a.nome ?? 'Arranjo'}"${a.data ? ' de ' + a.data.split('-').reverse().join('/') : ''})`
   );
   return `Quadra(s) já em arranjo futuro: ${partes.join(', ')}. Uma quadra não pode estar em dois arranjos futuros.`;
+}
+
+// ============================================================================
+// Reserva de quadra pra campanha ("quarentena") — Campanhas v2 incremento C1.
+// Só bloqueia designação/arranjo ENQUANTO a campanha ainda não começou
+// (data_inicio > hoje). A partir do início, a reserva vira só um filtro
+// visual/de sugestão — não trava mais.
+// ============================================================================
+export async function quadrasReservadasBloqueando(
+  supabase: SupabaseClient,
+  quadrasIds: string[]
+): Promise<Map<string, { campanhaId: number; nome: string; dataInicio: string }>> {
+  const out = new Map<string, { campanhaId: number; nome: string; dataInicio: string }>();
+  if (quadrasIds.length === 0) return out;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from('quadras')
+    .select('id, reservada_campanha_id, campanhas!inner(id, nome, data_inicio)')
+    .in('id', quadrasIds)
+    .not('reservada_campanha_id', 'is', null)
+    .gt('campanhas.data_inicio', hoje);
+  for (const q of (data ?? []) as any[]) {
+    const c = q.campanhas;
+    if (c) out.set(q.id, { campanhaId: c.id, nome: c.nome, dataInicio: c.data_inicio });
+  }
+  return out;
+}
+
+export function msgConflitoReserva(
+  conflitos: Map<string, { campanhaId: number; nome: string; dataInicio: string }>
+): string {
+  const partes = Array.from(conflitos.entries()).map(
+    ([q, c]) => `${q} (reservada pra "${c.nome}", início ${c.dataInicio.split('-').reverse().join('/')})`
+  );
+  return `Quadra(s) em quarentena pra campanha: ${partes.join(', ')}. Libere a reserva antes ou espere a campanha começar.`;
 }

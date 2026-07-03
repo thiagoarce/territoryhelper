@@ -28,8 +28,20 @@
       predios: PredioLite[];
       prediosMap: Record<number, PredioChip>;
       tces: { id: string; nome: string; status: string }[];
+      quadrasReservadasCampanha: string[];
+      nomeCampanhaAndamento: string | null;
     };
   } = $props();
+
+  // Chip clicável → adiciona no input (uncontrolled) de quadras sem
+  // reescrever a reatividade do form inteiro.
+  function adicionarQuadraChip(q: string) {
+    const el = document.getElementById('quadras_ids') as HTMLInputElement | null;
+    if (!el) return;
+    const atuais = el.value.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!atuais.includes(q)) atuais.push(q);
+    el.value = atuais.join(', ');
+  }
 
   type Aba = 'semana' | 'modalidades';
   let aba = $state<Aba>('semana');
@@ -630,6 +642,17 @@
 
         <div>
           <label for="quadras_ids" class="block text-sm font-medium mb-1"><Icon nome="door" size={14} /> Quadras (casa em casa)</label>
+          {#if data.quadrasReservadasCampanha.length > 0}
+            <div class="mb-1.5 text-xs text-purple-700">
+              Reservadas pra campanha "{data.nomeCampanhaAndamento}" — toque pra adicionar:
+              <div class="flex flex-wrap gap-1 mt-1">
+                {#each data.quadrasReservadasCampanha as q}
+                  <button type="button" onclick={() => adicionarQuadraChip(q)}
+                    class="text-xs font-mono px-2 py-0.5 rounded border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100">{q}</button>
+                {/each}
+              </div>
+            </div>
+          {/if}
           <input
             id="quadras_ids"
             name="quadras_ids"

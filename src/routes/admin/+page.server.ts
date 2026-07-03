@@ -5,14 +5,22 @@ import {
   listarDesignacoes,
   listarPublicadores,
   quadrasEmArranjoFuturo,
-  msgConflitoArranjo
+  msgConflitoArranjo,
+  quadrasReservadasBloqueando,
+  msgConflitoReserva
 } from '$lib/server/queries';
+import { statusCampanha } from '$lib/campanhas';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const [quadras, designacoes, publicadores] = await Promise.all([
+  const [quadras, designacoes, publicadores, campanhaRes] = await Promise.all([
     listarQuadrasComGeo(locals.supabase),
     listarDesignacoes(locals.supabase),
-    listarPublicadores(locals.supabase)
+    listarPublicadores(locals.supabase),
+    locals.supabase
+      .from('campanhas')
+      .select('id, nome, data_inicio, data_alvo, ativa')
+      .eq('ativa', true)
+      .maybeSingle()
   ]);
   const abertas = designacoes.filter((d) => d.status === 'aberta');
   const quadrasAlocadas = new Set<string>();
@@ -20,6 +28,15 @@ export const load: PageServerLoad = async ({ locals }) => {
   // Quadras em arranjos ativos também contam como alocadas (trava).
   // O arranjo É o trava — não precisa criar designacao paralela.
   // alocacaoArranjoPorQuadra: pra UI mostrar "está em arranjo X em DD/MM"
+
+  const campanhaAtiva = campanhaRes.data ?? null;
+  const campanhaPlanejada = campanhaAtiva && statusCampanha(campanhaAtiva) === 'planejada' ? campanhaAtiva : null;
+  // Quadras reservadas pra ELA (visual + trava). Enquanto a campanha não
+  // começa, reserva também conta como alocada (não pode ir pra outro lugar).
+  const reservadasIds = campanhaAtiva
+    ? quadras.filter((q) => q.reservada_campanha_id === campanhaAtiva.id).map((q) => q.id)
+    : [];
+  if (campanhaPlanejada) for (const q of reservadasIds) quadrasAlocadas.add(q);
 
   // Participantes por designação (multi-publicador)
   const participantesPorDesignacao: Record<number, string[]> = {};
@@ -95,7 +112,10 @@ export const load: PageServerLoad = async ({ locals }) => {
     participantesPorDesignacao,
     tces,
     arranjosQuadras,
-    arranjoPorQuadra
+    arranjoPorQuadra,
+    campanhaAtiva,
+    campanhaPlanejada,
+    reservadasIds
   };
 };
 
@@ -129,6 +149,9 @@ export const actions: Actions = {
     // Bloqueia quadras já em arranjo futuro (defesa server-side; UI também avisa)
     const conflitos = await quadrasEmArranjoFuturo(locals.supabase, quadrasIds);
     if (conflitos.size > 0) return fail(409, { erro: msgConflitoArranjo(conflitos) });
+
+    const reservas = await quadrasReservadasBloqueando(locals.supabase, quadrasIds);
+    if (reservas.size > 0) return fail(409, { erro: msgConflitoReserva(reservas) });
 
     const { data: des, error: errD } = await locals.supabase
       .from('designacoes')
@@ -234,6 +257,9 @@ export const actions: Actions = {
     const conflitosArr = await quadrasEmArranjoFuturo(locals.supabase, quadrasIds, [arranjoId]);
     if (conflitosArr.size > 0) return fail(409, { erro: msgConflitoArranjo(conflitosArr) });
 
+    const reservasArr = await quadrasReservadasBloqueando(locals.supabase, quadrasIds);
+    if (reservasArr.size > 0) return fail(409, { erro: msgConflitoReserva(reservasArr) });
+
     const atuais = (arr.quadras_ids ?? []) as string[];
     const novas = substituir ? quadrasIds : Array.from(new Set([...atuais, ...quadrasIds]));
     const { error } = await locals.supabase
@@ -266,5 +292,34 @@ export const actions: Actions = {
       if (error) return fail(400, { erro: `Falhou ao atualizar arranjo ${a.id}: ${error.message}` });
     }
     return { ok: true, msg: `${removidasTotal} quadra(s) liberada(s) de ${arranjos.length} arranjo(s)` };
+  },
+
+  // Reserva quadras selecionadas pra uma campanha planejada ("quarentena")
+  // — descansa o território até o início. Admin só (defesa em profundidade).
+  reservarQuadras: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
+    const fd = await request.formData();
+    const campanhaId = Number(fd.get('campanha_id') ?? 0);
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    if (!campanhaId) return fail(400, { erro: 'campanha_id obrigatório' });
+    if (quadrasIds.length === 0) return fail(400, { erro: 'Sem quadras selecionadas' });
+    const { error } = await locals.supabase
+      .from('quadras').update({ reservada_campanha_id: campanhaId }).in('id', quadrasIds);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${quadrasIds.length} quadra(s) reservada(s) pra campanha` };
+  },
+
+  // Libera a reserva das quadras selecionadas (não precisa ser da mesma campanha).
+  liberarReservaQuadras: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
+    const fd = await request.formData();
+    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    if (quadrasIds.length === 0) return fail(400, { erro: 'Sem quadras selecionadas' });
+    const { error } = await locals.supabase
+      .from('quadras').update({ reservada_campanha_id: null }).in('id', quadrasIds);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `Reserva liberada de ${quadrasIds.length} quadra(s)` };
   }
 };

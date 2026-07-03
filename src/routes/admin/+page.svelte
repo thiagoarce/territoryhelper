@@ -21,6 +21,9 @@
       tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null }[];
       arranjosQuadras: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; quadras_ids: string[] | null; hora_inicio: string | null }[];
       arranjoPorQuadra: Record<string, { id: number; nome: string; modalidade_nome: string; modalidade_cor: string; data: string | null }>;
+      campanhaAtiva: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
+      campanhaPlanejada: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
+      reservadasIds: string[];
     };
     form: any;
   } = $props();
@@ -58,6 +61,11 @@
     [...selecionadas].filter((qid) => data.arranjoPorQuadra?.[qid])
   );
 
+  // Quais das selecionadas já estão reservadas pra alguma campanha
+  const reservadasSet = $derived(new Set(data.reservadasIds));
+  const selReservadas = $derived([...selecionadas].filter((qid) => reservadasSet.has(qid)));
+  let salvandoReserva = $state(false);
+
   async function liberarDeArranjo() {
     if (selEmArranjo.length === 0) return;
     if (!confirm(`Liberar ${selEmArranjo.length} quadra(s) do(s) arranjo(s)? A trava some — a quadra fica livre pra novo uso.`)) return;
@@ -65,6 +73,42 @@
     for (const qid of selEmArranjo) fd.append('quadras_ids', qid);
     const res = await fetch('?/liberarQuadrasDeArranjos', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text());
+    if (parsed.type === 'success') {
+      toast.success(String((parsed.data as any)?.msg || 'Liberadas'));
+      selecionadas = new Set();
+      await invalidateAll();
+    } else if (parsed.type === 'failure') {
+      toast.error(String((parsed.data as any)?.erro || 'Falhou'));
+    }
+  }
+
+  async function reservarParaCampanha() {
+    if (!data.campanhaPlanejada || selecionadas.size === 0) return;
+    salvandoReserva = true;
+    const fd = new FormData();
+    fd.append('campanha_id', String(data.campanhaPlanejada.id));
+    for (const qid of selecionadas) fd.append('quadras_ids', qid);
+    const res = await fetch('?/reservarQuadras', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text());
+    salvandoReserva = false;
+    if (parsed.type === 'success') {
+      toast.success(String((parsed.data as any)?.msg || 'Reservadas'));
+      selecionadas = new Set();
+      await invalidateAll();
+    } else if (parsed.type === 'failure') {
+      toast.error(String((parsed.data as any)?.erro || 'Falhou'));
+    }
+  }
+
+  async function liberarReserva() {
+    if (selReservadas.length === 0) return;
+    if (!confirm(`Liberar a reserva de ${selReservadas.length} quadra(s)?`)) return;
+    salvandoReserva = true;
+    const fd = new FormData();
+    for (const qid of selReservadas) fd.append('quadras_ids', qid);
+    const res = await fetch('?/liberarReservaQuadras', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text());
+    salvandoReserva = false;
     if (parsed.type === 'success') {
       toast.success(String((parsed.data as any)?.msg || 'Liberadas'));
       selecionadas = new Set();
@@ -183,10 +227,16 @@
     {colorirPor}
     {mostrarRotulos}
     quadrasAlocadas={data.quadrasAlocadas}
+    reservadasIds={data.reservadasIds}
     bind:selecionadas
     bind:basemap
     onClick={onClickQuadra}
   />
+  {#if data.reservadasIds.length > 0}
+    <p class="text-xs text-purple-700 text-center -mt-2">
+      <Icon nome="hourglass" size={12} /> Contorno tracejado roxo = reservada pra "{data.campanhaAtiva?.nome}"
+    </p>
+  {/if}
 
   <p class="text-xs text-slate-500 text-center">
     {#if selecionadas.size === 0}
@@ -217,6 +267,16 @@
       <Button variant="secondary" size="sm" onclick={() => (sheetArranjo = true)}><Icon nome="calendar" size={14} /> Anexar a arranjo</Button>
       {#if selEmArranjo.length > 0}
         <Button variant="secondary" size="sm" onclick={liberarDeArranjo} class="text-amber-700"><Icon nome="unlock" size={14} /> Liberar de arranjo ({selEmArranjo.length})</Button>
+      {/if}
+      {#if data.campanhaPlanejada}
+        <Button variant="secondary" size="sm" loading={salvandoReserva} onclick={reservarParaCampanha} class="text-purple-700">
+          <Icon nome="hourglass" size={14} /> Reservar p/ {data.campanhaPlanejada.nome}
+        </Button>
+      {/if}
+      {#if selReservadas.length > 0}
+        <Button variant="secondary" size="sm" loading={salvandoReserva} onclick={liberarReserva} class="text-purple-700">
+          <Icon nome="unlock" size={14} /> Liberar reserva ({selReservadas.length})
+        </Button>
       {/if}
       <Button variant="secondary" size="sm" onclick={limparSelecao}>Limpar</Button>
     </div>
