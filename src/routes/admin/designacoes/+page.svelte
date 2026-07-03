@@ -101,6 +101,11 @@
     sheetEditar = false;
   }
 
+  async function limparTerritorioArranjo(a: ArranjoHub) {
+    if (!confirm(`Liberar o território de "${a.nome ?? 'Arranjo'}"? Quadras/prédios/TCE saem do arranjo (e as partes repartidas somem) — o evento continua na agenda.`)) return;
+    await acaoRapida('limparTerritorioArranjo', a.id);
+  }
+
   async function abrirLinkPublico(tipo: 'designacao' | 'arranjo', id: number) {
     const fd = new FormData();
     fd.append(tipo === 'arranjo' ? 'arranjo_id' : 'designacao_id', String(id));
@@ -222,6 +227,7 @@
             {/if}
             <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
             <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
+            <button type="button" onclick={() => apagarDesignacao(d)} class="text-xs text-red-600 hover:underline" title="Apaga a designação e libera quadras/prédios"><Icon nome="trash" size={14} /> Apagar</button>
           </div>
         </div>
       </Card>
@@ -258,6 +264,8 @@
             <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</a>
             <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
               class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
+            <button type="button" onclick={() => limparTerritorioArranjo(a)}
+              class="text-xs text-red-600 hover:underline" title="Remove quadras/prédios/TCE do arranjo — o evento continua na agenda"><Icon nome="trash" size={14} /> Limpar</button>
           </div>
         </div>
       </Card>

@@ -81,12 +81,16 @@ export const load: PageServerLoad = async ({ locals }) => {
     publicador_nome: t.publicador_id ? nomePorId.get(t.publicador_id) ?? null : null
   }));
 
-  const arranjos: ArranjoHub[] = ((arrRes.data ?? []) as any[]).map((a) => ({
-    ...a,
-    quadras_ids: a.quadras_ids ?? [],
-    cartas_locais_ids: a.cartas_locais_ids ?? [],
-    dirigente_nome: a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null
-  }));
+  // Só entra no hub arranjo que tem TERRITÓRIO anexado (quadra/prédio/TCE) —
+  // evento sem território é só agenda, mora em /admin/arranjos.
+  const arranjos: ArranjoHub[] = ((arrRes.data ?? []) as any[])
+    .map((a) => ({
+      ...a,
+      quadras_ids: a.quadras_ids ?? [],
+      cartas_locais_ids: a.cartas_locais_ids ?? [],
+      dirigente_nome: a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null
+    }))
+    .filter((a) => a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0 || a.tce_id);
 
   return { designacoes: hub, tces, arranjos, publicadores };
 };
@@ -140,6 +144,24 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('designacoes').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Designação removida' };
+  },
+
+  // Limpa o TERRITÓRIO de um arranjo (quadras/prédios/TCE) sem apagar o
+  // evento — ele some do hub de designações mas continua na agenda.
+  limparTerritorioArranjo: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('arranjos')
+      .update({ quadras_ids: [], cartas_locais_ids: [], tce_id: null })
+      .eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    // Partes repartidas apontavam pro território que acabou de sumir
+    await locals.supabase.from('arranjo_partes').delete().eq('arranjo_id', id);
+    return { ok: true, msg: 'Território do arranjo liberado' };
   },
 
   // Gera link público /t/<token> — designação OU arranjo (WhatsApp)
