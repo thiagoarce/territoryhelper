@@ -294,14 +294,14 @@
           <div class="flex flex-col gap-1 items-end shrink-0">
             {#if d.status === 'aberta'}
               <button type="button" disabled={isBusy(`mudarStatus:${d.id}`)} onclick={() => acaoRapida('mudarStatus', d.id, { status: 'concluida' })}
-                class="text-xs text-green-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatus:${d.id}`) ? 'loader' : 'check'} size={14} class={isBusy(`mudarStatus:${d.id}`) && 'animate-spin'} /> Concluir</button>
+                class="text-xs text-green-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatus:${d.id}`) ? 'loader' : 'check'} size={14} spin={isBusy(`mudarStatus:${d.id}`)} /> Concluir</button>
             {:else}
               <button type="button" disabled={isBusy(`mudarStatus:${d.id}`)} onclick={() => acaoRapida('mudarStatus', d.id, { status: 'aberta' })}
-                class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatus:${d.id}`) ? 'loader' : 'undo'} size={14} class={isBusy(`mudarStatus:${d.id}`) && 'animate-spin'} /> Reabrir</button>
+                class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatus:${d.id}`) ? 'loader' : 'undo'} size={14} spin={isBusy(`mudarStatus:${d.id}`)} /> Reabrir</button>
             {/if}
             <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
-            <button type="button" disabled={isBusy(`link:designacao:${d.id}`)} onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline disabled:opacity-40" title="Link público com mapa (WhatsApp)"><Icon nome={isBusy(`link:designacao:${d.id}`) ? 'loader' : 'share'} size={14} class={isBusy(`link:designacao:${d.id}`) && 'animate-spin'} /> Link</button>
-            <button type="button" disabled={isBusy(`apagar:${d.id}`)} onclick={() => apagarDesignacao(d)} class="text-xs text-red-600 hover:underline disabled:opacity-40" title="Exclui a designação e libera quadras/prédios"><Icon nome={isBusy(`apagar:${d.id}`) ? 'loader' : 'trash'} size={14} class={isBusy(`apagar:${d.id}`) && 'animate-spin'} /> Excluir</button>
+            <button type="button" disabled={isBusy(`link:designacao:${d.id}`)} onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline disabled:opacity-40" title="Link público com mapa (WhatsApp)"><Icon nome={isBusy(`link:designacao:${d.id}`) ? 'loader' : 'share'} size={14} spin={isBusy(`link:designacao:${d.id}`)} /> Link</button>
+            <button type="button" disabled={isBusy(`apagar:${d.id}`)} onclick={() => apagarDesignacao(d)} class="text-xs text-red-600 hover:underline disabled:opacity-40" title="Exclui a designação e libera quadras/prédios"><Icon nome={isBusy(`apagar:${d.id}`) ? 'loader' : 'trash'} size={14} spin={isBusy(`apagar:${d.id}`)} /> Excluir</button>
           </div>
         </div>
       </Card>
@@ -337,13 +337,13 @@
           <div class="flex flex-col gap-1 items-end shrink-0">
             <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline" title="Abre a tela de Arranjos pra editar"><Icon nome="link" size={14} /> Abrir em Arranjos</a>
             <button type="button" disabled={isBusy(`link:arranjo:${a.id}`)} onclick={() => abrirLinkPublico('arranjo', a.id)}
-              class="text-xs text-slate-600 hover:underline disabled:opacity-40" title="Link público com mapa (WhatsApp)"><Icon nome={isBusy(`link:arranjo:${a.id}`) ? 'loader' : 'share'} size={14} class={isBusy(`link:arranjo:${a.id}`) && 'animate-spin'} /> Link</button>
+              class="text-xs text-slate-600 hover:underline disabled:opacity-40" title="Link público com mapa (WhatsApp)"><Icon nome={isBusy(`link:arranjo:${a.id}`) ? 'loader' : 'share'} size={14} spin={isBusy(`link:arranjo:${a.id}`)} /> Link</button>
             {#if a.quadras_ids.length > 0}
               <button type="button" onclick={() => abrirRealocar(a)}
                 class="text-xs text-slate-600 hover:underline" title="Move quadras que não foram terminadas pra outro arranjo"><Icon nome="swap" size={14} /> Realocar</button>
             {/if}
             <button type="button" disabled={isBusy(`limparTerritorioArranjo:${a.id}`)} onclick={() => limparTerritorioArranjo(a)}
-              class="text-xs text-slate-600 hover:underline disabled:opacity-40" title="Remove quadras/prédios/TCE do arranjo — o evento continua na agenda"><Icon nome={isBusy(`limparTerritorioArranjo:${a.id}`) ? 'loader' : 'eraser'} size={14} class={isBusy(`limparTerritorioArranjo:${a.id}`) && 'animate-spin'} /> Limpar</button>
+              class="text-xs text-slate-600 hover:underline disabled:opacity-40" title="Remove quadras/prédios/TCE do arranjo — o evento continua na agenda"><Icon nome={isBusy(`limparTerritorioArranjo:${a.id}`) ? 'loader' : 'eraser'} size={14} spin={isBusy(`limparTerritorioArranjo:${a.id}`)} /> Limpar</button>
           </div>
         </div>
       </Card>
@@ -370,12 +370,12 @@
           <div class="flex flex-col gap-1 items-end shrink-0">
             {#if t.status === 'aberto'}
               <button type="button" disabled={isBusy(`mudarStatusTce:${t.id}`)} onclick={() => acaoRapida('mudarStatusTce', t.id, { status: 'concluido' })}
-                class="text-xs text-green-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatusTce:${t.id}`) ? 'loader' : 'check'} size={14} class={isBusy(`mudarStatusTce:${t.id}`) && 'animate-spin'} /> Concluir</button>
+                class="text-xs text-green-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatusTce:${t.id}`) ? 'loader' : 'check'} size={14} spin={isBusy(`mudarStatusTce:${t.id}`)} /> Concluir</button>
               <button type="button" disabled={isBusy(`mudarStatusTce:${t.id}`)} onclick={() => acaoRapida('mudarStatusTce', t.id, { status: 'cancelado' })}
                 class="text-xs text-red-600 hover:underline disabled:opacity-40"><Icon nome="x" size={14} /> Cancelar</button>
             {:else}
               <button type="button" disabled={isBusy(`mudarStatusTce:${t.id}`)} onclick={() => acaoRapida('mudarStatusTce', t.id, { status: 'aberto' })}
-                class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatusTce:${t.id}`) ? 'loader' : 'undo'} size={14} class={isBusy(`mudarStatusTce:${t.id}`) && 'animate-spin'} /> Reabrir</button>
+                class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`mudarStatusTce:${t.id}`) ? 'loader' : 'undo'} size={14} spin={isBusy(`mudarStatusTce:${t.id}`)} /> Reabrir</button>
             {/if}
           </div>
         </div>

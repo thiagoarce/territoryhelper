@@ -98,14 +98,19 @@
   let {
     nome,
     size = 16,
+    spin = false,
     class: cls = 'inline-block align-[-0.125em] shrink-0'
   }: {
     nome: NomeIcone;
     size?: number;
+    /** Gira o ícone (loading). Aditivo — não substitui a classe base,
+        que segura o `inline-block` contra o preflight do Tailwind
+        (svg é display:block por padrão e quebraria linha no botão). */
+    spin?: boolean;
     class?: string;
   } = $props();
 
   const C = $derived(ICONES[nome] ?? Circle);
 </script>
 
-<C {size} class={cls} strokeWidth={2} aria-hidden="true" />
+<C {size} class="{cls}{spin ? ' animate-spin' : ''}" strokeWidth={2} aria-hidden="true" />

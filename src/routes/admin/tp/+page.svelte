@@ -139,7 +139,7 @@
                     </span>
                     {#if !t.ativo}<span class="text-[10px] px-1 rounded bg-slate-200 text-slate-600">inativo</span>{/if}
                     <button onclick={() => editarTurno(t)} class="text-slate-500 hover:underline shrink-0"><Icon nome="pencil" size={12} /></button>
-                    <button disabled={apagandoTurnoId === t.id} onclick={() => apagarTurno(t.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={apagandoTurnoId === t.id ? 'loader' : 'trash'} size={12} class={apagandoTurnoId === t.id && 'animate-spin'} /></button>
+                    <button disabled={apagandoTurnoId === t.id} onclick={() => apagarTurno(t.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={apagandoTurnoId === t.id ? 'loader' : 'trash'} size={12} spin={apagandoTurnoId === t.id} /></button>
                   </div>
                 {/each}
               {/each}

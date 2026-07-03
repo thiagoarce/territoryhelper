@@ -356,7 +356,7 @@
                           onclick={() => toggleInteresse(a.id)}
                           class="text-xs px-2 py-0.5 rounded border disabled:opacity-40 {souInteressado ? 'bg-primary-100 border-primary-400 text-primary-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}"
                         >
-                          <Icon nome={isBusy(`interesse:${a.id}`) ? 'loader' : 'hand'} size={12} class={isBusy(`interesse:${a.id}`) && 'animate-spin'} /> {souInteressado ? 'Você quer participar' : 'Quero participar'}
+                          <Icon nome={isBusy(`interesse:${a.id}`) ? 'loader' : 'hand'} size={12} spin={isBusy(`interesse:${a.id}`)} /> {souInteressado ? 'Você quer participar' : 'Quero participar'}
                         </button>
                         {#if a.dirigente_id === data.minhaId && (a.interessados ?? []).length > 0}
                           <span class="text-xs text-slate-500">
@@ -367,7 +367,7 @@
 
                       {#if data.podeCoordenar}
                         <button type="button" disabled={isBusy(`link:${a.id}`)} onclick={() => abrirLinkPublico(a.id)}
-                          class="mt-1.5 text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`link:${a.id}`) ? 'loader' : 'share'} size={14} class={isBusy(`link:${a.id}`) && 'animate-spin'} /> Link público (WhatsApp c/ mapa)</button>
+                          class="mt-1.5 text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`link:${a.id}`) ? 'loader' : 'share'} size={14} spin={isBusy(`link:${a.id}`)} /> Link público (WhatsApp c/ mapa)</button>
                       {/if}
 
                       <!-- Minha parte (destaque pro publicador) -->
@@ -404,7 +404,7 @@
                                 <span class="font-mono">{pt.quadras_ids.join(', ')}</span>
                                 {#if pt.locais_ids.length > 0}{pt.quadras_ids.length > 0 ? ' + ' : ''}{pt.locais_ids.length} prédio(s){/if}
                               </span>
-                              <button type="button" disabled={isBusy(`parte:${pt.id}`)} onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={isBusy(`parte:${pt.id}`) ? 'loader' : 'trash'} size={14} class={isBusy(`parte:${pt.id}`) && 'animate-spin'} /></button>
+                              <button type="button" disabled={isBusy(`parte:${pt.id}`)} onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={isBusy(`parte:${pt.id}`) ? 'loader' : 'trash'} size={14} spin={isBusy(`parte:${pt.id}`)} /></button>
                             </div>
                           {/each}
                         </div>

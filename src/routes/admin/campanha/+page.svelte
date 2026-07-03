@@ -318,7 +318,7 @@
                 <span class="font-medium text-sm">{s.publicacao_nome}</span>
                 {#if risco}<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700"><Icon nome="alert" size={10} /> faltando, campanha perto</span>{/if}
                 {#if isBusy(`suprimento:${s.id}`)}<Icon nome="loader" size={12} class="animate-spin text-slate-400 ml-auto" />{/if}
-                <button disabled={isBusy(`apagarSuprimento:${s.id}`)} onclick={() => apagarSuprimento(s.id)} class="text-red-600 hover:underline disabled:opacity-40 {isBusy(`suprimento:${s.id}`) ? '' : 'ml-auto'}"><Icon nome={isBusy(`apagarSuprimento:${s.id}`) ? 'loader' : 'trash'} size={12} class={isBusy(`apagarSuprimento:${s.id}`) && 'animate-spin'} /></button>
+                <button disabled={isBusy(`apagarSuprimento:${s.id}`)} onclick={() => apagarSuprimento(s.id)} class="text-red-600 hover:underline disabled:opacity-40 {isBusy(`suprimento:${s.id}`) ? '' : 'ml-auto'}"><Icon nome={isBusy(`apagarSuprimento:${s.id}`) ? 'loader' : 'trash'} size={12} spin={isBusy(`apagarSuprimento:${s.id}`)} /></button>
               </div>
               <div class="flex items-center gap-3 mt-1.5 flex-wrap text-xs">
                 <label class="flex items-center gap-1">Necessária
@@ -474,7 +474,7 @@
                   };
                 }}>
                   <input type="hidden" name="id" value={p.id} />
-                  <button type="submit" disabled={reativandoId === p.id} class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={reativandoId === p.id ? 'loader' : 'play'} size={12} class={reativandoId === p.id && 'animate-spin'} /> Reativar</button>
+                  <button type="submit" disabled={reativandoId === p.id} class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={reativandoId === p.id ? 'loader' : 'play'} size={12} spin={reativandoId === p.id} /> Reativar</button>
                 </form>
                 <button onclick={() => editarPeriodo(p)} class="text-xs text-slate-500 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
               </div>
@@ -669,7 +669,7 @@
       class="mt-3"
     >
       <input type="hidden" name="id" value={editando.id} />
-      <button type="submit" disabled={apagandoObjetivo} class="text-sm text-red-700 hover:underline disabled:opacity-40"><Icon nome={apagandoObjetivo ? 'loader' : 'trash'} size={14} class={apagandoObjetivo && 'animate-spin'} /> Excluir</button>
+      <button type="submit" disabled={apagandoObjetivo} class="text-sm text-red-700 hover:underline disabled:opacity-40"><Icon nome={apagandoObjetivo ? 'loader' : 'trash'} size={14} spin={apagandoObjetivo} /> Excluir</button>
     </form>
   {/if}
 </BottomSheet>
@@ -691,7 +691,7 @@
             disabled={isBusy(`pub:${p.id}`)}
             onclick={() => acaoRapida('atualizarPublicacao', { id: String(p.id), nome: p.nome, codigo: p.codigo ?? '', ativo: p.ativo ? '' : 'on' }, `pub:${p.id}`)}
             class="text-xs text-primary-700 hover:underline disabled:opacity-40"
-          ><Icon nome={isBusy(`pub:${p.id}`) ? 'loader' : (p.ativo ? 'ban' : 'undo')} size={12} class={isBusy(`pub:${p.id}`) && 'animate-spin'} /> {p.ativo ? 'Desativar' : 'Reativar'}</button>
+          ><Icon nome={isBusy(`pub:${p.id}`) ? 'loader' : (p.ativo ? 'ban' : 'undo')} size={12} spin={isBusy(`pub:${p.id}`)} /> {p.ativo ? 'Desativar' : 'Reativar'}</button>
         </div>
       {/each}
       {#if data.publicacoes.length === 0}
