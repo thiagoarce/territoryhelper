@@ -4,8 +4,10 @@
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
+  import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { ocorrenciasDaSemana, agruparPorDia, semanaAtual, DIAS_SEMANA, DIAS_ORDENADOS } from '$lib/arranjos';
+  import type { QuadraGeo } from '$lib/server/queries';
   import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './$types';
 
   interface PredioChip {
@@ -27,6 +29,7 @@
       partes: ParteLinha[];
       nomesPorId: Record<string, string>;
       tcesMap: Record<string, string>;
+      quadrasGeo: QuadraGeo[];
       minhaId: string;
       podeCoordenar: boolean;
     };
@@ -64,6 +67,25 @@
       l: new Set(partes.flatMap((p) => p.locais_ids))
     };
   });
+
+  // Geometrias das quadras do arranjo sendo repartido (mini-mapa do sheet)
+  const quadrasRepGeo = $derived(
+    arranjoRep
+      ? data.quadrasGeo.filter((q) => (arranjoRep!.quadras_ids ?? []).includes(q.id))
+      : []
+  );
+
+  // Quem já está com um item (pra montar o alerta de conflito)
+  function donosDoItem(qid: string | null, lid: number | null): string[] {
+    if (!arranjoRep) return [];
+    const partes = partesPorArranjo[arranjoRep.id] ?? [];
+    const nomes: string[] = [];
+    for (const p of partes) {
+      const bate = (qid && p.quadras_ids.includes(qid)) || (lid != null && p.locais_ids.includes(lid));
+      if (bate) nomes.push(nomeParte(p));
+    }
+    return nomes;
+  }
 
   function abrirRepartir(a: ArranjoLinha) {
     arranjoRep = a;
@@ -265,7 +287,22 @@
     <form
       method="POST"
       action="?/criarParte"
-      use:enhance={() => { repartindo = true; return async ({ result, update }) => {
+      use:enhance={({ cancel }) => {
+        // Alerta: itens já repartidos pra outro publicador
+        const confQ = [...quadrasSel].filter((q) => jaRepartidas.q.has(q));
+        const confL = [...locaisSel].filter((l) => jaRepartidas.l.has(l));
+        if (confQ.length > 0 || confL.length > 0) {
+          const detalhes = [
+            ...confQ.map((q) => `${q} (com ${donosDoItem(q, null).join(' / ')})`),
+            ...confL.map((l) => `prédio #${l} (com ${donosDoItem(null, l).join(' / ')})`)
+          ].join(', ');
+          if (!confirm(`⚠ Já repartido: ${detalhes}.\n\nRepartir de novo mesmo assim? Os dois vão trabalhar o mesmo lugar.`)) {
+            cancel();
+            return;
+          }
+        }
+        repartindo = true;
+        return async ({ result, update }) => {
         await update(); repartindo = false;
         if (result.type === 'success') {
           toast.success(String((result.data as any)?.msg || 'Parte criada'));
@@ -279,7 +316,16 @@
       {#each [...quadrasSel] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
       {#each [...locaisSel] as lid}<input type="hidden" name="locais_ids" value={lid} />{/each}
 
-      <p class="text-xs text-slate-500">Escolha um pedaço do território e quem vai trabalhar (dupla/trio compartilham a mesma parte). Itens acinzentados já estão em outra parte.</p>
+      <p class="text-xs text-slate-500">Toque nas quadras no mapa (ou nos chips) pra montar a parte. Itens acinzentados já estão em outra parte — repartir de novo pede confirmação.</p>
+
+      {#if quadrasRepGeo.length > 0}
+        <AdminMapa
+          quadras={quadrasRepGeo}
+          selecionadasIds={[...quadrasSel]}
+          altura={280}
+          onQuadraClick={(q) => toggleQuadra(q.id)}
+        />
+      {/if}
 
       {#if (arranjoRep.quadras_ids?.length ?? 0) > 0}
         <div>

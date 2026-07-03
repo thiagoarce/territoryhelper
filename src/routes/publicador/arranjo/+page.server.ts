@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { selectAll, listarPublicadores } from '$lib/server/queries';
+import { selectAll, listarPublicadores, listarQuadrasComGeo } from '$lib/server/queries';
+import type { QuadraGeo } from '$lib/server/queries';
 import type { ArranjoBase } from '$lib/arranjos';
 
 export interface ArranjoLinha extends ArranjoBase {}
@@ -31,7 +32,7 @@ export interface ParteLinha {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) return { arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>, publicadores: [], partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>, tcesMap: {} as Record<string, string>, minhaId: '', podeCoordenar: false };
+  if (!locals.user) return { arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>, publicadores: [], partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>, tcesMap: {} as Record<string, string>, quadrasGeo: [] as QuadraGeo[], minhaId: '', podeCoordenar: false };
 
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
@@ -74,6 +75,17 @@ export const load: PageServerLoad = async ({ locals }) => {
     for (const t of (tces ?? []) as any[]) tcesMap[t.id] = t.nome;
   }
 
+  // Geometria das quadras referenciadas pelos arranjos — pro mini-mapa do
+  // sheet Repartir (só dirigente/admin usam; poupa payload do publicador)
+  let quadrasGeo: QuadraGeo[] = [];
+  if (podeCoordenar) {
+    const idsUsados = new Set(arranjos.flatMap((a) => a.quadras_ids ?? []));
+    if (idsUsados.size > 0) {
+      const todas = await listarQuadrasComGeo(locals.supabase);
+      quadrasGeo = todas.filter((q) => idsUsados.has(q.id));
+    }
+  }
+
   // Coleta ids únicos de prédios referenciados nos arranjos e busca detalhes + stats
   const predioIds = Array.from(
     new Set(arranjos.flatMap((a) => a.cartas_locais_ids ?? []).filter((n) => Number.isFinite(n)))
@@ -105,7 +117,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
-  return { arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, minhaId: locals.user.id, podeCoordenar };
+  return { arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, quadrasGeo, minhaId: locals.user.id, podeCoordenar };
 };
 
 export const actions: Actions = {

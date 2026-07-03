@@ -65,10 +65,10 @@
     return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
   }
 
-  // Link público da minha designação — abre /t/<token> pra compartilhar
-  async function abrirLinkPublico(designacaoId: number) {
+  // Link público — abre /t/<token> pra compartilhar (designação OU arranjo)
+  async function abrirLinkPublico(tipo: 'designacao' | 'arranjo', id: number) {
     const fd = new FormData();
-    fd.append('designacao_id', String(designacaoId));
+    fd.append(tipo === 'arranjo' ? 'arranjo_id' : 'designacao_id', String(id));
     const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     if (parsed.type === 'success' && parsed.data?.token) {
@@ -132,7 +132,11 @@
             <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200">🏪 {a.tce_id}</span>
           {/if}
         </div>
-        <a href="/publicador/arranjo" class="inline-block mt-2 text-xs font-medium text-primary-700 hover:underline">✂ Repartir território →</a>
+        <div class="mt-2 flex items-center gap-3">
+          <a href="/publicador/arranjo" class="text-xs font-medium text-primary-700 hover:underline">✂ Repartir território →</a>
+          <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
+            class="text-xs font-medium text-primary-700 hover:underline">📤 Compartilhar</button>
+        </div>
       </div>
     {/each}
   </div>
@@ -276,7 +280,7 @@
           <span class="ml-1 text-slate-400">({diasAteOuApos(d.prazo)})</span>
         </div>
       {/if}
-      <button type="button" onclick={() => abrirLinkPublico(d.id)}
+      <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)}
         class="ml-auto text-xs text-primary-700 hover:underline" title="Link público com mapa (WhatsApp)">📤 Compartilhar</button>
     </div>
   </div>

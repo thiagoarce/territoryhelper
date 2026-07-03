@@ -21,8 +21,23 @@ export interface TceHub {
   data_conclusao: string | null;
 }
 
+export interface ArranjoHub {
+  id: number;
+  nome: string | null;
+  data: string | null;
+  hora_inicio: string | null;
+  local_endereco: string | null;
+  dirigente_id: string | null;
+  dirigente_nome: string | null;
+  quadras_ids: string[];
+  cartas_locais_ids: number[];
+  tce_id: string | null;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
-  const [designacoes, publicadores, tceRes, dlRes] = await Promise.all([
+  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+
+  const [designacoes, publicadores, tceRes, dlRes, arrRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
     locals.supabase
@@ -30,7 +45,15 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, tipo, publicador_id, prazo, status, data_conclusao')
       .order('status')
       .order('prazo', { nullsFirst: false }),
-    locals.supabase.from('designacao_locais').select('designacao_id, local_id')
+    locals.supabase.from('designacao_locais').select('designacao_id, local_id'),
+    // Arranjos ativos de ontem em diante — o território deles também é
+    // "designação" (herdada pelo dirigente)
+    locals.supabase
+      .from('arranjos')
+      .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tce_id')
+      .eq('ativo', true)
+      .gte('data', ontem)
+      .order('data')
   ]);
 
   // Resolve prédios das designações de cartas (uma query pros locais referenciados)
@@ -58,7 +81,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     publicador_nome: t.publicador_id ? nomePorId.get(t.publicador_id) ?? null : null
   }));
 
-  return { designacoes: hub, tces, publicadores };
+  const arranjos: ArranjoHub[] = ((arrRes.data ?? []) as any[]).map((a) => ({
+    ...a,
+    quadras_ids: a.quadras_ids ?? [],
+    cartas_locais_ids: a.cartas_locais_ids ?? [],
+    dirigente_nome: a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null
+  }));
+
+  return { designacoes: hub, tces, arranjos, publicadores };
 };
 
 function exigirAdmin(locals: App.Locals) {
@@ -112,16 +142,20 @@ export const actions: Actions = {
     return { ok: true, msg: 'Designação removida' };
   },
 
-  // Gera link público /t/<token> da designação (WhatsApp pra quem não abre o app)
+  // Gera link público /t/<token> — designação OU arranjo (WhatsApp)
   gerarLinkTerritorio: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
     const fd = await request.formData();
     const designacaoId = Number(fd.get('designacao_id') ?? 0);
-    if (!designacaoId) return fail(400, { erro: 'designacao_id obrigatório' });
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!designacaoId && !arranjoId) return fail(400, { erro: 'id obrigatório' });
+    const row: any = { criado_por: locals.user!.id };
+    if (arranjoId) row.arranjo_id = arranjoId;
+    else row.designacao_id = designacaoId;
     const { data, error } = await locals.supabase
       .from('territorio_tokens')
-      .insert({ designacao_id: designacaoId, criado_por: locals.user!.id })
+      .insert(row)
       .select('token')
       .single();
     if (error) return fail(400, { erro: error.message });

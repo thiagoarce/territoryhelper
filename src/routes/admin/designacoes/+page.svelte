@@ -5,17 +5,18 @@
   import Button from '$lib/ui/Button.svelte';
   import Card from '$lib/ui/Card.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { DesignacaoHub, TceHub } from './$types';
+  import type { DesignacaoHub, TceHub, ArranjoHub } from './$types';
 
   let { data }: {
     data: {
       designacoes: DesignacaoHub[];
       tces: TceHub[];
+      arranjos: ArranjoHub[];
       publicadores: { id: string; nome: string; role: string }[];
     };
   } = $props();
 
-  type FiltroTipo = 'todas' | 'pessoal' | 'cartas' | 'tce';
+  type FiltroTipo = 'todas' | 'pessoal' | 'cartas' | 'tce' | 'arranjo';
   type FiltroStatus = 'abertas' | 'concluidas' | 'canceladas' | 'todas';
   let filtroTipo = $state<FiltroTipo>('todas');
   let filtroStatus = $state<FiltroStatus>('abertas');
@@ -35,7 +36,7 @@
 
   const designacoesFiltradas = $derived(
     data.designacoes.filter((d) => {
-      if (filtroTipo === 'tce') return false;
+      if (filtroTipo === 'tce' || filtroTipo === 'arranjo') return false;
       if (filtroTipo !== 'todas' && (d.tipo ?? 'pessoal') !== filtroTipo) return false;
       if (!statusOk(d.status)) return false;
       if (busca.trim()) {
@@ -99,9 +100,9 @@
     sheetEditar = false;
   }
 
-  async function abrirLinkPublico(designacaoId: number) {
+  async function abrirLinkPublico(tipo: 'designacao' | 'arranjo', id: number) {
     const fd = new FormData();
-    fd.append('designacao_id', String(designacaoId));
+    fd.append(tipo === 'arranjo' ? 'arranjo_id' : 'designacao_id', String(id));
     const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     if (parsed.type === 'success' && parsed.data?.token) {
@@ -110,6 +111,19 @@
       toast.error(String(parsed.data?.erro || 'Falhou gerar link'));
     }
   }
+
+  const arranjosFiltrados = $derived(
+    (filtroTipo === 'todas' || filtroTipo === 'arranjo')
+      ? data.arranjos.filter((a) => {
+          if (busca.trim()) {
+            const b = busca.toLowerCase();
+            const alvo = `${a.nome ?? ''} ${a.dirigente_nome ?? ''} ${a.quadras_ids.join(' ')}`.toLowerCase();
+            if (!alvo.includes(b)) return false;
+          }
+          return true;
+        })
+      : []
+  );
 
   function fmtData(iso: string | null): string {
     if (!iso) return '—';
@@ -121,7 +135,7 @@
   <div>
     <h1 class="text-2xl font-bold">Designações</h1>
     <p class="text-sm text-slate-500">
-      Gestão central — 🎯 {stats.pessoal} pessoais · ✉ {stats.cartas} cartas · 🏪 {stats.tce} TCEs abertos
+      Gestão central — 🎯 {stats.pessoal} pessoais · ✉ {stats.cartas} cartas · 🏪 {stats.tce} TCEs · 🎪 {data.arranjos.length} arranjo(s)
     </p>
   </div>
 
@@ -134,7 +148,7 @@
 
   <!-- Filtro tipo -->
   <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5 overflow-x-auto">
-    {#each [['todas', 'Todas'], ['pessoal', '🎯 Pessoal'], ['cartas', '✉ Cartas'], ['tce', '🏪 TCE']] as [k, l]}
+    {#each [['todas', 'Todas'], ['pessoal', '🎯 Pessoal'], ['cartas', '✉ Cartas'], ['tce', '🏪 TCE'], ['arranjo', '🎪 Arranjos']] as [k, l]}
       <button
         onclick={() => (filtroTipo = k as FiltroTipo)}
         class="flex-1 px-2 py-1.5 text-xs rounded whitespace-nowrap transition-colors"
@@ -206,7 +220,43 @@
                 class="text-xs text-primary-700 hover:underline">↺ Reabrir</button>
             {/if}
             <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline">✏ Editar</button>
-            <button type="button" onclick={() => abrirLinkPublico(d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)">📤 Link</button>
+            <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)">📤 Link</button>
+          </div>
+        </div>
+      </Card>
+    {/each}
+
+    <!-- Arranjos ativos (o território deles é designação herdada pelo dirigente) -->
+    {#each arranjosFiltrados as a (a.id)}
+      <Card padding="md">
+        <div class="flex items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-100 text-green-700">🎪 Arranjo</span>
+              <span class="font-semibold text-sm">{a.nome ?? 'Arranjo'}</span>
+              <span class="text-xs text-slate-500">👤 {a.dirigente_nome ?? '(sem dirigente)'}</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-1">
+              {#if a.data}{fmtData(a.data)}{/if}
+              {#if a.hora_inicio}· {a.hora_inicio.substring(0, 5)}{/if}
+              {#if a.local_endereco}· 📍 {a.local_endereco}{/if}
+            </div>
+            {#if a.quadras_ids.length > 0}
+              <div class="mt-1.5 flex flex-wrap gap-1">
+                {#each a.quadras_ids as q}
+                  <span class="text-xs font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">{q}</span>
+                {/each}
+              </div>
+            {/if}
+            <div class="mt-1 flex gap-2 text-xs text-slate-500">
+              {#if a.cartas_locais_ids.length > 0}<span>✉ {a.cartas_locais_ids.length} prédio(s)</span>{/if}
+              {#if a.tce_id}<span>🏪 TCE {a.tce_id}</span>{/if}
+            </div>
+          </div>
+          <div class="flex flex-col gap-1 items-end shrink-0">
+            <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline">✏ Editar</a>
+            <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
+              class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)">📤 Link</button>
           </div>
         </div>
       </Card>
@@ -245,7 +295,7 @@
       </Card>
     {/each}
 
-    {#if designacoesFiltradas.length === 0 && tcesFiltrados.length === 0}
+    {#if designacoesFiltradas.length === 0 && tcesFiltrados.length === 0 && arranjosFiltrados.length === 0}
       <div class="text-center py-10">
         <div class="text-5xl mb-3 opacity-60">📋</div>
         <div class="text-slate-500">Nenhuma designação nesse filtro.</div>

@@ -32,13 +32,14 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('arranjos.ativo', true)
       .gte('arranjos.data', ontem)
       .order('criada_em', { ascending: false }),
-    // Arranjos que EU dirijo (hoje em diante) — card "Você dirige"
+    // Arranjos que EU dirijo (de ontem em diante — a saída de ontem à noite
+    // ainda interessa de manhã) — card "Você dirige"
     locals.supabase
       .from('arranjos')
       .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .gte('data', hoje)
+      .gte('data', ontem)
       .order('data')
       .limit(5),
     locals.supabase.from('profiles').select('id, nome')
@@ -174,15 +175,20 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  // Link público /t/<token> da PRÓPRIA designação (RLS permite o dono gerar)
+  // Link público /t/<token> — da PRÓPRIA designação (RLS permite o dono)
+  // OU de um arranjo (dirigente/admin, pelo card "Você dirige")
   gerarLinkTerritorio: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const designacaoId = Number(fd.get('designacao_id') ?? 0);
-    if (!designacaoId) return fail(400, { erro: 'designacao_id obrigatório' });
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!designacaoId && !arranjoId) return fail(400, { erro: 'id obrigatório' });
+    const row: any = { criado_por: locals.user.id };
+    if (arranjoId) row.arranjo_id = arranjoId;
+    else row.designacao_id = designacaoId;
     const { data, error } = await locals.supabase
       .from('territorio_tokens')
-      .insert({ designacao_id: designacaoId, criado_por: locals.user.id })
+      .insert(row)
       .select('token')
       .single();
     if (error) return fail(400, { erro: error.message });
