@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, quadras_ids, locais_ids, publicadores, notas, arranjos!inner(id, nome, data, hora_inicio, local_endereco, dirigente_id, ativo)')
       .contains('publicadores', [locals.user!.id])
       .eq('arranjos.ativo', true)
-      .gte('arranjos.data', ontem)
+      .or(`data.gte.${ontem},data.is.null`, { foreignTable: 'arranjos' })
       .order('criada_em', { ascending: false }),
     // Arranjos que EU dirijo (de ontem em diante — a saída de ontem à noite
     // ainda interessa de manhã) — card "Você dirige"
@@ -39,8 +39,8 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .gte('data', ontem)
-      .order('data')
+      .or(`data.gte.${ontem},data.is.null`)
+      .order('data', { nullsFirst: false })
       .limit(5),
     locals.supabase.from('profiles').select('id, nome')
   ]);

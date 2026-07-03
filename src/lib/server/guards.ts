@@ -40,7 +40,7 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
     .contains('publicadores', [userId])
     .contains('quadras_ids', [quadraId])
     .eq('arranjos.ativo', true)
-    .gte('arranjos.data', ontem)
+    .or(`data.gte.${ontem},data.is.null`, { foreignTable: 'arranjos' })
     .limit(1);
   if (partes && partes.length > 0) return;
 

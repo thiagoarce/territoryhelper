@@ -20,8 +20,8 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, data, quadras_ids, cartas_locais_ids')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .gte('data', hoje)
-      .order('data')
+      .or(`data.gte.${hoje},data.is.null`)
+      .order('data', { nullsFirst: false })
   ]);
   const abertas = designacoes.filter((d) => d.status === 'aberta');
 
