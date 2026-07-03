@@ -140,12 +140,14 @@ O app deve crescer pra cobrir tudo do superintendente de serviço:
   anteriores, compartilhamento.
 
 ## Polimentos futuros (fora do specs original)
+* ✅ Distribuir arranjo com subconjuntos — resolvido pelo sistema de
+  Partes (`arranjo_partes` / Repartir), que substituiu o antigo
+  `distribuirQuadras` (que dava TODAS as quadras pra cada publicador).
+* ~~Rename `/publicador/*` → `/campo/*`~~ — descartado, "publicador" já
+  é um nome bom o suficiente.
 * PNG export em lote (múltiplas quadras selecionadas).
-* Rename `/publicador/*` → `/campo/*` (cosmético — URLs semânticas).
 * Multi-publicador por designação (`designacao_publicadores` já existe;
   UI ainda opera 1-a-1).
-* Distribuir arranjo com subconjuntos (hoje cada publicador selecionado
-  recebe TODAS as quadras do arranjo; o real é repartir).
 * Offline-first: cache de leitura + fila de escrita no service worker
   (confiabilidade em campo com sinal ruim).
 * Testes de fluxo ponta-a-ponta (delegação, designar cartas) + helper
