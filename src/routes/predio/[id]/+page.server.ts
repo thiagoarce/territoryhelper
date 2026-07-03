@@ -37,6 +37,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', 'carta', ''] as const;
 
+// Defesa em profundidade: sem isso, um UPDATE/INSERT bloqueado pela RLS
+// (publicador sem posse desse prédio) retorna sucesso silencioso — o
+// publicador vê toast de sucesso (ou fica preso no overlay otimista da
+// fila offline) sem nada ter sido salvo de verdade.
+async function podeEditarLocal(locals: App.Locals, localId: number): Promise<boolean> {
+  const { data, error: err } = await locals.supabase.rpc('pode_editar_local', { p_local_id: localId });
+  if (err) return false;
+  return !!data;
+}
+
+async function localIdDaUnidade(locals: App.Locals, unidadeId: number): Promise<number | null> {
+  const { data } = await locals.supabase.from('unidades').select('local_id').eq('id', unidadeId).maybeSingle();
+  return data?.local_id ?? null;
+}
+
 export const actions: Actions = {
   // Casa-em-casa: append registro. Tipo vazio = desfeito.
   marcarDesfecho: async ({ request, locals }) => {
@@ -46,6 +61,10 @@ export const actions: Actions = {
     const tipo = String(fd.get('tipo') ?? '');
     if (!unidadeId) return fail(400, { erro: 'unidade_id obrigatório' });
     if (!DESFECHOS_VALIDOS.includes(tipo as any)) return fail(400, { erro: 'tipo inválido' });
+    const localId = await localIdDaUnidade(locals, unidadeId);
+    if (!localId || !(await podeEditarLocal(locals, localId))) {
+      return fail(403, { erro: 'Você não tem posse dessa unidade' });
+    }
     const tipoFinal = tipo === '' ? 'desfeito' : tipo;
     const { error: err } = await locals.supabase
       .from('registros')
@@ -72,6 +91,7 @@ export const actions: Actions = {
       .maybeSingle();
     if (errU || !u) return fail(404, { erro: 'Unidade não encontrada' });
     if (u.local_id !== localId) return fail(400, { erro: 'Unidade não pertence a este prédio' });
+    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse prédio' });
     const patch: Record<string, unknown> = {};
     if (campo === 'carta_entregue') {
       patch.carta_entregue = u.carta_entregue ? null : new Date().toISOString().slice(0, 10);

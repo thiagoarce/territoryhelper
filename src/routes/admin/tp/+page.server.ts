@@ -157,6 +157,7 @@ export const actions: Actions = {
     if (!pontoId) return fail(400, { erro: 'ponto_id obrigatório' });
     if (diaSemana < 0 || diaSemana > 6) return fail(400, { erro: 'Dia da semana inválido' });
     if (!horaInicio || !horaFim) return fail(400, { erro: 'Horário obrigatório' });
+    if (horaFim <= horaInicio) return fail(400, { erro: 'Hora de fim precisa ser depois da hora de início' });
     const { error } = await locals.supabase.from('tp_turnos').insert({
       ponto_id: pontoId, dia_semana: diaSemana, hora_inicio: horaInicio, hora_fim: horaFim, vagas
     });

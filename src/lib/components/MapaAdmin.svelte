@@ -292,13 +292,16 @@
           properties: { id: q.id }
         }));
 
+      // Camadas GL 'symbol' só suportam glifo de fonte (não dá pra montar um
+      // <Icon> lucide aqui como nos HTML Markers de POI) — emoji é a opção
+      // válida nesse caso pontual (mapa permite, diferente da UI geral).
       mapa.addSource('alocadas', { type: 'geojson', data: { type: 'FeatureCollection', features: alocadasFeatures } as any });
       mapa.addLayer({
         id: 'alocadas-icon',
         type: 'symbol',
         source: 'alocadas',
         layout: {
-          'text-field': '',
+          'text-field': '🔒',
           'text-size': 14,
           'text-offset': [0.8, -0.8],
           'text-allow-overlap': true

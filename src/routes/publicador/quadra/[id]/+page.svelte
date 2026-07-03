@@ -118,6 +118,17 @@
     carta: 'bg-purple-200 text-purple-900',
     desfeito: 'bg-slate-100 text-slate-500'
   };
+  const rotulos: Record<string, string> = {
+    naoAtendeu: 'Não atendeu',
+    semConversa: 'Sem palestra',
+    conversou: 'Conversou',
+    carta: 'Deixou carta',
+    desfeito: 'Desfeito'
+  };
+
+  // Numera os locais na mesma ordem em que aparecem — correlaciona o pino
+  // do mapa com o card da lista (ambos mostram o mesmo número).
+  const numeroPorLocal = $derived(new Map(data.locais.map((l, i) => [l.id, i + 1])));
 
   const totalUnidades = $derived(data.locais.reduce((acc, l) => acc + l.unidades.length, 0));
   const feitasUnidades = $derived(data.locais.reduce((acc, l) => acc + l.unidades.filter(unidadeFeita).length, 0));
@@ -195,6 +206,7 @@
       quadraGeo={data.quadra.poly_geojson}
       quadraColor={data.quadra.color}
       locais={data.locais}
+      {numeroPorLocal}
       altura={240}
     />
   </div>
@@ -242,6 +254,7 @@
                     <span class="text-xl"><Icon nome="building" size={14} /></span>
                     <div class="flex-1 min-w-0">
                       <div class="font-semibold truncate flex items-center gap-1">
+                        <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-white text-[10px] font-bold shrink-0">{numeroPorLocal.get(l.id)}</span>
                         {l.nome || `${l.logradouro}, ${l.numero}`}
                         {#if l.tipo_entrada === 'porteiro'}<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Porteiro</span>{/if}
                         {#if l.tipo_entrada === 'eletronica'}<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Eletrônica</span>{/if}
@@ -272,7 +285,7 @@
                           </span>
                           {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
                             <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
-                              {u.ultimo_tipo}
+                              {rotulos[u.ultimo_tipo] ?? u.ultimo_tipo}
                             </span>
                           {/if}
                         </div>
@@ -288,6 +301,7 @@
                     <div class="flex items-center justify-between gap-2 mb-2">
                       <div class="flex-1 min-w-0">
                         <div class="font-semibold truncate flex items-center gap-1">
+                          <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-white text-[10px] font-bold shrink-0">{numeroPorLocal.get(l.id)}</span>
                           {l.nome || `${l.logradouro}, ${l.numero}`}
                           {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm"><Icon nome="user" size={14} /></span>{/if}
                           {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
@@ -300,7 +314,7 @@
                       <div class="flex items-center gap-1">
                         {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
                           <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
-                            {u.ultimo_tipo}
+                            {rotulos[u.ultimo_tipo] ?? u.ultimo_tipo}
                           </span>
                         {/if}
                         <button

@@ -1,16 +1,20 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, mount } from 'svelte';
   import type { LocalComUnidades } from '$lib/server/queries';
+  import Icon, { type NomeIcone } from '$lib/ui/Icon.svelte';
 
   let {
     quadraGeo,
     quadraColor,
     locais,
+    numeroPorLocal = new Map(),
     altura = 280
   }: {
     quadraGeo: unknown | null;
     quadraColor: string;
     locais: LocalComUnidades[];
+    /** id do local → posição na lista, pra correlacionar pino do mapa com o card da lista */
+    numeroPorLocal?: Map<number, number>;
     altura?: number;
   } = $props();
 
@@ -19,12 +23,12 @@
   let userMarker: any = null;
   let watchId: number | null = null;
 
-  function pontoEmojiPorTipo(tipo: string): string {
-    if (tipo === 'predio') return '';
-    if (tipo === 'comercio') return '';
-    if (tipo === 'coletivo') return '';
-    if (tipo === 'terreno') return '';
-    return '';
+  function iconePorTipo(tipo: string): NomeIcone {
+    if (tipo === 'predio') return 'building';
+    if (tipo === 'comercio') return 'store';
+    if (tipo === 'coletivo') return 'users';
+    if (tipo === 'terreno') return 'trees';
+    return 'home';
   }
 
   onMount(async () => {
@@ -95,24 +99,39 @@
         }
       }
 
-      // Pins dos locais (via HTML markers — emoji custom)
+      // Pins dos locais — ícone lucide por tipo (casa/prédio/comércio/coletivo/
+      // terreno) + numeração que correlaciona o pino com o card da lista.
       for (const l of locais) {
         const geo: any = (l as any).geo_geojson;
         if (!geo || !geo.coordinates) continue;
         const [lng, lat] = geo.coordinates;
         const el = document.createElement('div');
         el.style.cssText = `
+          position:relative;
           background:white;
           border:2px solid ${quadraColor};
           border-radius:50%;
           width:30px;height:30px;
           display:flex;align-items:center;justify-content:center;
-          font-size:14px;
+          color:${quadraColor};
           box-shadow:0 2px 4px rgba(0,0,0,.15);
           cursor:pointer;
           transition:transform .15s;
         `;
-        el.textContent = pontoEmojiPorTipo(l.tipo);
+        mount(Icon, { target: el, props: { nome: iconePorTipo(l.tipo), size: 16 } });
+        const numero = numeroPorLocal.get(l.id);
+        if (numero != null) {
+          const badge = document.createElement('span');
+          badge.textContent = String(numero);
+          badge.style.cssText = `
+            position:absolute; top:-6px; right:-6px;
+            background:#1e293b; color:white;
+            border-radius:9999px; min-width:16px; height:16px;
+            font-size:10px; font-weight:600; line-height:16px; text-align:center;
+            padding:0 3px;
+          `;
+          el.appendChild(badge);
+        }
         el.onmouseenter = () => (el.style.transform = 'scale(1.15)');
         el.onmouseleave = () => (el.style.transform = '');
         el.onclick = () => {

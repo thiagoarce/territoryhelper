@@ -22,12 +22,15 @@
   async function sincronizarFila() {
     const antes = await contarFila();
     if (antes === 0) return;
-    const { sincronizadas, restantes } = await flushFila();
+    const { sincronizadas, falhas, restantes } = await flushFila();
     pendentesOffline = restantes;
     if (sincronizadas > 0) {
       toast.success(`${sincronizadas} ação(ões) sincronizada(s)`);
-      await invalidateAll();
     }
+    if (falhas > 0) {
+      toast.error(`${falhas} ação(ões) recusada(s) pelo servidor (descartadas — provavelmente sem permissão)`);
+    }
+    if (sincronizadas > 0 || falhas > 0) await invalidateAll();
   }
   onMount(() => {
     sincronizarFila();

@@ -7,8 +7,8 @@
 //
 // Mantenha os comentários de cada cláusula alinhados com a cláusula
 // correspondente de `pode_editar_local` na migration mais recente
-// (hoje: 038_designacao_multi_publicador.sql) — são as MESMAS regras,
-// uma em SQL (RLS) e outra aqui (guard), de propósito redundantes.
+// (hoje: 040_fix_posse_seguranca.sql) — são as MESMAS regras, uma em SQL
+// (RLS) e outra aqui (guard), de propósito redundantes.
 
 export interface PosseQuadraInput {
   /** admin/dirigente sempre podem — bypass total */
@@ -19,7 +19,13 @@ export interface PosseQuadraInput {
   ehParticipanteDeDesignacaoAberta: boolean;
   /** parte de arranjo ativa (data null-tolerante) que inclui esse publicador e essa quadra */
   ehIncluidoEmParteDeArranjoAtiva: boolean;
-  /** a quadra está dentro do território de QUALQUER arranjo ativo (saída de grupo) */
+  /**
+   * A quadra está no território de um arranjo ativo E esse publicador tem
+   * uma parte NESSE MESMO arranjo (em qualquer quadra dele, não precisa
+   * ser a mesma) — saída de grupo, quem tem parte ajuda em qualquer
+   * quadra da saída. NÃO é "qualquer publicador do sistema" — precisa ter
+   * vínculo real com o arranjo via alguma parte seguindo migration 040.
+   */
   quadraEmArranjoAtivo: boolean;
 }
 

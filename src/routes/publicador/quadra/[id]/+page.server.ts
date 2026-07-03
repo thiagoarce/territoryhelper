@@ -5,6 +5,22 @@ import { exigirQuadraDesignada } from '$lib/server/guards';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
+// Defesa em profundidade: o guard exigirQuadraDesignada só roda no `load`,
+// NÃO nas actions (um POST direto pra ?/marcarDesfecho não passa por ele).
+// Sem isso, um UPDATE bloqueado pela RLS retorna sucesso "silencioso" (0
+// linhas afetadas, sem erro) — o publicador via toast de sucesso sem nada
+// ter sido salvo. Usa a mesma RPC que a RLS usa (pode_editar_local).
+async function podeEditarLocal(locals: App.Locals, localId: number): Promise<boolean> {
+  const { data, error: err } = await locals.supabase.rpc('pode_editar_local', { p_local_id: localId });
+  if (err) return false;
+  return !!data;
+}
+
+async function localIdDaUnidade(locals: App.Locals, unidadeId: number): Promise<number | null> {
+  const { data } = await locals.supabase.from('unidades').select('local_id').eq('id', unidadeId).maybeSingle();
+  return data?.local_id ?? null;
+}
+
 export const load: PageServerLoad = async ({ locals, params }) => {
   await exigirQuadraDesignada(locals, params.id);
   const dados = await carregarQuadraComLocais(locals.supabase, params.id);
@@ -23,6 +39,10 @@ export const actions: Actions = {
     if (!unidadeId) return fail(400, { erro: 'unidade_id obrigatório' });
     if (!DESFECHOS_VALIDOS.includes(tipo as any)) {
       return fail(400, { erro: 'tipo inválido' });
+    }
+    const localId = await localIdDaUnidade(locals, unidadeId);
+    if (!localId || !(await podeEditarLocal(locals, localId))) {
+      return fail(403, { erro: 'Você não tem posse dessa unidade' });
     }
     const tipoFinal = tipo === '' ? 'desfeito' : tipo;
     const { error: err } = await locals.supabase
@@ -79,6 +99,7 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
+    if (!(await podeEditarLocal(locals, id))) return fail(403, { erro: 'Você não tem posse desse local' });
     const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar', 'tipo'];
     const booleanos = new Set(['irmao_mora', 'acesso_caixas', 'acesso_interfones', 'nao_visitar']);
     const tiposValidos = new Set(['casa', 'predio', 'comercio', 'coletivo', 'terreno']);
@@ -108,6 +129,10 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
+    const localId = await localIdDaUnidade(locals, id);
+    if (!localId || !(await podeEditarLocal(locals, localId))) {
+      return fail(403, { erro: 'Você não tem posse dessa unidade' });
+    }
     const permitidos = ['complemento', 'nota', 'desocupado', 'nao_escrever'];
     const patch: Record<string, unknown> = {};
     for (const k of permitidos) {
@@ -242,6 +267,10 @@ export const actions: Actions = {
     const unidadeId = Number(fd.get('unidade_id') ?? 0);
     const marcar = fd.get('marcar') === 'true';
     if (!unidadeId) return fail(400, { erro: 'unidade_id obrigatório' });
+    const localId = await localIdDaUnidade(locals, unidadeId);
+    if (!localId || !(await podeEditarLocal(locals, localId))) {
+      return fail(403, { erro: 'Você não tem posse dessa unidade' });
+    }
 
     const hoje = new Date().toISOString().substring(0, 10);
     const { error: errUpd } = await locals.supabase

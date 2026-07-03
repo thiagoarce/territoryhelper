@@ -318,8 +318,9 @@ export const actions: Actions = {
     if (!turnoId || !dataOc) return fail(400, { erro: 'turno_id e data obrigatórios' });
 
     const { data: turno, error: errT } = await locals.supabase
-      .from('tp_turnos').select('vagas').eq('id', turnoId).single();
+      .from('tp_turnos').select('vagas, ativo').eq('id', turnoId).single();
     if (errT || !turno) return fail(404, { erro: 'Turno não encontrado' });
+    if (!turno.ativo) return fail(400, { erro: 'Esse turno não está mais ativo' });
 
     const { count } = await locals.supabase
       .from('tp_escala').select('id', { count: 'exact', head: true })

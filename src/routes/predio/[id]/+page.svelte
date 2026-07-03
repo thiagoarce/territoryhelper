@@ -60,6 +60,13 @@
     carta: 'bg-purple-200 text-purple-900',
     desfeito: 'bg-slate-100 text-slate-500'
   };
+  const rotulos: Record<string, string> = {
+    naoAtendeu: 'Não atendeu',
+    semConversa: 'Sem palestra',
+    conversou: 'Conversou',
+    carta: 'Deixou carta',
+    desfeito: 'Desfeito'
+  };
 
   function unidadeVisitada(u: UnidadeEnriched): boolean {
     return !!u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo';
@@ -295,7 +302,7 @@
             <div class="font-mono font-semibold text-sm">{u.complemento || `Apto ${u.id}`}</div>
             {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue ?? 'hoje'}</div>{/if}
             {#if modo === 'casa' && tipoEfetivo(u) && tipoEfetivo(u) !== 'desfeito' && tipoEfetivo(u) !== 'carta_undo'}
-              <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{tipoEfetivo(u)}</span>
+              <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{rotulos[tipoEfetivo(u)!] ?? tipoEfetivo(u)}</span>
             {/if}
           </div>
 

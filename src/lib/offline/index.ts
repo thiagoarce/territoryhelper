@@ -32,34 +32,41 @@ export async function postComFila(url: string, formData: FormData): Promise<Resu
 
 export interface ResultadoFlush {
   sincronizadas: number;
+  /** chegou ao servidor mas ele recusou (RLS/validação) — removida da fila
+   *  mesmo assim (reenviar um erro de permissão pra sempre não ajuda),
+   *  mas SEM contar como sucesso — antes qualquer resposta HTTP (mesmo
+   *  403/400) era tratada como "sincronizado", escondendo perda de dado. */
+  falhas: number;
   restantes: number;
 }
 
-// Reenvia a fila em ordem. Para no primeiro erro de rede (ainda offline) —
-// não pula itens, pra não sincronizar fora de ordem.
+// Reenvia a fila em ordem. Para no primeiro erro de REDE (ainda offline) —
+// não pula itens, pra não sincronizar fora de ordem. Erro do SERVIDOR não
+// para o flush (não é mais um problema de conectividade).
 export async function flushFila(): Promise<ResultadoFlush> {
   const itens = await listarFila();
   let sincronizadas = 0;
+  let falhas = 0;
   for (const item of itens) {
-    const ok = await tentarReenviar(item);
-    if (!ok) break;
-    sincronizadas++;
+    const resultado = await tentarReenviar(item);
+    if (resultado === 'sem_rede') break;
+    if (resultado === 'sucesso') sincronizadas++;
+    else falhas++;
   }
   const restantes = await contarFila();
-  return { sincronizadas, restantes };
+  return { sincronizadas, falhas, restantes };
 }
 
-async function tentarReenviar(item: ItemFila): Promise<boolean> {
+async function tentarReenviar(item: ItemFila): Promise<'sucesso' | 'erro' | 'sem_rede'> {
   try {
     const res = await fetch(item.url, { method: 'POST', body: formDataDeEntries(item.entries) });
-    // Mesmo que o servidor recuse (ex: conflito, validação), a REQUISIÇÃO
-    // chegou — não é mais um problema de rede. Remove da fila de qualquer
-    // forma (reenviar um erro de validação pra sempre não ajuda ninguém).
-    void res;
+    const parsed = deserialize(await res.text()) as any;
+    // A requisição chegou ao servidor — não é mais problema de rede, então
+    // sai da fila de qualquer forma (sucesso ou recusa definitiva).
     await removerDaFila(item.id);
-    return true;
+    return parsed.type === 'success' ? 'sucesso' : 'erro';
   } catch {
-    return false; // ainda sem rede — para o flush, tenta de novo depois
+    return 'sem_rede'; // fetch rejeitou de verdade — tenta de novo depois
   }
 }
 

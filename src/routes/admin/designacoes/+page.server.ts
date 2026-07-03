@@ -159,24 +159,23 @@ export const actions: Actions = {
     const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
     const prazo = String(fd.get('prazo') ?? '').trim() || null;
     const notas = String(fd.get('notas') ?? '').trim() || null;
+    if (publicadorIds.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
 
     const { error: errU } = await locals.supabase
       .from('designacoes')
-      .update({ publicador_id: publicadorIds[0] ?? null, prazo, notas })
+      .update({ publicador_id: publicadorIds[0], prazo, notas })
       .eq('id', id);
     if (errU) return fail(400, { erro: errU.message });
 
     // Substitui a junção inteira — primeiro selecionado vira líder
     await locals.supabase.from('designacao_publicadores').delete().eq('designacao_id', id);
-    if (publicadorIds.length > 0) {
-      const linhas = publicadorIds.map((pid, i) => ({
-        designacao_id: id,
-        publicador_id: pid,
-        papel: i === 0 ? 'lider' : 'participante'
-      }));
-      const { error: errP } = await locals.supabase.from('designacao_publicadores').insert(linhas);
-      if (errP) return fail(400, { erro: 'Designação salva mas falhou ao atualizar publicadores: ' + errP.message });
-    }
+    const linhas = publicadorIds.map((pid, i) => ({
+      designacao_id: id,
+      publicador_id: pid,
+      papel: i === 0 ? 'lider' : 'participante'
+    }));
+    const { error: errP } = await locals.supabase.from('designacao_publicadores').insert(linhas);
+    if (errP) return fail(400, { erro: 'Designação salva mas falhou ao atualizar publicadores: ' + errP.message });
     return { ok: true, msg: 'Designação atualizada' };
   },
 

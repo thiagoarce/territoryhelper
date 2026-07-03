@@ -33,7 +33,7 @@ test('incluído numa parte de arranjo ativa passa', () => {
   assertTrue(podeTrabalharQuadra({ ...NINGUEM, ehIncluidoEmParteDeArranjoAtiva: true }));
 });
 
-test('quadra em arranjo ativo (saída de grupo) passa pra qualquer publicador', () => {
+test('colega com parte no mesmo arranjo passa em qualquer quadra da saída', () => {
   assertTrue(podeTrabalharQuadra({ ...NINGUEM, quadraEmArranjoAtivo: true }));
 });
 

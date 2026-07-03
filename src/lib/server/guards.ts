@@ -13,10 +13,15 @@ export function exigirRole(locals: App.Locals, rolesPermitidas: Role[]) {
 }
 
 // Confere se o usuário logado tem posse da quadra. Admin/dirigente passam.
-// Publicador passa se: designação aberta com a quadra, OU delegação temp
-// ativa cobrindo ela, OU a quadra está num arranjo ativo (saída de grupo —
-// o dirigente pode mandar trabalhar qualquer quadra do arranjo na hora).
-// Defesa em profundidade além do RLS (que usa pode_editar_local).
+// Publicador passa se: designação aberta com a quadra (líder ou
+// participante), OU parte de arranjo cobrindo a quadra, OU tem parte em
+// QUALQUER quadra do mesmo arranjo (saída de grupo — quem tem parte na
+// saída ajuda em qualquer quadra dela, não só na sua). Espelha exatamente
+// `pode_editar_local` (RLS, migration 040) — antes dessa migration essa
+// última cláusula não tinha contrapartida na RLS: o guard deixava abrir a
+// rota pra "qualquer publicador de qualquer arranjo ativo contendo a
+// quadra" (sem checar vínculo nenhum), mas a escrita sempre falhava calada
+// na RLS, dando sucesso falso pro publicador.
 export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string): Promise<void> {
   if (!locals.session || !locals.user || !locals.profile) throw redirect(303, '/login');
 
@@ -24,9 +29,10 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
   if (ehAdminOuDirigente) return;
 
   const userId = locals.user.id;
+  const hoje = new Date().toISOString().substring(0, 10);
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
 
-  const [dqRes, dqPartRes, partesRes, arrRes] = await Promise.all([
+  const [dqRes, dqPartRes, partesRes] = await Promise.all([
     locals.supabase
       .from('designacao_quadras')
       .select('designacao_id, designacoes!inner(publicador_id, status)')
@@ -51,23 +57,37 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
       .contains('quadras_ids', [quadraId])
       .eq('arranjos.ativo', true)
       .or(`data.gte.${ontem},data.is.null`, { foreignTable: 'arranjos' })
-      .limit(1),
-    // Quadra dentro de um arranjo ativo — os chips de /publicador/arranjo
-    // linkam pra cá pra qualquer publicador da saída.
-    locals.supabase
+      .limit(1)
+  ]);
+
+  // Só busca a 4ª cláusula (mais cara — 2 round trips) se nenhuma das
+  // anteriores já resolveu.
+  let ehColegaDeArranjo = false;
+  if (!dqRes.data?.length && !dqPartRes.data?.length && !partesRes.data?.length) {
+    const { data: arranjosDaQuadra } = await locals.supabase
       .from('arranjos')
       .select('id')
       .eq('ativo', true)
       .contains('quadras_ids', [quadraId])
-      .limit(1)
-  ]);
+      .or(`data.gte.${ontem},data.is.null`)
+      .or(`recorrente.eq.false,data_fim.is.null,data_fim.gte.${hoje}`);
+    if (arranjosDaQuadra && arranjosDaQuadra.length > 0) {
+      const { data: partesDoArranjo } = await locals.supabase
+        .from('arranjo_partes')
+        .select('id')
+        .in('arranjo_id', arranjosDaQuadra.map((a) => a.id))
+        .contains('publicadores', [userId])
+        .limit(1);
+      ehColegaDeArranjo = !!partesDoArranjo?.length;
+    }
+  }
 
   const pode = podeTrabalharQuadra({
     ehAdminOuDirigente,
     ehLiderDeDesignacaoAberta: !!dqRes.data?.length,
     ehParticipanteDeDesignacaoAberta: !!dqPartRes.data?.length,
     ehIncluidoEmParteDeArranjoAtiva: !!partesRes.data?.length,
-    quadraEmArranjoAtivo: !!arrRes.data?.length
+    quadraEmArranjoAtivo: ehColegaDeArranjo
   });
   if (!pode) throw error(403, 'Você não tem essa quadra designada.');
 }
