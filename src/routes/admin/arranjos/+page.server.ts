@@ -94,7 +94,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       locals.supabase
         .from('locais')
         .select('id, logradouro, numero, nome_estabelecimento')
-        .eq('tipo', 'predio')
+        .in('tipo', ['predio', 'comercio'])
         .order('logradouro')
         .order('numero')
         .order('id')

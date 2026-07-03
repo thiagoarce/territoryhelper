@@ -264,7 +264,7 @@ export async function carregarPredioDetalhado(
       .from('locais_geo')
       .select('*')
       .eq('id', predioId)
-      .eq('tipo', 'predio')
+      .in('tipo', ['predio', 'comercio'])
       .maybeSingle(),
     supabase
       .from('unidades')
