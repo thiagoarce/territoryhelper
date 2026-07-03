@@ -512,3 +512,42 @@ export async function carregarQuadraComLocais(
     locais: locaisEnriquecidos
   };
 }
+
+// ============================================================================
+// Trava de exclusividade de quadra em arranjo: uma quadra NUNCA pode estar
+// em dois arranjos FUTUROS (data >= hoje; arranjo sem data conta como futuro).
+// Retorna quadra → primeiro arranjo conflitante. Usar em TODO ponto que
+// anexa quadras a arranjo (form, Visão Geral, realocação).
+// ============================================================================
+export async function quadrasEmArranjoFuturo(
+  supabase: SupabaseClient,
+  quadrasIds: string[],
+  excetoIds: number[] = []
+): Promise<Map<string, { id: number; nome: string | null; data: string | null }>> {
+  const out = new Map<string, { id: number; nome: string | null; data: string | null }>();
+  if (quadrasIds.length === 0) return out;
+  const hoje = new Date().toISOString().slice(0, 10);
+  let q = supabase
+    .from('arranjos')
+    .select('id, nome, data, quadras_ids')
+    .eq('ativo', true)
+    .or(`data.gte.${hoje},data.is.null`)
+    .overlaps('quadras_ids', quadrasIds);
+  for (const id of excetoIds) q = q.neq('id', id);
+  const { data } = await q;
+  for (const a of (data ?? []) as any[]) {
+    for (const qd of (a.quadras_ids ?? []) as string[]) {
+      if (quadrasIds.includes(qd) && !out.has(qd)) out.set(qd, { id: a.id, nome: a.nome, data: a.data });
+    }
+  }
+  return out;
+}
+
+export function msgConflitoArranjo(
+  conflitos: Map<string, { id: number; nome: string | null; data: string | null }>
+): string {
+  const partes = Array.from(conflitos.entries()).map(
+    ([q, a]) => `${q} (em "${a.nome ?? 'Arranjo'}"${a.data ? ' de ' + a.data.split('-').reverse().join('/') : ''})`
+  );
+  return `Quadra(s) já em arranjo futuro: ${partes.join(', ')}. Uma quadra não pode estar em dois arranjos futuros.`;
+}

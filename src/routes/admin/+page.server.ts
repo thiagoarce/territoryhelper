@@ -1,6 +1,12 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { listarQuadrasComGeo, listarDesignacoes, listarPublicadores } from '$lib/server/queries';
+import {
+  listarQuadrasComGeo,
+  listarDesignacoes,
+  listarPublicadores,
+  quadrasEmArranjoFuturo,
+  msgConflitoArranjo
+} from '$lib/server/queries';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const [quadras, designacoes, publicadores] = await Promise.all([
@@ -120,19 +126,9 @@ export const actions: Actions = {
     if (quadrasIds.length === 0) return fail(400, { erro: 'quadras obrigatórias' });
     if (publicadorIds.length === 0) return fail(400, { erro: 'pelo menos 1 publicador obrigatório' });
 
-    // Bloqueia quadras já em arranjo ativo (defesa server-side; UI também avisa)
-    const { data: arrAtivos } = await locals.supabase
-      .from('arranjos').select('id, nome, quadras_ids').eq('ativo', true)
-      .overlaps('quadras_ids', quadrasIds);
-    const conflitos: string[] = [];
-    for (const a of arrAtivos ?? []) {
-      for (const q of (a.quadras_ids ?? []) as string[]) {
-        if (quadrasIds.includes(q)) conflitos.push(q);
-      }
-    }
-    if (conflitos.length > 0) {
-      return fail(409, { erro: `Quadra(s) ${Array.from(new Set(conflitos)).join(', ')} já está(ão) em arranjo. Remova do arranjo antes ou use outra.` });
-    }
+    // Bloqueia quadras já em arranjo futuro (defesa server-side; UI também avisa)
+    const conflitos = await quadrasEmArranjoFuturo(locals.supabase, quadrasIds);
+    if (conflitos.size > 0) return fail(409, { erro: msgConflitoArranjo(conflitos) });
 
     const { data: des, error: errD } = await locals.supabase
       .from('designacoes')
@@ -235,18 +231,8 @@ export const actions: Actions = {
     if (ocupPorDesig.length > 0) {
       return fail(409, { erro: `Quadra(s) ${Array.from(new Set(ocupPorDesig)).join(', ')} já tem designação aberta. Encerre antes.` });
     }
-    const { data: outrosArr } = await locals.supabase
-      .from('arranjos').select('id, quadras_ids').eq('ativo', true).neq('id', arranjoId)
-      .overlaps('quadras_ids', quadrasIds);
-    const ocupPorArr: string[] = [];
-    for (const oa of outrosArr ?? []) {
-      for (const q of (oa.quadras_ids ?? []) as string[]) {
-        if (quadrasIds.includes(q)) ocupPorArr.push(q);
-      }
-    }
-    if (ocupPorArr.length > 0) {
-      return fail(409, { erro: `Quadra(s) ${Array.from(new Set(ocupPorArr)).join(', ')} já está em outro arranjo.` });
-    }
+    const conflitosArr = await quadrasEmArranjoFuturo(locals.supabase, quadrasIds, [arranjoId]);
+    if (conflitosArr.size > 0) return fail(409, { erro: msgConflitoArranjo(conflitosArr) });
 
     const atuais = (arr.quadras_ids ?? []) as string[];
     const novas = substituir ? quadrasIds : Array.from(new Set([...atuais, ...quadrasIds]));

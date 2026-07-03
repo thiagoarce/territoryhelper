@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { selectAll } from '$lib/server/queries';
+import { selectAll, quadrasEmArranjoFuturo, msgConflitoArranjo } from '$lib/server/queries';
 
 export interface Modalidade {
   id: number;
@@ -331,6 +331,10 @@ export const actions: Actions = {
     }
 
     if (!data.data) return fail(400, { erro: 'Data obrigatória' });
+    if (data.quadras_ids && data.quadras_ids.length > 0) {
+      const conflitos = await quadrasEmArranjoFuturo(locals.supabase, data.quadras_ids);
+      if (conflitos.size > 0) return fail(409, { erro: msgConflitoArranjo(conflitos) });
+    }
     const { error } = await locals.supabase.from('arranjos').insert({ ...data, criado_por: locals.user.id });
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Arranjo criado' };
@@ -349,6 +353,10 @@ export const actions: Actions = {
       const { data: mod } = await locals.supabase
         .from('arranjo_modalidades').select('nome').eq('id', data.modalidade_id).single();
       data.nome = mod?.nome ?? 'Arranjo';
+    }
+    if (data.quadras_ids && data.quadras_ids.length > 0) {
+      const conflitos = await quadrasEmArranjoFuturo(locals.supabase, data.quadras_ids, [id]);
+      if (conflitos.size > 0) return fail(409, { erro: msgConflitoArranjo(conflitos) });
     }
     const { error } = await locals.supabase.from('arranjos').update(data).eq('id', id);
     if (error) return fail(400, { erro: error.message });

@@ -6,13 +6,14 @@
   import Button from '$lib/ui/Button.svelte';
   import Card from '$lib/ui/Card.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { DesignacaoHub, TceHub, ArranjoHub } from './$types';
+  import type { DesignacaoHub, TceHub, ArranjoHub, ArranjoDestino } from './$types';
 
   let { data }: {
     data: {
       designacoes: DesignacaoHub[];
       tces: TceHub[];
       arranjos: ArranjoHub[];
+      arranjosDestino: ArranjoDestino[];
       publicadores: { id: string; nome: string; role: string }[];
     };
   } = $props();
@@ -76,6 +77,49 @@
   let sheetEditar = $state(false);
   let editando: DesignacaoHub | null = $state(null);
   let salvandoEditar = $state(false);
+
+  // Sheet realocar restante (quando o arranjo não terminou tudo)
+  let sheetRealocar = $state(false);
+  let realocando: ArranjoHub | null = $state(null);
+  let quadrasParaRealocar = $state<string[]>([]);
+  let destinoRealocar = $state('');
+  let salvandoRealocar = $state(false);
+
+  function abrirRealocar(a: ArranjoHub) {
+    realocando = a;
+    quadrasParaRealocar = [];
+    destinoRealocar = '';
+    sheetRealocar = true;
+  }
+
+  function toggleQuadraRealocar(q: string) {
+    quadrasParaRealocar = quadrasParaRealocar.includes(q)
+      ? quadrasParaRealocar.filter((x) => x !== q)
+      : [...quadrasParaRealocar, q];
+  }
+
+  const destinosDisponiveis = $derived(
+    realocando ? data.arranjosDestino.filter((a) => a.id !== realocando!.id) : []
+  );
+
+  async function realocarQuadras() {
+    if (!realocando || quadrasParaRealocar.length === 0 || !destinoRealocar) return;
+    salvandoRealocar = true;
+    const fd = new FormData();
+    fd.append('origem_id', String(realocando.id));
+    fd.append('destino_id', destinoRealocar);
+    for (const q of quadrasParaRealocar) fd.append('quadras_ids', q);
+    const res = await fetch('?/realocarQuadras', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoRealocar = false;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg || 'Realocado'));
+      sheetRealocar = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
   function abrirEditar(d: DesignacaoHub) {
     editando = d;
     sheetEditar = true;
@@ -264,6 +308,10 @@
             <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</a>
             <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
               class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
+            {#if a.quadras_ids.length > 0}
+              <button type="button" onclick={() => abrirRealocar(a)}
+                class="text-xs text-slate-600 hover:underline" title="Move quadras que não foram terminadas pra outro arranjo"><Icon nome="swap" size={14} /> Realocar</button>
+            {/if}
             <button type="button" onclick={() => limparTerritorioArranjo(a)}
               class="text-xs text-red-600 hover:underline" title="Remove quadras/prédios/TCE do arranjo — o evento continua na agenda"><Icon nome="trash" size={14} /> Limpar</button>
           </div>
@@ -361,5 +409,52 @@
         <Button variant="primary" type="submit" loading={salvandoEditar} class="flex-1">Salvar</Button>
       </div>
     </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet realocar quadras não terminadas -->
+<BottomSheet bind:open={sheetRealocar} title="Realocar quadras">
+  {#if realocando}
+    <div class="space-y-3">
+      <p class="text-xs text-slate-500">
+        Marque as quadras de <strong>{realocando.nome ?? 'Arranjo'}</strong> que não foram terminadas e escolha pra qual arranjo elas vão. As demais ficam onde estão.
+      </p>
+
+      <div class="flex flex-wrap gap-1.5">
+        {#each realocando.quadras_ids as q}
+          <button
+            type="button"
+            onclick={() => toggleQuadraRealocar(q)}
+            class="text-xs font-mono px-2 py-1 rounded border"
+            class:bg-primary-100={quadrasParaRealocar.includes(q)}
+            class:border-primary-500={quadrasParaRealocar.includes(q)}
+            class:text-primary-700={quadrasParaRealocar.includes(q)}
+            class:bg-slate-50={!quadrasParaRealocar.includes(q)}
+            class:border-slate-200={!quadrasParaRealocar.includes(q)}
+            class:text-slate-600={!quadrasParaRealocar.includes(q)}
+          >{q}</button>
+        {/each}
+      </div>
+
+      <div>
+        <label for="destino-realocar" class="block text-sm font-medium mb-1">Arranjo de destino</label>
+        <select id="destino-realocar" bind:value={destinoRealocar} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">— selecione —</option>
+          {#each destinosDisponiveis as a}
+            <option value={a.id}>{a.nome ?? 'Arranjo'}{a.data ? ' · ' + a.data.split('-').reverse().join('/') : ''}</option>
+          {/each}
+        </select>
+      </div>
+
+      <Button
+        variant="primary"
+        class="w-full"
+        loading={salvandoRealocar}
+        disabled={quadrasParaRealocar.length === 0 || !destinoRealocar}
+        onclick={realocarQuadras}
+      >
+        <Icon nome="swap" size={14} /> Realocar {quadrasParaRealocar.length || ''} quadra(s)
+      </Button>
+    </div>
   {/if}
 </BottomSheet>
