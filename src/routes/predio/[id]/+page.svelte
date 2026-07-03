@@ -81,8 +81,10 @@
   }
 
   async function marcarDesfecho(u: UnidadeEnriched, tipo: string) {
-    const novoTipo = tipoEfetivo(u) === tipo ? '' : tipo;
+    const marcandoNovoDesfecho = tipoEfetivo(u) !== tipo;
+    const novoTipo = marcandoNovoDesfecho ? tipo : '';
     overrideDesfecho = { ...overrideDesfecho, [u.id]: novoTipo };
+    if (marcandoNovoDesfecho) irParaProximoPendente(u.id);
     const fd = new FormData();
     fd.append('unidade_id', String(u.id));
     fd.append('tipo', novoTipo);
@@ -101,6 +103,7 @@
   async function toggleCarta(u: UnidadeEnriched, campo: 'carta_entregue' | 'desocupado' | 'nao_escrever') {
     const novoValor = !campoEfetivo(u, campo);
     overrideCartas = { ...overrideCartas, [u.id]: { ...(overrideCartas[u.id] ?? {}), [campo]: novoValor } };
+    if (campo === 'carta_entregue' && novoValor) irParaProximoPendente(u.id);
     const fd = new FormData();
     fd.append('unidade_id', String(u.id));
     fd.append('campo', campo);
@@ -114,6 +117,57 @@
       const atual = { ...overrideCartas }; delete atual[u.id]; overrideCartas = atual;
       await invalidateAll();
     }
+  }
+
+  // Swipe pra próximo apto: navegação por gesto (walking door-to-door com
+  // uma mão só) + auto-avanço pro próximo pendente ao marcar um desfecho.
+  let cardRefs: Record<number, HTMLDivElement> = {};
+  let focoId = $state<number | null>(null);
+  let focoTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function irPara(id: number) {
+    focoId = id;
+    cardRefs[id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (focoTimer) clearTimeout(focoTimer);
+    focoTimer = setTimeout(() => { focoId = null; }, 1400);
+  }
+
+  function pendente(u: UnidadeEnriched): boolean {
+    return modo === 'cartas' ? !campoEfetivo(u, 'carta_entregue') : !tipoEfetivo(u);
+  }
+
+  // Próximo apto ainda pendente depois do atual (não pula pra trás)
+  function irParaProximoPendente(unidadeAtualId: number) {
+    const lista = data.predio.unidades;
+    const i = lista.findIndex((x) => x.id === unidadeAtualId);
+    if (i < 0) return;
+    const alvo = lista.slice(i + 1).find(pendente);
+    if (alvo) irPara(alvo.id);
+  }
+
+  function vizinho(unidadeAtualId: number, direcao: 1 | -1): number | null {
+    const lista = data.predio.unidades;
+    const i = lista.findIndex((x) => x.id === unidadeAtualId);
+    const j = i + direcao;
+    return j >= 0 && j < lista.length ? lista[j].id : null;
+  }
+
+  let touchStartX = 0, touchStartY = 0, touchUnidadeId: number | null = null;
+  function onTouchStart(e: TouchEvent, uid: number) {
+    const t = e.touches[0];
+    touchStartX = t.clientX; touchStartY = t.clientY; touchUnidadeId = uid;
+  }
+  function onTouchEnd(e: TouchEvent) {
+    if (touchUnidadeId == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+    // Swipe horizontal de verdade: bem maior que o deslocamento vertical
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      const alvo = vizinho(touchUnidadeId, dx < 0 ? 1 : -1); // esquerda = próximo
+      if (alvo != null) irPara(alvo);
+    }
+    touchUnidadeId = null;
   }
 
   const visitadas = $derived(data.predio.unidades.filter(unidadeVisitada).length);
@@ -216,12 +270,17 @@
     </div>
   </div>
 
-  <!-- Lista -->
+  <!-- Lista (swipe esquerda/direita navega entre aptos) -->
   <div class="p-4 space-y-1">
     {#each data.predio.unidades as u (u.id)}
       {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : u.carta_entregue ? 'entregue' : 'pendente'}
       <div
-        class="rounded-lg border p-3 transition-colors"
+        bind:this={cardRefs[u.id]}
+        ontouchstart={(e) => onTouchStart(e, u.id)}
+        ontouchend={onTouchEnd}
+        class="rounded-lg border p-3 transition-all"
+        class:ring-2={focoId === u.id}
+        class:ring-primary-500={focoId === u.id}
         class:bg-purple-50={modo === 'cartas' && st === 'entregue'}
         class:border-purple-200={modo === 'cartas' && st === 'entregue'}
         class:bg-slate-100={modo === 'cartas' && st === 'desocupado'}

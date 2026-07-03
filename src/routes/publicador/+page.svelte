@@ -115,6 +115,20 @@
     if (dias === 1) return 'vence amanhã';
     return `${dias} dias`;
   }
+
+  // Progresso agregado (feitas/total de endereços) de um conjunto de quadras,
+  // pra barra de progresso nos cards do home. null se não há dado de cobertura.
+  function progressoQuadras(quadrasIds: string[]): { feitas: number; total: number; pct: number } | null {
+    let feitas = 0, total = 0;
+    for (const qid of quadrasIds) {
+      const cov = data.cobertura[qid];
+      if (!cov) continue;
+      feitas += cov.feitas;
+      total += cov.total;
+    }
+    if (total === 0) return null;
+    return { feitas, total, pct: Math.round((feitas / total) * 100) };
+  }
 </script>
 
 <div class="p-4">
@@ -122,12 +136,24 @@
   <div class="mb-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
     <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2"><Icon nome="tent" size={14} /> Você dirige</div>
     {#each data.arranjosQueDirijo as a}
+      {@const prog = progressoQuadras(a.quadras_ids)}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-medium">{a.nome}</span>
           <span class="text-xs text-primary-700 font-medium">{fmtDia(a.data)}{a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}</span>
         </div>
         {#if a.local_endereco}<div class="text-xs text-slate-500 mt-0.5"><Icon nome="map-pin" size={14} /> {a.local_endereco}</div>{/if}
+        {#if prog}
+          <div class="mt-1.5">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
+              <span>Progresso</span>
+              <span class="font-medium">{prog.feitas}/{prog.total}</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full bg-primary-500" style:width="{prog.pct}%"></div>
+            </div>
+          </div>
+        {/if}
         <div class="flex flex-wrap gap-1.5 mt-1.5">
           {#each a.quadras_ids as qid}
             {@const q = data.quadrasMap[qid]}
@@ -158,6 +184,7 @@
   <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
     <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2"><Icon nome="walk" size={14} /> Pregação em grupo — sua parte</div>
     {#each data.minhasPartes as p}
+      {@const prog = progressoQuadras(p.quadras_ids)}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-medium">{p.arranjo_nome}</span>
@@ -168,6 +195,17 @@
           {#if p.colegas.length > 0} · com {p.colegas.join(', ')}{/if}
         </div>
         {#if p.local_endereco}<div class="text-xs text-slate-500"><Icon nome="map-pin" size={14} /> {p.local_endereco}</div>{/if}
+        {#if prog}
+          <div class="mt-1.5">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
+              <span>Progresso</span>
+              <span class="font-medium">{prog.feitas}/{prog.total}</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full bg-amber-500" style:width="{prog.pct}%"></div>
+            </div>
+          </div>
+        {/if}
         <div class="flex flex-wrap gap-1.5 mt-1.5">
           {#each p.quadras_ids as qid}
             {@const q = data.quadrasMap[qid]}
@@ -290,6 +328,7 @@
 </div>
 
 {#snippet cardDesignacao(d: DesignacaoEnriquecida)}
+  {@const prog = progressoQuadras(d.quadras_ids)}
   <div class="rounded-lg border border-slate-200 bg-white p-4 hover:shadow transition-shadow">
     <div class="flex items-start justify-between gap-2">
       <div class="flex-1 min-w-0">
@@ -297,6 +336,17 @@
           Designada em {new Date(d.criada_em).toLocaleDateString('pt-BR')}
         </div>
         <div class="mt-2 text-sm font-semibold">{d.quadras_ids.length} quadra(s)</div>
+        {#if prog}
+          <div class="mt-1.5">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
+              <span>Progresso</span>
+              <span class="font-medium">{prog.feitas}/{prog.total}</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full bg-primary-500" style:width="{prog.pct}%"></div>
+            </div>
+          </div>
+        {/if}
         <div class="mt-2 flex flex-wrap gap-1.5">
           {#each d.quadras_ids as qid}
             {@const q = data.quadrasMap[qid]}

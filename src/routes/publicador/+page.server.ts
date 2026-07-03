@@ -78,9 +78,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   const abertas = minhas.filter((d) => d.status === 'aberta');
   const concluidas = minhas.filter((d) => d.status === 'concluida');
 
-  const idsAbertas = [...new Set(abertas.flatMap((d) => d.quadras_ids))];
-  const cobertura = idsAbertas.length > 0
-    ? await calcularCoberturaPorQuadra(locals.supabase, idsAbertas)
+  // Cobertura pra barra de progresso nos cards do home: território pessoal
+  // + quadras dos arranjos que dirijo + da minha parte (dupla/trio)
+  const idsPartes = (partesRes.data ?? []).flatMap((p: any) => p.quadras_ids ?? []);
+  const idsDirijo = (dirijoRes.data ?? []).flatMap((a: any) => a.quadras_ids ?? []);
+  const idsCobertura = [...new Set([...abertas.flatMap((d) => d.quadras_ids), ...idsPartes, ...idsDirijo])];
+  const cobertura = idsCobertura.length > 0
+    ? await calcularCoberturaPorQuadra(locals.supabase, idsCobertura)
     : new Map();
 
   const quadrasMap = new Map(quadras.map((q) => [q.id, q]));
