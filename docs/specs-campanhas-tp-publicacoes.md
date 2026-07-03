@@ -1,5 +1,15 @@
 # Specs: Campanhas v2 · Testemunho Público · Publicações
 
+> ✅ **Status: IMPLEMENTADO.** Os três módulos abaixo (C1–C3, TP1–TP2, P1)
+> foram construídos na ordem sugerida e estão em produção — migrations
+> `034_reserva_campanha.sql` a `037_publicacoes.sql`, telas `/admin/tp`,
+> `/admin/campanha` (suprimento + ritmo), `/publicador/arranjo` (turnos de
+> TP + inscrição antecipada). Este documento fica como **registro de
+> design** (o raciocínio por trás de cada decisão) — pra saber como o app
+> se comporta HOJE, ver `CLAUDE.md` (modelo de dados + convenções) e
+> `docs/MANUAL.md` (uso). O texto abaixo é mantido como foi escrito antes
+> da implementação, sem alterar o que já foi decidido.
+
 **Documento de construção para IA futura.** Escrito com contexto completo do
 app (o spec original do Gemini, avaliado no fim deste doc, foi produzido sem
 acesso ao código — várias suposições dele são corrigidas aqui).
@@ -235,14 +245,16 @@ RLS: leitura `authenticated`, escrita admin.
 
 ## Ordem de construção sugerida (incrementos testáveis)
 
-1. **C1**: reserva de quadras (schema + Visão Geral + bloqueio 409 + visual
-   no mapa). Testar: reservar 3 quadras → tentar designar → 409.
-2. **C2**: termômetro + toggle mapa de calor em `/admin/campanha`.
-3. **C3**: banner planejada + `interessados` em arranjos + inscrição no
+Todos os incrementos abaixo foram concluídos, nessa ordem:
+
+1. ✅ **C1**: reserva de quadras (schema + Visão Geral + bloqueio 409 + visual
+   no mapa).
+2. ✅ **C2**: termômetro + toggle mapa de calor em `/admin/campanha`.
+3. ✅ **C3**: banner planejada + `interessados` em arranjos + inscrição no
    campo + interessados primeiro no Repartir.
-4. **TP1**: schema TP + `/admin/tp` (pontos + turnos).
-5. **TP2**: turnos na aba Agenda do campo + inscrição + seção no home.
-6. **P1**: publicações + suprimentos na tela de campanha + vínculo
+4. ✅ **TP1**: schema TP + `/admin/tp` (pontos + turnos).
+5. ✅ **TP2**: turnos na aba Agenda do campo + inscrição + seção no home.
+6. ✅ **P1**: publicações + suprimentos na tela de campanha + vínculo
    `campanhas.publicacao_id`.
 
 Cada incremento: migration própria, `npm run build` verde, push em `main`,

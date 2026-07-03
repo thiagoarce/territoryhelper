@@ -15,10 +15,11 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     (com Trabalhar + GPS + Designar cartas), `campanha`, `arranjos`,
     `tp`, `designacoes`, `usuarios`, `auditoria`, `dev/sql`
   - `publicador/` — modo campo (**tanto publicador quanto dirigente**):
-    designações (com pessoal/pregação/cartas), `quadra/[id]` (com
-    "Marcar concluída" se dirigente), `mapa` (mapa estratégico com POIs
-    + delegar temp — só dirigente/admin), `predios` (busca+GPS+criar
-    pendente+designar), `arranjo` (com Distribuir/Assumir se dirigente),
+    home/carteira (território pessoal + ✉ cartas + pregação em grupo via
+    `arranjo_partes` + TCEs), `quadra/[id]` (com "Marcar concluída" se
+    dirigente), `mapa` (mapa estratégico com POIs + criar parte — só
+    dirigente/admin), `predios` (busca+GPS+criar pendente+designar),
+    `arranjo` (agenda + inscrição em TP; dirigente ganha Repartir/Assumir),
     `campanha`, `tce/[id]`
   - `dirigente/` — só um `+layout.server.ts` que redireciona pra
     `/publicador/*` (URLs antigas)
@@ -58,19 +59,22 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 |---|---|
 | `profiles` | usuário + `role` (publicador/dirigente/admin) |
 | `territorios` | id text, nome, cor, status |
-| `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao` |
+| `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao`, `reservada_campanha_id` (quarentena — some do pool geral enquanto reservada pra campanha) |
 | `quadras_conclusoes` | histórico append-only de conclusões (data, autor) |
 | `locais` | endereço físico: `geo Point`, tipo (casa/predio/comercio/coletivo/terreno), `quadra_id`, setor/quadra_ibge/face_ibge, portaria, `nao_eh_predio`, **`pendente`** (criado pelo publicador; admin valida) |
 | `unidades` | apto/unidade dentro de um local (carta, desocupado…) |
 | `registros` | trilha append-only de eventos por unidade (conversou/carta/desfeito…) |
 | `designacoes` | **território pessoal** (tipo pessoal/cartas), sempre `publicador_id` — dirigente NÃO existe aqui (é atributo do arranjo) |
 | `designacao_quadras` / `designacao_publicadores` / `designacao_locais` | N:N (locais só p/ tipo='cartas') |
-| `arranjos` / `arranjo_modalidades` | saída agendada c/ dirigente + território **misto livre**: `quadras_ids[]` + `cartas_locais_ids[]` + `tce_id` + local/ponto. Modalidade é só categoria (cor/defaults) |
+| `arranjos` / `arranjo_modalidades` | saída agendada c/ dirigente + território **misto livre**: `quadras_ids[]` + `cartas_locais_ids[]` + `tce_id` + local/ponto + `interessados uuid[]` (inscrição antecipada, sinal pro dirigente repartir). Modalidade é só categoria (cor/defaults) |
 | `arranjo_partes` | repartição do dirigente: subconjunto do território → `publicadores uuid[]` (dupla/trio = MESMA parte). Validade deriva da `data` do arranjo |
 | `territorio_tokens` | link público `/t/<token>` de arranjo OU designação (RPC `territorio_publico` monta o JSON; compartilha no WhatsApp com PNG do mapa) |
 | `campanha` / `campanhas` | objetivos + período (data_inicio/alvo/meta_semanal) |
+| `campanha_suprimentos` | checklist de `publicacoes` pra uma campanha (qtd_necessaria/qtd_em_maos/pedido_feito/notas) — gerido em `/admin/campanha` |
+| `publicacoes` | catálogo de publicações (nome/código/ativo) usado pelo suprimento e como "publicação principal" de um período |
 | `tces` / `tce_unidades` | Território Comercial Especial (convex hull) |
 | `cartas_tokens` | link público de cartas |
+| `tp_pontos` / `tp_turnos` / `tp_escala` | Testemunho público: pontos fixos (carrinho), grade semanal de turnos por dia/hora/vagas, e inscrição do publicador num turno numa data (`/admin/tp` + inscrição em `/publicador/arranjo`) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
@@ -85,10 +89,10 @@ status='pendente'/'concluido'.
   qualquer rota que trabalhe conteúdo de quadra pelo publicador.
 - **Defesa em profundidade**: além de RLS, checar `locals.profile?.role`
   no início das actions que precisam ser role-restritas (concluir quadra,
-  distribuir, assumir arranjo, designar cartas, delegar temp).
-- **RLS de `locais`/`unidades`** (migration 026/029) usa
+  repartir/assumir arranjo, designar cartas).
+- **RLS de `locais`/`unidades`** (migration 026/029/040) usa
   `pode_editar_local(bigint)` — publicador só edita local que está em
-  designação/arranjo/delegação temp ativa dele.
+  designação pessoal, arranjo (dirigente) ou `arranjo_partes` ativa dele.
 - Geometria escrita via **GeoJSON** (`{type,coordinates}`) — PostgREST coage
   pra `geometry`. Operações geométricas via **RPC PostGIS** (`ST_Union`,
   `ST_ConvexHull`, `ST_Split`, `ST_GeomFromGeoJSON`) — sem Turf no front.
@@ -114,8 +118,8 @@ status='pendente'/'concluido'.
 
 ## Telas principais (admin)
 
-- **Geral** (`/admin`) — mapa multi-seleção de quadras; designar (pessoal/
-  arranjo) + **designar TCE** (designações ficam todas aqui). Cor por
+- **Geral** (`/admin`) — mapa multi-seleção de quadras; **designar** (território
+  pessoal) + **anexar a arranjo** (saída em grupo) + **designar TCE**. Cor por
   status (recência) / território / densidade / idade da conclusão.
   **Concluir quadra** fundido aqui (long-press abre histórico +
   reverter + limpar conclusão + conflito de data anterior — era a tela
@@ -131,23 +135,34 @@ status='pendente'/'concluido'.
 - **Prédios** (`/admin/predios`) — lista + filtros + modal inline + WhatsApp +
   **📍 Proximidade GPS** + ▶ trabalhar (→ `/predio/[id]`) +
   ⏳ **Validar pendente** + 🎯 **Designar cartas** + 📅 Anexar arranjo
-- **Campanha** (`/admin/campanha`) — período + mapa do período + gráfico semanal
+- **Campanha** (`/admin/campanha`) — período + mapa do período + termômetro de
+  ritmo + gráfico semanal + suprimento (publicações/quantidades)
 - **Arranjos** (`/admin/arranjos`) — modalidades + agenda semana/mês/3m/ano +
-  recorrência gera N pontuais editáveis + anexar prédios/quadras
+  recorrência gera N pontuais editáveis + anexar prédios/quadras/TCE
+- **Designações** (`/admin/designacoes`) — hub central: lista todas as
+  designações pessoais/cartas + arranjos + TCEs num só lugar (filtros por
+  tipo/status, concluir/reabrir/cancelar/excluir, link público, realocar
+  quadras não terminadas pra outro arranjo)
+- **TP** (`/admin/tp`) — pontos fixos de testemunho público (nome/endereço/
+  GPS) + grade semanal de turnos por ponto (dia/hora/vagas) + indicador de
+  "buraco" na escala
 
 ## Telas principais (modo campo — publicador + dirigente)
 
-- **Designações** (`/publicador`) — home. Card destacado se campanha ativa +
-  card amarelo "🚶 Pregando com dirigente agora" (delegação temp).
-  Carteira dividida em Território pessoal / Pregação em grupo /
-  ✉ Cartas designadas + lista TCEs abertos.
+- **Home/carteira** (`/publicador`) — card destacado se campanha ativa +
+  card "🎪 Você dirige" (arranjos que dirijo, com link "Repartir →") +
+  card amarelo "🚶 Pregação em grupo — sua parte" (via `arranjo_partes`)
+  + card de turnos de TP nos próximos 7 dias. Carteira dividida em
+  Território pessoal / ✉ Cartas designadas + lista TCEs abertos.
 - **Mapa** (`/publicador/mapa`) — só dirigente/admin. Mapa map-driven pra
   concluir quadra, POIs (Estacionar perto → marcadores no mapa + rota
-  Google Maps), 📸 PNG export, 👤 Delegar temp (subset de quadras pra
-  publicador com prazo curto).
-- **Arranjo** (`/publicador/arranjo`) — read-only pra publicador; dirigente
-  ganha **Distribuir quadras** (nos arranjos dele) + **👋 Assumir dirigência**
-  (nos arranjos dos outros).
+  Google Maps), 📸 PNG export, ✂ Criar parte (seleciona um arranjo que eu
+  dirijo + subset de quadras pra repartir com um publicador).
+- **Arranjo** (`/publicador/arranjo`) — agenda da semana com arranjos +
+  turnos de TP (inscrever/sair). Todo publicador pode sinalizar "Quero
+  participar" (inscrição antecipada); dirigente ganha **✂ Repartir
+  território** (nos arranjos dele, cria/apaga `arranjo_partes`) +
+  **👋 Assumir dirigência** (nos arranjos dos outros) + link público.
 - **Prédios** (`/publicador/predios`) — busca + 📍 GPS + tabs/filtros +
   criar prédio pendente. Se dirigente: checkbox multi-seleção + 🎯
   Designar cartas.
