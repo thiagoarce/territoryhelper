@@ -78,11 +78,15 @@
   }
 
   // Link público — abre /t/<token> pra compartilhar (designação OU arranjo)
+  let gerandoLink = $state<string | null>(null);
   async function abrirLinkPublico(tipo: 'designacao' | 'arranjo', id: number) {
+    const key = `${tipo}:${id}`;
+    gerandoLink = key;
     const fd = new FormData();
     fd.append(tipo === 'arranjo' ? 'arranjo_id' : 'designacao_id', String(id));
     const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    gerandoLink = null;
     if (parsed.type === 'success' && parsed.data?.token) {
       window.open('/t/' + parsed.data.token, '_blank', 'noopener');
     } else {
@@ -172,8 +176,8 @@
         </div>
         <div class="mt-2 flex items-center gap-3">
           <a href="/publicador/arranjo" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
-          <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
-            class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="share" size={14} /> Compartilhar</button>
+          <button type="button" disabled={gerandoLink === `arranjo:${a.id}`} onclick={() => abrirLinkPublico('arranjo', a.id)}
+            class="text-xs font-medium text-primary-700 hover:underline disabled:opacity-40"><Icon nome={gerandoLink === `arranjo:${a.id}` ? 'loader' : 'share'} size={14} class={gerandoLink === `arranjo:${a.id}` && 'animate-spin'} /> Compartilhar</button>
         </div>
       </div>
     {/each}
@@ -371,8 +375,8 @@
           <span class="ml-1 text-slate-400">({diasAteOuApos(d.prazo)})</span>
         </div>
       {/if}
-      <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)}
-        class="ml-auto text-xs text-primary-700 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Compartilhar</button>
+      <button type="button" disabled={gerandoLink === `designacao:${d.id}`} onclick={() => abrirLinkPublico('designacao', d.id)}
+        class="ml-auto text-xs text-primary-700 hover:underline disabled:opacity-40" title="Link público com mapa (WhatsApp)"><Icon nome={gerandoLink === `designacao:${d.id}` ? 'loader' : 'share'} size={14} class={gerandoLink === `designacao:${d.id}` && 'animate-spin'} /> Compartilhar</button>
     </div>
   </div>
 {/snippet}

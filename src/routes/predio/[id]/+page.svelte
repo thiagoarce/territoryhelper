@@ -190,8 +190,10 @@
   let sheetEditar = $state(false);
   let salvandoEditar = $state(false);
   let irmaoMora = $state(data.predio.irmao_mora);
+  let compartilhando = $state(false);
 
   async function compartilharWhatsApp() {
+    compartilhando = true;
     try {
       const res = await fetch('?/gerarLink', { method: 'POST', body: new FormData() });
       const result = deserialize(await res.text()) as any;
@@ -204,6 +206,7 @@
       }
       throw new Error(result.data?.erro || 'sem token');
     } catch { toast.error('Não consegui gerar o link'); }
+    finally { compartilhando = false; }
   }
 </script>
 
@@ -219,8 +222,8 @@
       <div class="ml-auto flex gap-1">
         <button type="button" onclick={() => (sheetEditar = true)} title="Editar prédio"
           class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="pencil" size={14} /></button>
-        <button type="button" onclick={compartilharWhatsApp} title="Compartilhar cartas"
-          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="share" size={14} /></button>
+        <button type="button" disabled={compartilhando} onclick={compartilharWhatsApp} title="Compartilhar cartas"
+          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center disabled:opacity-50"><Icon nome={compartilhando ? 'loader' : 'share'} size={14} class={compartilhando && 'animate-spin'} /></button>
       </div>
     </div>
     <h1 class="text-xl font-bold">{data.predio.nome || `${data.predio.logradouro}, ${data.predio.numero}`}</h1>

@@ -60,22 +60,29 @@
   function novoTurno(pontoId: number) { turnoPontoId = pontoId; turnoEdit = null; sheetTurno = true; }
   function editarTurno(t: TpTurno) { turnoPontoId = t.ponto_id; turnoEdit = { ...t }; sheetTurno = true; }
 
+  let apagandoTurnoId = $state<number | null>(null);
+  let apagandoPonto = $state(false);
+
   async function apagarTurno(id: number) {
     if (!confirm('Excluir esse turno? A escala dele some junto.')) return;
+    apagandoTurnoId = id;
     const fd = new FormData();
     fd.append('id', String(id));
     const res = await fetch('?/apagarTurno', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    apagandoTurnoId = null;
     if (parsed.type === 'success') { toast.success('Removido'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
 
   async function apagarPonto(id: number) {
     if (!confirm('Excluir esse ponto? Turnos e escala dele somem junto.')) return;
+    apagandoPonto = true;
     const fd = new FormData();
     fd.append('id', String(id));
     const res = await fetch('?/apagarPonto', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    apagandoPonto = false;
     if (parsed.type === 'success') { toast.success('Removido'); sheetPonto = false; await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
@@ -132,7 +139,7 @@
                     </span>
                     {#if !t.ativo}<span class="text-[10px] px-1 rounded bg-slate-200 text-slate-600">inativo</span>{/if}
                     <button onclick={() => editarTurno(t)} class="text-slate-500 hover:underline shrink-0"><Icon nome="pencil" size={12} /></button>
-                    <button onclick={() => apagarTurno(t.id)} class="text-red-600 hover:underline shrink-0"><Icon nome="trash" size={12} /></button>
+                    <button disabled={apagandoTurnoId === t.id} onclick={() => apagarTurno(t.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={apagandoTurnoId === t.id ? 'loader' : 'trash'} size={12} class={apagandoTurnoId === t.id && 'animate-spin'} /></button>
                   </div>
                 {/each}
               {/each}
@@ -199,7 +206,7 @@
     {/if}
     <div class="flex gap-2 pt-2">
       {#if pontoEdit?.id}
-        <Button variant="secondary" type="button" onclick={() => apagarPonto(pontoEdit!.id!)} class="text-red-600">Excluir</Button>
+        <Button variant="secondary" type="button" loading={apagandoPonto} onclick={() => apagarPonto(pontoEdit!.id!)} class="text-red-600">Excluir</Button>
       {/if}
       <Button variant="primary" type="submit" loading={salvandoPonto} class="flex-1">Salvar</Button>
     </div>

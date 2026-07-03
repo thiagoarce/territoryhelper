@@ -69,22 +69,34 @@
     return m;
   });
 
+  let acaoEmCurso = $state<string | null>(null);
+  let assumindoId = $state<number | null>(null);
+  function isBusy(key: string): boolean {
+    return acaoEmCurso === key;
+  }
+
   async function inscreverTurno(turnoId: number, dataOc: string) {
+    const key = `turno:${turnoId}:${dataOc}`;
+    acaoEmCurso = key;
     const fd = new FormData();
     fd.append('turno_id', String(turnoId));
     fd.append('data', dataOc);
     const res = await fetch('?/inscreverTurno', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    acaoEmCurso = null;
     if (parsed.type === 'success') { toast.success('Inscrito'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
 
   async function sairTurno(turnoId: number, dataOc: string) {
+    const key = `turno:${turnoId}:${dataOc}`;
+    acaoEmCurso = key;
     const fd = new FormData();
     fd.append('turno_id', String(turnoId));
     fd.append('data', dataOc);
     const res = await fetch('?/sairTurno', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    acaoEmCurso = null;
     if (parsed.type === 'success') { toast.success('Saiu do turno'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
@@ -169,10 +181,13 @@
 
   async function apagarParte(id: number) {
     if (!confirm('Remover essa parte? O publicador perde o acesso.')) return;
+    const key = `parte:${id}`;
+    acaoEmCurso = key;
     const fd = new FormData();
     fd.append('id', String(id));
     const res = await fetch('?/apagarParte', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    acaoEmCurso = null;
     if (parsed.type === 'success') { toast.success('Removida'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
@@ -180,10 +195,13 @@
   // Link público do arranjo — abre /t/<token> onde dá pra compartilhar
   // com imagem do mapa (WhatsApp)
   async function abrirLinkPublico(arranjoId: number) {
+    const key = `link:${arranjoId}`;
+    acaoEmCurso = key;
     const fd = new FormData();
     fd.append('arranjo_id', String(arranjoId));
     const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    acaoEmCurso = null;
     if (parsed.type === 'success' && parsed.data?.token) {
       window.open('/t/' + parsed.data.token, '_blank', 'noopener');
     } else {
@@ -193,10 +211,13 @@
 
   // Inscrição antecipada — sinal de interesse, dirigente decide a repartição
   async function toggleInteresse(arranjoId: number) {
+    const key = `interesse:${arranjoId}`;
+    acaoEmCurso = key;
     const fd = new FormData();
     fd.append('arranjo_id', String(arranjoId));
     const res = await fetch('?/toggleInteresse', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    acaoEmCurso = null;
     if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Feito')); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
@@ -269,9 +290,9 @@
                       </div>
                       <div class="mt-2">
                         {#if souInscrito}
-                          <Button variant="secondary" size="sm" onclick={() => sairTurno(t.id, oct.data)}>Sair do turno</Button>
+                          <Button variant="secondary" size="sm" loading={isBusy(`turno:${t.id}:${oct.data}`)} onclick={() => sairTurno(t.id, oct.data)}>Sair do turno</Button>
                         {:else if inscritos.length < t.vagas}
-                          <Button variant="primary" size="sm" onclick={() => inscreverTurno(t.id, oct.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
+                          <Button variant="primary" size="sm" loading={isBusy(`turno:${t.id}:${oct.data}`)} onclick={() => inscreverTurno(t.id, oct.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
                         {:else}
                           <span class="text-xs text-slate-400">Sem vagas</span>
                         {/if}
@@ -331,10 +352,11 @@
                       <div class="mt-1.5 flex items-center gap-2 flex-wrap">
                         <button
                           type="button"
+                          disabled={isBusy(`interesse:${a.id}`)}
                           onclick={() => toggleInteresse(a.id)}
-                          class="text-xs px-2 py-0.5 rounded border {souInteressado ? 'bg-primary-100 border-primary-400 text-primary-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}"
+                          class="text-xs px-2 py-0.5 rounded border disabled:opacity-40 {souInteressado ? 'bg-primary-100 border-primary-400 text-primary-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}"
                         >
-                          <Icon nome="hand" size={12} /> {souInteressado ? 'Você quer participar' : 'Quero participar'}
+                          <Icon nome={isBusy(`interesse:${a.id}`) ? 'loader' : 'hand'} size={12} class={isBusy(`interesse:${a.id}`) && 'animate-spin'} /> {souInteressado ? 'Você quer participar' : 'Quero participar'}
                         </button>
                         {#if a.dirigente_id === data.minhaId && (a.interessados ?? []).length > 0}
                           <span class="text-xs text-slate-500">
@@ -344,8 +366,8 @@
                       </div>
 
                       {#if data.podeCoordenar}
-                        <button type="button" onclick={() => abrirLinkPublico(a.id)}
-                          class="mt-1.5 text-xs text-primary-700 hover:underline"><Icon nome="share" size={14} /> Link público (WhatsApp c/ mapa)</button>
+                        <button type="button" disabled={isBusy(`link:${a.id}`)} onclick={() => abrirLinkPublico(a.id)}
+                          class="mt-1.5 text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={isBusy(`link:${a.id}`) ? 'loader' : 'share'} size={14} class={isBusy(`link:${a.id}`) && 'animate-spin'} /> Link público (WhatsApp c/ mapa)</button>
                       {/if}
 
                       <!-- Minha parte (destaque pro publicador) -->
@@ -382,7 +404,7 @@
                                 <span class="font-mono">{pt.quadras_ids.join(', ')}</span>
                                 {#if pt.locais_ids.length > 0}{pt.quadras_ids.length > 0 ? ' + ' : ''}{pt.locais_ids.length} prédio(s){/if}
                               </span>
-                              <button type="button" onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0"><Icon nome="trash" size={14} /></button>
+                              <button type="button" disabled={isBusy(`parte:${pt.id}`)} onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={isBusy(`parte:${pt.id}`) ? 'loader' : 'trash'} size={14} class={isBusy(`parte:${pt.id}`) && 'animate-spin'} /></button>
                             </div>
                           {/each}
                         </div>
@@ -397,15 +419,19 @@
                         <form
                           method="POST"
                           action="?/assumirArranjo"
-                          use:enhance={() => async ({ result, update }) => {
-                            await update();
-                            if (result.type === 'success') { toast.success(String((result.data as any)?.msg || 'Assumido')); await invalidateAll(); }
-                            else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+                          use:enhance={() => {
+                            assumindoId = a.id;
+                            return async ({ result, update }) => {
+                              await update();
+                              assumindoId = null;
+                              if (result.type === 'success') { toast.success(String((result.data as any)?.msg || 'Assumido')); await invalidateAll(); }
+                              else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+                            };
                           }}
                           onsubmit={(e) => { if (!confirm('Assumir a dirigência deste arranjo?')) e.preventDefault(); }}
                         >
                           <input type="hidden" name="arranjo_id" value={a.id} />
-                          <Button variant="secondary" type="submit" class="w-full"><Icon nome="hand" size={14} /> Assumir dirigência</Button>
+                          <Button variant="secondary" type="submit" loading={assumindoId === a.id} class="w-full"><Icon nome="hand" size={14} /> Assumir dirigência</Button>
                         </form>
                       </div>
                     {/if}

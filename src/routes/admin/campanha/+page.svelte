@@ -43,6 +43,9 @@
   let sheetPeriodo = $state(false);
   let periodoEdit: CampanhaPeriodo | null = $state(null);
   let salvando = $state(false);
+  let encerrando = $state(false);
+  let reativandoId = $state<number | null>(null);
+  let apagandoObjetivo = $state(false);
   let selecionadas = $state<Set<string>>(new Set());
 
   // Suprimento
@@ -59,11 +62,18 @@
     data.publicacoes.filter((p) => p.ativo && !data.suprimentos.some((s) => s.publicacao_id === p.id))
   );
 
-  async function acaoRapida(action: string, params: Record<string, string>) {
+  let acaoEmCurso = $state<string | null>(null);
+  function isBusy(key: string): boolean {
+    return acaoEmCurso === key;
+  }
+
+  async function acaoRapida(action: string, params: Record<string, string>, key?: string) {
+    if (key) acaoEmCurso = key;
     const fd = new FormData();
     for (const [k, v] of Object.entries(params)) fd.append(k, v);
     const res = await fetch(`?/${action}`, { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
+    if (key) acaoEmCurso = null;
     if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Feito')); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
@@ -102,12 +112,12 @@
       qtd_em_maos: String(merged.qtd_em_maos),
       pedido_feito: merged.pedido_feito ? 'on' : '',
       notas: merged.notas ?? ''
-    });
+    }, `suprimento:${s.id}`);
   }
 
   async function apagarSuprimento(id: number) {
     if (!confirm('Remover esse item do suprimento?')) return;
-    await acaoRapida('apagarSuprimento', { id: String(id) });
+    await acaoRapida('apagarSuprimento', { id: String(id) }, `apagarSuprimento:${id}`);
   }
 
   // Alerta visual: falta suprimento e a campanha começa em <30 dias
@@ -306,17 +316,18 @@
               <div class="flex items-center justify-between gap-2 flex-wrap">
                 <span class="font-medium text-sm">{s.publicacao_nome}</span>
                 {#if risco}<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700"><Icon nome="alert" size={10} /> faltando, campanha perto</span>{/if}
-                <button onclick={() => apagarSuprimento(s.id)} class="text-red-600 hover:underline ml-auto"><Icon nome="trash" size={12} /></button>
+                {#if isBusy(`suprimento:${s.id}`)}<Icon nome="loader" size={12} class="animate-spin text-slate-400 ml-auto" />{/if}
+                <button disabled={isBusy(`apagarSuprimento:${s.id}`)} onclick={() => apagarSuprimento(s.id)} class="text-red-600 hover:underline disabled:opacity-40 {isBusy(`suprimento:${s.id}`) ? '' : 'ml-auto'}"><Icon nome={isBusy(`apagarSuprimento:${s.id}`) ? 'loader' : 'trash'} size={12} class={isBusy(`apagarSuprimento:${s.id}`) && 'animate-spin'} /></button>
               </div>
               <div class="flex items-center gap-3 mt-1.5 flex-wrap text-xs">
                 <label class="flex items-center gap-1">Necessária
-                  <input type="number" min="0" value={s.qtd_necessaria} onchange={(e) => atualizarSuprimento(s, { qtd_necessaria: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5" />
+                  <input type="number" min="0" value={s.qtd_necessaria} disabled={isBusy(`suprimento:${s.id}`)} onchange={(e) => atualizarSuprimento(s, { qtd_necessaria: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-50" />
                 </label>
                 <label class="flex items-center gap-1">Em mãos
-                  <input type="number" min="0" value={s.qtd_em_maos} onchange={(e) => atualizarSuprimento(s, { qtd_em_maos: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5" />
+                  <input type="number" min="0" value={s.qtd_em_maos} disabled={isBusy(`suprimento:${s.id}`)} onchange={(e) => atualizarSuprimento(s, { qtd_em_maos: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-50" />
                 </label>
                 <label class="flex items-center gap-1 cursor-pointer">
-                  <input type="checkbox" checked={s.pedido_feito} onchange={(e) => atualizarSuprimento(s, { pedido_feito: (e.target as HTMLInputElement).checked })} class="w-3.5 h-3.5 rounded" />
+                  <input type="checkbox" checked={s.pedido_feito} disabled={isBusy(`suprimento:${s.id}`)} onchange={(e) => atualizarSuprimento(s, { pedido_feito: (e.target as HTMLInputElement).checked })} class="w-3.5 h-3.5 rounded disabled:opacity-50" />
                   Pedido feito
                 </label>
               </div>
@@ -324,8 +335,9 @@
                 type="text"
                 placeholder="Notas (ex: qtd sugerida por publicador)"
                 value={s.notas ?? ''}
+                disabled={isBusy(`suprimento:${s.id}`)}
                 onchange={(e) => atualizarSuprimento(s, { notas: (e.target as HTMLInputElement).value })}
-                class="w-full mt-1.5 rounded border border-slate-200 px-2 py-1 text-xs"
+                class="w-full mt-1.5 rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-50"
               />
             </div>
           {/each}
@@ -409,12 +421,16 @@
 
   <!-- Encerrar a campanha ativa (vira histórico, nunca deleta) -->
   {#if data.ativa}
-    <form method="POST" action="?/desativarPeriodo" use:enhance={() => async ({ result, update }) => {
-      await update();
-      if (result.type === 'success') { toast.success('Campanha encerrada — foi pro histórico'); await invalidateAll(); }
-      else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+    <form method="POST" action="?/desativarPeriodo" use:enhance={() => {
+      encerrando = true;
+      return async ({ result, update }) => {
+        await update();
+        encerrando = false;
+        if (result.type === 'success') { toast.success('Campanha encerrada — foi pro histórico'); await invalidateAll(); }
+        else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+      };
     }} onsubmit={(e) => { if (!confirm(`Encerrar "${data.ativa!.nome}"? Ela vai pro histórico com os resultados (nada é apagado).`)) e.preventDefault(); }}>
-      <Button variant="secondary" type="submit" class="w-full">Encerrar campanha ativa</Button>
+      <Button variant="secondary" type="submit" loading={encerrando} class="w-full">Encerrar campanha ativa</Button>
     </form>
   {/if}
 
@@ -448,12 +464,16 @@
                 {/if}
               </div>
               <div class="flex flex-col gap-1 items-end shrink-0">
-                <form method="POST" action="?/ativarPeriodo" use:enhance={() => async ({ result, update }) => {
-                  await update();
-                  if (result.type === 'success') { toast.success('Ativada'); await invalidateAll(); }
+                <form method="POST" action="?/ativarPeriodo" use:enhance={() => {
+                  reativandoId = p.id;
+                  return async ({ result, update }) => {
+                    await update();
+                    reativandoId = null;
+                    if (result.type === 'success') { toast.success('Ativada'); await invalidateAll(); }
+                  };
                 }}>
                   <input type="hidden" name="id" value={p.id} />
-                  <button type="submit" class="text-xs text-primary-700 hover:underline">Reativar</button>
+                  <button type="submit" disabled={reativandoId === p.id} class="text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={reativandoId === p.id ? 'loader' : 'play'} size={12} class={reativandoId === p.id && 'animate-spin'} /> Reativar</button>
                 </form>
                 <button onclick={() => editarPeriodo(p)} class="text-xs text-slate-500 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
               </div>
@@ -632,19 +652,23 @@
     <form
       method="POST"
       action="?/excluir"
-      use:enhance={() => async ({ result, update }) => {
-        await update();
-        if (result.type === 'success') {
-          toast.success('Excluído');
-          sheetObj = false;
-          await invalidateAll();
-        }
+      use:enhance={() => {
+        apagandoObjetivo = true;
+        return async ({ result, update }) => {
+          await update();
+          apagandoObjetivo = false;
+          if (result.type === 'success') {
+            toast.success('Excluído');
+            sheetObj = false;
+            await invalidateAll();
+          }
+        };
       }}
       onsubmit={(e) => { if (!confirm('Excluir esse objetivo?')) e.preventDefault(); }}
       class="mt-3"
     >
       <input type="hidden" name="id" value={editando.id} />
-      <button type="submit" class="text-sm text-red-700 hover:underline"><Icon nome="trash" size={14} /> Excluir</button>
+      <button type="submit" disabled={apagandoObjetivo} class="text-sm text-red-700 hover:underline disabled:opacity-40"><Icon nome={apagandoObjetivo ? 'loader' : 'trash'} size={14} class={apagandoObjetivo && 'animate-spin'} /> Excluir</button>
     </form>
   {/if}
 </BottomSheet>
@@ -663,9 +687,10 @@
           <span class="flex-1">{p.nome}{#if p.codigo} <span class="text-xs text-slate-400">({p.codigo})</span>{/if}</span>
           {#if !p.ativo}<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">inativa</span>{/if}
           <button
-            onclick={() => acaoRapida('atualizarPublicacao', { id: String(p.id), nome: p.nome, codigo: p.codigo ?? '', ativo: p.ativo ? '' : 'on' })}
-            class="text-xs text-primary-700 hover:underline"
-          >{p.ativo ? 'Desativar' : 'Reativar'}</button>
+            disabled={isBusy(`pub:${p.id}`)}
+            onclick={() => acaoRapida('atualizarPublicacao', { id: String(p.id), nome: p.nome, codigo: p.codigo ?? '', ativo: p.ativo ? '' : 'on' }, `pub:${p.id}`)}
+            class="text-xs text-primary-700 hover:underline disabled:opacity-40"
+          ><Icon nome={isBusy(`pub:${p.id}`) ? 'loader' : (p.ativo ? 'ban' : 'undo')} size={12} class={isBusy(`pub:${p.id}`) && 'animate-spin'} /> {p.ativo ? 'Desativar' : 'Reativar'}</button>
         </div>
       {/each}
       {#if data.publicacoes.length === 0}
