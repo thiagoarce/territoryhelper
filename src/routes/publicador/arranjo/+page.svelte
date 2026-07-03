@@ -8,6 +8,7 @@
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
+  import { page } from '$app/stores';
   import type { QuadraGeo } from '$lib/server/queries';
   import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './$types';
 
@@ -36,8 +37,11 @@
     };
   } = $props();
 
-  // Período igual ao admin: semana / mês / 3 meses / ano
-  let periodo = $state<Periodo>('semana');
+  // Período igual ao admin: semana / mês / 3 meses / ano.
+  // Aceita ?periodo=... na URL (banner de campanha planejada linka pra cá).
+  const PERIODOS_VALIDOS: Periodo[] = ['semana', 'mes', 'tres_meses', 'ano'];
+  const periodoUrl = $page.url.searchParams.get('periodo') as Periodo | null;
+  let periodo = $state<Periodo>(periodoUrl && PERIODOS_VALIDOS.includes(periodoUrl) ? periodoUrl : 'semana');
   const range = $derived(rangeDoPeriodo(periodo));
   const ocorrencias = $derived(ocorrenciasEntre<ArranjoLinha>(data.arranjos, range.isoIni, range.isoFim));
   const ocPorData = $derived(agruparPorData(ocorrencias));
@@ -70,6 +74,16 @@
       q: new Set(partes.flatMap((p) => p.quadras_ids)),
       l: new Set(partes.flatMap((p) => p.locais_ids))
     };
+  });
+
+  // Interessados (inscrição antecipada) aparecem primeiro na lista, com selo
+  const publicadoresParaRepartir = $derived.by(() => {
+    const interessados = new Set(arranjoRep?.interessados ?? []);
+    return [...data.publicadores].sort((a, b) => {
+      const ia = interessados.has(a.id) ? 0 : 1;
+      const ib = interessados.has(b.id) ? 0 : 1;
+      return ia - ib;
+    });
   });
 
   // Geometrias das quadras do arranjo sendo repartido (mini-mapa do sheet)
@@ -135,6 +149,16 @@
       toast.error(String(parsed.data?.erro || 'Falhou gerar link'));
     }
   }
+
+  // Inscrição antecipada — sinal de interesse, dirigente decide a repartição
+  async function toggleInteresse(arranjoId: number) {
+    const fd = new FormData();
+    fd.append('arranjo_id', String(arranjoId));
+    const res = await fetch('?/toggleInteresse', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Feito')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
 </script>
 
 <div class="p-4 space-y-3">
@@ -186,6 +210,7 @@
                 {@const m = modById[a.modalidade_id]}
                 {@const partesDoArranjo = partesPorArranjo[a.id] ?? []}
                 {@const minhaParte = partesDoArranjo.find((p) => p.publicadores.includes(data.minhaId))}
+                {@const souInteressado = (a.interessados ?? []).includes(data.minhaId)}
                 <Card padding="md">
                   <div class="flex items-start gap-3">
                     <span class="w-2 self-stretch rounded shrink-0" style="background:{m?.cor ?? '#3b82f6'}"></span>
@@ -226,6 +251,22 @@
                         <div class="mt-1"><a href={a.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline"><Icon nome="paperclip" size={14} /> {a.arquivo_nome || 'arquivo'}</a></div>
                       {/if}
                       {#if a.notas}<div class="mt-1 text-xs italic text-slate-500">{a.notas}</div>{/if}
+
+                      <!-- Inscrição antecipada: sinal de interesse, não cria parte -->
+                      <div class="mt-1.5 flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onclick={() => toggleInteresse(a.id)}
+                          class="text-xs px-2 py-0.5 rounded border {souInteressado ? 'bg-primary-100 border-primary-400 text-primary-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}"
+                        >
+                          <Icon nome="hand" size={12} /> {souInteressado ? 'Você quer participar' : 'Quero participar'}
+                        </button>
+                        {#if a.dirigente_id === data.minhaId && (a.interessados ?? []).length > 0}
+                          <span class="text-xs text-slate-500">
+                            Interessados: {(a.interessados ?? []).map((id) => data.nomesPorId[id] ?? '?').join(', ')}
+                          </span>
+                        {/if}
+                      </div>
 
                       {#if data.podeCoordenar}
                         <button type="button" onclick={() => abrirLinkPublico(a.id)}
@@ -391,10 +432,12 @@
       <div>
         <span class="block text-sm font-medium mb-1">Publicadores (dupla/trio)</span>
         <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-          {#each data.publicadores as p}
+          {#each publicadoresParaRepartir as p}
+            {@const interessado = (arranjoRep?.interessados ?? []).includes(p.id)}
             <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
               <input type="checkbox" checked={pubsSel.has(p.id)} onchange={() => togglePub(p.id)} class="w-4 h-4 rounded" />
               <span class="flex-1">{p.nome}</span>
+              {#if interessado}<span class="text-[10px] px-1.5 py-0.5 rounded bg-primary-100 text-primary-700"><Icon nome="hand" size={10} /> interessado</span>{/if}
               <span class="text-xs text-slate-400">{p.role}</span>
             </label>
           {/each}

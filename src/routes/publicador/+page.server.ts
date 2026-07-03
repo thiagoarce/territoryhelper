@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra } from '$lib/server/queries';
+import { statusCampanha, type StatusCampanha } from '$lib/campanhas';
 
 export interface CampanhaAtiva {
   id: number;
@@ -10,6 +11,8 @@ export interface CampanhaAtiva {
   meta_semanal: number | null;
   concluidas_no_periodo: number;
   total_meta: number;
+  status: StatusCampanha;
+  diasParaComecar: number;
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -73,6 +76,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     const conclNoPeriodo = quadras.filter(
       (q) => q.data_conclusao && q.data_conclusao >= c.data_inicio && q.data_conclusao <= c.data_alvo
     ).length;
+    const diasParaComecar = Math.max(0, Math.ceil(
+      (new Date(c.data_inicio + 'T12:00:00').getTime() - Date.now()) / 86400000
+    ));
     campanhaAtiva = {
       id: c.id,
       nome: c.nome,
@@ -80,7 +86,9 @@ export const load: PageServerLoad = async ({ locals }) => {
       data_alvo: c.data_alvo,
       meta_semanal: c.meta_semanal,
       concluidas_no_periodo: conclNoPeriodo,
-      total_meta: quadras.length
+      total_meta: quadras.length,
+      status: statusCampanha(c),
+      diasParaComecar
     };
   }
 

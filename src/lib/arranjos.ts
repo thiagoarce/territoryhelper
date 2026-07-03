@@ -20,6 +20,7 @@ export interface ArranjoBase {
   ativo: boolean;
   data_inicio: string | null;
   data_fim: string | null;
+  interessados: string[];
 }
 
 export interface Ocorrencia<A extends ArranjoBase = ArranjoBase> {

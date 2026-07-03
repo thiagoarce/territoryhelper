@@ -13,6 +13,8 @@
     meta_semanal: number | null;
     concluidas_no_periodo: number;
     total_meta: number;
+    status: 'planejada' | 'em_andamento' | 'encerrada';
+    diasParaComecar: number;
   }
 
   interface MinhaParte {
@@ -175,7 +177,19 @@
   </div>
 {/if}
 
-{#if data.campanhaAtiva}
+{#if data.campanhaAtiva?.status === 'planejada'}
+  {@const c = data.campanhaAtiva}
+  <a
+    href="/publicador/arranjo?periodo=tres_meses"
+    class="block mb-4 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
+  >
+    <div class="text-xs opacity-80 uppercase tracking-wider">Campanha se aproxima</div>
+    <div class="text-lg font-bold truncate">Faltam {c.diasParaComecar} dia(s) — {c.nome}</div>
+    <div class="mt-1 text-xs opacity-90">
+      Início {new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · veja os arranjos da campanha →
+    </div>
+  </a>
+{:else if data.campanhaAtiva?.status === 'em_andamento'}
   {@const c = data.campanhaAtiva}
   {@const pct = c.total_meta > 0 ? Math.round((c.concluidas_no_periodo / c.total_meta) * 100) : 0}
   <a

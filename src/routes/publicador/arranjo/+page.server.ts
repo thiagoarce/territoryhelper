@@ -244,5 +244,22 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('arranjo_partes').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Parte removida' };
+  },
+
+  // Inscrição antecipada — sinal de interesse, não cria parte automaticamente.
+  // Qualquer publicador autenticado pode se marcar/desmarcar. RLS de arranjos
+  // é admin-only pra UPDATE, então isso passa pela RPC security definer
+  // (migration 035) que só mexe no próprio uid dentro de interessados.
+  toggleInteresse: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+
+    const { data, error } = await locals.supabase
+      .rpc('toggle_interesse_arranjo', { p_arranjo_id: arranjoId });
+    if (error) return fail(400, { erro: error.message });
+    const interessado = !!data;
+    return { ok: true, msg: interessado ? 'Interesse registrado' : 'Interesse removido', interessado };
   }
 };
