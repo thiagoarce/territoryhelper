@@ -159,7 +159,7 @@
 
   async function apagarArranjo() {
     if (!arrEditando?.id) return;
-    if (!confirm('Apagar esse arranjo?')) return;
+    if (!confirm('Excluir esse arranjo?')) return;
     const fd = new FormData();
     fd.append('id', String(arrEditando.id));
     const res = await fetch('?/deletarArranjo', { method: 'POST', body: fd });
@@ -386,10 +386,10 @@
                     if (result.type === 'success') { toast.success('Removida'); await invalidateAll(); }
                     else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
                   }}
-                  onsubmit={(e) => { if (!confirm('Apagar essa modalidade?')) e.preventDefault(); }}
+                  onsubmit={(e) => { if (!confirm('Excluir essa modalidade?')) e.preventDefault(); }}
                 >
                   <input type="hidden" name="id" value={m.id} />
-                  <button type="submit" class="text-xs text-red-600 hover:underline">Apagar</button>
+                  <button type="submit" class="text-xs text-red-600 hover:underline">Excluir</button>
                 </form>
               </div>
             </div>
@@ -735,7 +735,7 @@
 
       <div class="flex gap-2 pt-2">
         {#if arrEditando.id}
-          <Button variant="secondary" onclick={apagarArranjo} class="text-red-600">Apagar</Button>
+          <Button variant="secondary" onclick={apagarArranjo} class="text-red-600">Excluir</Button>
         {/if}
         <Button variant="secondary" onclick={() => (sheetArr = false)} class="flex-1">Cancelar</Button>
         <Button variant="primary" type="submit" loading={salvandoArr} class="flex-1">Salvar</Button>

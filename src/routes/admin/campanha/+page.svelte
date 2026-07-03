@@ -198,7 +198,7 @@
             · {progressoCampanha.diasRestantes} dia(s) restante(s)
           </div>
         </div>
-        <button onclick={() => editarPeriodo(data.ativa!)} class="text-sm text-primary-700 hover:underline">Editar</button>
+        <button onclick={() => editarPeriodo(data.ativa!)} class="text-sm text-primary-700 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
       </div>
 
       <!-- Progresso -->
@@ -270,14 +270,9 @@
                 ></div>
               </div>
             </div>
-            <div>
-              <div class="flex items-center justify-between text-xs mb-1">
-                <span class="text-slate-500">Ritmo necessário</span>
-                <span class="font-medium">{r.ritmoNecessario?.toFixed(2) ?? '—'} quadra(s)/dia</span>
-              </div>
-              <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div class="h-full bg-slate-400" style:width="100%"></div>
-              </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-500">Ritmo necessário</span>
+              <span class="font-medium">{r.ritmoNecessario?.toFixed(2) ?? '—'} quadra(s)/dia</span>
             </div>
           </div>
           <div class="text-xs text-slate-500 mt-2">
@@ -404,8 +399,8 @@
   {:else}
     <Card padding="md">
       <div class="text-center py-4 text-slate-500">
-        <div class="text-3xl mb-2"><Icon nome="calendar" size={14} /></div>
-        <div class="font-medium">Sem campanha ativa</div>
+        <Icon nome="calendar" size={40} class="mx-auto text-slate-300" />
+        <div class="font-medium mt-2">Sem campanha ativa</div>
         <div class="text-sm">Cria um período pra ver mapa do progresso e gráfico semanal.</div>
         <button onclick={novoPeriodo} class="mt-3 text-sm text-primary-700 hover:underline">+ Criar período</button>
       </div>
@@ -460,7 +455,7 @@
                   <input type="hidden" name="id" value={p.id} />
                   <button type="submit" class="text-xs text-primary-700 hover:underline">Reativar</button>
                 </form>
-                <button onclick={() => editarPeriodo(p)} class="text-xs text-slate-500 hover:underline">Editar</button>
+                <button onclick={() => editarPeriodo(p)} class="text-xs text-slate-500 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
               </div>
             </div>
           </Card>
@@ -494,7 +489,7 @@
                       {#if o.descricao}<div class="text-xs text-slate-600 mt-0.5">{o.descricao}</div>{/if}
                       {#if o.link}<a href={o.link} target="_blank" rel="noopener" class="text-xs text-blue-600 hover:underline"><Icon nome="link" size={14} /> link</a>{/if}
                     </div>
-                    <button onclick={() => editarObj(o)} class="text-xs text-primary-700 hover:underline">Editar</button>
+                    <button onclick={() => editarObj(o)} class="text-xs text-primary-700 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
                   </div>
                 </Card>
               {/each}

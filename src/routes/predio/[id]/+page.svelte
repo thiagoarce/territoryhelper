@@ -326,7 +326,7 @@
               {#each [
                 { t: 'conversou', icone: 'chat', cls: 'bg-green-600' },
                 { t: 'semConversa', icone: 'door', cls: 'bg-amber-600' },
-                { t: 'naoAtendeu', icone: 'hand', cls: 'bg-slate-600' },
+                { t: 'naoAtendeu', icone: 'door-closed', cls: 'bg-slate-600' },
                 { t: 'carta', icone: 'mail', cls: 'bg-purple-600' }
               ] as opt}
                 {@const ativo = tipoEfetivo(u) === opt.t}

@@ -159,7 +159,7 @@
   }
 
   async function apagarDesignacao(d: DesignacaoHub) {
-    if (!confirm(`Apagar a designação de ${d.publicador_nome ?? '(sem publicador)'}? Libera as quadras/prédios.`)) return;
+    if (!confirm(`Excluir a designação de ${d.publicador_nome ?? '(sem publicador)'}? Libera as quadras/prédios.`)) return;
     await acaoRapida('apagar', d.id);
     sheetEditar = false;
   }
@@ -290,7 +290,7 @@
             {/if}
             <button type="button" onclick={() => abrirEditar(d)} class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</button>
             <button type="button" onclick={() => abrirLinkPublico('designacao', d.id)} class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
-            <button type="button" onclick={() => apagarDesignacao(d)} class="text-xs text-red-600 hover:underline" title="Apaga a designação e libera quadras/prédios"><Icon nome="trash" size={14} /> Apagar</button>
+            <button type="button" onclick={() => apagarDesignacao(d)} class="text-xs text-red-600 hover:underline" title="Exclui a designação e libera quadras/prédios"><Icon nome="trash" size={14} /> Excluir</button>
           </div>
         </div>
       </Card>
@@ -324,7 +324,7 @@
             </div>
           </div>
           <div class="flex flex-col gap-1 items-end shrink-0">
-            <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline"><Icon nome="pencil" size={14} /> Editar</a>
+            <a href="/admin/arranjos" class="text-xs text-slate-600 hover:underline" title="Abre a tela de Arranjos pra editar"><Icon nome="link" size={14} /> Abrir em Arranjos</a>
             <button type="button" onclick={() => abrirLinkPublico('arranjo', a.id)}
               class="text-xs text-slate-600 hover:underline" title="Link público com mapa (WhatsApp)"><Icon nome="share" size={14} /> Link</button>
             {#if a.quadras_ids.length > 0}
@@ -332,7 +332,7 @@
                 class="text-xs text-slate-600 hover:underline" title="Move quadras que não foram terminadas pra outro arranjo"><Icon nome="swap" size={14} /> Realocar</button>
             {/if}
             <button type="button" onclick={() => limparTerritorioArranjo(a)}
-              class="text-xs text-red-600 hover:underline" title="Remove quadras/prédios/TCE do arranjo — o evento continua na agenda"><Icon nome="trash" size={14} /> Limpar</button>
+              class="text-xs text-slate-600 hover:underline" title="Remove quadras/prédios/TCE do arranjo — o evento continua na agenda"><Icon nome="eraser" size={14} /> Limpar</button>
           </div>
         </div>
       </Card>
@@ -428,7 +428,7 @@
       </div>
 
       <div class="flex gap-2 pt-2">
-        <Button variant="secondary" onclick={() => apagarDesignacao(editando!)} class="text-red-600">Apagar</Button>
+        <Button variant="secondary" onclick={() => apagarDesignacao(editando!)} class="text-red-600">Excluir</Button>
         {#if editando.status === 'aberta'}
           <Button variant="secondary" onclick={() => { acaoRapida('mudarStatus', editando!.id, { status: 'cancelada' }); sheetEditar = false; }}><Icon nome="x" size={14} /> Cancelar desig.</Button>
         {/if}

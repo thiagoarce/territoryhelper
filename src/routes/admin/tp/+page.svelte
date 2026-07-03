@@ -61,7 +61,7 @@
   function editarTurno(t: TpTurno) { turnoPontoId = t.ponto_id; turnoEdit = { ...t }; sheetTurno = true; }
 
   async function apagarTurno(id: number) {
-    if (!confirm('Apagar esse turno? A escala dele some junto.')) return;
+    if (!confirm('Excluir esse turno? A escala dele some junto.')) return;
     const fd = new FormData();
     fd.append('id', String(id));
     const res = await fetch('?/apagarTurno', { method: 'POST', body: fd });
@@ -71,7 +71,7 @@
   }
 
   async function apagarPonto(id: number) {
-    if (!confirm('Apagar esse ponto? Turnos e escala dele somem junto.')) return;
+    if (!confirm('Excluir esse ponto? Turnos e escala dele somem junto.')) return;
     const fd = new FormData();
     fd.append('id', String(id));
     const res = await fetch('?/apagarPonto', { method: 'POST', body: fd });
@@ -199,7 +199,7 @@
     {/if}
     <div class="flex gap-2 pt-2">
       {#if pontoEdit?.id}
-        <Button variant="secondary" type="button" onclick={() => apagarPonto(pontoEdit!.id!)} class="text-red-600">Apagar</Button>
+        <Button variant="secondary" type="button" onclick={() => apagarPonto(pontoEdit!.id!)} class="text-red-600">Excluir</Button>
       {/if}
       <Button variant="primary" type="submit" loading={salvandoPonto} class="flex-1">Salvar</Button>
     </div>

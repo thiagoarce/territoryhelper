@@ -356,7 +356,7 @@
   {@const cartaMarcada = !!u.carta_entregue}
   <div class="flex gap-1 flex-wrap" class:grid={modoSimples} class:grid-cols-2={modoSimples} class:gap-2={modoSimples}>
     {#each [
-      { tipo: 'naoAtendeu', icone: 'hand', label: 'Não atendeu' },
+      { tipo: 'naoAtendeu', icone: 'door-closed', label: 'Não atendeu' },
       { tipo: 'semConversa', icone: 'door', label: 'Sem palestra' },
       { tipo: 'conversou', icone: 'chat', label: 'Conversou' }
     ] as opt}
