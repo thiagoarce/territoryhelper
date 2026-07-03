@@ -63,7 +63,8 @@
         { href: '/admin/registro', label: 'Registro', icon: 'clipboard' },
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
         { href: '/admin/campanha', label: 'Campanha', icon: 'chart' },
-        { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' }
+        { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' },
+        { href: '/admin/tp', label: 'Testemunho público', icon: 'megaphone' }
       ]
     },
     {
