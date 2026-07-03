@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
+  import type { NomeIcone } from '$lib/ui/Icon.svelte';
   import '../app.css';
   import { page, updated } from '$app/stores';
   import type { Snippet } from 'svelte';
@@ -60,19 +61,19 @@
   // Bottom nav do modo campo. Dirigente/admin ganham item "Mapa" extra que
   // leva ao mapa estratégico (concluir + POIs + PNG).
   const podeDirigir = $derived(['dirigente', 'admin'].includes(role ?? ''));
-  const bottomNav = $derived(
+  const bottomNav = $derived<{ href: string; label: string; icon: NomeIcone }[]>(
     podeDirigir
       ? [
           { href: '/publicador', label: 'Designações', icon: 'home' },
           { href: '/publicador/mapa', label: 'Mapa', icon: 'map' },
           { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-          { href: '/publicador/predios', label: 'Prédios', icon: 'envelope' },
+          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' },
           { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
         ]
       : [
           { href: '/publicador', label: 'Designações', icon: 'home' },
           { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-          { href: '/publicador/predios', label: 'Prédios', icon: 'envelope' },
+          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' },
           { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
         ]
   );
@@ -80,13 +81,13 @@
   // Drawer admin
   let drawerAberto = $state(false);
 
-  const drawerGrupos = [
+  const drawerGrupos: { titulo: string; items: { href: string; label: string; icon: NomeIcone }[] }[] = [
     {
       titulo: 'Administrar',
       items: [
         { href: '/admin', label: 'Geral', icon: 'map' },
         { href: '/admin/designacoes', label: 'Designações', icon: 'clipboard' },
-        { href: '/admin/poligonos', label: 'Polígonos', icon: 'polygon' },
+        { href: '/admin/poligonos', label: 'Polígonos', icon: 'shapes' },
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
         { href: '/admin/campanha', label: 'Campanha', icon: 'chart' },
         { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' },
@@ -96,7 +97,8 @@
     {
       titulo: 'Sistema',
       items: [
-        { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'people' }
+        { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'users' },
+        { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' }
       ]
     },
     {
@@ -218,7 +220,7 @@
                 <span class="absolute left-0 top-0 bottom-0 w-1 bg-primary-600"></span>
               {/if}
               <span class="w-5 text-center text-slate-500">
-                {#if link.icon === 'map'}<Icon nome="map" size={18} />{:else if link.icon === 'polygon'}<Icon nome="shapes" size={18} />{:else if link.icon === 'clipboard'}<Icon nome="clipboard" size={18} />{:else if link.icon === 'building'}<Icon nome="building" size={18} />{:else if link.icon === 'chart'}<Icon nome="chart" size={18} />{:else if link.icon === 'calendar'}<Icon nome="calendar" size={18} />{:else if link.icon === 'people'}<Icon nome="users" size={18} />{:else if link.icon === 'history'}<Icon nome="history" size={18} />{:else if link.icon === 'wrench'}<Icon nome="settings" size={18} />{:else if link.icon === 'eye'}<Icon nome="eye" size={18} />{:else}·{/if}
+                <Icon nome={link.icon} size={18} />
               </span>
               <span>{link.label}</span>
             </a>
@@ -259,21 +261,7 @@
           class:text-slate-400={!isAtivo}
         >
           <span class="w-6 h-6 flex items-center justify-center">
-            {#if t.icon === 'home'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9M5 10v10h4v-6h6v6h4V10" stroke-linejoin="round"/></svg>
-            {:else if t.icon === 'report'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
-            {:else if t.icon === 'envelope'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
-            {:else if t.icon === 'user'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
-            {:else if t.icon === 'map'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 7 6-3 6 3 6-3v13l-6 3-6-3-6 3V7zM9 4v17M15 7v17"/></svg>
-            {:else if t.icon === 'clipboard'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="4" width="12" height="18" rx="2"/><path d="M9 2h6v4H9z"/></svg>
-            {:else if t.icon === 'chart'}
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke-linecap="round"/></svg>
-            {/if}
+            <Icon nome={t.icon} size={22} />
           </span>
           <span class="text-[10px]">{t.label}</span>
         </a>

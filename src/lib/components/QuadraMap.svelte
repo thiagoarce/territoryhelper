@@ -105,8 +105,14 @@
         const geo: any = (l as any).geo_geojson;
         if (!geo || !geo.coordinates) continue;
         const [lng, lat] = geo.coordinates;
+        // El é o elemento-raiz do Marker — o MapLibre escreve a própria
+        // translação de posição em `el.style.transform` a cada render, então
+        // NUNCA se pode sobrescrever esse transform (senão o pino "voa" pra
+        // um canto do mapa). O efeito de hover/tap fica isolado no `inner`.
         const el = document.createElement('div');
-        el.style.cssText = `
+        el.style.cssText = `cursor:pointer;`;
+        const inner = document.createElement('div');
+        inner.style.cssText = `
           position:relative;
           background:white;
           border:2px solid ${quadraColor};
@@ -115,10 +121,10 @@
           display:flex;align-items:center;justify-content:center;
           color:${quadraColor};
           box-shadow:0 2px 4px rgba(0,0,0,.15);
-          cursor:pointer;
           transition:transform .15s;
         `;
-        mount(Icon, { target: el, props: { nome: iconePorTipo(l.tipo), size: 16 } });
+        el.appendChild(inner);
+        mount(Icon, { target: inner, props: { nome: iconePorTipo(l.tipo), size: 16 } });
         const numero = numeroPorLocal.get(l.id);
         if (numero != null) {
           const badge = document.createElement('span');
@@ -130,10 +136,10 @@
             font-size:10px; font-weight:600; line-height:16px; text-align:center;
             padding:0 3px;
           `;
-          el.appendChild(badge);
+          inner.appendChild(badge);
         }
-        el.onmouseenter = () => (el.style.transform = 'scale(1.15)');
-        el.onmouseleave = () => (el.style.transform = '');
+        el.onmouseenter = () => (inner.style.transform = 'scale(1.15)');
+        el.onmouseleave = () => (inner.style.transform = '');
         el.onclick = () => {
           const card = document.getElementById('local-' + l.id);
           if (card) {
