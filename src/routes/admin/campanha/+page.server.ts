@@ -239,6 +239,7 @@ export const actions: Actions = {
     const metaSemanal = Number(fd.get('meta_semanal') ?? 0) || null;
     const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
     if (!nome || !dataInicio || !dataAlvo) return fail(400, { erro: 'nome + datas obrigatórios' });
+    let campanhaId = id;
     if (id) {
       const { error } = await locals.supabase
         .from('campanhas')
@@ -248,10 +249,30 @@ export const actions: Actions = {
     } else {
       // Nova campanha vira ativa por default. Desativa outras antes (unique partial index).
       await locals.supabase.from('campanhas').update({ ativa: false }).eq('ativa', true);
-      const { error } = await locals.supabase
+      const { data: nova, error } = await locals.supabase
         .from('campanhas')
-        .insert({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal, publicacao_id: publicacaoId, ativa: true });
+        .insert({ nome, data_inicio: dataInicio, data_alvo: dataAlvo, meta_semanal: metaSemanal, publicacao_id: publicacaoId, ativa: true })
+        .select('id')
+        .single();
       if (error) return fail(400, { erro: error.message });
+      campanhaId = nova.id;
+    }
+    // Publicação principal entra sozinha no checklist de suprimento (specs
+    // 1.6) — sem isso a nota "levar X" do card da campanha na home do campo
+    // nunca aparece (ela lê campanha_suprimentos filtrando por essa
+    // publicação). Idempotente: só cria se ainda não existe a linha.
+    if (publicacaoId && campanhaId) {
+      const { data: jaExiste } = await locals.supabase
+        .from('campanha_suprimentos')
+        .select('id')
+        .eq('campanha_id', campanhaId)
+        .eq('publicacao_id', publicacaoId)
+        .maybeSingle();
+      if (!jaExiste) {
+        await locals.supabase
+          .from('campanha_suprimentos')
+          .insert({ campanha_id: campanhaId, publicacao_id: publicacaoId });
+      }
     }
     return { ok: true, msg: 'Período salvo' };
   },
