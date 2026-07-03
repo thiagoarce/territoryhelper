@@ -15,6 +15,7 @@
       arranjos: ArranjoHub[];
       arranjosDestino: ArranjoDestino[];
       publicadores: { id: string; nome: string; role: string }[];
+      participantesPorDesignacao: Record<number, string[]>;
     };
   } = $props();
 
@@ -43,7 +44,7 @@
       if (!statusOk(d.status)) return false;
       if (busca.trim()) {
         const b = busca.toLowerCase();
-        const alvo = `${d.publicador_nome ?? ''} ${d.quadras_ids.join(' ')} ${d.notas ?? ''} ${d.predios.map((p) => p.nome ?? p.logradouro).join(' ')}`.toLowerCase();
+        const alvo = `${nomesDesignacao(d)} ${d.quadras_ids.join(' ')} ${d.notas ?? ''} ${d.predios.map((p) => p.nome ?? p.logradouro).join(' ')}`.toLowerCase();
         if (!alvo.includes(b)) return false;
       }
       return true;
@@ -77,6 +78,13 @@
   let sheetEditar = $state(false);
   let editando: DesignacaoHub | null = $state(null);
   let salvandoEditar = $state(false);
+  let editPublicadoresSel = $state<Set<string>>(new Set());
+
+  function toggleEditPub(id: string) {
+    if (editPublicadoresSel.has(id)) editPublicadoresSel.delete(id);
+    else editPublicadoresSel.add(id);
+    editPublicadoresSel = new Set(editPublicadoresSel);
+  }
 
   // Sheet realocar restante (quando o arranjo não terminou tudo)
   let sheetRealocar = $state(false);
@@ -120,8 +128,19 @@
       toast.error(String(parsed.data?.erro || 'Falhou'));
     }
   }
+  const nomePorId = $derived(new Map(data.publicadores.map((p) => [p.id, p.nome])));
+
+  function nomesDesignacao(d: DesignacaoHub): string {
+    const ids = data.participantesPorDesignacao[d.id];
+    if (!ids || ids.length === 0) return d.publicador_nome ?? '(sem publicador)';
+    return ids.map((id) => nomePorId.get(id) ?? '?').join(' + ');
+  }
+
   function abrirEditar(d: DesignacaoHub) {
     editando = d;
+    editPublicadoresSel = new Set(
+      data.participantesPorDesignacao[d.id] ?? (d.publicador_id ? [d.publicador_id] : [])
+    );
     sheetEditar = true;
   }
 
@@ -234,7 +253,7 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-[10px] px-1.5 py-0.5 rounded font-medium {meta.cls}"><Icon nome={meta.icone} size={12} /> {meta.label}</span>
-              <span class="font-semibold text-sm">{d.publicador_nome ?? '(sem publicador)'}</span>
+              <span class="font-semibold text-sm">{nomesDesignacao(d)}</span>
               {#if d.status !== 'aberta'}
                 <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{d.status}</span>
               {/if}
@@ -384,11 +403,18 @@
       </div>
 
       <div>
-        <label for="pub-ed" class="block text-sm font-medium mb-1">Publicador</label>
-        <select id="pub-ed" name="publicador_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={editando.publicador_id ?? ''}>
-          <option value="">— sem publicador —</option>
-          {#each data.publicadores as p}<option value={p.id}>{p.nome}</option>{/each}
-        </select>
+        <span class="block text-sm font-medium mb-1">Publicadores (dupla/trio)</span>
+        <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.publicadores as p}
+            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="checkbox" checked={editPublicadoresSel.has(p.id)} onchange={() => toggleEditPub(p.id)} class="w-4 h-4 rounded" />
+              <span class="flex-1">{p.nome}</span>
+              <span class="text-xs text-slate-400">{p.role}</span>
+            </label>
+          {/each}
+        </div>
+        {#each [...editPublicadoresSel] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
+        <p class="text-xs text-slate-500 mt-1">{editPublicadoresSel.size} selecionado(s) · primeiro vira líder</p>
       </div>
 
       <div>

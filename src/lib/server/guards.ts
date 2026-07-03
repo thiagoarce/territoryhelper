@@ -31,6 +31,16 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
     .limit(1);
   if (dq && dq.length > 0) return;
 
+  // Mesma designação, mas EU sou participante (dupla/trio), não o líder.
+  const { data: dqPart } = await locals.supabase
+    .from('designacao_quadras')
+    .select('designacao_id, designacoes!inner(status, designacao_publicadores!inner(publicador_id))')
+    .eq('quadra_id', quadraId)
+    .eq('designacoes.status', 'aberta')
+    .eq('designacoes.designacao_publicadores.publicador_id', userId)
+    .limit(1);
+  if (dqPart && dqPart.length > 0) return;
+
   // Parte de arranjo ativa que me inclui (dirigente repartiu essa quadra
   // pra mim/minha dupla). Validade deriva da data do arranjo pai.
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);

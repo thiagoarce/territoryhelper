@@ -29,7 +29,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
   const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10);
 
-  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes] = await Promise.all([
+  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
@@ -63,12 +63,18 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('publicador_id', locals.user!.id)
       .gte('data', hoje)
       .lte('data', em7dias)
-      .order('data')
+      .order('data'),
+    // Designações onde EU sou participante (dupla/trio), não o líder —
+    // sem isso a carteira só aparecia pra quem criou a designação
+    locals.supabase.from('designacao_publicadores').select('designacao_id').eq('publicador_id', locals.user!.id)
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
   // no campo). A visão de todas as designações mora no mapa estratégico e
   // no hub /admin/designacoes — não aqui.
-  const minhas = designacoes.filter((d) => d.publicador_id === locals.user!.id);
+  const minhasComoParticipante = new Set((participacoesRes.data ?? []).map((r: any) => r.designacao_id));
+  const minhas = designacoes.filter(
+    (d) => d.publicador_id === locals.user!.id || minhasComoParticipante.has(d.id)
+  );
   const abertas = minhas.filter((d) => d.status === 'aberta');
   const concluidas = minhas.filter((d) => d.status === 'concluida');
 

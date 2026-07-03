@@ -48,7 +48,7 @@ export interface ArranjoDestino {
 export const load: PageServerLoad = async ({ locals }) => {
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
 
-  const [designacoes, publicadores, tceRes, dlRes, arrRes] = await Promise.all([
+  const [designacoes, publicadores, tceRes, dlRes, arrRes, dpRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
     locals.supabase
@@ -64,8 +64,18 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tce_id')
       .eq('ativo', true)
       .gte('data', ontem)
-      .order('data')
+      .order('data'),
+    // Multi-publicador: participantes por designação (líder primeiro)
+    locals.supabase.from('designacao_publicadores').select('designacao_id, publicador_id, papel')
   ]);
+
+  const participantesPorDesignacao: Record<number, string[]> = {};
+  for (const p of (dpRes.data ?? []) as any[]) {
+    const arr = participantesPorDesignacao[p.designacao_id] ?? [];
+    if (p.papel === 'lider') arr.unshift(p.publicador_id);
+    else arr.push(p.publicador_id);
+    participantesPorDesignacao[p.designacao_id] = arr;
+  }
 
   // Resolve prédios das designações de cartas (uma query pros locais referenciados)
   const localIds = Array.from(new Set((dlRes.data ?? []).map((r: any) => r.local_id)));
@@ -115,7 +125,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     data: a.data
   }));
 
-  return { designacoes: hub, tces, arranjos, arranjosDestino, publicadores };
+  return { designacoes: hub, tces, arranjos, arranjosDestino, publicadores, participantesPorDesignacao };
 };
 
 function exigirAdmin(locals: App.Locals) {
@@ -139,21 +149,34 @@ export const actions: Actions = {
     return { ok: true, msg: `Designação ${status}` };
   },
 
-  // Edita publicador / prazo / notas de uma designação
+  // Edita publicadores (multi) / prazo / notas de uma designação
   editar: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
-    const publicadorId = String(fd.get('publicador_id') ?? '').trim() || null;
+    const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
     const prazo = String(fd.get('prazo') ?? '').trim() || null;
     const notas = String(fd.get('notas') ?? '').trim() || null;
-    const { error } = await locals.supabase
+
+    const { error: errU } = await locals.supabase
       .from('designacoes')
-      .update({ publicador_id: publicadorId, prazo, notas })
+      .update({ publicador_id: publicadorIds[0] ?? null, prazo, notas })
       .eq('id', id);
-    if (error) return fail(400, { erro: error.message });
+    if (errU) return fail(400, { erro: errU.message });
+
+    // Substitui a junção inteira — primeiro selecionado vira líder
+    await locals.supabase.from('designacao_publicadores').delete().eq('designacao_id', id);
+    if (publicadorIds.length > 0) {
+      const linhas = publicadorIds.map((pid, i) => ({
+        designacao_id: id,
+        publicador_id: pid,
+        papel: i === 0 ? 'lider' : 'participante'
+      }));
+      const { error: errP } = await locals.supabase.from('designacao_publicadores').insert(linhas);
+      if (errP) return fail(400, { erro: 'Designação salva mas falhou ao atualizar publicadores: ' + errP.message });
+    }
     return { ok: true, msg: 'Designação atualizada' };
   },
 

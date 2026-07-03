@@ -21,6 +21,7 @@
       meusArranjos: MeuArranjo[];
       partes: Parte[];
       minhaId: string;
+      minhasComoParticipante: number[];
     };
     form: any;
   } = $props();
@@ -30,12 +31,13 @@
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvando = $state(false);
 
-  // Quadras designadas a MIM (destaque com borda escura no mapa)
-  const minhasQuadrasIds = $derived(
-    data.designacoesAbertas
-      .filter((d) => d.publicador_id === data.minhaId)
-      .flatMap((d) => d.quadras_ids)
-  );
+  // Quadras designadas a MIM (destaque com borda escura no mapa) — líder OU participante
+  const minhasQuadrasIds = $derived.by(() => {
+    const participante = new Set(data.minhasComoParticipante);
+    return data.designacoesAbertas
+      .filter((d) => d.publicador_id === data.minhaId || participante.has(d.id))
+      .flatMap((d) => d.quadras_ids);
+  });
 
   // Modo seleção: click no mapa acumula quadras em vez de abrir o sheet
   let modoSelecao = $state(false);

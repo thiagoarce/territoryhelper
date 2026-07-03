@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
   const hoje = new Date().toISOString().substring(0, 10);
 
-  const [quadras, designacoes, publicadores, dirijoRes] = await Promise.all([
+  const [quadras, designacoes, publicadores, dirijoRes, participacoesRes] = await Promise.all([
     listarQuadrasComGeo(locals.supabase),
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
@@ -21,9 +21,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
       .or(`data.gte.${hoje},data.is.null`)
-      .order('data', { nullsFirst: false })
+      .order('data', { nullsFirst: false }),
+    // Designações onde EU sou participante (dupla/trio), não só líder
+    locals.supabase.from('designacao_publicadores').select('designacao_id').eq('publicador_id', locals.user!.id)
   ]);
   const abertas = designacoes.filter((d) => d.status === 'aberta');
+  const minhasComoParticipante = new Set((participacoesRes.data ?? []).map((r: any) => r.designacao_id));
 
   const meusArranjos = (dirijoRes.data ?? []) as {
     id: number; nome: string | null; data: string;
@@ -47,7 +50,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     publicadores,
     meusArranjos,
     partes,
-    minhaId: locals.user!.id
+    minhaId: locals.user!.id,
+    minhasComoParticipante: [...minhasComoParticipante]
   };
 };
 
