@@ -187,7 +187,8 @@
         <p class="text-sm text-slate-500">Nenhuma campanha ativa</p>
       {/if}
     </div>
-    <div class="flex gap-2">
+    <div class="flex gap-2 flex-wrap">
+      <Button variant="secondary" onclick={() => (sheetPublicacoes = true)}><Icon nome="tag" size={14} /> Catálogo</Button>
       <Button variant="secondary" onclick={novoPeriodo}>+ Período</Button>
       <Button variant="primary" onclick={novoObj}>+ Objetivo</Button>
     </div>

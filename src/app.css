@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Popup do MapLibre — alinhado ao card padrão do app (Card.svelte:
+   rounded-xl + border-slate-200 + shadow-sm), que por padrão vem com
+   cantos quadrados e sem sombra. */
+.maplibregl-popup-content {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  padding: 0.625rem 0.75rem;
+}

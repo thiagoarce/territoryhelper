@@ -99,12 +99,35 @@
         }
       }
 
+      // Espalha pinos quase coincidentes (ex: vários locais no mesmo prédio)
+      // num pequeno círculo ao redor do ponto real — senão ficam empilhados
+      // e impossíveis de tocar individualmente no mapa.
+      const chave = (lng: number, lat: number) => `${lng.toFixed(5)},${lat.toFixed(5)}`;
+      const contagemPorChave = new Map<string, number>();
+      for (const l of locais) {
+        const geo: any = (l as any).geo_geojson;
+        if (!geo?.coordinates) continue;
+        const k = chave(geo.coordinates[0], geo.coordinates[1]);
+        contagemPorChave.set(k, (contagemPorChave.get(k) ?? 0) + 1);
+      }
+      const indicePorChave = new Map<string, number>();
+
       // Pins dos locais — ícone lucide por tipo (casa/prédio/comércio/coletivo/
       // terreno) + numeração que correlaciona o pino com o card da lista.
       for (const l of locais) {
         const geo: any = (l as any).geo_geojson;
         if (!geo || !geo.coordinates) continue;
-        const [lng, lat] = geo.coordinates;
+        let [lng, lat] = geo.coordinates;
+        const k = chave(lng, lat);
+        const total = contagemPorChave.get(k) ?? 1;
+        if (total > 1) {
+          const indice = indicePorChave.get(k) ?? 0;
+          indicePorChave.set(k, indice + 1);
+          const raio = 0.00006; // ~6-7m — só pra destacar cada pino, não é posição real
+          const angulo = (2 * Math.PI * indice) / total;
+          lng += raio * Math.cos(angulo);
+          lat += raio * Math.sin(angulo);
+        }
         // El é o elemento-raiz do Marker — o MapLibre escreve a própria
         // translação de posição em `el.style.transform` a cada render, então
         // NUNCA se pode sobrescrever esse transform (senão o pino "voa" pra

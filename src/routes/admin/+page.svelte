@@ -270,8 +270,8 @@
       <div class="text-lg font-bold text-blue-700">{stats.alocadas}</div>
       <div class="text-[10px] text-slate-500 uppercase">designadas</div>
     </div>
-    <div class="rounded-lg bg-amber-50 p-2">
-      <div class="text-lg font-bold text-amber-700">{stats.abertas}</div>
+    <div class="rounded-lg p-2 {stats.abertas > 0 ? 'bg-amber-50' : 'bg-slate-50'}">
+      <div class="text-lg font-bold {stats.abertas > 0 ? 'text-amber-700' : ''}">{stats.abertas}</div>
       <div class="text-[10px] text-slate-500 uppercase">abertas</div>
     </div>
   </div>

@@ -68,6 +68,10 @@
     desfeito: 'Desfeito'
   };
 
+  function fmtDataCarta(iso: string): string {
+    return new Date(iso.substring(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR');
+  }
+
   function unidadeVisitada(u: UnidadeEnriched): boolean {
     return !!u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo';
   }
@@ -241,13 +245,13 @@
     <div class="mt-4 grid grid-cols-2 gap-3">
       <div>
         <div class="flex justify-between text-xs mb-0.5"><span><Icon nome="door" size={14} /> Visitados</span><span class="font-bold">{visitadas}/{total}</span></div>
-        <div class="h-1.5 rounded-full bg-white/20 overflow-hidden">
+        <div class="h-2 rounded-full bg-white/30 overflow-hidden">
           <div class="h-full bg-white" style:width="{total === 0 ? 0 : (visitadas / total) * 100}%"></div>
         </div>
       </div>
       <div>
         <div class="flex justify-between text-xs mb-0.5"><span><Icon nome="mail" size={14} /> Cartas</span><span class="font-bold">{entregues}/{total}</span></div>
-        <div class="h-1.5 rounded-full bg-white/20 overflow-hidden">
+        <div class="h-2 rounded-full bg-white/30 overflow-hidden">
           <div class="h-full bg-white" style:width="{total === 0 ? 0 : (entregues / total) * 100}%"></div>
         </div>
       </div>
@@ -303,7 +307,7 @@
         <div class="flex items-center justify-between gap-2">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold text-sm">{u.complemento || `Apto ${u.id}`}</div>
-            {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue ?? 'hoje'}</div>{/if}
+            {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue ? fmtDataCarta(u.carta_entregue) : 'hoje'}</div>{/if}
             {#if modo === 'casa' && tipoEfetivo(u) && tipoEfetivo(u) !== 'desfeito' && tipoEfetivo(u) !== 'carta_undo'}
               <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{rotulos[tipoEfetivo(u)!] ?? tipoEfetivo(u)}</span>
             {/if}
@@ -312,14 +316,16 @@
           {#if modo === 'cartas'}
             <div class="flex gap-1">
               {#each [
-                { c: 'carta_entregue' as const, icone: 'mail', cls: 'bg-purple-600' },
-                { c: 'desocupado' as const, icone: 'door-closed', cls: 'bg-slate-600' },
-                { c: 'nao_escrever' as const, icone: 'ban', cls: 'bg-red-600' }
+                { c: 'carta_entregue' as const, icone: 'mail', cls: 'bg-purple-600', l: 'Carta entregue' },
+                { c: 'desocupado' as const, icone: 'door-closed', cls: 'bg-slate-600', l: 'Desocupado' },
+                { c: 'nao_escrever' as const, icone: 'ban', cls: 'bg-red-600', l: 'Não escrever' }
               ] as opt}
                 {@const ativo = campoEfetivo(u, opt.c)}
                 <button
                   type="button"
                   onclick={() => toggleCarta(u, opt.c)}
+                  title={opt.l}
+                  aria-label={opt.l}
                   class="px-3 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
                 ><Icon nome={opt.icone} size={18} /></button>
               {/each}
@@ -327,15 +333,17 @@
           {:else}
             <div class="flex gap-1">
               {#each [
-                { t: 'conversou', icone: 'chat', cls: 'bg-green-600' },
-                { t: 'semConversa', icone: 'door', cls: 'bg-amber-600' },
-                { t: 'naoAtendeu', icone: 'door-closed', cls: 'bg-slate-600' },
-                { t: 'carta', icone: 'mail', cls: 'bg-purple-600' }
+                { t: 'conversou', icone: 'chat', cls: 'bg-green-600', l: 'Conversou' },
+                { t: 'semConversa', icone: 'door', cls: 'bg-amber-600', l: 'Sem palestra' },
+                { t: 'naoAtendeu', icone: 'door-closed', cls: 'bg-slate-600', l: 'Não atendeu' },
+                { t: 'carta', icone: 'mail', cls: 'bg-purple-600', l: 'Deixou carta' }
               ] as opt}
                 {@const ativo = tipoEfetivo(u) === opt.t}
                 <button
                   type="button"
                   onclick={() => marcarDesfecho(u, opt.t)}
+                  title={opt.l}
+                  aria-label={opt.l}
                   class="px-2.5 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
                 ><Icon nome={opt.icone} size={18} /></button>
               {/each}
