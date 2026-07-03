@@ -10,9 +10,10 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 
 - `src/routes/` — páginas SvelteKit (`+page.svelte` UI, `+page.server.ts`
   load + actions). Só 2 modos (specs.md revisado): **admin** e **campo**.
-  - `admin/` — Geral (`/admin`), `poligonos`, `registro`, `predios`
+  - `admin/` — Geral (`/admin`, com concluir/reverter/histórico de
+    conclusão — Registro foi fundido aqui), `poligonos`, `predios`
     (com Trabalhar + GPS + Designar cartas), `campanha`, `arranjos`,
-    `usuarios`, `auditoria`, `dev/sql`
+    `tp`, `designacoes`, `usuarios`, `auditoria`, `dev/sql`
   - `publicador/` — modo campo (**tanto publicador quanto dirigente**):
     designações (com pessoal/pregação/cartas), `quadra/[id]` (com
     "Marcar concluída" se dirigente), `mapa` (mapa estratégico com POIs
@@ -103,7 +104,10 @@ status='pendente'/'concluido'.
 
 - **Geral** (`/admin`) — mapa multi-seleção de quadras; designar (pessoal/
   arranjo) + **designar TCE** (designações ficam todas aqui). Cor por
-  status (recência) / território / densidade.
+  status (recência) / território / densidade / idade da conclusão.
+  **Concluir quadra** fundido aqui (long-press abre histórico +
+  reverter + limpar conclusão + conflito de data anterior — era a tela
+  `/admin/registro`, removida).
 - **Polígonos** (`/admin/poligonos`) — editor único, modos:
   - **Vincular**: pontos de endereço + filtros + cluster "por face" (IBGE);
     click vincula a quadra
@@ -112,8 +116,6 @@ status='pendente'/'concluido'.
   - **Territórios**: CRUD, agrupar quadras, deletar (orfaniza)
   - **TCE**: seleciona comércios/faces → convex hull → cria
   - **Auditar**: multi-cluster IBGE, vazias, órfãs sem território
-- **Registro** (`/admin/registro`) — mapa colorido por idade da conclusão;
-  marcar concluída (com histórico + conflito de data anterior)
 - **Prédios** (`/admin/predios`) — lista + filtros + modal inline + WhatsApp +
   **📍 Proximidade GPS** + ▶ trabalhar (→ `/predio/[id]`) +
   ⏳ **Validar pendente** + 🎯 **Designar cartas** + 📅 Anexar arranjo

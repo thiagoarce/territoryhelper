@@ -7,6 +7,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
+  import { diasDesde } from '$lib/utils/data';
 
   let {
     data,
@@ -29,12 +30,66 @@
   } = $props();
 
   // Estado
-  let colorirPor = $state<'status' | 'territorio' | 'densidade'>('status');
+  let colorirPor = $state<'status' | 'territorio' | 'densidade' | 'idade'>('status');
   let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
   let salvando = $state(false);
+
+  // Concluir quadra (fundido de /admin/registro)
+  let dataConclusao = $state(new Date().toISOString().substring(0, 10));
+  let salvandoConclusao = $state(false);
+  let conflito = $state<{ ids: string[]; data: string; ultimas: { id: string; ultima: string }[] } | null>(null);
+  let sheetDetalheQuadra = $state(false);
+  let quadraDetalhe = $state<QuadraGeo | null>(null);
+  let historicoQuadra = $state<{ data_conclusao: string; marcado_em: string; nome: string | null }[]>([]);
+  let carregandoHistorico = $state(false);
+
+  async function onLongPressQuadra(q: QuadraGeo) {
+    quadraDetalhe = q;
+    historicoQuadra = [];
+    sheetDetalheQuadra = true;
+    carregandoHistorico = true;
+    try {
+      const fd = new FormData();
+      fd.append('id', q.id);
+      const res = await fetch('?/historico', { method: 'POST', body: fd });
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success' && result.data?.historico) {
+        historicoQuadra = result.data.historico.map((h: any) => ({
+          data_conclusao: h.data_conclusao,
+          marcado_em: h.marcado_em,
+          nome: h.profiles?.nome ?? null
+        }));
+      }
+    } finally {
+      carregandoHistorico = false;
+    }
+  }
+
+  async function reSubmeterConclusao(modo: 'substituir' | 'historico') {
+    if (!conflito) return;
+    salvandoConclusao = true;
+    try {
+      const fd = new FormData();
+      for (const id of conflito.ids) fd.append('ids', id);
+      fd.append('data', conflito.data);
+      fd.append('modo', modo);
+      const res = await fetch('?/marcarConcluidas', { method: 'POST', body: fd });
+      const result = deserialize(await res.text()) as any;
+      if (result.type === 'success') {
+        toast.success(modo === 'substituir' ? 'Substituída' : 'Adicionada ao histórico');
+        conflito = null;
+        limparSelecao();
+        await invalidateAll();
+      } else {
+        toast.error('Falhou');
+      }
+    } finally {
+      salvandoConclusao = false;
+    }
+  }
 
   // Sheets
   let sheetDesignacoes = $state(false);
@@ -186,6 +241,7 @@
       <option value="status">Cor por status</option>
       <option value="territorio">Cor por território</option>
       <option value="densidade">Cor por densidade</option>
+      <option value="idade">Cor por idade da conclusão</option>
     </select>
 
     <select bind:value={basemap} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Mapa base">
@@ -220,6 +276,17 @@
     </div>
   </div>
 
+  {#if colorirPor === 'idade'}
+    <div class="flex items-center gap-3 text-xs flex-wrap">
+      <span class="font-medium text-slate-600">Idade:</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span>&lt;15d</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-yellow-400/60"></span>&lt;30d</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-orange-500/60"></span>&lt;60d</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-600/60"></span>&gt;90d</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/30"></span>nunca</span>
+    </div>
+  {/if}
+
   <!-- Mapa -->
   <MapaAdmin
     quadras={data.quadras}
@@ -231,12 +298,14 @@
     bind:selecionadas
     bind:basemap
     onClick={onClickQuadra}
+    onLongPress={onLongPressQuadra}
   />
   {#if data.reservadasIds.length > 0}
     <p class="text-xs text-purple-700 text-center -mt-2">
       <Icon nome="hourglass" size={12} /> Contorno tracejado roxo = reservada pra "{data.campanhaAtiva?.nome}"
     </p>
   {/if}
+  <p class="text-xs text-slate-400 text-center">Long-press numa quadra abre histórico de conclusões.</p>
 
   <p class="text-xs text-slate-500 text-center">
     {#if selecionadas.size === 0}
@@ -280,6 +349,68 @@
       {/if}
       <Button variant="secondary" size="sm" onclick={limparSelecao}>Limpar</Button>
     </div>
+    </div>
+    <!-- Linha 3: concluir/reverter/limpar histórico (fundido de Registro) -->
+    <div class="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-100">
+      <form
+        method="POST"
+        action="?/marcarConcluidas"
+        use:enhance={() => {
+          salvandoConclusao = true;
+          return async ({ result, update }) => {
+            await update();
+            salvandoConclusao = false;
+            if (result.type === 'success') {
+              const d = result.data as any;
+              if (d?.conflito) {
+                conflito = { ids: d.ids, data: d.data, ultimas: d.ultimas };
+                return;
+              }
+              toast.success(d?.msg || 'Concluídas');
+              limparSelecao();
+              await invalidateAll();
+            } else if (result.type === 'failure') {
+              toast.error(String((result.data as any)?.erro || 'Falhou'));
+            }
+          };
+        }}
+        class="flex items-center gap-2"
+      >
+        {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
+        <input name="data" type="date" bind:value={dataConclusao} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+        <Button variant="success" size="sm" type="submit" loading={salvandoConclusao}><Icon nome="check" size={14} /> Concluir</Button>
+      </form>
+      <form
+        method="POST"
+        action="?/reverter"
+        use:enhance={() => async ({ result, update }) => {
+          await update();
+          if (result.type === 'success') {
+            toast.info(String((result.data as any)?.msg || 'Revertidas'));
+            limparSelecao();
+            await invalidateAll();
+          }
+        }}
+      >
+        {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
+        <Button variant="secondary" size="sm" type="submit" title="Desfaz a última conclusão e volta pra penúltima"><Icon nome="refresh" size={14} /> Reverter</Button>
+      </form>
+      <form
+        method="POST"
+        action="?/limparConclusao"
+        use:enhance={() => async ({ result, update }) => {
+          await update();
+          if (result.type === 'success') {
+            toast.warn(String((result.data as any)?.msg || 'Limpa(s)'));
+            limparSelecao();
+            await invalidateAll();
+          }
+        }}
+        onsubmit={(e) => { if (!confirm(`Apagar TODO o histórico de conclusão de ${selecionadas.size} quadra(s)? Não dá pra desfazer.`)) e.preventDefault(); }}
+      >
+        {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
+        <Button variant="ghost" size="sm" type="submit" title="APAGA todo histórico e marca como pendente"><Icon nome="trash" size={14} /> Limpar histórico</Button>
+      </form>
     </div>
   </div>
 {/if}
@@ -615,5 +746,82 @@
         <Button variant="primary" type="submit" loading={salvandoAnexar} class="flex-1">Anexar</Button>
       </div>
     </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet: detalhe da quadra (long-press) — fundido de /admin/registro -->
+<BottomSheet bind:open={sheetDetalheQuadra} title={quadraDetalhe ? `Quadra ${quadraDetalhe.id}` : ''}>
+  {#if quadraDetalhe}
+    {@const dias = quadraDetalhe.data_conclusao ? diasDesde(quadraDetalhe.data_conclusao) : null}
+    <div class="space-y-2 text-sm">
+      <div><span class="text-slate-500">Território:</span> <span class="font-medium">{quadraDetalhe.territorio_nome || '—'}</span></div>
+      <div><span class="text-slate-500">Status:</span> <span class="font-medium">{quadraDetalhe.status}</span></div>
+      <div><span class="text-slate-500">Endereços:</span> <span class="font-medium">{quadraDetalhe.qtd_locais}</span></div>
+      <div>
+        <span class="text-slate-500">Última conclusão:</span>
+        {#if quadraDetalhe.data_conclusao}
+          <span class="font-medium">{quadraDetalhe.data_conclusao}</span>
+          <span class="text-xs text-slate-400 ml-1">({dias}d atrás)</span>
+        {:else}
+          <span class="font-medium text-slate-400">nunca</span>
+        {/if}
+      </div>
+
+      <div class="mt-3 border-t border-slate-100 pt-2">
+        <div class="text-xs font-semibold text-slate-600 mb-1">Histórico</div>
+        {#if carregandoHistorico}
+          <div class="text-xs text-slate-400">carregando...</div>
+        {:else if historicoQuadra.length === 0}
+          <div class="text-xs text-slate-400">Nenhuma conclusão registrada ainda.</div>
+        {:else}
+          <ul class="text-xs space-y-1">
+            {#each historicoQuadra as h}
+              <li class="flex items-center justify-between">
+                <span class="font-mono">{h.data_conclusao}</span>
+                <span class="text-slate-500">{h.nome ?? '(sem autor)'}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+      {#if quadraDetalhe.notas}
+        <div><span class="text-slate-500">Notas:</span> <span class="italic">{quadraDetalhe.notas}</span></div>
+      {/if}
+    </div>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet: conflito de data anterior ao concluir -->
+<BottomSheet open={conflito !== null} title="Data anterior detectada">
+  {#if conflito}
+    <div class="space-y-3 text-sm">
+      <p class="text-slate-600">
+        Você está marcando <strong>{conflito.ids.length} quadra(s)</strong> como concluídas em
+        <strong class="font-mono">{conflito.data}</strong>,
+        mas essas quadras já têm conclusão mais recente:
+      </p>
+      <ul class="text-xs space-y-1 max-h-32 overflow-y-auto bg-slate-50 rounded p-2">
+        {#each conflito.ultimas as u}
+          <li class="flex justify-between">
+            <span class="font-mono font-semibold">{u.id}</span>
+            <span class="text-slate-500">última: {u.ultima}</span>
+          </li>
+        {/each}
+      </ul>
+      <p class="text-xs text-slate-500">O que fazer?</p>
+      <div class="flex flex-col gap-2">
+        <Button variant="primary" onclick={() => reSubmeterConclusao('historico')} loading={salvandoConclusao}>
+          <Icon nome="file-text" size={14} /> Só adicionar ao histórico
+          <span class="block text-xs font-normal opacity-70">Mantém a última como atual</span>
+        </Button>
+        <Button variant="secondary" onclick={() => reSubmeterConclusao('substituir')} loading={salvandoConclusao}>
+          <Icon nome="refresh" size={14} /> Substituir a última
+          <span class="block text-xs font-normal opacity-70">Apaga a última e usa essa</span>
+        </Button>
+        <Button variant="ghost" onclick={() => (conflito = null)}>
+          <Icon nome="x" size={14} /> Cancelar (foi erro)
+        </Button>
+      </div>
+    </div>
   {/if}
 </BottomSheet>

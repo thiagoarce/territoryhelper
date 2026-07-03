@@ -60,7 +60,6 @@
         { href: '/admin', label: 'Geral', icon: 'map' },
         { href: '/admin/designacoes', label: 'Designações', icon: 'clipboard' },
         { href: '/admin/poligonos', label: 'Polígonos', icon: 'polygon' },
-        { href: '/admin/registro', label: 'Registro', icon: 'clipboard' },
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
         { href: '/admin/campanha', label: 'Campanha', icon: 'chart' },
         { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' },
