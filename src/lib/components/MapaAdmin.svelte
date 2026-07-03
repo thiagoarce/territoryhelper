@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
 
-  type ColorirPor = 'status' | 'territorio' | 'densidade' | 'idade';
+  type ColorirPor = 'status' | 'territorio' | 'densidade' | 'idade' | 'campanha';
   type Basemap = 'positron' | 'liberty' | 'bright';
 
   const BASEMAPS: Record<Basemap, string> = {
@@ -19,6 +19,7 @@
     mostrarTerritorios = false,
     quadrasAlocadas = [],
     reservadasIds = [],
+    concluidasCampanha = [],
     selecionadas = $bindable(new Set<string>()),
     basemap = $bindable<Basemap>('bright'),
     onClick,
@@ -31,6 +32,7 @@
     mostrarTerritorios?: boolean;
     quadrasAlocadas?: string[];
     reservadasIds?: string[];
+    concluidasCampanha?: string[];
     selecionadas?: Set<string>;
     basemap?: Basemap;
     onClick?: (q: QuadraGeo, multi: boolean) => void;
@@ -51,6 +53,7 @@
   // Keys primitivos pro $effect rastrear mudança (Svelte 5 não detecta mutação de Set)
   const selKey = $derived([...selecionadas].sort().join('|'));
   const alocadasKey = $derived([...quadrasAlocadas].sort().join('|'));
+  const concluidasCampanhaKey = $derived([...concluidasCampanha].sort().join('|'));
 
   // CRÍTICO: leia TODAS as deps reativas ANTES de qualquer guard.
   // Senão o early-return na 1ª execução (mapa=null) impede o tracking.
@@ -80,9 +83,10 @@
   // Quando os dados (quadras / alocadas) mudam, atualiza a fonte GeoJSON.
   // Sem isso, "Concluir quadra" não repintava nada no mapa.
   $effect(() => {
-    void quadras; void quadrasAlocadas; void reservadasIds;
+    void quadras; void quadrasAlocadas; void reservadasIds; void concluidasCampanhaKey;
     if (!mapa || !mapa.getSource || !mapa.getSource('quadras')) return;
     const hoje = Date.now();
+    const concluidasCampanhaSet = new Set(concluidasCampanha);
     const features = quadras
       .filter((q) => q.poly_geojson)
       .map((q) => {
@@ -103,7 +107,8 @@
             territorio_id: q.territorio_id,
             qtd_locais: q.qtd_locais,
             data_conclusao: q.data_conclusao,
-            dias_concluido: dias
+            dias_concluido: dias,
+            concluida_na_campanha: concluidasCampanhaSet.has(q.id)
           }
         } as any;
       });
@@ -160,6 +165,14 @@
         'interpolate', ['linear'], ['get', 'qtd_locais'],
         0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
       ];
+    } else if (modo === 'campanha') {
+      // "Só a campanha": ignora histórico anterior — concluída no período =
+      // verde forte, todo o resto = cinza (sem vazar recência antiga).
+      defaultColor = [
+        'case',
+        ['get', 'concluida_na_campanha'], 'rgba(21,128,61,0.75)',
+        'rgba(148,163,184,0.35)'
+      ];
     } else if (modo === 'idade') {
       // -1 = nunca concluído (cinza), 0-15d verde, 30d amarelo, 60d laranja, 90+ vermelho
       defaultColor = [
@@ -210,6 +223,7 @@
       if (!mapa.getStyle()) return; // style ainda não pronto
       if (mapa.getLayer('quadras-fill')) return; // já setupado
       const hoje = Date.now();
+      const concluidasCampanhaSet = new Set(concluidasCampanha);
       const features = quadras
         .filter((q) => q.poly_geojson)
         .map((q) => {
@@ -230,7 +244,8 @@
               territorio_id: q.territorio_id,
               qtd_locais: q.qtd_locais,
               data_conclusao: q.data_conclusao,
-              dias_concluido: dias
+              dias_concluido: dias,
+              concluida_na_campanha: concluidasCampanhaSet.has(q.id)
             }
           };
         });

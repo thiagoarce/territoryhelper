@@ -66,6 +66,46 @@ export const load: PageServerLoad = async ({ locals }) => {
       qtd_objetivos: todosObjetivos.filter((o: any) => o.campanha_id === p.id).length
     }));
 
+  // Termômetro de ritmo — tudo computável com o que já existe (sem schema novo)
+  let ritmo: {
+    metaTotal: number | null;
+    concluidas: number;
+    faltam: number | null;
+    diasDecorridos: number;
+    diasRestantes: number;
+    ritmoAtual: number;
+    ritmoNecessario: number | null;
+    status: 'ok' | 'atencao' | 'risco' | 'sem_meta';
+    projecaoIso: string | null;
+  } | null = null;
+  if (ativa) {
+    const metaTotal = ativa.meta_semanal ? ativa.meta_semanal * semanasDoPeriodo(ativa.data_inicio, ativa.data_alvo) : null;
+    const concluidasAtiva = concluidasNoPeriodo(ativa.data_inicio, ativa.data_alvo);
+    const hojeMs = Date.now();
+    const inicioMs = new Date(ativa.data_inicio + 'T12:00:00').getTime();
+    const alvoMs = new Date(ativa.data_alvo + 'T12:00:00').getTime();
+    const diasDecorridos = Math.max(1, Math.ceil((hojeMs - inicioMs) / 86400000));
+    const diasRestantes = Math.max(0, Math.ceil((alvoMs - hojeMs) / 86400000));
+    const ritmoAtual = concluidasAtiva / diasDecorridos;
+    const faltam = metaTotal != null ? Math.max(0, metaTotal - concluidasAtiva) : null;
+    const ritmoNecessario = faltam != null && diasRestantes > 0 ? faltam / diasRestantes : (faltam === 0 ? 0 : null);
+
+    let status: 'ok' | 'atencao' | 'risco' | 'sem_meta' = 'sem_meta';
+    if (ritmoNecessario != null) {
+      if (ritmoAtual >= ritmoNecessario) status = 'ok';
+      else if (ritmoNecessario > 0 && ritmoAtual >= ritmoNecessario * 0.7) status = 'atencao';
+      else status = 'risco';
+    }
+
+    let projecaoIso: string | null = null;
+    if (faltam != null && ritmoAtual > 0) {
+      const diasProjetados = Math.ceil(faltam / ritmoAtual);
+      projecaoIso = new Date(hojeMs + diasProjetados * 86400000).toISOString().substring(0, 10);
+    }
+
+    ritmo = { metaTotal, concluidas: concluidasAtiva, faltam, diasDecorridos, diasRestantes, ritmoAtual, ritmoNecessario, status, projecaoIso };
+  }
+
   // Conclusões POR SEMANA durante o período ativo (pra gráfico)
   let conclusoesSemana: { semana: string; qtd: number }[] = [];
   let quadrasConcluidasNoPeriodo: string[] = [];
@@ -92,7 +132,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       .sort((a, b) => a.semana.localeCompare(b.semana));
   }
 
-  return { objetivos, periodos, ativa, historico, quadras, quadrasConcluidasNoPeriodo, conclusoesSemana };
+  return { objetivos, periodos, ativa, historico, quadras, quadrasConcluidasNoPeriodo, conclusoesSemana, ritmo };
 };
 
 const MODALIDADES = ['casa', 'comercial', 'rural', 'cartas', 'telefone', 'publico'] as const;

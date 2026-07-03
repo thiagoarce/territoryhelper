@@ -19,9 +19,22 @@
       quadras: QuadraGeo[];
       quadrasConcluidasNoPeriodo: string[];
       conclusoesSemana: { semana: string; qtd: number }[];
+      ritmo: {
+        metaTotal: number | null;
+        concluidas: number;
+        faltam: number | null;
+        diasDecorridos: number;
+        diasRestantes: number;
+        ritmoAtual: number;
+        ritmoNecessario: number | null;
+        status: 'ok' | 'atencao' | 'risco' | 'sem_meta';
+        projecaoIso: string | null;
+      } | null;
     };
     form: any;
   } = $props();
+
+  let colorirMapa = $state<'campanha' | 'status'>('campanha');
 
   let sheetObj = $state(false);
   let editando: Campanha | null = $state(null);
@@ -72,18 +85,6 @@
       restantes: Math.max(0, ativasNoMapa - concluidas),
       pctConclusao: ativasNoMapa === 0 ? 0 : Math.round((concluidas / ativasNoMapa) * 100)
     };
-  });
-
-  // Mapa do período: MapaAdmin pinta verde quem tem data_conclusao (concluida).
-  // Pra mostrar SÓ as concluídas DENTRO da campanha, anulamos data_conclusao
-  // das que não foram feitas no período — assim elas ficam âmbar (pendente).
-  const quadrasComStatusCampanha = $derived.by(() => {
-    if (!data.ativa) return data.quadras;
-    const idsConcluidas = new Set(data.quadrasConcluidasNoPeriodo);
-    return data.quadras.map((q) => ({
-      ...q,
-      data_conclusao: idsConcluidas.has(q.id) ? q.data_conclusao : null
-    })) as QuadraGeo[];
   });
 
   const maxConclusoes = $derived(
@@ -163,17 +164,97 @@
       </div>
     </Card>
 
+    <!-- Termômetro de ritmo -->
+    {#if data.ritmo}
+      {@const r = data.ritmo}
+      <Card padding="md">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <h2 class="text-sm font-semibold text-slate-600 uppercase">Ritmo</h2>
+          {#if r.status === 'ok'}
+            <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-green-100 text-green-700">Ritmo adequado</span>
+          {:else if r.status === 'atencao'}
+            <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-amber-100 text-amber-700">Atenção</span>
+          {:else if r.status === 'risco'}
+            <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-red-100 text-red-700">Risco de não concluir</span>
+          {:else}
+            <span class="text-[10px] px-2 py-0.5 rounded font-medium bg-slate-100 text-slate-600">Sem meta definida</span>
+          {/if}
+        </div>
+
+        {#if r.metaTotal != null}
+          <div class="space-y-2">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-slate-500">Ritmo atual</span>
+                <span class="font-medium">{r.ritmoAtual.toFixed(2)} quadra(s)/dia</span>
+              </div>
+              <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  class="h-full {r.status === 'ok' ? 'bg-green-500' : r.status === 'atencao' ? 'bg-amber-500' : 'bg-red-500'}"
+                  style:width="{r.ritmoNecessario ? Math.min(100, Math.round((r.ritmoAtual / r.ritmoNecessario) * 100)) : 100}%"
+                ></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-slate-500">Ritmo necessário</span>
+                <span class="font-medium">{r.ritmoNecessario?.toFixed(2) ?? '—'} quadra(s)/dia</span>
+              </div>
+              <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-slate-400" style:width="100%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="text-xs text-slate-500 mt-2">
+            Faltam <strong>{r.faltam}</strong> de {r.metaTotal} (meta) · {r.diasRestantes} dia(s) restante(s)
+            {#if r.projecaoIso}
+              <br />No ritmo atual, término em ~{new Date(r.projecaoIso + 'T12:00:00').toLocaleDateString('pt-BR')}
+            {/if}
+          </div>
+        {:else}
+          <p class="text-xs text-slate-500">Defina uma meta semanal no período pra calcular o ritmo necessário.</p>
+        {/if}
+      </Card>
+    {/if}
+
     <!-- Mapa do período -->
     <div>
-      <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">Mapa do período</h2>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase">Mapa do período</h2>
+        <div class="flex gap-1">
+          <button
+            class="text-xs px-2 py-1 rounded border"
+            class:bg-primary-100={colorirMapa === 'campanha'}
+            class:border-primary-500={colorirMapa === 'campanha'}
+            class:text-primary-700={colorirMapa === 'campanha'}
+            class:border-slate-200={colorirMapa !== 'campanha'}
+            class:text-slate-600={colorirMapa !== 'campanha'}
+            onclick={() => (colorirMapa = 'campanha')}
+          >Só a campanha</button>
+          <button
+            class="text-xs px-2 py-1 rounded border"
+            class:bg-primary-100={colorirMapa === 'status'}
+            class:border-primary-500={colorirMapa === 'status'}
+            class:text-primary-700={colorirMapa === 'status'}
+            class:border-slate-200={colorirMapa !== 'status'}
+            class:text-slate-600={colorirMapa !== 'status'}
+            onclick={() => (colorirMapa = 'status')}
+          >Histórico completo</button>
+        </div>
+      </div>
       <MapaAdmin
-        quadras={quadrasComStatusCampanha}
+        quadras={data.quadras}
         altura={400}
-        colorirPor="status"
+        colorirPor={colorirMapa}
+        concluidasCampanha={data.quadrasConcluidasNoPeriodo}
         mostrarRotulos={false}
         bind:selecionadas
       />
-      <p class="text-xs text-slate-500 mt-1">Verde = concluída durante a campanha · âmbar = pendente · cinza = inativa</p>
+      {#if colorirMapa === 'campanha'}
+        <p class="text-xs text-slate-500 mt-1">Verde forte = concluída durante a campanha · cinza = resto (ignora conclusões antigas)</p>
+      {:else}
+        <p class="text-xs text-slate-500 mt-1">Coloração por recência de conclusão (inclui histórico anterior à campanha)</p>
+      {/if}
     </div>
 
     <!-- Gráfico de barras semanal -->
