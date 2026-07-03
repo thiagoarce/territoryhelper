@@ -159,6 +159,11 @@ status='pendente'/'concluido'.
 - `delete().neq('id','x')` em coluna bigint → falha silenciosa; use TRUNCATE/`.gte`.
 - Paginação por offset sem `.order()` estável → duplica/pula linhas.
 - `alert()` / `new Date("yyyy-mm-dd")` direto.
+- Calcular "há N dias" com `Date.now() - new Date(iso + 'T12:00:00').getTime()`
+  dá **-1** sempre que o relógio local ainda não passou do meio-dia (ex:
+  quadra concluída HOJE de manhã aparecia "há -1 dias"). Use
+  `diasDesde()` de `$lib/utils/data.ts` (compara meia-noite local dos
+  dois lados, não meio-dia).
 - `CREATE OR REPLACE VIEW` só aceita adicionar coluna nova no **FINAL**
   da lista do SELECT. Inserir no meio (ex: antes de `poly_geojson`/
   `geo_geojson`) muda a posição das colunas seguintes e o Postgres

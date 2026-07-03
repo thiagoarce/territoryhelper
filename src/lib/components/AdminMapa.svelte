@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
+  import { diasDesde } from '$lib/utils/data';
 
   interface POI {
     id: string;
@@ -47,7 +48,7 @@
   function bucketRecencia(q: QuadraGeo): string {
     if (!q.ativa) return 'inativa';
     if (!q.data_conclusao) return 'livre';
-    const dias = Math.floor((Date.now() - new Date(q.data_conclusao + 'T12:00:00').getTime()) / 86400000);
+    const dias = diasDesde(q.data_conclusao);
     if (dias < 15) return 'recente';
     if (dias < 45) return 'medio';
     return 'livre';

@@ -7,6 +7,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { QuadraGeo } from '$lib/server/queries';
+  import { diasDesde as diasDesdeUtil } from '$lib/utils/data';
 
   let { data, form }: { data: { quadras: QuadraGeo[]; quadrasAlocadas: string[] }; form: any } = $props();
 
@@ -81,9 +82,7 @@
   function limpar() { selecionadas = new Set(); }
 
   function diasDesde(s: string | null): number | null {
-    if (!s) return null;
-    const d = new Date(s + 'T12:00:00').getTime();
-    return Math.floor((Date.now() - d) / (1000 * 60 * 60 * 24));
+    return s ? diasDesdeUtil(s) : null;
   }
 
   const stats = $derived.by(() => {

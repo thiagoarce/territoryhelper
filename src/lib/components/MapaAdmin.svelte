@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
+  import { diasDesde } from '$lib/utils/data';
 
   type ColorirPor = 'status' | 'territorio' | 'densidade' | 'idade' | 'campanha';
   type Basemap = 'positron' | 'liberty' | 'bright';
@@ -85,16 +86,11 @@
   $effect(() => {
     void quadras; void quadrasAlocadas; void reservadasIds; void concluidasCampanhaKey;
     if (!mapa || !mapa.getSource || !mapa.getSource('quadras')) return;
-    const hoje = Date.now();
     const concluidasCampanhaSet = new Set(concluidasCampanha);
     const features = quadras
       .filter((q) => q.poly_geojson)
       .map((q) => {
-        let dias = -1;
-        if (q.data_conclusao) {
-          const d = new Date(q.data_conclusao + 'T12:00:00').getTime();
-          dias = Math.floor((hoje - d) / (1000 * 60 * 60 * 24));
-        }
+        const dias = q.data_conclusao ? diasDesde(q.data_conclusao) : -1;
         return {
           type: 'Feature' as const,
           geometry: q.poly_geojson as any,
@@ -222,16 +218,11 @@
     function setupCamadas() {
       if (!mapa.getStyle()) return; // style ainda não pronto
       if (mapa.getLayer('quadras-fill')) return; // já setupado
-      const hoje = Date.now();
       const concluidasCampanhaSet = new Set(concluidasCampanha);
       const features = quadras
         .filter((q) => q.poly_geojson)
         .map((q) => {
-          let dias = -1;
-          if (q.data_conclusao) {
-            const d = new Date(q.data_conclusao + 'T12:00:00').getTime();
-            dias = Math.floor((hoje - d) / (1000 * 60 * 60 * 24));
-          }
+          const dias = q.data_conclusao ? diasDesde(q.data_conclusao) : -1;
           return {
             type: 'Feature' as const,
             geometry: q.poly_geojson as any,
@@ -402,7 +393,8 @@
         const [y, m, d] = s.split('-');
         return d && m && y ? `${d}/${m}/${y}` : s;
       }
-      function tempoRelativo(dias: number): string {
+      function tempoRelativo(diasRaw: number): string {
+        const dias = Math.max(0, diasRaw);
         if (dias === 0) return 'hoje';
         if (dias === 1) return 'ontem';
         if (dias < 30) return `há ${dias} dias`;
@@ -419,9 +411,7 @@
         return '#dc2626';
       }
       function buildPopupHtml(q: any): string {
-        const dias = q.data_conclusao
-          ? Math.floor((Date.now() - new Date(q.data_conclusao + 'T12:00:00').getTime()) / 86400000)
-          : null;
+        const dias = q.data_conclusao ? diasDesde(q.data_conclusao) : null;
         const territorioLabel = q.territorio_nome
           ? (/^\d+$/.test(q.territorio_nome) ? `Território ${q.territorio_nome}` : q.territorio_nome)
           : null;
