@@ -6,6 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import TpGradeSemana from '$lib/components/TpGradeSemana.svelte';
   import type { OcorrenciaAgendamento, AgendamentoBase, Recorrencia } from '$lib/tp-agendamentos';
   import type {
     TpCarrinhoLite,
@@ -19,7 +20,7 @@
       periodo: 'semana' | 'mes';
       range: { isoIni: string; isoFim: string; label: string };
       carrinhos: TpCarrinhoLite[];
-      carrinhoSelecionadoId: number | null;
+      carrinhosSelecionados: number[];
       pontos: Record<number, TpPontoLite>;
       publicadores: { id: string; nome: string }[];
       ocorrencias: OcorrenciaAgendamento[];
@@ -37,12 +38,37 @@
   });
   const datasOrdenadas = $derived(Object.keys(ocPorData).sort());
 
-  function mudarCarrinho(id: number) {
-    goto(`?carrinho=${id}&periodo=${data.periodo}`, { keepFocus: true });
+  function aplicarFiltroCarrinhos(ids: number[]) {
+    goto(`?carrinhos=${ids.join(',')}&periodo=${data.periodo}`, { keepFocus: true, noScroll: true });
+  }
+  function toggleCarrinho(id: number) {
+    const atual = new Set(data.carrinhosSelecionados);
+    if (atual.has(id)) atual.delete(id);
+    else atual.add(id);
+    aplicarFiltroCarrinhos([...atual]);
+  }
+  function alternarTodosCarrinhos() {
+    const todosSelecionados = data.carrinhosSelecionados.length === data.carrinhos.length;
+    aplicarFiltroCarrinhos(todosSelecionados ? [] : data.carrinhos.map((c) => c.id));
   }
   function mudarPeriodo(p: 'semana' | 'mes') {
-    goto(`?carrinho=${data.carrinhoSelecionadoId ?? ''}&periodo=${p}`, { keepFocus: true });
+    goto(`?carrinhos=${data.carrinhosSelecionados.join(',')}&periodo=${p}`, { keepFocus: true });
   }
+
+  const carrinhosPorId = $derived(Object.fromEntries(data.carrinhos.map((c) => [c.id, c])));
+
+  // Colunas da grade semanal (segunda→domingo), calculadas em data local
+  // (evita o bug clássico de UTC virando meia-noite errada — CLAUDE.md).
+  const diasDaSemana = $derived.by(() => {
+    if (data.periodo !== 'semana') return [] as string[];
+    const [y, m, d] = data.range.isoIni.split('-').map(Number);
+    const base = new Date(y, m - 1, d, 12);
+    return Array.from({ length: 7 }, (_, i) => {
+      const dt = new Date(base);
+      dt.setDate(base.getDate() + i);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    });
+  });
 
   const RECORRENCIA_LABEL: Record<Recorrencia, string> = {
     nenhuma: 'Não repete',
@@ -86,7 +112,8 @@
     recorrenciaAtual = 'nenhuma';
     usaPontoAvulso = false;
     agendamentoEdit = {
-      carrinho_id: data.carrinhoSelecionadoId,
+      carrinho_id:
+        data.carrinhosSelecionados.length === 1 ? data.carrinhosSelecionados[0] : (data.carrinhos[0]?.id ?? null),
       ponto_id: null,
       ponto_avulso: '',
       data: '',
@@ -96,6 +123,32 @@
       notas: ''
     };
     sheetAgendamento = true;
+  }
+
+  // Clicar/arrastar um horário vazio na grade — mesmo fluxo de novoAgendamento,
+  // só pré-preenchendo data/hora do arrasto.
+  function criarNoHorario(dataIso: string, horaInicio: string, horaFim: string) {
+    novoAgendamento();
+    agendamentoEdit = { ...agendamentoEdit!, data: dataIso, hora_inicio: horaInicio, hora_fim: horaFim };
+  }
+
+  // Arrastar a borda de um card na grade — ajusta só essa ocorrência
+  // (mesma semântica de aplicar_a='ocorrencia' do sheet de editar).
+  async function ajustarHorario(oc: OcorrenciaAgendamento, horaInicio: string, horaFim: string) {
+    const fd = new FormData();
+    fd.append('agendamento_id', String(oc.agendamento_id));
+    fd.append('ocorrencia_data', oc.data);
+    fd.append('aplicar_a', 'ocorrencia');
+    fd.append('carrinho_id', String(oc.carrinho_id));
+    if (oc.ponto_id) fd.append('ponto_id', String(oc.ponto_id));
+    else fd.append('ponto_avulso', oc.ponto_avulso ?? '');
+    fd.append('hora_inicio', horaInicio);
+    fd.append('hora_fim', horaFim);
+    fd.append('notas', oc.notas ?? '');
+    const res = await fetch('?/atualizarAgendamento', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success') await invalidateAll();
+    else toast.error(String(parsed.data?.erro || 'Não deu pra ajustar o horário'));
   }
 
   function editarOcorrencia(oc: OcorrenciaAgendamento) {
@@ -239,20 +292,30 @@
         >{label}</button>
       {/each}
     </div>
-    <Button variant="primary" size="sm" onclick={novoAgendamento} disabled={!data.carrinhoSelecionadoId}>
+    <Button variant="primary" size="sm" onclick={novoAgendamento} disabled={data.carrinhos.length === 0}>
       <Icon nome="plus" size={14} /> Agendamento
     </Button>
   </div>
 
   <div class="flex gap-2 overflow-x-auto pb-1">
+    <button
+      type="button"
+      onclick={alternarTodosCarrinhos}
+      class="shrink-0 text-xs rounded-full px-3 py-1.5 border transition-colors"
+      class:border-primary-500={data.carrinhosSelecionados.length === data.carrinhos.length}
+      class:bg-primary-50={data.carrinhosSelecionados.length === data.carrinhos.length}
+      class:border-slate-200={data.carrinhosSelecionados.length !== data.carrinhos.length}
+    >Todos</button>
     {#each data.carrinhos as c (c.id)}
+      {@const ativo = data.carrinhosSelecionados.includes(c.id)}
       <button
         type="button"
-        onclick={() => mudarCarrinho(c.id)}
+        onclick={() => toggleCarrinho(c.id)}
         class="shrink-0 inline-flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 border transition-colors"
-        class:border-primary-500={data.carrinhoSelecionadoId === c.id}
-        class:bg-primary-50={data.carrinhoSelecionadoId === c.id}
-        class:border-slate-200={data.carrinhoSelecionadoId !== c.id}
+        class:border-primary-500={ativo}
+        class:bg-primary-50={ativo}
+        class:border-slate-200={!ativo}
+        class:opacity-50={!ativo}
       >
         <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {c.cor}"></span>
         {c.nome}
@@ -263,7 +326,26 @@
     {/if}
   </div>
 
-  {#if datasOrdenadas.length === 0}
+  {#if data.carrinhos.length === 0}
+    <Card padding="md">
+      <div class="text-center py-8">
+        <Icon nome="calendar" size={40} class="mx-auto text-slate-300" />
+        <div class="font-medium mt-2">Nenhum equipamento cadastrado</div>
+        <div class="text-sm text-slate-500">Crie um em Equipamentos pra começar a agendar.</div>
+      </div>
+    </Card>
+  {:else if data.periodo === 'semana'}
+    <TpGradeSemana
+      dias={diasDaSemana}
+      ocorrencias={data.ocorrencias}
+      {carrinhosPorId}
+      pontos={data.pontos}
+      participantesPorOcorrencia={data.participantesPorOcorrencia}
+      onCriar={criarNoHorario}
+      onEditar={editarOcorrencia}
+      onAjustarHorario={ajustarHorario}
+    />
+  {:else if datasOrdenadas.length === 0}
     <Card padding="md">
       <div class="text-center py-8">
         <Icon nome="calendar" size={40} class="mx-auto text-slate-300" />
@@ -281,10 +363,13 @@
           <div class="grid gap-2">
             {#each ocPorData[dataIso] as oc (oc.agendamento_id + '-' + oc.data)}
               {@const ponto = oc.ponto_id ? data.pontos[oc.ponto_id] : null}
+              {@const carrinho = carrinhosPorId[oc.carrinho_id]}
               {@const participantes = data.participantesPorOcorrencia[oc.agendamento_id + '|' + oc.data] ?? []}
               <Card padding="md">
                 <div class="flex items-start gap-3">
+                  <span class="w-2 self-stretch rounded shrink-0" style="background-color: {carrinho?.cor ?? '#94a3b8'}"></span>
                   <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium">{carrinho?.nome ?? 'Equipamento'}</div>
                     <div class="text-sm text-slate-600 flex flex-wrap gap-x-3 gap-y-0.5">
                       <span><Icon nome="clock" size={14} /> {oc.hora_inicio.substring(0, 5)}–{oc.hora_fim.substring(0, 5)}</span>
                       <span class="truncate"><Icon nome="map-pin" size={14} /> {ponto?.nome ?? oc.ponto_avulso}</span>
