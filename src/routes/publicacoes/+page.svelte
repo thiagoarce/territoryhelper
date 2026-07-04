@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { deserialize } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll, goto } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import Icon from '$lib/ui/Icon.svelte';
+  import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { PedidoLinha, ReposicaoItem, TendenciaMes } from './$types';
+  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao } from './$types';
 
   let { data }: {
     data: {
@@ -14,9 +15,51 @@
       souAdmin: boolean;
       reposicao: ReposicaoItem[];
       tendencia: TendenciaMes[];
+      catalogo: PublicacaoCatalogo[];
       erro?: string;
     };
   } = $props();
+
+  const CATEGORIA_LABEL: Record<CategoriaPublicacao, string> = {
+    biblia: 'Bíblias', livro: 'Livros', brochura: 'Brochuras e livretos',
+    folheto: 'Folhetos e convites', cartao_visita: 'Cartões de visita',
+    revista: 'Revistas', formulario: 'Formulários e acessórios', outro: 'Outros'
+  };
+  const ORDEM_CATEGORIAS: CategoriaPublicacao[] = ['biblia', 'livro', 'brochura', 'folheto', 'cartao_visita', 'revista', 'formulario', 'outro'];
+
+  const catalogoAgrupado = $derived.by(() => {
+    const m: Record<string, PublicacaoCatalogo[]> = {};
+    for (const p of data.catalogo) (m[p.categoria] ??= []).push(p);
+    return m;
+  });
+
+  let sheetCatalogo = $state(false);
+  let pubEdit = $state<Partial<PublicacaoCatalogo> | null>(null);
+  let salvandoPub = $state(false);
+  let enviandoImagem = $state(false);
+
+  function novaPublicacao() { pubEdit = { categoria: 'outro', qtd_estoque: 0, ativo: true }; sheetCatalogo = true; }
+  function editarPublicacao(p: PublicacaoCatalogo) { pubEdit = { ...p }; sheetCatalogo = true; }
+
+  async function uploadImagem(ev: Event) {
+    if (!pubEdit?.id) return;
+    const file = (ev.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    enviandoImagem = true;
+    const fd = new FormData();
+    fd.append('id', String(pubEdit.id));
+    fd.append('imagem', file);
+    const res = await fetch('?/uploadImagemPublicacao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    enviandoImagem = false;
+    if (parsed.type === 'success') {
+      pubEdit = { ...pubEdit, imagem_url: parsed.data.imagem_url };
+      toast.success('Imagem enviada');
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
 
   const ESTADO_LABEL: Record<string, string> = { acabando: 'Acabando', zerado: 'Zerado', danificado: 'Danificado' };
   const ESTADO_CLASSE: Record<string, string> = {
@@ -220,4 +263,104 @@
       <p class="text-sm text-slate-500">O suprimento (catálogo + checklist da campanha) é gerenciado por um admin em Campanha.</p>
     {/if}
   </Card>
+
+  <div>
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-sm font-semibold text-slate-600 uppercase flex items-center gap-2">
+        <Icon nome="clipboard" size={14} /> Catálogo
+        <span class="text-xs text-slate-400 normal-case font-normal">({data.catalogo.length})</span>
+      </h2>
+      <Button variant="primary" size="sm" onclick={novaPublicacao}><Icon nome="plus" size={14} /> Publicação</Button>
+    </div>
+    <div class="space-y-3">
+      {#each ORDEM_CATEGORIAS as cat}
+        {@const itens = catalogoAgrupado[cat] ?? []}
+        {#if itens.length > 0}
+          <div>
+            <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">{CATEGORIA_LABEL[cat]}</div>
+            <div class="grid gap-1.5">
+              {#each itens as p (p.id)}
+                <button type="button" onclick={() => editarPublicacao(p)} class="flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-100">
+                  {#if p.imagem_url}
+                    <img src={p.imagem_url} alt="" class="w-8 h-8 rounded object-cover shrink-0" />
+                  {:else}
+                    <span class="w-8 h-8 rounded bg-slate-200 shrink-0 flex items-center justify-center text-slate-400"><Icon nome="file-text" size={14} /></span>
+                  {/if}
+                  <span class="flex-1 min-w-0 truncate {!p.ativo ? 'text-slate-400 line-through' : ''}">{p.nome}{#if p.codigo}<span class="text-xs text-slate-400"> ({p.codigo})</span>{/if}</span>
+                  {#if p.qtd_estoque > 0}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">{p.qtd_estoque} em estoque</span>{/if}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {/each}
+      {#if data.catalogo.length === 0}
+        <p class="text-sm text-slate-400 italic">Nenhuma publicação cadastrada.</p>
+      {/if}
+    </div>
+  </div>
 </div>
+
+<BottomSheet bind:open={sheetCatalogo} title={pubEdit?.id ? 'Editar publicação' : 'Nova publicação'}>
+  {#if pubEdit}
+    <form
+      method="POST"
+      action="?/salvarPublicacao"
+      use:enhance={() => {
+        salvandoPub = true;
+        return async ({ result, update }) => {
+          await update();
+          salvandoPub = false;
+          if (result.type === 'success') { toast.success('Salvo'); sheetCatalogo = false; await invalidateAll(); }
+          else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
+        };
+      }}
+      class="space-y-3"
+    >
+      {#if pubEdit.id}<input type="hidden" name="id" value={pubEdit.id} />{/if}
+
+      {#if pubEdit.id}
+        <div class="flex items-center gap-3">
+          {#if pubEdit.imagem_url}
+            <img src={pubEdit.imagem_url} alt="" class="w-16 h-16 rounded-lg object-cover" />
+          {:else}
+            <span class="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300"><Icon nome="file-text" size={24} /></span>
+          {/if}
+          <label class="text-xs text-primary-700 hover:underline cursor-pointer">
+            <Icon nome="camera" size={12} /> {enviandoImagem ? 'Enviando...' : 'Adicionar imagem de capa'}
+            <input type="file" accept="image/*" onchange={uploadImagem} class="hidden" disabled={enviandoImagem} />
+          </label>
+        </div>
+      {/if}
+
+      <div>
+        <label for="pub-nome" class="block text-sm font-medium mb-1">Nome</label>
+        <input id="pub-nome" name="nome" required value={pubEdit.nome ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label for="pub-codigo" class="block text-sm font-medium mb-1">Código</label>
+          <input id="pub-codigo" name="codigo" value={pubEdit.codigo ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono" />
+        </div>
+        <div>
+          <label for="pub-categoria" class="block text-sm font-medium mb-1">Categoria</label>
+          <select id="pub-categoria" name="categoria" value={pubEdit.categoria ?? 'outro'} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            {#each ORDEM_CATEGORIAS as cat}<option value={cat}>{CATEGORIA_LABEL[cat]}</option>{/each}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="pub-estoque" class="block text-sm font-medium mb-1">Estoque atual</label>
+        <input id="pub-estoque" name="qtd_estoque" type="number" min="0" value={pubEdit.qtd_estoque ?? 0} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <p class="text-xs text-slate-400 mt-1">Número manual — bata com o relatório de inventário do JW Hub de vez em quando. Não controlamos entrada/saída aqui.</p>
+      </div>
+      {#if pubEdit.id}
+        <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-50">
+          <input type="checkbox" name="ativo" checked={pubEdit.ativo ?? true} class="w-4 h-4 rounded" />
+          <span class="text-sm">Ativa (aparece pro publicador pedir)</span>
+        </label>
+      {/if}
+      <Button variant="primary" type="submit" loading={salvandoPub} class="w-full">Salvar</Button>
+    </form>
+  {/if}
+</BottomSheet>

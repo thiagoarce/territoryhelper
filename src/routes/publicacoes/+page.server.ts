@@ -38,6 +38,20 @@ export interface TendenciaMes {
   qtd: number;
 }
 
+export type CategoriaPublicacao = 'biblia' | 'livro' | 'brochura' | 'folheto' | 'cartao_visita' | 'revista' | 'formulario' | 'outro';
+
+export interface PublicacaoCatalogo {
+  id: number;
+  nome: string;
+  codigo: string | null;
+  categoria: CategoriaPublicacao;
+  qtd_estoque: number;
+  imagem_url: string | null;
+  ativo: boolean;
+}
+
+const CATEGORIAS_VALIDAS: CategoriaPublicacao[] = ['biblia', 'livro', 'brochura', 'folheto', 'cartao_visita', 'revista', 'formulario', 'outro'];
+
 const FILTROS_VALIDOS = ['pendentes', 'entregue', 'cancelado', 'todos'] as const;
 type Filtro = (typeof FILTROS_VALIDOS)[number];
 
@@ -123,7 +137,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     .sort((a, b) => (a.mes < b.mes ? 1 : a.mes > b.mes ? -1 : 0))
     .slice(0, 12);
 
-  return { pedidos, filtro, souAdmin: locals.profile?.role === 'admin', reposicao, tendencia };
+  // Catálogo completo (todas as categorias) — servo de publicações gerencia
+  // aqui porque /admin/campanha é 100% admin-only (mesmo motivo da rota
+  // /publicacoes existir fora do namespace /admin).
+  const { data: catalogoRows } = await locals.supabase
+    .from('publicacoes')
+    .select('id, nome, codigo, categoria, qtd_estoque, imagem_url, ativo')
+    .order('categoria')
+    .order('nome');
+  const catalogo = (catalogoRows ?? []) as PublicacaoCatalogo[];
+
+  return { pedidos, filtro, souAdmin: locals.profile?.role === 'admin', reposicao, tendencia, catalogo };
 };
 
 export const actions: Actions = {
@@ -164,6 +188,56 @@ export const actions: Actions = {
       });
     }
     return { ok: true, msg: 'Pedido atualizado' };
+  },
+
+  // Catálogo: criar/editar (nome/código/categoria/estoque). Servo ou admin.
+  salvarPublicacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
+      return fail(403, { erro: 'Só o servo de publicações' });
+    }
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0) || null;
+    const nome = String(fd.get('nome') ?? '').trim();
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
+    const categoria = String(fd.get('categoria') ?? 'outro') as CategoriaPublicacao;
+    const qtdEstoque = Number(fd.get('qtd_estoque') ?? 0) || 0;
+    const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true' || id === null;
+    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
+    if (!CATEGORIAS_VALIDAS.includes(categoria)) return fail(400, { erro: 'Categoria inválida' });
+
+    const row = { nome, codigo, categoria, qtd_estoque: qtdEstoque, ativo };
+    const { error } = id
+      ? await locals.supabase.from('publicacoes').update(row).eq('id', id)
+      : await locals.supabase.from('publicacoes').insert(row);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Publicação salva' };
+  },
+
+  // Upload da imagem de capa — mesmo padrão de fotos-locais (foto de prédio).
+  uploadImagemPublicacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
+      return fail(403, { erro: 'Só o servo de publicações' });
+    }
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    const file = fd.get('imagem') as File;
+    if (!id || !file || file.size === 0) return fail(400, { erro: 'Arquivo obrigatório' });
+    if (file.size > 5 * 1024 * 1024) return fail(400, { erro: 'Imagem > 5MB' });
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `publicacao-${id}-${Date.now()}.${ext}`;
+    const { error: errUp } = await locals.supabase.storage
+      .from('fotos-publicacoes')
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (errUp) return fail(400, { erro: errUp.message });
+    const { data: pub } = locals.supabase.storage.from('fotos-publicacoes').getPublicUrl(path);
+    const { error: errPub } = await locals.supabase
+      .from('publicacoes')
+      .update({ imagem_url: pub.publicUrl })
+      .eq('id', id);
+    if (errPub) return fail(400, { erro: errPub.message });
+    return { ok: true, imagem_url: pub.publicUrl };
   },
 
   resolverReposicao: async ({ request, locals }) => {
