@@ -55,8 +55,23 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
   nenhuma janela (só aparece se já existe equipamento cadastrado).
   `/admin/tp/publicadores` e o badge "disponível" do Designar no Planner
   passam a ter dado real.
-- ⏳ Código (actions/telas): incrementos P-A, TP-D, TP-E, PUSH-A a
-  construir.
+- ✅ **P-A concluído**, com um desvio deliberado do path do spec: a rota
+  ficou em **`/publicacoes`** (top-level), não `/admin/publicacoes` como
+  descrito abaixo. Motivo: `/admin/*` é 100% admin-only via
+  `src/routes/admin/+layout.server.ts` (`exigirRole(locals, ['admin'])`),
+  que roda pra QUALQUER rota aninhada ali — não dava pra abrir uma
+  exceção só pra essa rota sem SvelteKit's layout reset (`+page@.svelte`),
+  um recurso avançado que o app não usa em nenhum outro lugar (risco de
+  misconfiguration sem conseguir testar num browser real aqui). Ficando
+  fora de `/admin/*`, a rota já nasce sem esse guard e usa o próprio
+  `exigirServoPub` (admin OU `servo_publicacoes`) — resolve exatamente o
+  requisito ("servo não-admin acessa direto") sem risco de routing.
+  Admin chega por ela pelo drawer (`/admin/publicacoes` citado abaixo lê-se
+  como `/publicacoes`); servo não-admin, pelo card na home. Suprimento de
+  campanha ficou como link pra `/admin/campanha` (só aparece pro admin —
+  um servo não-admin não consegue seguir esse link hoje, mesma razão de
+  layout; ficou registrado como limitação conhecida, não escondido).
+- ⏳ Código (actions/telas): incrementos TP-D, TP-E, PUSH-A a construir.
 
 ## Regras inegociáveis (CLAUDE.md — o que morde)
 - **Svelte 5 runes**: em `$effect` leia as deps ANTES de qualquer
@@ -318,7 +333,7 @@ conferência funcional do usuário (sem acesso a Supabase real neste
 ambiente) depois de aplicar a `043` (reescrita) e `045` (ajustada) via
 `/admin/dev/sql`.
 
-## P-A — Área do Servo de Publicações · migration 044
+## P-A — Área do Servo de Publicações · migration 044 · ✅ CONCLUÍDO (rota real: `/publicacoes`, ver Status)
 **Escopo confirmado (mais amplo que só TP)**: o servo de publicações NÃO
 cuida só da literatura do carrinho/campanha — cuida de **qualquer
 publicação da congregação** (ex: alguém pede uma Bíblia num idioma

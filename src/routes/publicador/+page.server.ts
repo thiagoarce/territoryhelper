@@ -24,12 +24,26 @@ export interface MeuAgendamentoTp {
   ponto_nome: string;
 }
 
+export interface MeuPedidoPublicacao {
+  id: number;
+  publicacao_nome: string | null;
+  descricao: string | null;
+  qtd: number;
+  status: 'aberto' | 'pedido' | 'entregue' | 'cancelado';
+  criado_em: string;
+}
+
+export interface PublicacaoLite {
+  id: number;
+  nome: string;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
   const hoje = new Date().toISOString().substring(0, 10);
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
   const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10);
 
-  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes] = await Promise.all([
+  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
@@ -66,7 +80,15 @@ export const load: PageServerLoad = async ({ locals }) => {
       .order('data'),
     // Designações onde EU sou participante (dupla/trio), não o líder —
     // sem isso a carteira só aparecia pra quem criou a designação
-    locals.supabase.from('designacao_publicadores').select('designacao_id').eq('publicador_id', locals.user!.id)
+    locals.supabase.from('designacao_publicadores').select('designacao_id').eq('publicador_id', locals.user!.id),
+    // Meus pedidos de publicação (P-A) — pra ver o status mudar quando o servo atender
+    locals.supabase
+      .from('pedidos_publicacao')
+      .select('id, descricao, qtd, status, criado_em, publicacoes(nome)')
+      .eq('publicador_id', locals.user!.id)
+      .order('criado_em', { ascending: false })
+      .limit(10),
+    locals.supabase.from('publicacoes').select('id, nome').eq('ativo', true).order('nome')
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
   // no campo). A visão de todas as designações mora no mapa estratégico e
@@ -217,6 +239,18 @@ export const load: PageServerLoad = async ({ locals }) => {
     ponto_nome: r.tp_agendamentos.tp_pontos?.nome ?? r.tp_agendamentos.ponto_avulso ?? '?'
   }));
 
+  const meusPedidosPublicacao: MeuPedidoPublicacao[] = ((meusPedidosRes.data ?? []) as any[]).map((p) => ({
+    id: p.id,
+    publicacao_nome: p.publicacoes?.nome ?? null,
+    descricao: p.descricao,
+    qtd: p.qtd,
+    status: p.status,
+    criado_em: p.criado_em
+  }));
+  const catalogoPublicacoes = (catalogoRes.data ?? []) as PublicacaoLite[];
+  // Card "Área do servo" só pro servo NÃO-admin — admin já acessa pelo drawer.
+  const souServoPub = locals.profile?.role !== 'admin' && !!locals.profile?.servo_publicacoes;
+
   return {
     abertas,
     concluidas,
@@ -228,6 +262,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     arranjosQueDirijo,
     cartasDesignadas,
     meusAgendamentosTp,
+    meusPedidosPublicacao,
+    catalogoPublicacoes,
+    souServoPub,
     minhaRole: locals.profile?.role
   };
 };
@@ -251,5 +288,38 @@ export const actions: Actions = {
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, token: data.token };
+  },
+
+  // Pedido de publicação avulso (P-A) — catálogo OU descrição livre.
+  pedirPublicacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
+    const descricao = String(fd.get('descricao') ?? '').trim() || null;
+    const qtd = Number(fd.get('qtd') ?? 1) || 1;
+    if (!publicacaoId && !descricao) return fail(400, { erro: 'Escolha uma publicação do catálogo ou descreva o que precisa' });
+    const { error } = await locals.supabase.from('pedidos_publicacao').insert({
+      publicador_id: locals.user.id,
+      publicacao_id: publicacaoId,
+      descricao: publicacaoId ? null : descricao,
+      qtd
+    });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Pedido enviado ao servo de publicações' };
+  },
+
+  // Cancela um pedido MEU ainda aberto (RLS só deixa enquanto status='aberto')
+  cancelarPedidoPublicacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('pedidos_publicacao')
+      .update({ status: 'cancelado' })
+      .eq('id', id)
+      .eq('publicador_id', locals.user.id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Pedido cancelado' };
   }
 };

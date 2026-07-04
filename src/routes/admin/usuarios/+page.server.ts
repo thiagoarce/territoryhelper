@@ -16,7 +16,7 @@ export const load: PageServerLoad = async () => {
 
   const { data: profiles } = await supabaseAdmin
     .from('profiles')
-    .select('id, nome, role, ativo, criado_em');
+    .select('id, nome, role, ativo, servo_publicacoes, criado_em');
 
   const profilePorId = new Map((profiles ?? []).map((p) => [p.id, p]));
   const usuarios: UsuarioComEmail[] = authData.users.map((u) => {
@@ -27,6 +27,7 @@ export const load: PageServerLoad = async () => {
       nome: p?.nome ?? '',
       role: (p?.role ?? 'publicador') as Role,
       ativo: p?.ativo ?? true,
+      servo_publicacoes: (p as any)?.servo_publicacoes ?? false,
       criado_em: p?.criado_em ?? u.created_at,
       atualizado_em: (p as any)?.atualizado_em ?? p?.criado_em ?? u.created_at
     };
@@ -79,13 +80,14 @@ export const actions: Actions = {
     const nome = String(fd.get('nome') ?? '').trim();
     const role = String(fd.get('role') ?? '') as Role;
     const ativo = fd.get('ativo') === 'on';
+    const servoPublicacoes = fd.get('servo_publicacoes') === 'on';
 
     if (!id) return fail(400, { erro: 'id obrigatório' });
     if (!ROLES_VALIDAS.includes(role)) return fail(400, { erro: 'Role inválida' });
 
     const { error } = await supabaseAdmin
       .from('profiles')
-      .update({ nome, role, ativo })
+      .update({ nome, role, ativo, servo_publicacoes: servoPublicacoes })
       .eq('id', id);
     if (error) return fail(400, { erro: error.message });
 
