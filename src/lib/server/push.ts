@@ -5,9 +5,14 @@
 // JWT VAPID (ES256) — feito via WebCrypto porque a lib `web-push` do npm
 // não roda em Cloudflare Workers (depende de módulos nativos do Node).
 import { supabaseAdmin } from './supabase-admin';
-import { VAPID_PRIVATE_KEY } from '$env/static/private';
-import { PUBLIC_VAPID_PUBLIC_KEY } from '$env/static/public';
+import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 
+// dynamic (não static) de propósito: as chaves VAPID são opcionais até o
+// usuário configurar (gerar_vapid.mjs + wrangler secret put). `$env/static/*`
+// EXIGE a var em tempo de build — faltando, quebra o deploy inteiro (isso
+// já aconteceu). Com dynamic, só o Web Push fica desativado (sino in-app
+// continua funcionando normal) até as chaves existirem.
 const VAPID_SUBJECT = 'mailto:admin@territoryhelper.app';
 const PODA_APOS_FALHAS = 5;
 
@@ -36,7 +41,7 @@ function base64UrlEncodeStr(s: string): string {
 let chavePrivadaCache: CryptoKey | null = null;
 async function importarChavePrivadaVapid(): Promise<CryptoKey> {
   if (chavePrivadaCache) return chavePrivadaCache;
-  const ponto = base64UrlDecode(PUBLIC_VAPID_PUBLIC_KEY);
+  const ponto = base64UrlDecode(publicEnv.PUBLIC_VAPID_PUBLIC_KEY!);
   const x = ponto.slice(1, 33);
   const y = ponto.slice(33, 65);
   const jwk: JsonWebKey = {
@@ -44,7 +49,7 @@ async function importarChavePrivadaVapid(): Promise<CryptoKey> {
     crv: 'P-256',
     x: base64UrlEncode(x),
     y: base64UrlEncode(y),
-    d: VAPID_PRIVATE_KEY,
+    d: privateEnv.VAPID_PRIVATE_KEY,
     ext: true
   };
   chavePrivadaCache = await crypto.subtle.importKey(
@@ -85,6 +90,10 @@ interface PushSubscriptionRow {
 // subscription depois de muitas falhas seguidas (endpoint morto/expirado).
 export async function enviarTickle(publicadorIds: string[]): Promise<void> {
   if (publicadorIds.length === 0) return;
+  // Chaves VAPID ainda não configuradas (gerar_vapid.mjs + variáveis de
+  // ambiente) — sino in-app já fica salvo em `notificacoes`, só o Web
+  // Push real fica pendente até configurar.
+  if (!privateEnv.VAPID_PRIVATE_KEY || !publicEnv.PUBLIC_VAPID_PUBLIC_KEY) return;
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, falhas')
@@ -99,7 +108,7 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
         const res = await fetch(sub.endpoint, {
           method: 'POST',
           headers: {
-            Authorization: `vapid t=${jwt}, k=${PUBLIC_VAPID_PUBLIC_KEY}`,
+            Authorization: `vapid t=${jwt}, k=${publicEnv.PUBLIC_VAPID_PUBLIC_KEY}`,
             TTL: '86400',
             'Content-Length': '0'
           }

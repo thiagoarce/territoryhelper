@@ -7,7 +7,8 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { DIAS_SEMANA } from '$lib/arranjos';
-  import { PUBLIC_VAPID_PUBLIC_KEY } from '$env/static/public';
+  // dynamic, não static: a chave é opcional até configurar (ver $lib/server/push.ts)
+  import { env as publicEnv } from '$env/dynamic/public';
   import type { TpDisponibilidadeLinha } from './$types';
 
   // PUSH-A: base64url (mesmo formato do endpoint) → Uint8Array, formato
@@ -52,11 +53,15 @@
   }
 
   // === Notificações (PUSH-A) ===
-  type StatusPush = 'verificando' | 'nao_suportado' | 'inativo' | 'ativo';
+  type StatusPush = 'verificando' | 'nao_suportado' | 'nao_configurado' | 'inativo' | 'ativo';
   let statusPush = $state<StatusPush>('verificando');
   let processandoPush = $state(false);
 
   onMount(async () => {
+    if (!publicEnv.PUBLIC_VAPID_PUBLIC_KEY) {
+      statusPush = 'nao_configurado';
+      return;
+    }
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       statusPush = 'nao_suportado';
       return;
@@ -78,10 +83,11 @@
         toast.error('Permissão de notificação negada');
         return;
       }
+      if (!publicEnv.PUBLIC_VAPID_PUBLIC_KEY) { toast.error('Notificações push ainda não configuradas neste servidor'); return; }
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_PUBLIC_KEY) as BufferSource
+        applicationServerKey: urlBase64ToUint8Array(publicEnv.PUBLIC_VAPID_PUBLIC_KEY) as BufferSource
       });
       const j = sub.toJSON();
       const fd = new FormData();
@@ -215,6 +221,8 @@
     </p>
     {#if statusPush === 'verificando'}
       <p class="text-sm text-slate-400">Verificando suporte...</p>
+    {:else if statusPush === 'nao_configurado'}
+      <p class="text-sm text-slate-400">Notificações push ainda não configuradas pelo admin neste servidor. O sino no topo do app continua funcionando normalmente.</p>
     {:else if statusPush === 'nao_suportado'}
       <p class="text-sm text-slate-400">Esse navegador/aparelho não suporta notificações push. O sino no topo do app continua funcionando normalmente.</p>
     {:else if statusPush === 'ativo'}
