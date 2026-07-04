@@ -38,7 +38,7 @@ alter table tp_carrinhos add column if not exists cor text not null default '#3b
 create table tp_agendamentos (
   id bigserial primary key,
   carrinho_id bigint not null references tp_carrinhos(id) on delete restrict,
-  ponto_id bigint references tp_pontos(id) on delete set null,
+  ponto_id bigint references tp_pontos(id) on delete restrict,
   ponto_avulso text,                  -- texto livre, usado quando ponto_id é null
   data date not null,
   hora_inicio time not null,

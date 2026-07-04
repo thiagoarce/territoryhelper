@@ -19,31 +19,26 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
   5 tipos — Carrinho, Display Simples, Display Duplo, Quiosque, Mesa — e
   19 peças, transcritos do PDF). Aplicar 047 e depois 048 (nessa ordem,
   depois da 041) via `/admin/dev/sql`.
-- 🔁 **Pivô de arquitetura (decisão do usuário, pós-TP-A)**: o modelo de
-  escala original — `tp_turnos` (grade fixa dia/hora/vagas) +
-  `tp_escala` (inscrição num turno numa data) — **não bate** com a visão
-  real: o CARRINHO é o calendário (agenda própria por equipamento, "visão
-  geral" sobrepondo todos coloridos por `cor`), sem capacidade fixa
-  (`vagas` morre), com recorrência tipo Google Calendar (nenhuma/diária/
-  semanal/quinzenal/mensal + fim opcional + exceção por ocorrência), e
-  ponto fixo OU avulso (texto livre). Isso vira a seção **TP-F**, que
-  SUBSTITUI a antiga TP-C por inteiro.
-  - `tp_turnos`/`tp_escala` (migration 036) estão **shipadas e em uso no
-    código** (`/admin/tp`, `/publicador/arranjo`, `/publicador`,
-    `$lib/arranjos.ts::ocorrenciasTurnoEntre`, `tests/arranjos.test.ts`),
-    mas **confirmado pelo usuário: sem dado real cadastrado hoje** — só
-    vazio/teste. Migration `043` foi reescrita (a versão antiga,
-    `tp_escala_v2`, nunca chegou a ser aplicada em produção — TP-C nunca
-    foi construído) e `045` foi ajustada pra referenciar
-    `tp_agendamentos` em vez de `tp_turnos`. Ambas validadas via Postgres
-    local (schema íntegro, RLS presente) — ainda não commitadas.
-  - **Importante para quem continuar**: substituir o código já shipado
-    (os 3 arquivos de rota + `arranjos.ts` + os 2 testes que dependem de
-    `tp_turnos`/`tp_escala`) é uma mudança de maior raio — quebra
-    funcionalidade em produção até a UI nova entrar no ar. **Pedir
-    confirmação explícita ao usuário antes de começar essa parte**,
-    mesmo com o schema já trocado (schema pode conviver com o código
-    velho até o corte ser feito de propósito).
+- ✅ **Pivô de arquitetura concluído (TP-F, substitui a antiga TP-C)**: o
+  modelo de escala original — `tp_turnos` (grade fixa dia/hora/vagas) +
+  `tp_escala` (inscrição num turno numa data) — foi **substituído
+  inteiramente** pelo modelo carrinho-centrico: `tp_agendamentos` (schema
+  reescrito na migration `043`, incluindo a correção `ponto_id ... on
+  delete restrict` pra não violar o `check (num_nonnulls(ponto_id,
+  ponto_avulso) = 1)`) + `tp_agendamento_excecoes` +
+  `tp_agendamento_participantes` (sem capacidade fixa), com a função pura
+  `ocorrenciasAgendamentoEntre` + `ocorrenciaConflitante` em
+  `$lib/tp-agendamentos.ts` (recorrência nenhuma/diária/semanal/
+  quinzenal/mensal, exceção por ocorrência, detecção de conflito de
+  equipamento — 17 testes em `tests/tp-agendamentos.test.ts`).
+  `tp_turnos`/`tp_escala` foram **removidas do código** (estavam sem dado
+  real cadastrado, confirmado pelo usuário): os 3 arquivos de rota
+  (`admin/tp`, `publicador/arranjo`, `publicador` home) + `$lib/arranjos.ts`
+  (`ocorrenciasTurnoEntre`/`TurnoBase` removidos) + os 2 testes antigos
+  foram todos migrados pro novo modelo. `/admin/tp` virou 5 rotas
+  (Planner/Visão geral/Pontos/Equipamentos/Publicadores) com navegação
+  compartilhada (`TpNav.svelte` — sidebar no desktop, `BottomSheet` no
+  mobile). Detalhes completos na seção **TP-F** abaixo.
 - ⏳ Código (actions/telas): incrementos TP-B, TP-F, P-A, TP-D, TP-E,
   PUSH-A a construir.
 
@@ -123,8 +118,9 @@ Aba **Equipamentos**:
   (nome, categoria, publicação vinculada se literatura, ordem). Sheets pra
   criar/editar tipo e peça.
 
-**Server** (`/admin/tp/+page.server.ts`): guard admin (já existe). Load
-traz tipos, peças, carrinhos (join custódia→nome). Actions:
+**Server** (originalmente `/admin/tp/+page.server.ts`, **movido** pro TP-F
+pra `/admin/tp/equipamentos/+page.server.ts`): guard admin. Load traz
+tipos, peças, carrinhos (join custódia→nome). Actions:
 `criarTipo`/`atualizarTipo`/`apagarTipo`, `criarPeca`/`atualizarPeca`/
 `apagarPeca`, `criarCarrinho`/`atualizarCarrinho`/`apagarCarrinho`.
 
@@ -137,14 +133,14 @@ vez; ajustes depois pela própria UI.
 **Verificado**: build + testes verdes. Conferência funcional dos 5 tipos
 + 19 peças fica pro usuário depois de aplicar 047+048 no `/admin/dev/sql`.
 
-**⚠ Addendum pós-TP-F**: a navegação por abas (`Escala | Pontos |
-Equipamentos`) dentro de uma única `/admin/tp/+page.svelte` **será
-substituída** pela navegação em seções do TP-F (Planner / Visão geral /
-Pontos / Equipamentos / Publicadores, cada uma sua própria rota). O CRUD
-de tipos/peças/carrinhos construído aqui continua valendo — só muda de
-onde ele é montado (sai da aba "Equipamentos" de uma página só, vira a
-rota `/admin/tp/equipamentos`). Não é retrabalho de lógica, é mover
-markup + estado de aba pra rota própria.
+**✅ Addendum pós-TP-F (concluído)**: a navegação por abas (`Escala |
+Pontos | Equipamentos`) dentro de uma única `/admin/tp/+page.svelte` foi
+substituída pela navegação em 5 seções do TP-F (Planner / Visão geral /
+Pontos / Equipamentos / Publicadores, cada uma sua própria rota — ver
+TP-F). O CRUD de tipos/peças/carrinhos construído aqui não teve a lógica
+retrabalhada — só mudou de arquivo (da aba "Equipamentos" de uma página
+só pra `/admin/tp/equipamentos/+page.server.ts`/`.svelte`), ganhando
+também o campo `cor` do carrinho (necessário pra Visão geral).
 
 ## TP-B — Disponibilidade + transporte · migration 042
 **Tabelas**: `tp_preferencias` (transporta_carrinho, notas),
@@ -165,7 +161,7 @@ restringe ao próprio).
 **Verificar**: publicador marca transporta + 2 janelas; recarrega e
 persiste; admin consegue ler (será usado no TP-C).
 
-## TP-F — Agendamentos (carrinho é o calendário) · migration 043 · SUBSTITUI TP-C
+## TP-F — Agendamentos (carrinho é o calendário) · migration 043 · SUBSTITUI TP-C · ✅ CONCLUÍDO
 **Pivô de arquitetura, não ajuste fino** (motivo completo no cabeçalho da
 migration `043_tp_agendamentos.sql`). O modelo antigo — ponto fixo +
 grade semanal de turnos (`tp_turnos`) + inscrição (`tp_escala`), com
@@ -245,53 +241,66 @@ reempacotado pro formato que cabe. Implementação: um componente
 `TpNav.svelte` compartilhado pelas 5 rotas, com `md:` breakpoint do
 Tailwind decidindo sidebar vs. sheet.
 
-**Server** (ações por rota):
+**Server** (ações por rota, implementado em `_shared.ts` +
+`+page.server.ts` de cada rota):
 - `/admin/tp/+page.server.ts` (Planner): load traz agendamentos do
-  carrinho selecionado + ocorrências expandidas da janela visível.
-  Actions: `criarAgendamento`, `atualizarAgendamento` (com parâmetro
-  "aplicar a: esta ocorrência | toda a série" → grava em
-  `tp_agendamento_excecoes` ou no `tp_agendamentos` conforme escolha),
-  `cancelarOcorrencia`, `apagarSerie` (soft: `ativo=false`),
-  `designarParticipante(agendamento_id, data, publicador_id)` — guard
-  admin; insere em `tp_agendamento_participantes` com
-  `origem='designacao', designado_por=uid`; dispara push (PUSH-A) pro
-  designado. Roda a validação de conflito antes de criar/editar.
+  carrinho selecionado (via `?carrinho=`) + ocorrências expandidas da
+  janela visível (`?periodo=semana|mes`). Actions: `criarAgendamento`,
+  `atualizarAgendamento` (parâmetro `aplicar_a: 'ocorrencia'|'serie'` →
+  grava em `tp_agendamento_excecoes` ou no `tp_agendamentos` conforme
+  escolha), `cancelarOcorrencia`, `arquivarAgendamento` (soft:
+  `ativo=false`), `apagarAgendamentoDefinitivo` (hard delete, bloqueado
+  com mensagem amigável se houver relatório vinculado — TP-D),
+  `designarParticipante`/`removerParticipante`. Conflito checado
+  expandindo TODAS as ocorrências futuras da série candidata (não só a
+  primeira data) antes de criar/editar. **Push (PUSH-A) ainda não
+  existe** — quando entrar, disparar em `designarParticipante`.
 - `/admin/tp/geral/+page.server.ts`: load traz ocorrências expandidas de
-  TODOS os carrinhos ativos na janela visível (mês/semana).
+  TODOS os carrinhos ativos na janela visível (`?periodo=semana|mes`).
 - `/publicador/arranjo/+page.server.ts`: load passa a trazer ocorrências
   de `tp_agendamentos` (via `ocorrenciasAgendamentoEntre`) em vez de
   `tp_turnos`/`tp_escala`; actions `inscreverAgendamento`/`sairAgendamento`
   substituem `inscreverTurno`/`sairTurno` (mesma regra: publicador só
-  mexe em nome próprio, `origem='inscricao'`).
+  mexe em nome próprio, `origem='inscricao'`, sem checagem de vaga).
+- `/publicador/+page.server.ts`: `meusAgendamentosTp` (era `meusTurnosTp`)
+  troca o embed `tp_escala→tp_turnos→tp_pontos` por
+  `tp_agendamento_participantes→tp_agendamentos→tp_pontos` (embed
+  simples, sem `!inner` em `tp_pontos` — precisa aceitar ponto avulso
+  null).
 
-**UI admin (Planner)**: agenda do carrinho selecionado (visão
-semana/mês); célula/ocorrência mostra ponto + horário + participantes
-(avatar/nome) + badge "designado" pra quem tem `origem='designacao'`.
-Botão "Designar" abre sheet listando publicadores **com disponibilidade
-compatível** (cruza `tp_disponibilidade` da TP-B) com o dia/hora da
-ocorrência. Criar/editar agendamento: form com recorrência (select) +
-data fim opcional + ponto (select fixo ou toggle "avulso" → texto livre).
-Editar/cancelar ocorrência existente pergunta "só esta vez ou toda a
-série?" antes de gravar.
+**UI admin (Planner)**: seletor de carrinho (chips coloridos) + toggle
+semana/mês + lista de ocorrências por data, cada uma com ponto + horário
++ participantes (badge "designado" pra `origem='designacao'`). Botão
+"Designar" abre sheet listando TODOS os publicadores, com badge
+"disponível" pra quem tem `tp_disponibilidade` compatível com o dia/hora
+(TP-B ainda não tem UI própria pro publicador cadastrar isso — a tabela
+já existe e a lista só fica sem badges até lá; **não** filtra a lista a
+publicadores compatíveis, só destaca, senão a função fica inutilizável
+antes do TP-B existir). Criar/editar agendamento: form com recorrência
+(select) + data fim opcional + ponto (select fixo ou checkbox "avulso" →
+texto livre). Editar ocorrência recorrente pergunta "só esta ocorrência
+ou toda a série" (radio); série ganha botões extras "Arquivar toda a
+série" / "Excluir de vez".
 
 **UI campo** (card na Agenda/`arranjo` e home): mostra ponto + horário +
-quem mais vai; "Quero participar" pra horário livre (sem teto — sempre
+quem mais vai; "Me inscrever" pra horário livre (sem teto — sempre
 disponível, diferente do antigo "vagas esgotadas"); badge "designado"
 quando aplicável.
 
-**Testes puros novos** (`tests/`, substituem os 2 testes de
-`tp_turnos`/`tp_escala` em `tests/arranjos.test.ts` — que devem ser
-removidos junto com o corte do código velho): expansão de recorrência
+**Testes puros** (`tests/tp-agendamentos.test.ts`, 17 testes — substituem
+os 2 testes de `tp_turnos`/`tp_escala` removidos de
+`tests/arranjos.test.ts`): expansão de recorrência
 (nenhuma/diária/semanal/quinzenal/mensal, incluindo o edge case dia 31),
-aplicação de exceção (cancelada + override), e detecção de conflito de
-carrinho em horário sobreposto.
+aplicação de exceção (cancelada + override de horário/ponto), e detecção
+de conflito de carrinho (sobreposto, adjacente, carrinho diferente,
+ignora o próprio agendamento, cruza recorrências diferentes).
 
-**Verificar**: criar agendamento semanal; editar só uma ocorrência (não
-mexe nas outras); cancelar uma ocorrência (some só ela); tentar pôr o
-mesmo carrinho em dois agendamentos com horário sobreposto no mesmo dia →
-bloqueado; designar publicador num buraco (só compatíveis aparecem);
-Visão geral mostra todos os carrinhos com suas cores; sidebar vira sheet
-no mobile.
+**Verificado**: build + testes verdes (35 no total). Criar/editar/
+cancelar agendamento, designar/remover participante, Visão geral e o
+corte de `tp_turnos`/`tp_escala` do código de produção ficam pra
+conferência funcional do usuário (sem acesso a Supabase real neste
+ambiente) depois de aplicar a `043` (reescrita) e `045` (ajustada) via
+`/admin/dev/sql`.
 
 ## P-A — Área do Servo de Publicações · migration 044
 **Escopo confirmado (mais amplo que só TP)**: o servo de publicações NÃO
@@ -442,15 +451,16 @@ infra.
 - Multi-congregação / escala metropolitana.
 
 ## Riscos / atenção
-- **Corte do código velho (`tp_turnos`/`tp_escala`) é raio maior**: afeta
-  3 arquivos de rota já shipados (`admin/tp/+page.server.ts` +
-  `.svelte`, `publicador/arranjo/+page.server.ts` + `.svelte`,
-  `publicador/+page.server.ts`) + `$lib/arranjos.ts::ocorrenciasTurnoEntre`
-  (usada só por TP ali — outros usos de `arranjos.ts` continuam) + 2
-  testes em `tests/arranjos.test.ts`. **Pedir confirmação explícita do
-  usuário antes de começar essa substituição** — é remover
-  funcionalidade em produção (mesmo sem dado real cadastrado), não só
-  construir spec não-construída ainda.
+- **Corte do código velho (`tp_turnos`/`tp_escala`) — feito**: os 3
+  arquivos de rota (`admin/tp`, `publicador/arranjo`,
+  `publicador` home) + `$lib/arranjos.ts` (`ocorrenciasTurnoEntre`/
+  `TurnoBase` removidos) + os 2 testes antigos de
+  `tests/arranjos.test.ts` foram migrados pro modelo `tp_agendamentos`.
+  Usuário confirmou que não havia dado real cadastrado. **Falta**:
+  aplicar as migrations `043`/`045` no Supabase real via
+  `/admin/dev/sql` e conferir na UI (não foi possível testar contra
+  Supabase real neste ambiente — sem acesso de rede — só validado via
+  Postgres local + build/testes).
 - **Recorrência mensal, dia 29-31**: `ocorrenciasAgendamentoEntre` pula a
   ocorrência em meses sem aquele dia (não rola pro próximo dia válido).
   Documentar isso na UI de criar agendamento (texto de ajuda perto do

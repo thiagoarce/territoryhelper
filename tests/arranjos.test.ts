@@ -1,5 +1,5 @@
 import { test, assertEq } from './harness';
-import { ocorrenciasEntre, ocorrenciasTurnoEntre, rangeDoPeriodo, type ArranjoBase, type TurnoBase } from '../src/lib/arranjos';
+import { ocorrenciasEntre, rangeDoPeriodo, type ArranjoBase } from '../src/lib/arranjos';
 
 function arranjo(overrides: Partial<ArranjoBase>): ArranjoBase {
   return {
@@ -59,19 +59,4 @@ test('rangeDoPeriodo semana cobre 7 dias', () => {
   const ini = new Date(r.isoIni + 'T12:00:00').getTime();
   const fim = new Date(r.isoFim + 'T12:00:00').getTime();
   assertEq(Math.round((fim - ini) / 86400000), 6);
-});
-
-function turno(overrides: Partial<TurnoBase>): TurnoBase {
-  return { id: 1, ponto_id: 1, dia_semana: 1, hora_inicio: '08:00', hora_fim: '10:00', vagas: 2, ativo: true, ...overrides };
-}
-
-test('turno de TP expande semanalmente igual arranjo recorrente', () => {
-  const t = turno({ dia_semana: 1 }); // segunda
-  const ocs = ocorrenciasTurnoEntre([t], '2026-07-01', '2026-07-31');
-  assertEq(ocs.length, 4);
-});
-
-test('turno inativo não gera ocorrência', () => {
-  const t = turno({ ativo: false });
-  assertEq(ocorrenciasTurnoEntre([t], '2026-07-01', '2026-07-31').length, 0);
 });

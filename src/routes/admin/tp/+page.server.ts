@@ -1,424 +1,317 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { semanaAtual, DIAS_SEMANA, DIAS_ORDENADOS } from '$lib/arranjos';
+import { rangeDoPeriodo, type Periodo } from '$lib/arranjos';
+import { ocorrenciasAgendamentoEntre, ocorrenciaConflitante } from '$lib/tp-agendamentos';
+import type { AgendamentoBase, ExcecaoBase, Recorrencia, OcorrenciaAgendamento } from '$lib/tp-agendamentos';
+import { exigirAdmin, carregarAgendamentosEExcecoes, janelaChecagem } from './_shared';
 
-export interface TpPonto {
+export interface TpCarrinhoLite {
+  id: number;
+  nome: string;
+  cor: string;
+  tipo_nome: string;
+  status: 'disponivel' | 'manutencao' | 'aposentado';
+}
+
+export interface TpPontoLite {
   id: number;
   nome: string;
   endereco: string | null;
-  notas: string | null;
-  ativo: boolean;
-  lat: number | null;
-  lng: number | null;
 }
 
-export interface TpTurno {
-  id: number;
-  ponto_id: number;
+export interface TpParticipanteLinha {
+  publicador_id: string;
+  nome: string;
+  origem: 'inscricao' | 'designacao';
+}
+
+export interface TpDisponibilidadeLinha {
+  publicador_id: string;
   dia_semana: number;
   hora_inicio: string;
   hora_fim: string;
-  vagas: number;
-  ativo: boolean;
 }
 
-export interface EscalaDoTurno {
-  data: string;
-  publicador_id: string;
-  nome: string;
-}
+const RECORRENCIAS_VALIDAS: Recorrencia[] = ['nenhuma', 'diaria', 'semanal', 'quinzenal', 'mensal'];
+const PERIODOS_VALIDOS: Periodo[] = ['semana', 'mes'];
 
-export interface TpCarrinhoTipo {
-  id: number;
-  nome: string;
-  descricao: string | null;
-  codigo: string | null;
-  ativo: boolean;
-}
+export const load: PageServerLoad = async ({ locals, url }) => {
+  const periodoParam = url.searchParams.get('periodo') as Periodo | null;
+  const periodo: Periodo = periodoParam && PERIODOS_VALIDOS.includes(periodoParam) ? periodoParam : 'semana';
+  const range = rangeDoPeriodo(periodo);
 
-export interface TpPecaCatalogo {
-  id: number;
-  tipo_id: number;
-  nome: string;
-  categoria: 'fisica' | 'literatura';
-  publicacao_id: number | null;
-  publicacao_nome: string | null;
-  codigo: string | null;
-  ordem: number;
-  ativo: boolean;
-}
+  const [carrinhosRes, tiposRes, pontosRes, agendamentosRes, excecoesRes, publicadoresRes, participantesRes, dispRes] =
+    await Promise.all([
+      locals.supabase.from('tp_carrinhos').select('id, nome, tipo_id, cor, status').order('nome'),
+      locals.supabase.from('tp_carrinho_tipos').select('id, nome'),
+      locals.supabase.from('tp_pontos_geo').select('id, nome, endereco').eq('ativo', true).order('nome'),
+      locals.supabase.from('tp_agendamentos').select('*').eq('ativo', true),
+      locals.supabase.from('tp_agendamento_excecoes').select('*'),
+      locals.supabase.from('profiles').select('id, nome').eq('ativo', true).order('nome'),
+      locals.supabase
+        .from('tp_agendamento_participantes')
+        .select('agendamento_id, data, publicador_id, origem')
+        .gte('data', range.isoIni)
+        .lte('data', range.isoFim),
+      locals.supabase.from('tp_disponibilidade').select('publicador_id, dia_semana, hora_inicio, hora_fim')
+    ]);
 
-export interface TpCarrinho {
-  id: number;
-  nome: string;
-  tipo_id: number;
-  tipo_nome: string;
-  guardado_em: string | null;
-  custodia_id: string | null;
-  custodia_nome: string | null;
-  status: 'disponivel' | 'manutencao' | 'aposentado';
-  notas: string | null;
-}
-
-function exigirAdmin(locals: App.Locals) {
-  if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-  if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
-  return null;
-}
-
-export const load: PageServerLoad = async ({ locals }) => {
-  const [pontosRes, turnosRes, tiposRes, pecasRes, carrinhosRes, publicadoresRes, publicacoesRes] = await Promise.all([
-    locals.supabase.from('tp_pontos_geo').select('id, nome, endereco, notas, ativo, geo_geojson').order('nome'),
-    locals.supabase.from('tp_turnos').select('*').order('dia_semana').order('hora_inicio'),
-    locals.supabase.from('tp_carrinho_tipos').select('*').order('nome'),
-    locals.supabase.from('tp_pecas_catalogo').select('*').order('tipo_id').order('ordem'),
-    locals.supabase.from('tp_carrinhos').select('*').order('nome'),
-    locals.supabase.from('profiles').select('id, nome').eq('ativo', true).order('nome'),
-    locals.supabase.from('publicacoes').select('id, nome').eq('ativo', true).order('nome')
-  ]);
-
-  const pontos: TpPonto[] = ((pontosRes.data ?? []) as any[]).map((p) => ({
-    id: p.id,
-    nome: p.nome,
-    endereco: p.endereco,
-    notas: p.notas,
-    ativo: p.ativo,
-    lat: p.geo_geojson?.coordinates?.[1] ?? null,
-    lng: p.geo_geojson?.coordinates?.[0] ?? null
-  }));
-
-  const turnos = (turnosRes.data ?? []) as TpTurno[];
-
-  // Escala da semana corrente: pra cada turno, a data concreta desta semana
-  // + quem já se inscreveu (nome via profiles).
-  const sem = semanaAtual();
-  const datasPorDiaSemana: Record<number, string> = {};
-  {
-    const d = new Date(sem.ini);
-    for (let i = 0; i < 7; i++) {
-      datasPorDiaSemana[d.getDay()] = d.toISOString().slice(0, 10);
-      d.setDate(d.getDate() + 1);
-    }
-  }
-  const turnoIds = turnos.map((t) => t.id);
-  const escalaPorTurno: Record<number, EscalaDoTurno[]> = {};
-  if (turnoIds.length > 0) {
-    const { data: escalaRows } = await locals.supabase
-      .from('tp_escala')
-      .select('turno_id, data, publicador_id')
-      .in('turno_id', turnoIds)
-      .gte('data', sem.isoIni)
-      .lte('data', sem.isoFim);
-    const pubIds = Array.from(new Set((escalaRows ?? []).map((r: any) => r.publicador_id)));
-    const nomePorId: Record<string, string> = {};
-    if (pubIds.length > 0) {
-      const { data: profs } = await locals.supabase.from('profiles').select('id, nome').in('id', pubIds);
-      for (const p of (profs ?? []) as any[]) nomePorId[p.id] = p.nome;
-    }
-    for (const r of (escalaRows ?? []) as any[]) {
-      (escalaPorTurno[r.turno_id] ||= []).push({
-        data: r.data,
-        publicador_id: r.publicador_id,
-        nome: nomePorId[r.publicador_id] ?? '?'
-      });
-    }
-  }
-
-  // Equipamentos: tipos + peças do catálogo + carrinhos, com nomes
-  // resolvidos à mão (tipo/custódia/publicação) — mesmo padrão de
-  // nomePorId acima, evita depender de embed de FK em tabela nova.
-  const tiposRows = (tiposRes.data ?? []) as TpCarrinhoTipo[];
   const nomeTipoPorId: Record<number, string> = {};
-  for (const t of tiposRows) nomeTipoPorId[t.id] = t.nome;
+  for (const t of (tiposRes.data ?? []) as any[]) nomeTipoPorId[t.id] = t.nome;
 
-  const publicadores = (publicadoresRes.data ?? []) as { id: string; nome: string }[];
-  const nomePublicadorPorId: Record<string, string> = {};
-  for (const p of publicadores) nomePublicadorPorId[p.id] = p.nome;
-
-  const publicacoes = (publicacoesRes.data ?? []) as { id: number; nome: string }[];
-  const nomePublicacaoPorId: Record<number, string> = {};
-  for (const p of publicacoes) nomePublicacaoPorId[p.id] = p.nome;
-
-  const pecas: TpPecaCatalogo[] = ((pecasRes.data ?? []) as any[]).map((p) => ({
-    id: p.id,
-    tipo_id: p.tipo_id,
-    nome: p.nome,
-    categoria: p.categoria,
-    publicacao_id: p.publicacao_id,
-    publicacao_nome: p.publicacao_id ? (nomePublicacaoPorId[p.publicacao_id] ?? null) : null,
-    codigo: p.codigo,
-    ordem: p.ordem,
-    ativo: p.ativo
-  }));
-
-  const carrinhos: TpCarrinho[] = ((carrinhosRes.data ?? []) as any[]).map((c) => ({
+  const carrinhos: TpCarrinhoLite[] = ((carrinhosRes.data ?? []) as any[]).map((c) => ({
     id: c.id,
     nome: c.nome,
-    tipo_id: c.tipo_id,
+    cor: c.cor,
     tipo_nome: nomeTipoPorId[c.tipo_id] ?? '?',
-    guardado_em: c.guardado_em,
-    custodia_id: c.custodia_id,
-    custodia_nome: c.custodia_id ? (nomePublicadorPorId[c.custodia_id] ?? null) : null,
-    status: c.status,
-    notas: c.notas
+    status: c.status
   }));
 
+  const carrinhoIdParam = Number(url.searchParams.get('carrinho') ?? 0);
+  const carrinhoSelecionadoId =
+    carrinhos.find((c) => c.id === carrinhoIdParam)?.id ?? carrinhos[0]?.id ?? null;
+
+  const pontos: Record<number, TpPontoLite> = {};
+  for (const p of (pontosRes.data ?? []) as any[]) pontos[p.id] = { id: p.id, nome: p.nome, endereco: p.endereco };
+
+  const publicadores = (publicadoresRes.data ?? []) as { id: string; nome: string }[];
+  const nomePorId: Record<string, string> = {};
+  for (const p of publicadores) nomePorId[p.id] = p.nome;
+
+  const agendamentos = (agendamentosRes.data ?? []) as AgendamentoBase[];
+  const excecoes = (excecoesRes.data ?? []) as ExcecaoBase[];
+  const todasOcorrencias = ocorrenciasAgendamentoEntre(agendamentos, excecoes, range.isoIni, range.isoFim);
+  const ocorrencias: OcorrenciaAgendamento[] = carrinhoSelecionadoId
+    ? todasOcorrencias.filter((o) => o.carrinho_id === carrinhoSelecionadoId)
+    : [];
+
+  const participantesPorOcorrencia: Record<string, TpParticipanteLinha[]> = {};
+  for (const r of (participantesRes.data ?? []) as any[]) {
+    const key = r.agendamento_id + '|' + r.data;
+    (participantesPorOcorrencia[key] ||= []).push({
+      publicador_id: r.publicador_id,
+      nome: nomePorId[r.publicador_id] ?? '?',
+      origem: r.origem
+    });
+  }
+
+  const disponibilidade = (dispRes.data ?? []) as TpDisponibilidadeLinha[];
+
+  // Agendamentos "base" (não expandidos) do carrinho selecionado — pra
+  // popular o sheet de editar série (recorrência, data inicial, etc.).
+  const agendamentosDoCarrinho = carrinhoSelecionadoId
+    ? agendamentos.filter((a) => a.carrinho_id === carrinhoSelecionadoId)
+    : [];
+
   return {
-    pontos,
-    turnos,
-    escalaPorTurno,
-    datasPorDiaSemana,
-    diasSemana: DIAS_SEMANA,
-    diasOrdenados: DIAS_ORDENADOS,
-    carrinhoTipos: tiposRows,
-    pecasCatalogo: pecas,
+    periodo,
+    range,
     carrinhos,
+    carrinhoSelecionadoId,
+    pontos,
     publicadores,
-    publicacoes
+    ocorrencias,
+    agendamentosDoCarrinho,
+    participantesPorOcorrencia,
+    disponibilidade,
+    minhaId: locals.user!.id
   };
 };
 
+function validarCampos(fd: FormData) {
+  const carrinhoId = Number(fd.get('carrinho_id') ?? 0);
+  const pontoId = Number(fd.get('ponto_id') ?? 0) || null;
+  const pontoAvulso = String(fd.get('ponto_avulso') ?? '').trim() || null;
+  const horaInicio = String(fd.get('hora_inicio') ?? '').trim();
+  const horaFim = String(fd.get('hora_fim') ?? '').trim();
+  const notas = String(fd.get('notas') ?? '').trim() || null;
+  return { carrinhoId, pontoId, pontoAvulso, horaInicio, horaFim, notas };
+}
+
 export const actions: Actions = {
-  criarPonto: async ({ request, locals }) => {
+  criarAgendamento: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
     const fd = await request.formData();
-    const nome = String(fd.get('nome') ?? '').trim();
-    const endereco = String(fd.get('endereco') ?? '').trim() || null;
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    const lat = parseFloat(String(fd.get('lat') ?? ''));
-    const lng = parseFloat(String(fd.get('lng') ?? ''));
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    const geo = isFinite(lat) && isFinite(lng) ? { type: 'Point', coordinates: [lng, lat] } : null;
-    const { error } = await locals.supabase.from('tp_pontos').insert({ nome, endereco, notas, geo });
+    const { carrinhoId, pontoId, pontoAvulso, horaInicio, horaFim, notas } = validarCampos(fd);
+    const data = String(fd.get('data') ?? '').trim();
+    const recorrencia = String(fd.get('recorrencia') ?? 'nenhuma').trim() as Recorrencia;
+    const recorrenciaFim = String(fd.get('recorrencia_fim') ?? '').trim() || null;
+
+    if (!carrinhoId) return fail(400, { erro: 'Equipamento obrigatório' });
+    if (!pontoId && !pontoAvulso) return fail(400, { erro: 'Informe um ponto (fixo ou avulso)' });
+    if (pontoId && pontoAvulso) return fail(400, { erro: 'Escolha ponto fixo OU avulso, não os dois' });
+    if (!data || !horaInicio || !horaFim) return fail(400, { erro: 'Data e horário obrigatórios' });
+    if (horaFim <= horaInicio) return fail(400, { erro: 'Hora de fim precisa ser depois da hora de início' });
+    if (!RECORRENCIAS_VALIDAS.includes(recorrencia)) return fail(400, { erro: 'Recorrência inválida' });
+
+    const { agendamentos, excecoes } = await carregarAgendamentosEExcecoes(locals.supabase);
+    const candidato: AgendamentoBase = {
+      id: -1, carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+      data, hora_inicio: horaInicio, hora_fim: horaFim, recorrencia, recorrencia_fim: recorrenciaFim,
+      ativo: true, notas
+    };
+    const janelaFim = janelaChecagem(recorrenciaFim);
+    const minhasOcorrencias = ocorrenciasAgendamentoEntre([candidato], [], data, janelaFim);
+    for (const oc of minhasOcorrencias) {
+      const conflito = ocorrenciaConflitante(agendamentos, excecoes, carrinhoId, oc.data, oc.hora_inicio, oc.hora_fim);
+      if (conflito) {
+        return fail(409, {
+          erro: `Esse equipamento já tem agendamento em ${oc.data} (${conflito.hora_inicio.substring(0, 5)}–${conflito.hora_fim.substring(0, 5)})`
+        });
+      }
+    }
+
+    const { error } = await locals.supabase.from('tp_agendamentos').insert({
+      carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+      data, hora_inicio: horaInicio, hora_fim: horaFim,
+      recorrencia, recorrencia_fim: recorrenciaFim, notas, criado_por: locals.user!.id
+    });
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Ponto criado' };
+    return { ok: true, msg: 'Agendamento criado' };
   },
 
-  atualizarPonto: async ({ request, locals }) => {
+  // aplicar_a='serie' muda o agendamento base inteiro; aplicar_a='ocorrencia'
+  // grava uma exceção só pra essa data (o resto da série não muda).
+  atualizarAgendamento: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
     const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const nome = String(fd.get('nome') ?? '').trim();
-    const endereco = String(fd.get('endereco') ?? '').trim() || null;
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
-    const lat = parseFloat(String(fd.get('lat') ?? ''));
-    const lng = parseFloat(String(fd.get('lng') ?? ''));
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    const geo = isFinite(lat) && isFinite(lng) ? { type: 'Point', coordinates: [lng, lat] } : null;
-    const { error } = await locals.supabase
-      .from('tp_pontos').update({ nome, endereco, notas, ativo, geo }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Ponto atualizado' };
-  },
+    const agendamentoId = Number(fd.get('agendamento_id') ?? 0);
+    const ocorrenciaData = String(fd.get('ocorrencia_data') ?? '').trim();
+    const aplicarA = String(fd.get('aplicar_a') ?? 'ocorrencia');
+    const { carrinhoId, pontoId, pontoAvulso, horaInicio, horaFim, notas } = validarCampos(fd);
 
-  apagarPonto: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase.from('tp_pontos').delete().eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Ponto removido (cascade limpa turnos/escala)' };
-  },
-
-  criarTurno: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const pontoId = Number(fd.get('ponto_id') ?? 0);
-    const diaSemana = Number(fd.get('dia_semana') ?? -1);
-    const horaInicio = String(fd.get('hora_inicio') ?? '').trim();
-    const horaFim = String(fd.get('hora_fim') ?? '').trim();
-    const vagas = Number(fd.get('vagas') ?? 2) || 2;
-    if (!pontoId) return fail(400, { erro: 'ponto_id obrigatório' });
-    if (diaSemana < 0 || diaSemana > 6) return fail(400, { erro: 'Dia da semana inválido' });
+    if (!agendamentoId || !ocorrenciaData) return fail(400, { erro: 'Agendamento e data da ocorrência obrigatórios' });
+    if (!carrinhoId) return fail(400, { erro: 'Equipamento obrigatório' });
+    if (!pontoId && !pontoAvulso) return fail(400, { erro: 'Informe um ponto (fixo ou avulso)' });
+    if (pontoId && pontoAvulso) return fail(400, { erro: 'Escolha ponto fixo OU avulso, não os dois' });
     if (!horaInicio || !horaFim) return fail(400, { erro: 'Horário obrigatório' });
     if (horaFim <= horaInicio) return fail(400, { erro: 'Hora de fim precisa ser depois da hora de início' });
-    const { error } = await locals.supabase.from('tp_turnos').insert({
-      ponto_id: pontoId, dia_semana: diaSemana, hora_inicio: horaInicio, hora_fim: horaFim, vagas
+
+    const { agendamentos, excecoes } = await carregarAgendamentosEExcecoes(locals.supabase);
+
+    if (aplicarA === 'serie') {
+      const recorrencia = String(fd.get('recorrencia') ?? '').trim() as Recorrencia;
+      const recorrenciaFim = String(fd.get('recorrencia_fim') ?? '').trim() || null;
+      const dataSerie = String(fd.get('data') ?? '').trim();
+      if (!RECORRENCIAS_VALIDAS.includes(recorrencia)) return fail(400, { erro: 'Recorrência inválida' });
+      if (!dataSerie) return fail(400, { erro: 'Data inicial da série obrigatória' });
+
+      const outrosAgendamentos = agendamentos.filter((a) => a.id !== agendamentoId);
+      const outrasExcecoes = excecoes.filter((e) => e.agendamento_id !== agendamentoId);
+      const editado: AgendamentoBase = {
+        id: agendamentoId, carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+        data: dataSerie, hora_inicio: horaInicio, hora_fim: horaFim, recorrencia, recorrencia_fim: recorrenciaFim,
+        ativo: true, notas
+      };
+      const janelaFim = janelaChecagem(recorrenciaFim);
+      const minhasOcorrencias = ocorrenciasAgendamentoEntre([editado], [], dataSerie, janelaFim);
+      for (const oc of minhasOcorrencias) {
+        const conflito = ocorrenciaConflitante(outrosAgendamentos, outrasExcecoes, carrinhoId, oc.data, oc.hora_inicio, oc.hora_fim);
+        if (conflito) {
+          return fail(409, {
+            erro: `Conflito de equipamento em ${oc.data} (${conflito.hora_inicio.substring(0, 5)}–${conflito.hora_fim.substring(0, 5)})`
+          });
+        }
+      }
+
+      const { error } = await locals.supabase.from('tp_agendamentos').update({
+        carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+        data: dataSerie, hora_inicio: horaInicio, hora_fim: horaFim,
+        recorrencia, recorrencia_fim: recorrenciaFim, notas
+      }).eq('id', agendamentoId);
+      if (error) return fail(400, { erro: error.message });
+      return { ok: true, msg: 'Série atualizada' };
+    }
+
+    // aplicar_a === 'ocorrencia'
+    const conflito = ocorrenciaConflitante(agendamentos, excecoes, carrinhoId, ocorrenciaData, horaInicio, horaFim, agendamentoId);
+    if (conflito) {
+      return fail(409, {
+        erro: `Conflito de equipamento em ${conflito.data} (${conflito.hora_inicio.substring(0, 5)}–${conflito.hora_fim.substring(0, 5)})`
+      });
+    }
+
+    const { error } = await locals.supabase.from('tp_agendamento_excecoes').upsert(
+      {
+        agendamento_id: agendamentoId, data: ocorrenciaData, cancelada: false,
+        carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+        hora_inicio: horaInicio, hora_fim: horaFim, notas
+      },
+      { onConflict: 'agendamento_id,data' }
+    );
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Ocorrência atualizada' };
+  },
+
+  cancelarOcorrencia: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const agendamentoId = Number(fd.get('agendamento_id') ?? 0);
+    const data = String(fd.get('data') ?? '').trim();
+    if (!agendamentoId || !data) return fail(400, { erro: 'agendamento_id e data obrigatórios' });
+    const { error } = await locals.supabase
+      .from('tp_agendamento_excecoes')
+      .upsert({ agendamento_id: agendamentoId, data, cancelada: true }, { onConflict: 'agendamento_id,data' });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Ocorrência cancelada' };
+  },
+
+  arquivarAgendamento: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('tp_agendamentos').update({ ativo: false }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Agendamento arquivado (some do planner, histórico fica)' };
+  },
+
+  apagarAgendamentoDefinitivo: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('tp_agendamentos').delete().eq('id', id);
+    if (error) return fail(400, { erro: 'Não deu pra excluir de vez (tem relatório vinculado) — arquive em vez disso.' });
+    return { ok: true, msg: 'Agendamento excluído' };
+  },
+
+  designarParticipante: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const agendamentoId = Number(fd.get('agendamento_id') ?? 0);
+    const data = String(fd.get('data') ?? '').trim();
+    const publicadorId = String(fd.get('publicador_id') ?? '').trim();
+    if (!agendamentoId || !data || !publicadorId) return fail(400, { erro: 'Campos obrigatórios' });
+    const { error } = await locals.supabase.from('tp_agendamento_participantes').insert({
+      agendamento_id: agendamentoId, data, publicador_id: publicadorId,
+      origem: 'designacao', designado_por: locals.user!.id
     });
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Turno criado' };
+    return { ok: true, msg: 'Publicador designado' };
   },
 
-  atualizarTurno: async ({ request, locals }) => {
+  removerParticipante: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
     const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const vagas = Number(fd.get('vagas') ?? 0);
-    const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
-    if (!vagas || vagas < 1) return fail(400, { erro: 'Vagas deve ser >= 1' });
-    const { error } = await locals.supabase.from('tp_turnos').update({ vagas, ativo }).eq('id', id);
+    const agendamentoId = Number(fd.get('agendamento_id') ?? 0);
+    const data = String(fd.get('data') ?? '').trim();
+    const publicadorId = String(fd.get('publicador_id') ?? '').trim();
+    if (!agendamentoId || !data || !publicadorId) return fail(400, { erro: 'Campos obrigatórios' });
+    const { error } = await locals.supabase
+      .from('tp_agendamento_participantes')
+      .delete()
+      .eq('agendamento_id', agendamentoId)
+      .eq('data', data)
+      .eq('publicador_id', publicadorId);
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Turno atualizado' };
-  },
-
-  apagarTurno: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase.from('tp_turnos').delete().eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Turno removido' };
-  },
-
-  // ---- Equipamentos (TP-A) ----
-
-  criarTipo: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const nome = String(fd.get('nome') ?? '').trim();
-    const descricao = String(fd.get('descricao') ?? '').trim() || null;
-    const codigo = String(fd.get('codigo') ?? '').trim() || null;
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    const { error } = await locals.supabase.from('tp_carrinho_tipos').insert({ nome, descricao, codigo });
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Tipo criado' };
-  },
-
-  atualizarTipo: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const nome = String(fd.get('nome') ?? '').trim();
-    const descricao = String(fd.get('descricao') ?? '').trim() || null;
-    const codigo = String(fd.get('codigo') ?? '').trim() || null;
-    const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    const { error } = await locals.supabase.from('tp_carrinho_tipos').update({ nome, descricao, codigo, ativo }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Tipo atualizado' };
-  },
-
-  apagarTipo: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase.from('tp_carrinho_tipos').delete().eq('id', id);
-    if (error) return fail(400, { erro: 'Tipo tem carrinho(s) vinculado(s) — mude o tipo deles primeiro ou apague-os.' });
-    return { ok: true, msg: 'Tipo removido (peças do catálogo somem junto)' };
-  },
-
-  criarPeca: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const tipoId = Number(fd.get('tipo_id') ?? 0);
-    const nome = String(fd.get('nome') ?? '').trim();
-    const categoria = String(fd.get('categoria') ?? '').trim();
-    const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
-    const codigo = String(fd.get('codigo') ?? '').trim() || null;
-    const ordem = Number(fd.get('ordem') ?? 0) || 0;
-    if (!tipoId) return fail(400, { erro: 'tipo_id obrigatório' });
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    if (!['fisica', 'literatura'].includes(categoria)) return fail(400, { erro: 'Categoria inválida' });
-    const { error } = await locals.supabase.from('tp_pecas_catalogo').insert({
-      tipo_id: tipoId, nome, categoria,
-      publicacao_id: categoria === 'literatura' ? publicacaoId : null,
-      codigo, ordem
-    });
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Peça adicionada' };
-  },
-
-  atualizarPeca: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const nome = String(fd.get('nome') ?? '').trim();
-    const categoria = String(fd.get('categoria') ?? '').trim();
-    const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
-    const codigo = String(fd.get('codigo') ?? '').trim() || null;
-    const ordem = Number(fd.get('ordem') ?? 0) || 0;
-    const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    if (!['fisica', 'literatura'].includes(categoria)) return fail(400, { erro: 'Categoria inválida' });
-    const { error } = await locals.supabase.from('tp_pecas_catalogo').update({
-      nome, categoria,
-      publicacao_id: categoria === 'literatura' ? publicacaoId : null,
-      codigo, ordem, ativo
-    }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Peça atualizada' };
-  },
-
-  apagarPeca: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase.from('tp_pecas_catalogo').delete().eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Peça removida' };
-  },
-
-  criarCarrinho: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const nome = String(fd.get('nome') ?? '').trim();
-    const tipoId = Number(fd.get('tipo_id') ?? 0);
-    const guardadoEm = String(fd.get('guardado_em') ?? '').trim() || null;
-    const custodiaId = String(fd.get('custodia_id') ?? '').trim() || null;
-    const status = String(fd.get('status') ?? 'disponivel').trim();
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    if (!tipoId) return fail(400, { erro: 'Tipo obrigatório' });
-    if (!['disponivel', 'manutencao', 'aposentado'].includes(status)) return fail(400, { erro: 'Status inválido' });
-    const { error } = await locals.supabase.from('tp_carrinhos').insert({
-      nome, tipo_id: tipoId, guardado_em: guardadoEm, custodia_id: custodiaId, status, notas
-    });
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Carrinho criado' };
-  },
-
-  atualizarCarrinho: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const nome = String(fd.get('nome') ?? '').trim();
-    const tipoId = Number(fd.get('tipo_id') ?? 0);
-    const guardadoEm = String(fd.get('guardado_em') ?? '').trim() || null;
-    const custodiaId = String(fd.get('custodia_id') ?? '').trim() || null;
-    const status = String(fd.get('status') ?? 'disponivel').trim();
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    if (!tipoId) return fail(400, { erro: 'Tipo obrigatório' });
-    if (!['disponivel', 'manutencao', 'aposentado'].includes(status)) return fail(400, { erro: 'Status inválido' });
-    const { error } = await locals.supabase.from('tp_carrinhos').update({
-      nome, tipo_id: tipoId, guardado_em: guardadoEm, custodia_id: custodiaId, status, notas
-    }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Carrinho atualizado' };
-  },
-
-  apagarCarrinho: async ({ request, locals }) => {
-    const guard = exigirAdmin(locals);
-    if (guard) return guard;
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase.from('tp_carrinhos').delete().eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Carrinho removido' };
+    return { ok: true, msg: 'Removido do agendamento' };
   }
 };
