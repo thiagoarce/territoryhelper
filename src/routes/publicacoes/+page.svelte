@@ -5,9 +5,43 @@
   import Button from '$lib/ui/Button.svelte';
   import Icon from '$lib/ui/Icon.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { PedidoLinha } from './$types';
+  import type { PedidoLinha, ReposicaoItem, TendenciaMes } from './$types';
 
-  let { data }: { data: { pedidos: PedidoLinha[]; filtro: string; souAdmin: boolean; erro?: string } } = $props();
+  let { data }: {
+    data: {
+      pedidos: PedidoLinha[];
+      filtro: string;
+      souAdmin: boolean;
+      reposicao: ReposicaoItem[];
+      tendencia: TendenciaMes[];
+      erro?: string;
+    };
+  } = $props();
+
+  const ESTADO_LABEL: Record<string, string> = { acabando: 'Acabando', zerado: 'Zerado', danificado: 'Danificado' };
+  const ESTADO_CLASSE: Record<string, string> = {
+    acabando: 'bg-amber-100 text-amber-700',
+    zerado: 'bg-red-100 text-red-700',
+    danificado: 'bg-red-100 text-red-700'
+  };
+
+  const reposicaoAgrupada = $derived.by(() => {
+    const m: Record<string, ReposicaoItem[]> = {};
+    for (const r of data.reposicao) (m[r.carrinho_nome + ' · ' + r.ponto_nome] ??= []).push(r);
+    return m;
+  });
+
+  let resolvendoId = $state<number | null>(null);
+  async function resolverReposicao(id: number) {
+    resolvendoId = id;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/resolverReposicao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    resolvendoId = null;
+    if (parsed.type === 'success') { toast.success('Resolvido'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
 
   const FILTROS = [
     ['pendentes', 'Pendentes'],
@@ -127,6 +161,55 @@
         </Card>
       {/each}
     </div>
+  {/if}
+
+  <div>
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
+      <Icon nome="alert" size={14} /> Reposição
+      <span class="text-xs text-slate-400 normal-case font-normal">({data.reposicao.length})</span>
+    </h2>
+    {#if data.reposicao.length === 0}
+      <p class="text-sm text-slate-400 italic">Nada pendente de reposição.</p>
+    {:else}
+      <div class="space-y-3">
+        {#each Object.entries(reposicaoAgrupada) as [grupo, itens]}
+          <Card padding="md">
+            <div class="text-sm font-semibold mb-1.5">{grupo}</div>
+            <div class="space-y-1.5">
+              {#each itens as item (item.id)}
+                <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
+                  <span class="flex-1 min-w-0 truncate">
+                    {item.peca_nome}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full ml-1 {ESTADO_CLASSE[item.estado]}">{ESTADO_LABEL[item.estado]}</span>
+                    {#if item.obs}<span class="text-xs text-slate-500 italic"> — {item.obs}</span>{/if}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={resolvendoId === item.id}
+                    onclick={() => resolverReposicao(item.id)}
+                    class="text-xs text-primary-700 hover:underline shrink-0 disabled:opacity-40"
+                  ><Icon nome={resolvendoId === item.id ? 'loader' : 'check'} size={12} spin={resolvendoId === item.id} /> Resolvido</button>
+                </div>
+              {/each}
+            </div>
+          </Card>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  {#if data.tendencia.length > 0}
+    <Card padding="md">
+      <h2 class="font-semibold mb-2">Tendência de colocações</h2>
+      <div class="space-y-1 text-sm">
+        {#each data.tendencia as t}
+          <div class="flex items-center justify-between">
+            <span class="text-slate-600">{t.mes} · {t.publicacao_nome}</span>
+            <span class="font-medium">{t.qtd}</span>
+          </div>
+        {/each}
+      </div>
+    </Card>
   {/if}
 
   <Card padding="md">

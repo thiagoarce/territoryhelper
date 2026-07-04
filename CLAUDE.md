@@ -79,19 +79,19 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
 | `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/perfil`, consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
 | `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações"), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
+| `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
-### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-B + TP-F + P-A com UI)
+### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-B + TP-D + TP-F + P-A com UI)
 
 Schema já definido/commitado, **código a construir** por incremento
 (blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
-ainda sem UI própria: `tp_relatorios`/`tp_relatorio_itens` (relatório de
-fim de agendamento, 045), `notificacoes`/`push_subscriptions` (push,
-046). Ao ganhar UI, mover pro modelo de dados acima.
+ainda sem UI própria: `notificacoes`/`push_subscriptions` (push, 046).
+Ao ganhar UI, mover pro modelo de dados acima.
 
 ## Convenções
 
@@ -167,14 +167,16 @@ fim de agendamento, 045), `notificacoes`/`push_subscriptions` (push,
   (`/admin/tp/equipamentos`, CRUD tipos/peças/carrinhos, catálogo real
   S-80-T), **Publicadores** (`/admin/tp/publicadores`, roster read-only de
   disponibilidade)
-- **Publicações** (`/publicacoes`, P-A) — fila de `pedidos_publicacao`
+- **Publicações** (`/publicacoes`, P-A + TP-D) — fila de `pedidos_publicacao`
   (filtro pendentes/entregue/cancelado/todos), avançar status + notas do
-  servo; suprimento de campanha é só um link pra `/admin/campanha`. Fica
-  FORA de `/admin/*` de propósito — a rota é guardada por
-  `exigirServoPub` (admin OU `profiles.servo_publicacoes`), não por role,
-  pra um servo publicador comum (não-admin) conseguir acessar. Entrada no
-  drawer admin (ícone `inbox`); pro servo não-admin, card "Área do servo"
-  em `/publicador`.
+  servo; **Reposição** (itens de relatório de TP != ok ainda não
+  resolvidos, agrupados por carrinho/ponto, botão Resolvido) + card
+  simples de tendência (soma de qtd colocada por publicação/mês);
+  suprimento de campanha é só um link pra `/admin/campanha`. Fica FORA de
+  `/admin/*` de propósito — a rota é guardada por `exigirServoPub` (admin
+  OU `profiles.servo_publicacoes`), não por role, pra um servo publicador
+  comum (não-admin) conseguir acessar. Entrada no drawer admin (ícone
+  `inbox`); pro servo não-admin, card "Área do servo" em `/publicador`.
 
 ## Telas principais (modo campo — publicador + dirigente)
 
@@ -190,7 +192,9 @@ fim de agendamento, 045), `notificacoes`/`push_subscriptions` (push,
   Google Maps), 📸 PNG export, ✂ Criar parte (seleciona um arranjo que eu
   dirijo + subset de quadras pra repartir com um publicador).
 - **Arranjo** (`/publicador/arranjo`) — agenda da semana com arranjos +
-  turnos de TP (inscrever/sair). Todo publicador pode sinalizar "Quero
+  turnos de TP (inscrever/sair + botão "Relatório do turno" quando a
+  data já passou e o publicador participou — checklist de peças do tipo
+  do carrinho, TP-D). Todo publicador pode sinalizar "Quero
   participar" (inscrição antecipada); dirigente ganha **✂ Repartir
   território** (nos arranjos dele, cria/apaga `arranjo_partes`) +
   **👋 Assumir dirigência** (nos arranjos dos outros) + link público.
