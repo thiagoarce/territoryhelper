@@ -1,18 +1,21 @@
 -- ============================================================================
 -- 045_tp_relatorios.sql — TP completo, incremento TP-D: relatório de fim de
--- turno. No fim do turno o publicador reporta o estado das peças (físicas +
--- literatura) do carrinho e as colocações. O que não estiver 'ok' vira a
--- fila de Reposição na área do servo.
+-- agendamento. Ao fim do agendamento, o publicador reporta o estado das
+-- peças (físicas + literatura) do carrinho e as colocações. O que não
+-- estiver 'ok' vira a fila de Reposição na área do servo.
+--
+-- Referencia `tp_agendamentos` (não mais `tp_turnos`, que foi substituído
+-- pela 043 no pivô carrinho-como-calendário).
 -- ============================================================================
 
 create table if not exists tp_relatorios (
   id bigserial primary key,
-  turno_id bigint not null references tp_turnos(id) on delete cascade,
+  agendamento_id bigint not null references tp_agendamentos(id) on delete cascade,
   data date not null,
   publicador_id uuid not null references profiles(id) on delete cascade,
   notas text,
   criado_em timestamptz not null default now(),
-  unique (turno_id, data)             -- 1 relatório por ocorrência
+  unique (agendamento_id, data)        -- 1 relatório por ocorrência
 );
 create index if not exists tp_relatorios_data_idx on tp_relatorios(data);
 
@@ -36,7 +39,7 @@ alter table tp_relatorio_itens enable row level security;
 
 drop policy if exists tp_relatorios_select on tp_relatorios;
 create policy tp_relatorios_select on tp_relatorios for select using (auth.uid() is not null);
--- A action valida que o publicador estava na escala da ocorrência; a RLS
+-- A action valida que o publicador estava no agendamento da ocorrência; a RLS
 -- garante que ninguém cria relatório em nome de outro.
 drop policy if exists tp_relatorios_insert on tp_relatorios;
 create policy tp_relatorios_insert on tp_relatorios for insert
