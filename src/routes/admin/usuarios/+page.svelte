@@ -16,6 +16,7 @@
   let abaAtiva: 'lista' | 'criar' | 'convite' | 'lote' = $state('lista');
   let usuarioEditando: UsuarioComEmail | null = $state(null);
   let busca = $state('');
+  let enviandoTesteId: string | null = $state(null);
 
   const usuariosFiltrados = $derived(
     !busca.trim()
@@ -94,7 +95,29 @@
             <td class="px-3 py-2">
               {#if u.ativo}<span class="text-green-600">●</span>{:else}<span class="text-slate-400">○</span>{/if}
             </td>
-            <td class="px-3 py-2 text-right">
+            <td class="px-3 py-2 text-right whitespace-nowrap">
+              <form
+                method="POST"
+                action="?/enviarNotificacaoTeste"
+                class="inline"
+                use:enhance={() => {
+                  enviandoTesteId = u.id;
+                  return async ({ result, update }) => {
+                    await update();
+                    enviandoTesteId = null;
+                    if (result.type === 'success') toast.success(`Notificação de teste enviada pra ${u.nome}`);
+                    else toast.error(String((result.data as any)?.erro || 'Falhou'));
+                  };
+                }}
+              >
+                <input type="hidden" name="id" value={u.id} />
+                <button
+                  disabled={enviandoTesteId === u.id}
+                  class="text-sm text-slate-500 hover:underline mr-3 disabled:opacity-40"
+                >
+                  {enviandoTesteId === u.id ? 'Enviando...' : 'Testar notif.'}
+                </button>
+              </form>
               <button
                 onclick={() => (usuarioEditando = u)}
                 class="text-sm text-primary-700 hover:underline"
