@@ -67,9 +67,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     status: c.status
   }));
 
-  const carrinhoIdParam = Number(url.searchParams.get('carrinho') ?? 0);
-  const carrinhoSelecionadoId =
-    carrinhos.find((c) => c.id === carrinhoIdParam)?.id ?? carrinhos[0]?.id ?? null;
+  // Chips de carrinho agora são filtro multi-seleção (não single-select) —
+  // sem o parâmetro na URL, todos aparecem sobrepostos na grade (cada um
+  // com sua cor). `?carrinhos=` vazio é um estado válido (usuário
+  // desmarcou tudo), por isso o default só entra quando o parâmetro nem
+  // existe.
+  const carrinhosParam = url.searchParams.get('carrinhos');
+  const carrinhosSelecionados: number[] =
+    carrinhosParam !== null
+      ? carrinhosParam
+          .split(',')
+          .map(Number)
+          .filter((id) => carrinhos.some((c) => c.id === id))
+      : carrinhos.map((c) => c.id);
 
   const pontos: Record<number, TpPontoLite> = {};
   for (const p of (pontosRes.data ?? []) as any[]) pontos[p.id] = { id: p.id, nome: p.nome, endereco: p.endereco };
@@ -81,9 +91,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const agendamentos = (agendamentosRes.data ?? []) as AgendamentoBase[];
   const excecoes = (excecoesRes.data ?? []) as ExcecaoBase[];
   const todasOcorrencias = ocorrenciasAgendamentoEntre(agendamentos, excecoes, range.isoIni, range.isoFim);
-  const ocorrencias: OcorrenciaAgendamento[] = carrinhoSelecionadoId
-    ? todasOcorrencias.filter((o) => o.carrinho_id === carrinhoSelecionadoId)
-    : [];
+  const ocorrencias: OcorrenciaAgendamento[] = todasOcorrencias.filter((o) =>
+    carrinhosSelecionados.includes(o.carrinho_id)
+  );
 
   const participantesPorOcorrencia: Record<string, TpParticipanteLinha[]> = {};
   for (const r of (participantesRes.data ?? []) as any[]) {
@@ -97,17 +107,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const disponibilidade = (dispRes.data ?? []) as TpDisponibilidadeLinha[];
 
-  // Agendamentos "base" (não expandidos) do carrinho selecionado — pra
+  // Agendamentos "base" (não expandidos) dos carrinhos selecionados — pra
   // popular o sheet de editar série (recorrência, data inicial, etc.).
-  const agendamentosDoCarrinho = carrinhoSelecionadoId
-    ? agendamentos.filter((a) => a.carrinho_id === carrinhoSelecionadoId)
-    : [];
+  const agendamentosDoCarrinho = agendamentos.filter((a) => carrinhosSelecionados.includes(a.carrinho_id));
 
   return {
     periodo,
     range,
     carrinhos,
-    carrinhoSelecionadoId,
+    carrinhosSelecionados,
     pontos,
     publicadores,
     ocorrencias,

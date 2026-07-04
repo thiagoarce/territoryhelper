@@ -161,9 +161,12 @@ principais.
   tipo/status, concluir/reabrir/cancelar/excluir, link público, realocar
   quadras não terminadas pra outro arranjo)
 - **TP** (`/admin/tp/*`, navegação em 5 seções — sidebar no desktop, sheet
-  no mobile): **Planner** (`/admin/tp`, agenda por equipamento selecionado,
-  criar/editar/cancelar agendamento com recorrência tipo Google Calendar,
-  designar publicador), **Visão geral** (`/admin/tp/geral`, todos os
+  no mobile): **Planner** (`/admin/tp`, grade semanal tipo Google Calendar —
+  `TpGradeSemana.svelte` — clicar/arrastar num horário vazio cria
+  agendamento, arrastar a borda de um card ajusta início/fim; chips de
+  equipamento são filtro multi-seleção, sobrepondo cores no mesmo grid;
+  criar/editar/cancelar com recorrência, designar publicador; mês continua
+  em lista), **Visão geral** (`/admin/tp/geral`, todos os
   equipamentos sobrepostos, coloridos por `cor`), **Pontos**
   (`/admin/tp/pontos`, CRUD nome/endereço/GPS), **Equipamentos**
   (`/admin/tp/equipamentos`, CRUD tipos/peças/carrinhos, catálogo real
