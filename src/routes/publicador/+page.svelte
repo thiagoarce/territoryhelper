@@ -1,7 +1,10 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
   import { deserialize } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
+  import BottomSheet from '$lib/ui/BottomSheet.svelte';
+  import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/server/queries';
 
@@ -51,6 +54,18 @@
     hora_fim: string;
     ponto_nome: string;
   }
+  interface MeuPedidoPublicacao {
+    id: number;
+    publicacao_nome: string | null;
+    descricao: string | null;
+    qtd: number;
+    status: 'aberto' | 'pedido' | 'entregue' | 'cancelado';
+    criado_em: string;
+  }
+  interface PublicacaoLite {
+    id: number;
+    nome: string;
+  }
 
   let {
     data
@@ -66,6 +81,9 @@
       arranjosQueDirijo: ArranjoQueDirijo[];
       cartasDesignadas: CartaDesignada[];
       meusAgendamentosTp: MeuAgendamentoTp[];
+      meusPedidosPublicacao: MeuPedidoPublicacao[];
+      catalogoPublicacoes: PublicacaoLite[];
+      souServoPub: boolean;
       minhaRole: string | undefined;
     };
   } = $props();
@@ -93,6 +111,49 @@
       toast.error(String(parsed.data?.erro || 'Falhou gerar link'));
     }
   }
+
+  // Pedido de publicação (P-A) — catálogo OU descrição livre
+  let sheetPedido = $state(false);
+  let usaDescricaoLivre = $state(false);
+  let enviandoPedido = $state(false);
+  let cancelandoPedidoId = $state<number | null>(null);
+
+  async function enviarPedido(e: SubmitEvent) {
+    e.preventDefault();
+    enviandoPedido = true;
+    const fd = new FormData(e.target as HTMLFormElement);
+    const res = await fetch('?/pedirPublicacao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    enviandoPedido = false;
+    if (parsed.type === 'success') {
+      toast.success('Pedido enviado');
+      sheetPedido = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
+
+  async function cancelarPedido(id: number) {
+    cancelandoPedidoId = id;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/cancelarPedidoPublicacao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    cancelandoPedidoId = null;
+    if (parsed.type === 'success') { toast.success('Cancelado'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  const PEDIDO_STATUS_LABEL: Record<string, string> = {
+    aberto: 'Aberto', pedido: 'Pedido feito', entregue: 'Entregue', cancelado: 'Cancelado'
+  };
+  const PEDIDO_STATUS_CLASSE: Record<string, string> = {
+    aberto: 'bg-slate-100 text-slate-700',
+    pedido: 'bg-blue-100 text-blue-700',
+    entregue: 'bg-green-100 text-green-700',
+    cancelado: 'bg-red-100 text-red-700'
+  };
 
   let aba: 'abertas' | 'concluidas' = $state('abertas');
   const lista = $derived(aba === 'abertas' ? data.abertas : data.concluidas);
@@ -241,6 +302,42 @@
     </div>
   </div>
 {/if}
+
+{#if data.souServoPub}
+  <a href="/publicacoes" class="mb-4 flex items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-50 p-3 hover:bg-amber-100 transition-colors">
+    <span class="text-sm font-bold text-amber-900"><Icon nome="inbox" size={14} /> Área do servo — pedidos de publicação</span>
+    <Icon nome="chevron-right" size={16} class="text-amber-700" />
+  </a>
+{/if}
+
+<div class="mb-4 rounded-xl border border-slate-200 bg-white p-3">
+  <div class="flex items-center justify-between gap-2">
+    <div class="text-xs uppercase tracking-wider font-bold text-slate-600"><Icon nome="inbox" size={14} /> Publicações</div>
+    <button type="button" onclick={() => (sheetPedido = true)} class="text-xs font-medium text-primary-700 hover:underline">+ Pedir publicação</button>
+  </div>
+  {#if data.meusPedidosPublicacao.length > 0}
+    <div class="mt-2 space-y-1">
+      {#each data.meusPedidosPublicacao as p (p.id)}
+        <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
+          <span class="truncate">{p.publicacao_nome ?? p.descricao} <span class="text-slate-400">×{p.qtd}</span></span>
+          <span class="flex items-center gap-1.5 shrink-0">
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full {PEDIDO_STATUS_CLASSE[p.status]}">{PEDIDO_STATUS_LABEL[p.status]}</span>
+            {#if p.status === 'aberto'}
+              <button
+                type="button"
+                disabled={cancelandoPedidoId === p.id}
+                onclick={() => cancelarPedido(p.id)}
+                class="text-red-600 hover:underline disabled:opacity-40"
+              ><Icon nome={cancelandoPedidoId === p.id ? 'loader' : 'x'} size={12} spin={cancelandoPedidoId === p.id} /></button>
+            {/if}
+          </span>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <p class="mt-2 text-xs text-slate-400">Nenhum pedido ainda.</p>
+  {/if}
+</div>
 
 {#if data.campanhaAtiva?.status === 'planejada'}
   {@const c = data.campanhaAtiva}
@@ -425,3 +522,36 @@
   {/if}
 </div>
 </div>
+
+<BottomSheet bind:open={sheetPedido} title="Pedir publicação">
+  <form onsubmit={enviarPedido} class="space-y-3">
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm font-medium">O que você precisa</span>
+        <label class="flex items-center gap-1.5 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={usaDescricaoLivre}
+            onchange={(e) => (usaDescricaoLivre = (e.target as HTMLInputElement).checked)}
+            class="w-3.5 h-3.5 rounded"
+          /> Não está no catálogo
+        </label>
+      </div>
+      {#if usaDescricaoLivre}
+        <input name="descricao" required placeholder="Ex: Bíblia em russo" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      {:else}
+        <select name="publicacao_id" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">— selecione —</option>
+          {#each data.catalogoPublicacoes as p}
+            <option value={p.id}>{p.nome}</option>
+          {/each}
+        </select>
+      {/if}
+    </div>
+    <div>
+      <label for="ped-qtd" class="block text-sm font-medium mb-1">Quantidade</label>
+      <input id="ped-qtd" name="qtd" type="number" min="1" value="1" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <Button variant="primary" type="submit" loading={enviandoPedido} class="w-full">Enviar pedido</Button>
+  </form>
+</BottomSheet>

@@ -78,22 +78,20 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso` |
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
 | `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/perfil`, consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
+| `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações"), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
-### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-B + TP-F com UI)
+### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-B + TP-F + P-A com UI)
 
 Schema já definido/commitado, **código a construir** por incremento
 (blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
-ainda sem UI própria: `pedidos_publicacao` + `profiles.servo_publicacoes` +
-`is_servo_pub()` (área do servo, mais ampla que só TP — qualquer
-publicação da congregação — 044), `tp_relatorios`/`tp_relatorio_itens`
-(relatório de fim de agendamento, 045), `notificacoes`/`push_subscriptions`
-(push, 046). Ao ganhar UI, mover pro modelo de dados acima e listar as
-telas (`/admin/publicacoes`) nas telas principais.
+ainda sem UI própria: `tp_relatorios`/`tp_relatorio_itens` (relatório de
+fim de agendamento, 045), `notificacoes`/`push_subscriptions` (push,
+046). Ao ganhar UI, mover pro modelo de dados acima.
 
 ## Convenções
 
@@ -169,14 +167,24 @@ telas (`/admin/publicacoes`) nas telas principais.
   (`/admin/tp/equipamentos`, CRUD tipos/peças/carrinhos, catálogo real
   S-80-T), **Publicadores** (`/admin/tp/publicadores`, roster read-only de
   disponibilidade)
+- **Publicações** (`/publicacoes`, P-A) — fila de `pedidos_publicacao`
+  (filtro pendentes/entregue/cancelado/todos), avançar status + notas do
+  servo; suprimento de campanha é só um link pra `/admin/campanha`. Fica
+  FORA de `/admin/*` de propósito — a rota é guardada por
+  `exigirServoPub` (admin OU `profiles.servo_publicacoes`), não por role,
+  pra um servo publicador comum (não-admin) conseguir acessar. Entrada no
+  drawer admin (ícone `inbox`); pro servo não-admin, card "Área do servo"
+  em `/publicador`.
 
 ## Telas principais (modo campo — publicador + dirigente)
 
 - **Home/carteira** (`/publicador`) — card destacado se campanha ativa +
   card "🎪 Você dirige" (arranjos que dirijo, com link "Repartir →") +
   card amarelo "🚶 Pregação em grupo — sua parte" (via `arranjo_partes`)
-  + card de turnos de TP nos próximos 7 dias. Carteira dividida em
-  Território pessoal / ✉ Cartas designadas + lista TCEs abertos.
+  + card de turnos de TP nos próximos 7 dias + card "Publicações" (pedir
+  publicação do catálogo ou avulsa + status dos meus pedidos — P-A).
+  Carteira dividida em Território pessoal / ✉ Cartas designadas + lista
+  TCEs abertos.
 - **Mapa** (`/publicador/mapa`) — só dirigente/admin. Mapa map-driven pra
   concluir quadra, POIs (Estacionar perto → marcadores no mapa + rota
   Google Maps), 📸 PNG export, ✂ Criar parte (seleciona um arranjo que eu

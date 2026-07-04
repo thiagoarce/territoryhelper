@@ -9,6 +9,7 @@ export interface Profile {
   nome: string;
   role: Role;
   ativo: boolean;
+  servo_publicacoes: boolean;
   criado_em: string;
   atualizado_em: string;
 }
