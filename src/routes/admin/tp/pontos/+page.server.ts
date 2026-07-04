@@ -8,15 +8,23 @@ export interface TpPonto {
   endereco: string | null;
   notas: string | null;
   ativo: boolean;
+  pendente: boolean;
+  criado_por_nome: string | null;
   lat: number | null;
   lng: number | null;
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const { data: pontosRes } = await locals.supabase
-    .from('tp_pontos_geo')
-    .select('id, nome, endereco, notas, ativo, geo_geojson')
-    .order('nome');
+  const [{ data: pontosRes }, { data: profs }] = await Promise.all([
+    locals.supabase
+      .from('tp_pontos_geo')
+      .select('id, nome, endereco, notas, ativo, pendente, criado_por, geo_geojson')
+      // pendentes primeiro — precisam de atenção do admin
+      .order('pendente', { ascending: false })
+      .order('nome'),
+    locals.supabase.from('profiles').select('id, nome')
+  ]);
+  const nomePorId = new Map((profs ?? []).map((p: any) => [p.id, p.nome as string]));
 
   const pontos: TpPonto[] = ((pontosRes ?? []) as any[]).map((p) => ({
     id: p.id,
@@ -24,6 +32,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     endereco: p.endereco,
     notas: p.notas,
     ativo: p.ativo,
+    pendente: p.pendente,
+    criado_por_nome: p.criado_por ? (nomePorId.get(p.criado_por) ?? '?') : null,
     lat: p.geo_geojson?.coordinates?.[1] ?? null,
     lng: p.geo_geojson?.coordinates?.[0] ?? null
   }));
@@ -77,5 +87,20 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('tp_pontos').delete().eq('id', id);
     if (error) return fail(400, { erro: 'Esse ponto tem agendamento(s) vinculado(s) — desative-o em vez de excluir, ou troque o ponto dos agendamentos primeiro.' });
     return { ok: true, msg: 'Ponto removido' };
+  },
+
+  // TP-E: aprova ponto sugerido pelo publicador — vira ativo e some da fila
+  aprovarPonto: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('tp_pontos')
+      .update({ pendente: false, ativo: true })
+      .eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Ponto aprovado' };
   }
 };

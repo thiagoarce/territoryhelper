@@ -82,7 +82,13 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
   catálogo pra publicação da campanha é criada sob demanda (find-or-create
   por `tipo_id`+`publicacao_id`) na hora de salvar, não author manualmente
   antes.
-- ⏳ Código (actions/telas): incrementos TP-E, PUSH-A a construir.
+- ✅ **TP-E concluído**, com uma migration nova pequena: **`049_tp_pontos_geo_pendente.sql`**
+  (a spec dizia "sem migration", mas a view `tp_pontos_geo` — criada na
+  036, antes de `pendente`/`criado_por` existirem na tabela — não expunha
+  essas duas colunas; sem migration o admin não teria como ver quais
+  pontos são sugestão pendente). Coluna nova no FINAL do select, como
+  manda o anti-padrão do CLAUDE.md.
+- ⏳ Código (actions/telas): incremento PUSH-A a construir.
 
 ## Regras inegociáveis (CLAUDE.md — o que morde)
 - **Svelte 5 runes**: em `$effect` leia as deps ANTES de qualquer
@@ -413,7 +419,7 @@ relatório + itens.
 **Verificar**: publicador relata "Sentinela zerada" + 5 colocações; item
 aparece na Reposição; servo marca resolvido e some da fila.
 
-## TP-E — Solicitar ponto na minha área · sem migration (colunas na 041)
+## TP-E — Solicitar ponto na minha área · migration 049 (view) · ✅ CONCLUÍDO
 **Server** (`/publicador/arranjo/+page.server.ts`): action `sugerirPonto`
 (nome, endereco, lat, lng) → insere `tp_pontos` com `pendente=true,
 ativo=false, criado_por=uid` (RLS `tp_pontos_sugerir` já permite).
