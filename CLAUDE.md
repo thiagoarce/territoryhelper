@@ -74,26 +74,29 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacoes` | catálogo de publicações (nome/código/ativo) usado pelo suprimento e como "publicação principal" de um período |
 | `tces` / `tce_unidades` | Território Comercial Especial (convex hull) |
 | `cartas_tokens` | link público de cartas |
-| `tp_pontos` / `tp_turnos` / `tp_escala` | Testemunho público: pontos fixos (carrinho), grade semanal de turnos por dia/hora/vagas, e inscrição do publicador num turno numa data (`/admin/tp` + inscrição em `/publicador/arranjo`) |
+| `tp_carrinho_tipos` / `tp_pecas_catalogo` / `tp_carrinhos` | Equipamentos de TP (carrinho/display/quiosque/mesa) e catálogo de peças (física/literatura), com `cor` por equipamento pra "visão geral" |
+| `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso` |
+| `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
-### Em construção — TP completo (migrations 041–046 escritas; UI pendente)
+### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-F com UI)
 
 Schema já definido/commitado, **código a construir** por incremento
 (blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
-novas (existem assim que a migration é aplicada via `/admin/dev/sql`):
-`tp_carrinho_tipos`/`tp_pecas_catalogo`/`tp_carrinhos` (equipamentos, 041),
-`tp_preferencias`/`tp_disponibilidade` (disponibilidade + transporte, 042),
-`tp_turno_ocorrencias` + `tp_escala.origem`/`tp_turnos.carrinho_id` (escala
-designável, 043), `pedidos_publicacao` + `profiles.servo_publicacoes` +
-`is_servo_pub()` (área do servo, 044), `tp_relatorios`/`tp_relatorio_itens`
-(relatório de turno, 045), `notificacoes`/`push_subscriptions` (push, 046).
-Ao ganhar UI, mover pro modelo de dados acima e listar as telas
-(`/admin/publicacoes`, abas de `/admin/tp`) nas telas principais.
+ainda sem UI própria: `tp_preferencias`/`tp_disponibilidade`
+(disponibilidade + transporte, 042 — schema existe, consulta read-only em
+`/admin/tp/publicadores`, mas o publicador ainda não tem tela em `/perfil`
+pra cadastrar a própria disponibilidade — TP-B), `pedidos_publicacao` +
+`profiles.servo_publicacoes` + `is_servo_pub()` (área do servo, mais ampla
+que só TP — qualquer publicação da congregação — 044), `tp_relatorios`/
+`tp_relatorio_itens` (relatório de fim de agendamento, 045),
+`notificacoes`/`push_subscriptions` (push, 046). Ao ganhar UI, mover pro
+modelo de dados acima e listar as telas (`/admin/publicacoes`) nas telas
+principais.
 
 ## Convenções
 
@@ -157,9 +160,15 @@ Ao ganhar UI, mover pro modelo de dados acima e listar as telas
   designações pessoais/cartas + arranjos + TCEs num só lugar (filtros por
   tipo/status, concluir/reabrir/cancelar/excluir, link público, realocar
   quadras não terminadas pra outro arranjo)
-- **TP** (`/admin/tp`) — pontos fixos de testemunho público (nome/endereço/
-  GPS) + grade semanal de turnos por ponto (dia/hora/vagas) + indicador de
-  "buraco" na escala
+- **TP** (`/admin/tp/*`, navegação em 5 seções — sidebar no desktop, sheet
+  no mobile): **Planner** (`/admin/tp`, agenda por equipamento selecionado,
+  criar/editar/cancelar agendamento com recorrência tipo Google Calendar,
+  designar publicador), **Visão geral** (`/admin/tp/geral`, todos os
+  equipamentos sobrepostos, coloridos por `cor`), **Pontos**
+  (`/admin/tp/pontos`, CRUD nome/endereço/GPS), **Equipamentos**
+  (`/admin/tp/equipamentos`, CRUD tipos/peças/carrinhos, catálogo real
+  S-80-T), **Publicadores** (`/admin/tp/publicadores`, roster read-only de
+  disponibilidade)
 
 ## Telas principais (modo campo — publicador + dirigente)
 

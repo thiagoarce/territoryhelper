@@ -44,8 +44,8 @@
     prazo: string | null;
     predios: { id: number; nome: string | null; logradouro: string; numero: string; qtd_entregues: number; qtd_aptos: number }[];
   }
-  interface MeuTurnoTp {
-    turno_id: number;
+  interface MeuAgendamentoTp {
+    agendamento_id: number;
     data: string;
     hora_inicio: string;
     hora_fim: string;
@@ -65,7 +65,7 @@
       minhasPartes: MinhaParte[];
       arranjosQueDirijo: ArranjoQueDirijo[];
       cartasDesignadas: CartaDesignada[];
-      meusTurnosTp: MeuTurnoTp[];
+      meusAgendamentosTp: MeuAgendamentoTp[];
       minhaRole: string | undefined;
     };
   } = $props();
@@ -228,11 +228,11 @@
   </div>
 {/if}
 
-{#if data.meusTurnosTp.length > 0}
+{#if data.meusAgendamentosTp.length > 0}
   <div class="mb-4 rounded-xl border-2 border-teal-400 bg-teal-50 p-3">
     <div class="text-xs uppercase tracking-wider font-bold text-teal-900 mb-2"><Icon nome="megaphone" size={14} /> Seus turnos de TP (próximos 7 dias)</div>
     <div class="flex flex-wrap gap-1.5">
-      {#each data.meusTurnosTp as t}
+      {#each data.meusAgendamentosTp as t}
         <a href="/publicador/arranjo" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-teal-300 bg-white text-teal-900 hover:bg-teal-100">
           <span class="font-medium">{t.ponto_nome}</span>
           <span class="text-teal-700">{fmtDia(t.data)} · {t.hora_inicio.substring(0, 5)}</span>

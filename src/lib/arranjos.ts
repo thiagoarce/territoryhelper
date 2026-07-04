@@ -91,46 +91,10 @@ export function ocorrenciasEntre<A extends ArranjoBase>(
   });
 }
 
-// Turnos de TP são recorrência semanal pura (sem data_inicio/data_fim) —
-// expande pro range igual arranjo recorrente, mas mais simples.
-export interface TurnoBase {
-  id: number;
-  ponto_id: number;
-  dia_semana: number;
-  hora_inicio: string;
-  hora_fim: string;
-  vagas: number;
-  ativo: boolean;
-}
-
-export interface OcorrenciaTurno<T extends TurnoBase = TurnoBase> {
-  turno: T;
-  data: string;
-  dia_semana: number;
-}
-
-export function ocorrenciasTurnoEntre<T extends TurnoBase>(
-  turnos: T[],
-  isoIni: string,
-  isoFim: string
-): OcorrenciaTurno<T>[] {
-  const out: OcorrenciaTurno<T>[] = [];
-  const ini = new Date(isoIni + 'T12:00:00');
-  const fim = new Date(isoFim + 'T12:00:00');
-  for (const t of turnos) {
-    if (!t.ativo) continue;
-    const d = new Date(ini);
-    while (d.getDay() !== t.dia_semana && d <= fim) d.setDate(d.getDate() + 1);
-    while (d <= fim) {
-      out.push({ turno: t, data: d.toISOString().slice(0, 10), dia_semana: t.dia_semana });
-      d.setDate(d.getDate() + 7);
-    }
-  }
-  return out.sort((x, y) => {
-    if (x.data !== y.data) return x.data < y.data ? -1 : 1;
-    return (x.turno.hora_inicio ?? '') > (y.turno.hora_inicio ?? '') ? 1 : -1;
-  });
-}
+// Recorrência de Testemunho Público mudou pro modelo de agendamentos
+// carrinho-centrico (ver $lib/tp-agendamentos.ts) — a antiga
+// `ocorrenciasTurnoEntre`/`TurnoBase` (grade semanal fixa de tp_turnos)
+// foi removida junto com o pivô TP-F.
 
 export function agruparPorDia<A extends ArranjoBase>(ocs: Ocorrencia<A>[]): Record<number, Ocorrencia<A>[]> {
   const m: Record<number, Ocorrencia<A>[]> = {};

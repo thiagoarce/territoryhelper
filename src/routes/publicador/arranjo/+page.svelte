@@ -7,10 +7,12 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, ocorrenciasTurnoEntre, type Periodo } from '$lib/arranjos';
+  import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
+  import { ocorrenciasAgendamentoEntre } from '$lib/tp-agendamentos';
+  import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import { page } from '$app/stores';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { ArranjoLinha, ModalidadeLite, ParteLinha, TpTurnoLinha, TpPontoLite, TpEscalaLinha } from './$types';
+  import type { ArranjoLinha, ModalidadeLite, ParteLinha, TpCarrinhoLite, TpPontoLite, TpParticipanteLinha } from './$types';
 
   interface PredioChip {
     id: number;
@@ -34,9 +36,11 @@
       quadrasGeo: QuadraGeo[];
       minhaId: string;
       podeCoordenar: boolean;
-      tpTurnos: TpTurnoLinha[];
+      tpAgendamentos: AgendamentoBase[];
+      tpExcecoes: ExcecaoBase[];
+      tpCarrinhos: Record<number, TpCarrinhoLite>;
       tpPontos: Record<number, TpPontoLite>;
-      tpEscala: TpEscalaLinha[];
+      tpParticipantes: TpParticipanteLinha[];
     };
   } = $props();
 
@@ -48,22 +52,24 @@
   const range = $derived(rangeDoPeriodo(periodo));
   const ocorrencias = $derived(ocorrenciasEntre<ArranjoLinha>(data.arranjos, range.isoIni, range.isoFim));
   const ocPorData = $derived(agruparPorData(ocorrencias));
-  const ocTurnos = $derived(ocorrenciasTurnoEntre<TpTurnoLinha>(data.tpTurnos, range.isoIni, range.isoFim));
-  const turnosPorData = $derived.by(() => {
-    const m: Record<string, typeof ocTurnos> = {};
-    for (const oc of ocTurnos) (m[oc.data] ||= []).push(oc);
+  const ocAgendamentos = $derived(
+    ocorrenciasAgendamentoEntre(data.tpAgendamentos, data.tpExcecoes, range.isoIni, range.isoFim)
+  );
+  const agendamentosPorData = $derived.by(() => {
+    const m: Record<string, typeof ocAgendamentos> = {};
+    for (const oc of ocAgendamentos) (m[oc.data] ||= []).push(oc);
     return m;
   });
   const datasOrdenadas = $derived(
-    Array.from(new Set([...Object.keys(ocPorData), ...Object.keys(turnosPorData)])).sort()
+    Array.from(new Set([...Object.keys(ocPorData), ...Object.keys(agendamentosPorData)])).sort()
   );
   const modById = $derived(Object.fromEntries(data.modalidades.map((m) => [m.id, m] as const)));
 
-  // Quem já se inscreveu em cada ocorrência (turno_id + data) de TP
+  // Quem já se inscreveu em cada ocorrência (agendamento_id + data) de TP
   const inscritosPorOcorrencia = $derived.by(() => {
     const m: Record<string, { publicador_id: string; nome: string }[]> = {};
-    for (const e of data.tpEscala) {
-      const key = e.turno_id + '|' + e.data;
+    for (const e of data.tpParticipantes) {
+      const key = e.agendamento_id + '|' + e.data;
       (m[key] ||= []).push({ publicador_id: e.publicador_id, nome: data.nomesPorId[e.publicador_id] ?? '?' });
     }
     return m;
@@ -75,29 +81,29 @@
     return acaoEmCurso === key;
   }
 
-  async function inscreverTurno(turnoId: number, dataOc: string) {
-    const key = `turno:${turnoId}:${dataOc}`;
+  async function inscreverAgendamento(agendamentoId: number, dataOc: string) {
+    const key = `agendamento:${agendamentoId}:${dataOc}`;
     acaoEmCurso = key;
     const fd = new FormData();
-    fd.append('turno_id', String(turnoId));
+    fd.append('agendamento_id', String(agendamentoId));
     fd.append('data', dataOc);
-    const res = await fetch('?/inscreverTurno', { method: 'POST', body: fd });
+    const res = await fetch('?/inscreverAgendamento', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     acaoEmCurso = null;
     if (parsed.type === 'success') { toast.success('Inscrito'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
 
-  async function sairTurno(turnoId: number, dataOc: string) {
-    const key = `turno:${turnoId}:${dataOc}`;
+  async function sairAgendamento(agendamentoId: number, dataOc: string) {
+    const key = `agendamento:${agendamentoId}:${dataOc}`;
     acaoEmCurso = key;
     const fd = new FormData();
-    fd.append('turno_id', String(turnoId));
+    fd.append('agendamento_id', String(agendamentoId));
     fd.append('data', dataOc);
-    const res = await fetch('?/sairTurno', { method: 'POST', body: fd });
+    const res = await fetch('?/sairAgendamento', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     acaoEmCurso = null;
-    if (parsed.type === 'success') { toast.success('Saiu do turno'); await invalidateAll(); }
+    if (parsed.type === 'success') { toast.success('Saiu do agendamento'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
   const partesPorArranjo = $derived.by(() => {
@@ -261,40 +267,37 @@
   {:else}
     <div class="grid gap-3">
       {#each datasOrdenadas as dataIso}
-        {#if (ocPorData[dataIso] ?? []).length > 0 || (turnosPorData[dataIso] ?? []).length > 0}
+        {#if (ocPorData[dataIso] ?? []).length > 0 || (agendamentosPorData[dataIso] ?? []).length > 0}
           <div>
             <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">
               {new Date(dataIso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
             </div>
             <div class="grid gap-2">
-              {#each turnosPorData[dataIso] ?? [] as oct (oct.turno.id + '-' + oct.data)}
-                {@const t = oct.turno}
-                {@const ponto = data.tpPontos[t.ponto_id]}
-                {@const inscritos = inscritosPorOcorrencia[t.id + '|' + oct.data] ?? []}
+              {#each agendamentosPorData[dataIso] ?? [] as oc (oc.agendamento_id + '-' + oc.data)}
+                {@const carrinho = oc.carrinho_id ? data.tpCarrinhos[oc.carrinho_id] : null}
+                {@const ponto = oc.ponto_id ? data.tpPontos[oc.ponto_id] : null}
+                {@const inscritos = inscritosPorOcorrencia[oc.agendamento_id + '|' + oc.data] ?? []}
                 {@const souInscrito = inscritos.some((i) => i.publicador_id === data.minhaId)}
                 <Card padding="md">
                   <div class="flex items-start gap-3">
                     <span class="w-2 self-stretch rounded shrink-0 bg-teal-500"></span>
                     <div class="flex-1 min-w-0">
                       <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-semibold">{ponto?.nome ?? 'Testemunho público'}</span>
-                        <span class="text-[10px] bg-teal-100 text-teal-700 px-1.5 rounded"><Icon nome="megaphone" size={10} /> TP</span>
+                        <span class="font-semibold">{ponto?.nome ?? oc.ponto_avulso ?? 'Testemunho público'}</span>
+                        <span class="text-[10px] bg-teal-100 text-teal-700 px-1.5 rounded"><Icon nome="megaphone" size={10} /> TP{#if carrinho} · {carrinho.nome}{/if}</span>
                       </div>
                       <div class="text-sm text-slate-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                        <span><Icon nome="clock" size={14} /> {t.hora_inicio.substring(0, 5)}–{t.hora_fim.substring(0, 5)}</span>
+                        <span><Icon nome="clock" size={14} /> {oc.hora_inicio.substring(0, 5)}–{oc.hora_fim.substring(0, 5)}</span>
                         {#if ponto?.endereco}<span class="truncate"><Icon nome="map-pin" size={14} /> {ponto.endereco}</span>{/if}
                       </div>
                       <div class="mt-1 text-xs text-slate-500">
-                        {inscritos.length}/{t.vagas} vaga(s) preenchida(s)
-                        {#if inscritos.length > 0} — {inscritos.map((i) => i.nome).join(', ')}{/if}
+                        {#if inscritos.length > 0}{inscritos.map((i) => i.nome).join(', ')}{:else}Ninguém inscrito ainda{/if}
                       </div>
                       <div class="mt-2">
                         {#if souInscrito}
-                          <Button variant="secondary" size="sm" loading={isBusy(`turno:${t.id}:${oct.data}`)} onclick={() => sairTurno(t.id, oct.data)}>Sair do turno</Button>
-                        {:else if inscritos.length < t.vagas}
-                          <Button variant="primary" size="sm" loading={isBusy(`turno:${t.id}:${oct.data}`)} onclick={() => inscreverTurno(t.id, oct.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
+                          <Button variant="secondary" size="sm" loading={isBusy(`agendamento:${oc.agendamento_id}:${oc.data}`)} onclick={() => sairAgendamento(oc.agendamento_id, oc.data)}>Sair do agendamento</Button>
                         {:else}
-                          <span class="text-xs text-slate-400">Sem vagas</span>
+                          <Button variant="primary" size="sm" loading={isBusy(`agendamento:${oc.agendamento_id}:${oc.data}`)} onclick={() => inscreverAgendamento(oc.agendamento_id, oc.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
                         {/if}
                       </div>
                     </div>

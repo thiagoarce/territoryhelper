@@ -16,8 +16,8 @@ export interface CampanhaAtiva {
   notasSuprimento: string | null;
 }
 
-export interface MeuTurnoTp {
-  turno_id: number;
+export interface MeuAgendamentoTp {
+  agendamento_id: number;
   data: string;
   hora_inicio: string;
   hora_fim: string;
@@ -56,10 +56,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       .order('data', { nullsFirst: false })
       .limit(5),
     locals.supabase.from('profiles').select('id, nome'),
-    // Meus turnos de TP nos próximos 7 dias — seção "Seus turnos de TP" no home
+    // Meus agendamentos de TP nos próximos 7 dias — seção "Seus turnos de TP" no home
     locals.supabase
-      .from('tp_escala')
-      .select('turno_id, data, tp_turnos!inner(hora_inicio, hora_fim, ponto_id, tp_pontos!inner(nome))')
+      .from('tp_agendamento_participantes')
+      .select('agendamento_id, data, tp_agendamentos!inner(hora_inicio, hora_fim, ponto_avulso, tp_pontos(nome))')
       .eq('publicador_id', locals.user!.id)
       .gte('data', hoje)
       .lte('data', em7dias)
@@ -209,12 +209,12 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
-  const meusTurnosTp: MeuTurnoTp[] = ((meusTurnosRes.data ?? []) as any[]).map((r) => ({
-    turno_id: r.turno_id,
+  const meusAgendamentosTp: MeuAgendamentoTp[] = ((meusTurnosRes.data ?? []) as any[]).map((r) => ({
+    agendamento_id: r.agendamento_id,
     data: r.data,
-    hora_inicio: r.tp_turnos.hora_inicio,
-    hora_fim: r.tp_turnos.hora_fim,
-    ponto_nome: r.tp_turnos.tp_pontos?.nome ?? '?'
+    hora_inicio: r.tp_agendamentos.hora_inicio,
+    hora_fim: r.tp_agendamentos.hora_fim,
+    ponto_nome: r.tp_agendamentos.tp_pontos?.nome ?? r.tp_agendamentos.ponto_avulso ?? '?'
   }));
 
   return {
@@ -227,7 +227,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     minhasPartes,
     arranjosQueDirijo,
     cartasDesignadas,
-    meusTurnosTp,
+    meusAgendamentosTp,
     minhaRole: locals.profile?.role
   };
 };
