@@ -65,7 +65,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 
 | Tabela | O que guarda |
 |---|---|
-| `profiles` | usuário + `role` (publicador/dirigente/admin) |
+| `profiles` | usuário + `role` (publicador/dirigente/admin); capacidades independentes de role (`servo_publicacoes`, ver P-A) empilham por cima, não substituem role |
+| `convites` | Link público `/convite/<token>` só pra DEFINIR senha — o publicador (`auth.users`+`profiles`) já é criado na hora do convite (senha descartável, `email_confirm=false`), via `convites.publicador_id`. Isso permite designar território pra alguém antes de ele abrir o link. Revogar convite não-usado apaga o usuário provisório junto. `/admin/usuarios` gera 1 ou em lote (cola `nome,email,role` por linha) |
 | `territorios` | id text, nome, cor, status |
 | `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao`, `reservada_campanha_id` (quarentena — some do pool geral enquanto reservada pra campanha) |
 | `quadras_conclusoes` | histórico append-only de conclusões (data, autor) |

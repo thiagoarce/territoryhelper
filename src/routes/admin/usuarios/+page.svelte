@@ -214,6 +214,65 @@
       </button>
     </form>
 
+    <form
+      method="POST"
+      action="?/criarConvitesEmLote"
+      use:enhance={() => async ({ update }) => { await update(); await invalidateAll(); }}
+      class="max-w-md space-y-3 rounded-lg border border-slate-200 bg-white p-4"
+    >
+      <h3 class="font-semibold">Convites em lote</h3>
+      <label for="conv-lote-csv" class="block text-xs text-slate-500">
+        Uma linha por pessoa: <code class="text-slate-600">nome,email,role</code>
+        — role opcional (default: publicador). Gera todos os links de uma vez pra
+        você mandar por WhatsApp.
+      </label>
+      <textarea
+        id="conv-lote-csv"
+        name="csv"
+        rows="6"
+        placeholder={`Maria Silva,maria@email.com
+João Costa,joao@email.com,dirigente`}
+        class="w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+      ></textarea>
+      <button class="w-full rounded bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">
+        Gerar convites em lote
+      </button>
+    </form>
+
+    {#if form?.loteConvites}
+      {@const lc = form.loteConvites}
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <div class="mb-2 flex items-center justify-between">
+          <div class="text-sm font-medium">Resultado: {lc.sucessos} de {lc.total} convites criados</div>
+          {#if lc.sucessos > 0}
+            <button
+              type="button"
+              onclick={async () => {
+                const linhas = lc.resultados
+                  .filter((r: any) => r.status === 'ok')
+                  .map((r: any) => `${r.nome}: ${window.location.origin}${r.url}`);
+                try { await navigator.clipboard.writeText(linhas.join('\n')); toast.success('Links copiados'); }
+                catch { toast.info(linhas.join('\n')); }
+              }}
+              class="text-xs text-primary-700 hover:underline"
+            ><Icon nome="clipboard" size={14} /> Copiar todos os links</button>
+          {/if}
+        </div>
+        <ul class="space-y-1 text-sm">
+          {#each lc.resultados as r}
+            <li class="flex gap-2 items-start">
+              <span class:text-green-700={r.status === 'ok'} class:text-red-700={r.status === 'erro'}>
+                <Icon nome={r.status === 'ok' ? 'check' : 'x'} size={14} />
+              </span>
+              <span class="font-mono text-xs text-slate-500">L{r.linha}</span>
+              <span class="font-medium">{r.nome}</span>
+              <span class="text-slate-600 flex-1 min-w-0 truncate">— {r.msg}</span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
     {#if data.convites.length > 0}
       <div>
         <h3 class="text-sm font-semibold mb-2 text-slate-700">Convites recentes</h3>
