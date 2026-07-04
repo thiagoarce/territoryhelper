@@ -38,10 +38,30 @@ export const load: PageServerLoad = async () => {
     .from('convites')
     .select('id, email, nome, role, token, expira_em, usado_em, criado_em')
     .order('criado_em', { ascending: false })
-    .limit(50);
+    .limit(200);
 
   return { usuarios, convites: convites ?? [] };
 };
+
+// Cria o usuário (auth + profile via trigger) na hora, com senha
+// descartável — a pessoa nunca vê essa senha, só define a dela mesma ao
+// abrir o link do convite. É isso que permite designar território pra
+// quem ainda não abriu o convite (o publicador já existe de verdade).
+async function criarUsuarioProvisorio(email: string, nome: string, role: Role) {
+  const senhaDescartavel = crypto.randomUUID() + crypto.randomUUID();
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password: senhaDescartavel,
+    email_confirm: false,
+    user_metadata: { nome }
+  });
+  if (error) return { erro: error.message };
+  const { error: upErr } = await supabaseAdmin
+    .from('profiles')
+    .upsert({ id: data.user.id, nome, role, ativo: true });
+  if (upErr) return { erro: upErr.message };
+  return { publicadorId: data.user.id };
+}
 
 export const actions: Actions = {
   // Cria 1 usuário (email + senha + nome + role).
@@ -94,8 +114,10 @@ export const actions: Actions = {
     return { ok: true, msg: 'Atualizado' };
   },
 
-  // Cria um convite — gera token único, irmão acessa /convite/[token] pra
-  // definir email+senha.
+  // Cria um convite — o publicador já é criado agora (auth+profile, senha
+  // descartável), não só quando ele aceitar. Isso permite designar
+  // território pra ele antes de abrir o link. Gera token único, irmão
+  // acessa /convite/[token] só pra DEFINIR a própria senha.
   criarConvite: async ({ request, locals }) => {
     const fd = await request.formData();
     const email = String(fd.get('email') ?? '').trim().toLowerCase();
@@ -103,19 +125,82 @@ export const actions: Actions = {
     const role = String(fd.get('role') ?? 'publicador') as Role;
     if (!email || !nome) return fail(400, { erro: 'email e nome obrigatórios' });
     if (!ROLES_VALIDAS.includes(role)) return fail(400, { erro: 'Role inválida' });
+
+    const criado = await criarUsuarioProvisorio(email, nome, role);
+    if (criado.erro) return fail(400, { erro: criado.erro });
+
     const { data, error } = await supabaseAdmin
       .from('convites')
-      .insert({ email, nome, role, criado_por: locals.user?.id ?? null })
+      .insert({ email, nome, role, publicador_id: criado.publicadorId, criado_por: locals.user?.id ?? null })
       .select('token')
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Convite criado', token: data.token };
   },
 
+  // Convites em lote — cola "nome,email,role" (role opcional) e gera todos
+  // os links de uma vez, pra mandar por WhatsApp. Cada linha já cria o
+  // publicador provisório (mesma lógica do criarConvite acima).
+  criarConvitesEmLote: async ({ request, locals }) => {
+    const fd = await request.formData();
+    const csv = String(fd.get('csv') ?? '').trim();
+    if (!csv) return fail(400, { erro: 'Lista vazia' });
+
+    const linhas = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const resultados: { linha: number; nome: string; email: string; status: 'ok' | 'erro'; msg: string; url?: string }[] = [];
+
+    for (let i = 0; i < linhas.length; i++) {
+      const partes = linhas[i].split(',').map((p) => p.trim());
+      const [nome, email, roleRaw] = partes;
+      const role = (roleRaw || 'publicador') as Role;
+
+      if (!nome || !email) {
+        resultados.push({ linha: i + 1, nome: nome || '?', email: email || '?', status: 'erro', msg: 'Faltam campos (nome,email,role)' });
+        continue;
+      }
+      if (!ROLES_VALIDAS.includes(role)) {
+        resultados.push({ linha: i + 1, nome, email, status: 'erro', msg: `Role inválida: ${role}` });
+        continue;
+      }
+
+      const criado = await criarUsuarioProvisorio(email.toLowerCase(), nome, role);
+      if (criado.erro) {
+        resultados.push({ linha: i + 1, nome, email, status: 'erro', msg: criado.erro });
+        continue;
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('convites')
+        .insert({ email: email.toLowerCase(), nome, role, publicador_id: criado.publicadorId, criado_por: locals.user?.id ?? null })
+        .select('token')
+        .single();
+      if (error) {
+        resultados.push({ linha: i + 1, nome, email, status: 'erro', msg: 'Publicador criado mas convite falhou: ' + error.message });
+        continue;
+      }
+
+      resultados.push({ linha: i + 1, nome, email, status: 'ok', msg: `Convite criado (${role})`, url: `/convite/${data.token}` });
+    }
+
+    const sucessos = resultados.filter((r) => r.status === 'ok').length;
+    return { ok: true, loteConvites: { resultados, sucessos, total: resultados.length } };
+  },
+
+  // Revoga um convite ainda não usado — como o publicador já foi criado
+  // (provisório) na hora do convite, apaga o usuário junto (senão fica um
+  // fantasma sem dono, ninguém nunca vai conseguir logar nele mesmo).
   revogarConvite: async ({ request }) => {
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { data: convite } = await supabaseAdmin
+      .from('convites')
+      .select('publicador_id, usado_em')
+      .eq('id', id)
+      .maybeSingle();
+    if (convite?.publicador_id && !convite.usado_em) {
+      await supabaseAdmin.auth.admin.deleteUser(convite.publicador_id);
+    }
     const { error } = await supabaseAdmin.from('convites').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Convite revogado' };

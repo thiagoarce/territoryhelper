@@ -5,7 +5,7 @@ import { supabaseAdmin } from '$lib/server/supabase-admin';
 export const load: PageServerLoad = async ({ params }) => {
   const { data: convite } = await supabaseAdmin
     .from('convites')
-    .select('id, email, nome, role, expira_em, usado_em')
+    .select('id, email, nome, role, publicador_id, expira_em, usado_em')
     .eq('token', params.token)
     .maybeSingle();
   if (!convite) return { erro: 'Convite não encontrado' };
@@ -24,33 +24,26 @@ export const actions: Actions = {
 
     const { data: convite, error: errC } = await supabaseAdmin
       .from('convites')
-      .select('id, email, nome, role, expira_em, usado_em')
+      .select('id, email, nome, role, publicador_id, expira_em, usado_em')
       .eq('token', params.token)
       .maybeSingle();
     if (errC || !convite) return fail(400, { erro: 'Convite inválido' });
     if (convite.usado_em) return fail(400, { erro: 'Convite já usado' });
 
-    // Cria usuário
-    const { data: user, error: errU } = await supabaseAdmin.auth.admin.createUser({
-      email: convite.email,
+    // O publicador (auth.users + profile) já existe desde a criação do
+    // convite (provisório, com senha descartável) — só falta ele definir
+    // a própria senha e confirmar o email.
+    if (!convite.publicador_id) return fail(400, { erro: 'Convite antigo sem publicador vinculado — peça um novo convite' });
+    const { error: errU } = await supabaseAdmin.auth.admin.updateUserById(convite.publicador_id, {
       password: senha,
-      email_confirm: true,
-      user_metadata: { nome: convite.nome }
+      email_confirm: true
     });
     if (errU) return fail(400, { erro: errU.message });
-
-    // Atualiza profile
-    await supabaseAdmin.from('profiles').upsert({
-      id: user.user.id,
-      nome: convite.nome,
-      role: convite.role,
-      ativo: true
-    });
 
     // Marca convite como usado
     await supabaseAdmin
       .from('convites')
-      .update({ usado_em: new Date().toISOString(), usado_por: user.user.id })
+      .update({ usado_em: new Date().toISOString(), usado_por: convite.publicador_id })
       .eq('id', convite.id);
 
     // Login automático
