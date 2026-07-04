@@ -677,6 +677,9 @@
 <!-- Sheet: Catálogo de publicações -->
 <BottomSheet bind:open={sheetPublicacoes} title="Catálogo de publicações">
   <div class="space-y-3">
+    <a href="/publicacoes" class="block text-xs text-primary-700 hover:underline">
+      Catálogo completo (categorias, estoque, imagem de capa) em Publicações →
+    </a>
     <div class="flex gap-2">
       <input bind:value={novaPubNome} placeholder="Nome (ex: Convite da Celebração)" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       <input bind:value={novaPubCodigo} placeholder="Código (opcional)" class="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm" />

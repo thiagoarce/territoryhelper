@@ -14,6 +14,7 @@ export interface CampanhaAtiva {
   status: StatusCampanha;
   diasParaComecar: number;
   notasSuprimento: string | null;
+  imagemUrl: string | null;
 }
 
 export interface MeuAgendamentoTp {
@@ -36,6 +37,14 @@ export interface MeuPedidoPublicacao {
 export interface PublicacaoLite {
   id: number;
   nome: string;
+  categoria: string;
+  qtd_estoque: number;
+  imagem_url: string | null;
+}
+
+export interface NecessidadeRegularLinha {
+  publicacao_id: number;
+  qtd: number;
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -43,12 +52,12 @@ export const load: PageServerLoad = async ({ locals }) => {
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
   const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10);
 
-  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes] = await Promise.all([
+  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes, necessidadeRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
       .from('campanhas')
-      .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa, publicacao_id')
+      .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa, publicacao_id, publicacoes(imagem_url)')
       .eq('ativa', true)
       .maybeSingle(),
     // Partes de arranjo que me incluem (dupla/trio) — válidas pela data do arranjo
@@ -88,7 +97,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('publicador_id', locals.user!.id)
       .order('criado_em', { ascending: false })
       .limit(10),
-    locals.supabase.from('publicacoes').select('id, nome').eq('ativo', true).order('nome')
+    locals.supabase.from('publicacoes').select('id, nome, categoria, qtd_estoque, imagem_url').eq('ativo', true).order('categoria').order('nome'),
+    // Necessidade regular de revistas (Despertai/Sentinela) — preferência informativa, sem status
+    locals.supabase
+      .from('publicador_necessidade_regular')
+      .select('publicacao_id, qtd')
+      .eq('publicador_id', locals.user!.id)
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
   // no campo). A visão de todas as designações mora no mapa estratégico e
@@ -148,6 +162,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       data_alvo: c.data_alvo,
       meta_semanal: c.meta_semanal,
       notasSuprimento,
+      imagemUrl: c.publicacoes?.imagem_url ?? null,
       concluidas_no_periodo: conclNoPeriodo,
       total_meta: quadras.length,
       status: statusCampanha(c),
@@ -248,6 +263,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     criado_em: p.criado_em
   }));
   const catalogoPublicacoes = (catalogoRes.data ?? []) as PublicacaoLite[];
+  const necessidadeRegular = (necessidadeRes.data ?? []) as NecessidadeRegularLinha[];
   // Card "Área do servo" só pro servo NÃO-admin — admin já acessa pelo drawer.
   const souServoPub = locals.profile?.role !== 'admin' && !!locals.profile?.servo_publicacoes;
 
@@ -264,6 +280,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     meusAgendamentosTp,
     meusPedidosPublicacao,
     catalogoPublicacoes,
+    necessidadeRegular,
     souServoPub,
     minhaRole: locals.profile?.role
   };
@@ -321,5 +338,23 @@ export const actions: Actions = {
       .eq('publicador_id', locals.user.id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Pedido cancelado' };
+  },
+
+  // "Normalmente preciso de N por edição" — Despertai/Sentinela chegam
+  // pela via normal, isso é só uma preferência informativa pro servo, não
+  // um pedido com status (diferente de pedirPublicacao acima).
+  salvarNecessidadeRegular: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const publicacaoId = Number(fd.get('publicacao_id') ?? 0);
+    const qtd = Number(fd.get('qtd') ?? 0);
+    if (!publicacaoId) return fail(400, { erro: 'publicacao_id obrigatório' });
+    if (qtd < 0) return fail(400, { erro: 'Quantidade inválida' });
+    const { error } = await locals.supabase.from('publicador_necessidade_regular').upsert(
+      { publicador_id: locals.user.id, publicacao_id: publicacaoId, qtd, atualizado_em: new Date().toISOString() },
+      { onConflict: 'publicador_id,publicacao_id' }
+    );
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Salvo' };
   }
 };

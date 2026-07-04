@@ -19,6 +19,7 @@
     status: 'planejada' | 'em_andamento' | 'encerrada';
     diasParaComecar: number;
     notasSuprimento: string | null;
+    imagemUrl: string | null;
   }
 
   interface MinhaParte {
@@ -65,6 +66,13 @@
   interface PublicacaoLite {
     id: number;
     nome: string;
+    categoria: string;
+    qtd_estoque: number;
+    imagem_url: string | null;
+  }
+  interface NecessidadeRegularLinha {
+    publicacao_id: number;
+    qtd: number;
   }
 
   let {
@@ -83,6 +91,7 @@
       meusAgendamentosTp: MeuAgendamentoTp[];
       meusPedidosPublicacao: MeuPedidoPublicacao[];
       catalogoPublicacoes: PublicacaoLite[];
+      necessidadeRegular: NecessidadeRegularLinha[];
       souServoPub: boolean;
       minhaRole: string | undefined;
     };
@@ -117,6 +126,21 @@
   let usaDescricaoLivre = $state(false);
   let enviandoPedido = $state(false);
   let cancelandoPedidoId = $state<number | null>(null);
+  let publicacaoSelecionadaId = $state<number | null>(null);
+
+  const CATEGORIA_LABEL: Record<string, string> = {
+    biblia: 'Bíblias', livro: 'Livros', brochura: 'Brochuras e livretos',
+    folheto: 'Folhetos e convites', cartao_visita: 'Cartões de visita',
+    revista: 'Revistas', formulario: 'Formulários e acessórios', outro: 'Outros'
+  };
+  const catalogoAgrupado = $derived.by(() => {
+    const m: Record<string, PublicacaoLite[]> = {};
+    for (const p of data.catalogoPublicacoes) (m[p.categoria] ??= []).push(p);
+    return m;
+  });
+  const publicacaoSelecionada = $derived(
+    data.catalogoPublicacoes.find((p) => p.id === publicacaoSelecionadaId) ?? null
+  );
 
   async function enviarPedido(e: SubmitEvent) {
     e.preventDefault();
@@ -128,10 +152,32 @@
     if (parsed.type === 'success') {
       toast.success('Pedido enviado');
       sheetPedido = false;
+      publicacaoSelecionadaId = null;
       await invalidateAll();
     } else {
       toast.error(String(parsed.data?.erro || 'Falhou'));
     }
+  }
+
+  // Necessidade regular de revistas (Despertai/Sentinela) — preferência, sem status
+  let necessidadeEmEdicao: Record<number, number> = $state({});
+  let salvandoNecessidadeId = $state<number | null>(null);
+  function necessidadeAtual(publicacaoId: number): number {
+    if (publicacaoId in necessidadeEmEdicao) return necessidadeEmEdicao[publicacaoId];
+    return data.necessidadeRegular.find((n) => n.publicacao_id === publicacaoId)?.qtd ?? 0;
+  }
+  async function salvarNecessidade(publicacaoId: number, delta: number) {
+    const novaQtd = Math.max(0, necessidadeAtual(publicacaoId) + delta);
+    necessidadeEmEdicao[publicacaoId] = novaQtd;
+    salvandoNecessidadeId = publicacaoId;
+    const fd = new FormData();
+    fd.append('publicacao_id', String(publicacaoId));
+    fd.append('qtd', String(novaQtd));
+    const res = await fetch('?/salvarNecessidadeRegular', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoNecessidadeId = null;
+    if (parsed.type !== 'success') toast.error(String(parsed.data?.erro || 'Falhou'));
+    await invalidateAll();
   }
 
   async function cancelarPedido(id: number) {
@@ -337,18 +383,37 @@
   {:else}
     <p class="mt-2 text-xs text-slate-400">Nenhum pedido ainda.</p>
   {/if}
+
+  {#if (catalogoAgrupado['revista'] ?? []).length > 0}
+    <div class="mt-3 pt-3 border-t border-slate-100">
+      <div class="text-xs text-slate-500 mb-1.5">Normalmente preciso de (Despertai/Sentinela chegam pela via normal):</div>
+      <div class="flex flex-wrap gap-2">
+        {#each catalogoAgrupado['revista'] as p (p.id)}
+          <div class="flex items-center gap-1.5 text-sm bg-slate-50 rounded-lg px-2 py-1">
+            <span class="truncate">{p.nome}</span>
+            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, -1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">−</button>
+            <span class="w-5 text-center font-medium">{necessidadeAtual(p.id)}</span>
+            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, 1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">+</button>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>
 
 {#if data.campanhaAtiva?.status === 'planejada'}
   {@const c = data.campanhaAtiva}
   <a
     href="/publicador/arranjo?periodo=tres_meses"
-    class="block mb-4 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
+    class="flex items-center gap-3 mb-4 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
   >
-    <div class="text-xs opacity-80 uppercase tracking-wider">Campanha se aproxima</div>
-    <div class="text-lg font-bold truncate">Faltam {c.diasParaComecar} dia(s) — {c.nome}</div>
-    <div class="mt-1 text-xs opacity-90">
-      Início {new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · veja os arranjos da campanha →
+    {#if c.imagemUrl}<img src={c.imagemUrl} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0 shadow" />{/if}
+    <div class="flex-1 min-w-0">
+      <div class="text-xs opacity-80 uppercase tracking-wider">Campanha se aproxima</div>
+      <div class="text-lg font-bold truncate">Faltam {c.diasParaComecar} dia(s) — {c.nome}</div>
+      <div class="mt-1 text-xs opacity-90">
+        Início {new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · veja os arranjos da campanha →
+      </div>
     </div>
   </a>
 {:else if data.campanhaAtiva?.status === 'em_andamento'}
@@ -359,6 +424,7 @@
     class="block mb-4 rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
   >
     <div class="flex items-center justify-between gap-2">
+      {#if c.imagemUrl}<img src={c.imagemUrl} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0 shadow" />{/if}
       <div class="flex-1 min-w-0">
         <div class="text-xs opacity-80 uppercase tracking-wider">Campanha ativa</div>
         <div class="text-lg font-bold truncate">{c.nome}</div>
@@ -540,12 +606,33 @@
       {#if usaDescricaoLivre}
         <input name="descricao" required placeholder="Ex: Bíblia em russo" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       {:else}
-        <select name="publicacao_id" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <select
+          name="publicacao_id"
+          required
+          bind:value={publicacaoSelecionadaId}
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
           <option value="">— selecione —</option>
-          {#each data.catalogoPublicacoes as p}
-            <option value={p.id}>{p.nome}</option>
+          {#each Object.entries(catalogoAgrupado) as [cat, itens]}
+            <optgroup label={CATEGORIA_LABEL[cat] ?? cat}>
+              {#each itens as p}
+                <option value={p.id}>{p.nome}</option>
+              {/each}
+            </optgroup>
           {/each}
         </select>
+        {#if publicacaoSelecionada}
+          <div class="mt-2 flex items-center gap-2">
+            {#if publicacaoSelecionada.imagem_url}
+              <img src={publicacaoSelecionada.imagem_url} alt="" class="w-10 h-10 rounded object-cover shrink-0" />
+            {/if}
+            {#if publicacaoSelecionada.qtd_estoque > 0}
+              <p class="text-xs text-green-700 bg-green-50 rounded-lg px-2 py-1.5 flex-1">
+                <Icon nome="check" size={12} /> Já temos {publicacaoSelecionada.qtd_estoque} em estoque — fale com o servo de publicações pra pegar direto.
+              </p>
+            {/if}
+          </div>
+        {/if}
       {/if}
     </div>
     <div>
