@@ -78,7 +78,7 @@
       .map((oc) => {
         let ini = horaParaMinutos(oc.hora_inicio);
         let fim = horaParaMinutos(oc.hora_fim);
-        if (arrastando && arrastando.tipo !== 'criar' && arrastando.oc === oc) {
+        if (arrastando && (arrastando.tipo === 'ini' || arrastando.tipo === 'fim') && arrastando.oc === oc) {
           ini = arrastando.inicio;
           fim = arrastando.fim;
         }
@@ -101,8 +101,13 @@
   }
 
   type Arrasto =
+    // 'criar-pendente': ainda não sabemos se é um scroll horizontal (mobile)
+    // ou um drag vertical de criar — decide em `mover` pelo eixo dominante.
+    | { tipo: 'criar-pendente'; dia: string; colIndex: number; startX: number; startY: number; origem: number }
     | { tipo: 'criar'; dia: string; colIndex: number; origem: number; inicio: number; fim: number }
     | { tipo: 'ini' | 'fim'; dia: string; colIndex: number; oc: OcorrenciaAgendamento; inicio: number; fim: number };
+
+  const LIMIAR_EIXO_PX = 8; // px de movimento antes de decidir horizontal vs. vertical
 
   let colEls: (HTMLDivElement | null)[] = $state([]);
   let arrastando: Arrasto | null = $state(null);
@@ -116,11 +121,12 @@
     return Math.round(clampado / PASSO_MIN) * PASSO_MIN;
   }
 
+  // Não decide ainda se é criar ou rolar a semana (mobile) — só registra o
+  // ponto de partida. `mover` decide pelo eixo dominante do gesto.
   function iniciarCriacao(e: PointerEvent, dia: string, colIndex: number) {
     if (e.button !== 0 && e.button !== undefined) return;
-    e.preventDefault();
     const m = minutosDoY(colIndex, e.clientY);
-    arrastando = { tipo: 'criar', dia, colIndex, origem: m, inicio: m, fim: m };
+    arrastando = { tipo: 'criar-pendente', dia, colIndex, startX: e.clientX, startY: e.clientY, origem: m };
   }
 
   function iniciarResize(e: PointerEvent, borda: 'ini' | 'fim', oc: OcorrenciaAgendamento, colIndex: number) {
@@ -138,6 +144,28 @@
 
   function mover(e: PointerEvent) {
     if (!arrastando) return;
+    if (arrastando.tipo === 'criar-pendente') {
+      const dx = e.clientX - arrastando.startX;
+      const dy = e.clientY - arrastando.startY;
+      if (Math.abs(dx) > LIMIAR_EIXO_PX && Math.abs(dx) >= Math.abs(dy)) {
+        // Gesto horizontal — é rolagem da semana (mobile), não criar. Deixa
+        // o navegador rolar (touch-action: pan-x na coluna) e aborta.
+        arrastando = null;
+        return;
+      }
+      if (Math.abs(dy) < LIMIAR_EIXO_PX) return; // ainda indeciso, espera mais
+      e.preventDefault();
+      const m = minutosDoY(arrastando.colIndex, e.clientY);
+      arrastando = {
+        tipo: 'criar',
+        dia: arrastando.dia,
+        colIndex: arrastando.colIndex,
+        origem: arrastando.origem,
+        inicio: Math.min(m, arrastando.origem),
+        fim: Math.max(m, arrastando.origem)
+      };
+      return;
+    }
     e.preventDefault();
     const m = minutosDoY(arrastando.colIndex, e.clientY);
     if (arrastando.tipo === 'criar') {
@@ -149,10 +177,17 @@
     }
   }
 
+  // Fim normal do gesto (pointerup) — finaliza criar/ajustar.
   function soltar() {
     if (!arrastando) return;
     const a = arrastando;
     arrastando = null;
+    if (a.tipo === 'criar-pendente') {
+      // Sem movimento (ou só um tap/click) — cria com duração padrão de 1h.
+      const fim = Math.min(horaMax * 60, a.origem + 60);
+      onCriar(a.dia, minutosParaHora(a.origem), minutosParaHora(fim));
+      return;
+    }
     if (a.tipo === 'criar') {
       let fim = a.fim;
       if (fim - a.inicio < PASSO_MIN) fim = Math.min(horaMax * 60, a.inicio + 60);
@@ -165,6 +200,13 @@
     const fimOriginal = horaParaMinutos(a.oc.hora_fim);
     if (a.inicio === inicioOriginal && a.fim === fimOriginal) return;
     onAjustarHorario(a.oc, minutosParaHora(a.inicio), minutosParaHora(a.fim));
+  }
+
+  // Fim ANORMAL do gesto (pointercancel — ex: o navegador assumiu como
+  // rolagem nativa). Só aborta, nunca finaliza como se tivesse soltado —
+  // senão um swipe horizontal vira uma criação/ajuste espúrio.
+  function cancelarGesto() {
+    arrastando = null;
   }
 
   function clicarCard(oc: OcorrenciaAgendamento) {
@@ -183,44 +225,50 @@
   });
 </script>
 
-<svelte:window onpointermove={mover} onpointerup={soltar} onpointercancel={soltar} />
+<svelte:window onpointermove={mover} onpointerup={soltar} onpointercancel={cancelarGesto} />
 
 <div class="border border-slate-200 rounded-lg overflow-hidden bg-white">
-  <div class="flex border-b border-slate-200 bg-slate-50 overflow-x-auto">
-    <div class="w-9 shrink-0"></div>
-    {#each dias as dia}
-      {@const ehHoje = dia === hojeIso()}
-      {@const d = new Date(dia + 'T12:00:00')}
-      <div class="flex-1 min-w-[92px] text-center py-1.5">
-        <div class="text-[10px] uppercase tracking-wide text-slate-400">{DIAS_SEMANA[d.getDay()]}</div>
-        <div
-          class="text-xs font-medium mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full"
-          class:bg-primary-600={ehHoje}
-          class:text-white={ehHoje}
-          class:text-slate-700={!ehHoje}
-        >{d.getDate()}</div>
-      </div>
-    {/each}
-  </div>
-
-  <div class="flex overflow-x-auto overflow-y-auto" style="max-height: 62vh">
-    <div class="w-9 shrink-0 relative" style="height: {alturaTotal}px">
-      {#each horas as h}
-        <div
-          class="absolute right-1 -translate-y-1/2 text-[10px] text-slate-400"
-          style="top: {(h - horaMin) * ALTURA_HORA}px"
-        >{h}h</div>
+  <!-- Um ÚNICO container rola nos dois eixos — cabeçalho (dias) e coluna de
+       horas ficam sticky dentro dele. Antes eram 2 containers de scroll
+       horizontal separados (cabeçalho vs. grade), que não se moviam juntos
+       e no touch a coluna ficava travada (touch-action:none bloqueava o
+       swipe nativo). -->
+  <div class="overflow-auto" style="max-height: 62vh">
+    <div class="flex border-b border-slate-200 bg-slate-50 sticky top-0 z-20">
+      <div class="w-9 shrink-0 sticky left-0 bg-slate-50 z-30"></div>
+      {#each dias as dia}
+        {@const ehHoje = dia === hojeIso()}
+        {@const d = new Date(dia + 'T12:00:00')}
+        <div class="flex-1 min-w-[92px] text-center py-1.5">
+          <div class="text-[10px] uppercase tracking-wide text-slate-400">{DIAS_SEMANA[d.getDay()]}</div>
+          <div
+            class="text-xs font-medium mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full"
+            class:bg-primary-600={ehHoje}
+            class:text-white={ehHoje}
+            class:text-slate-700={!ehHoje}
+          >{d.getDate()}</div>
+        </div>
       {/each}
     </div>
 
-    {#each dias as dia, colIndex}
-      <div
-        bind:this={colEls[colIndex]}
-        class="flex-1 min-w-[92px] relative border-l border-slate-100"
-        style="height: {alturaTotal}px; touch-action: none;"
-        onpointerdown={(e) => iniciarCriacao(e, dia, colIndex)}
-        role="presentation"
-      >
+    <div class="flex">
+      <div class="w-9 shrink-0 relative sticky left-0 bg-white z-10" style="height: {alturaTotal}px">
+        {#each horas as h}
+          <div
+            class="absolute right-1 -translate-y-1/2 text-[10px] text-slate-400"
+            style="top: {(h - horaMin) * ALTURA_HORA}px"
+          >{h}h</div>
+        {/each}
+      </div>
+
+      {#each dias as dia, colIndex}
+        <div
+          bind:this={colEls[colIndex]}
+          class="flex-1 min-w-[92px] relative border-l border-slate-100 select-none"
+          style="height: {alturaTotal}px; touch-action: pan-x;"
+          onpointerdown={(e) => iniciarCriacao(e, dia, colIndex)}
+          role="presentation"
+        >
         {#each horas as h}
           <div class="absolute left-0 right-0 border-t border-slate-100" style="top: {(h - horaMin) * ALTURA_HORA}px"></div>
         {/each}
@@ -285,5 +333,6 @@
         {/each}
       </div>
     {/each}
+    </div>
   </div>
 </div>
