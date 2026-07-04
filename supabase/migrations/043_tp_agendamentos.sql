@@ -25,6 +25,16 @@
 --     expressar como constraint de banco.
 -- ============================================================================
 
+-- `tp_relatorios`/`tp_relatorio_itens` (045, TP-D) já existiam em produção
+-- referenciando `tp_turnos.id` (turno_id) — versão anterior à reescrita da
+-- 045 pra `agendamento_id`. Sem isso o DROP TABLE tp_turnos abaixo falha com
+-- "cannot drop table tp_turnos because other objects depend on it"
+-- (tp_relatorios_turno_id_fkey). TP-D nunca ganhou UI, então não há
+-- relatório real cadastrado — dropar aqui é seguro; a 045 recria do zero
+-- já no formato novo (agendamento_id).
+drop table if exists tp_relatorio_itens;
+drop table if exists tp_relatorios;
+
 drop table if exists tp_turno_ocorrencias;   -- da 043 antiga, pode nunca ter existido
 drop table if exists tp_escala;
 drop table if exists tp_turnos;
