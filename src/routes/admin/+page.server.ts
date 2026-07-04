@@ -10,6 +10,7 @@ import {
   msgConflitoReserva
 } from '$lib/server/queries';
 import { statusCampanha } from '$lib/campanhas';
+import { criarNotificacao } from '$lib/server/push';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const [quadras, designacoes, publicadores, campanhaRes] = await Promise.all([
@@ -177,6 +178,11 @@ export const actions: Actions = {
       papel: i === 0 ? 'lider' : 'participante'
     }));
     await locals.supabase.from('designacao_publicadores').insert(part);
+    await criarNotificacao(publicadorIds, {
+      titulo: 'Nova designação de território',
+      corpo: `${quadrasIds.length} quadra(s)`,
+      url: '/publicador'
+    });
     return { ok: true, msg: `Designada a ${publicadorIds.length} publicador(es) com ${quadrasIds.length} quadra(s)` };
   },
 

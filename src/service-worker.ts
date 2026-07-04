@@ -72,3 +72,45 @@ async function networkFirst(req: Request): Promise<Response> {
     throw e;
   }
 }
+
+// PUSH-A: o push chega SEM payload (só um "tickle") — busca a notificação
+// mais recente autenticado por cookie de sessão e mostra ela. Evita a
+// criptografia aes128gcm que um payload de push exigiria.
+sw.addEventListener('push', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const res = await fetch('/api/notificacoes?nao_lidas=1', { credentials: 'include' });
+        if (!res.ok) return;
+        const { notificacoes } = (await res.json()) as { notificacoes?: { titulo: string; corpo: string | null; url: string | null }[] };
+        const maisRecente = notificacoes?.[0];
+        if (!maisRecente) return;
+        await sw.registration.showNotification(maisRecente.titulo, {
+          body: maisRecente.corpo ?? undefined,
+          data: { url: maisRecente.url ?? '/' },
+          icon: '/icon-192.svg',
+          tag: 'territoryhelper-notificacao'
+        });
+      } catch {
+        // Sem sessão (usuário deslogou) ou rede fora — silenciosamente ignora.
+      }
+    })()
+  );
+});
+
+sw.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data?.url as string) ?? '/';
+  event.waitUntil(
+    (async () => {
+      const clientsList = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const existente = clientsList.find((c) => 'focus' in c);
+      if (existente) {
+        await (existente as WindowClient).navigate(url);
+        await (existente as WindowClient).focus();
+      } else {
+        await sw.clients.openWindow(url);
+      }
+    })()
+  );
+});

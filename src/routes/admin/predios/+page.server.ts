@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { listarPredios, carregarPredioDetalhado, listarPublicadores, selectAll } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
+import { criarNotificacao } from '$lib/server/push';
 
 export type PredioAdmin = PredioListado & { distancia_m?: number };
 
@@ -179,6 +180,11 @@ export const actions: Actions = {
         .from('designacao_publicadores')
         .insert({ designacao_id: des.id, publicador_id: pubId, papel: 'lider' });
     }
+    await criarNotificacao(publicadores, {
+      titulo: 'Novas cartas designadas',
+      corpo: `${prediosIds.length} prédio(s)`,
+      url: '/publicador'
+    });
     return { ok: true, msg: `Designado ${prediosIds.length} prédio(s) pra ${publicadores.length} publicador(es)` };
   },
 

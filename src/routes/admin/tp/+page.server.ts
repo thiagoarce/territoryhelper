@@ -4,6 +4,7 @@ import { rangeDoPeriodo, type Periodo } from '$lib/arranjos';
 import { ocorrenciasAgendamentoEntre, ocorrenciaConflitante } from '$lib/tp-agendamentos';
 import type { AgendamentoBase, ExcecaoBase, Recorrencia, OcorrenciaAgendamento } from '$lib/tp-agendamentos';
 import { exigirAdmin, carregarAgendamentosEExcecoes, janelaChecagem } from './_shared';
+import { criarNotificacao } from '$lib/server/push';
 
 export interface TpCarrinhoLite {
   id: number;
@@ -302,6 +303,11 @@ export const actions: Actions = {
       origem: 'designacao', designado_por: locals.user!.id
     });
     if (error) return fail(400, { erro: error.message });
+    await criarNotificacao([publicadorId], {
+      titulo: 'Você foi escalado no testemunho público',
+      corpo: new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }),
+      url: '/publicador/arranjo'
+    });
     return { ok: true, msg: 'Publicador designado' };
   },
 

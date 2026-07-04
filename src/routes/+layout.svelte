@@ -6,6 +6,7 @@
   import type { Snippet } from 'svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
   import InstallPrompt from '$lib/components/InstallPrompt.svelte';
+  import NotificacoesBell from '$lib/components/NotificacoesBell.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { invalidateAll } from '$app/navigation';
   import { flushFila, contarFila } from '$lib/offline';
@@ -179,6 +180,7 @@
     <a href="/buscar" aria-label="Buscar" class="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3" stroke-linecap="round"/></svg>
     </a>
+    <NotificacoesBell />
     <a href="/perfil" aria-label="Perfil" class="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7" stroke-linecap="round"/></svg>
     </a>
