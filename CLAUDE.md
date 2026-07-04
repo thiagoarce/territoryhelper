@@ -228,6 +228,11 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   `PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` (Web Push, PUSH-A — gerar
   com `node scripts/gerar-vapid.mjs`; em produção via `wrangler secret put
   VAPID_PRIVATE_KEY` + a pública no `wrangler.toml`/dashboard, não é segredo).
+  **Opcionais**: lidas via `$env/dynamic/*` em `$lib/server/push.ts`/`/perfil`
+  de propósito — faltando, só desativa o Web Push (sino in-app continua),
+  NUNCA quebra o build. Nunca trocar essas duas por `$env/static/*` (já
+  quebrou o deploy inteiro uma vez por isso — static exige a var em tempo
+  de build, dynamic não).
 
 ## Anti-padrões (não cair)
 
