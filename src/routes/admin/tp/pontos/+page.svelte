@@ -15,9 +15,36 @@
   let salvandoPonto = $state(false);
   let buscandoGPS = $state(false);
   let apagandoPonto = $state(false);
+  let processandoId = $state<number | null>(null);
+
+  const pendentes = $derived(data.pontos.filter((p) => p.pendente));
+  const aprovados = $derived(data.pontos.filter((p) => !p.pendente));
 
   function novoPonto() { pontoEdit = null; sheetPonto = true; }
   function editarPonto(p: TpPonto) { pontoEdit = { ...p }; sheetPonto = true; }
+
+  async function aprovarPonto(id: number) {
+    processandoId = id;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/aprovarPonto', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    processandoId = null;
+    if (parsed.type === 'success') { toast.success('Ponto aprovado'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  async function recusarPonto(id: number) {
+    if (!confirm('Recusar (excluir) essa sugestão de ponto?')) return;
+    processandoId = id;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/apagarPonto', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    processandoId = null;
+    if (parsed.type === 'success') { toast.success('Recusado'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
 
   function usarMinhaLocalizacao() {
     if (!navigator.geolocation) { toast.error('GPS indisponível'); return; }
@@ -49,7 +76,33 @@
   <div class="flex justify-end">
     <Button variant="primary" onclick={novoPonto}><Icon nome="plus" size={14} /> Ponto</Button>
   </div>
-  {#each data.pontos as p (p.id)}
+
+  {#if pendentes.length > 0}
+    <div>
+      <div class="text-xs uppercase tracking-wider font-bold text-amber-700 mb-1.5">
+        <Icon nome="hourglass" size={12} /> {pendentes.length} pendente(s)
+      </div>
+      <div class="grid gap-2">
+        {#each pendentes as p (p.id)}
+          <Card padding="md">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex-1 min-w-0">
+                <span class="font-semibold">{p.nome}</span>
+                {#if p.endereco}<div class="text-xs text-slate-500 mt-0.5"><Icon nome="map-pin" size={12} /> {p.endereco}</div>{/if}
+                {#if p.criado_por_nome}<div class="text-xs text-slate-400 mt-0.5">Sugerido por {p.criado_por_nome}</div>{/if}
+              </div>
+              <div class="flex flex-col gap-1 items-end shrink-0">
+                <button disabled={processandoId === p.id} onclick={() => aprovarPonto(p.id)} class="text-xs text-green-700 hover:underline disabled:opacity-40"><Icon nome={processandoId === p.id ? 'loader' : 'check'} size={12} spin={processandoId === p.id} /> Aprovar</button>
+                <button disabled={processandoId === p.id} onclick={() => recusarPonto(p.id)} class="text-xs text-red-600 hover:underline disabled:opacity-40"><Icon nome="x" size={12} /> Recusar</button>
+              </div>
+            </div>
+          </Card>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#each aprovados as p (p.id)}
     <Card padding="md">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">

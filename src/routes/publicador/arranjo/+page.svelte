@@ -354,6 +354,56 @@
     if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Feito')); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
+
+  // === Sheet sugerir ponto de TP (TP-E) ===
+  let sheetSugerirPonto = $state(false);
+  let sugestaoNome = $state('');
+  let sugestaoEndereco = $state('');
+  let sugestaoLat = $state<number | null>(null);
+  let sugestaoLng = $state<number | null>(null);
+  let buscandoGPSSugestao = $state(false);
+  let enviandoSugestao = $state(false);
+
+  function abrirSugerirPonto() {
+    sugestaoNome = '';
+    sugestaoEndereco = '';
+    sugestaoLat = null;
+    sugestaoLng = null;
+    sheetSugerirPonto = true;
+  }
+
+  function usarMinhaLocalizacaoSugestao() {
+    if (!navigator.geolocation) { toast.error('GPS indisponível'); return; }
+    buscandoGPSSugestao = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        sugestaoLat = pos.coords.latitude;
+        sugestaoLng = pos.coords.longitude;
+        buscandoGPSSugestao = false;
+      },
+      () => { toast.error('Falhou pegar GPS'); buscandoGPSSugestao = false; },
+      { enableHighAccuracy: true }
+    );
+  }
+
+  async function enviarSugestaoPonto(e: SubmitEvent) {
+    e.preventDefault();
+    enviandoSugestao = true;
+    const fd = new FormData();
+    fd.append('nome', sugestaoNome);
+    fd.append('endereco', sugestaoEndereco);
+    fd.append('lat', sugestaoLat != null ? String(sugestaoLat) : '');
+    fd.append('lng', sugestaoLng != null ? String(sugestaoLng) : '');
+    const res = await fetch('?/sugerirPonto', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    enviandoSugestao = false;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg || 'Enviado'));
+      sheetSugerirPonto = false;
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
 </script>
 
 <div class="p-4 space-y-3">
@@ -370,6 +420,12 @@
       <span><Icon nome="megaphone" size={14} /> Informe sua disponibilidade pro testemunho público</span>
       <Icon nome="chevron-right" size={14} />
     </a>
+  {/if}
+
+  {#if Object.keys(data.tpCarrinhos).length > 0}
+    <button type="button" onclick={abrirSugerirPonto} class="text-xs text-primary-700 hover:underline">
+      <Icon nome="map-pin" size={12} /> Sugerir ponto de testemunho público
+    </button>
   {/if}
 
   <div class="flex items-center justify-between flex-wrap gap-2">
@@ -770,4 +826,33 @@
       <Button variant="primary" loading={enviandoRelatorio} onclick={enviarRelatorio} class="w-full">Enviar relatório</Button>
     {/if}
   </div>
+</BottomSheet>
+
+<!-- Sheet sugerir ponto de TP (TP-E) -->
+<BottomSheet bind:open={sheetSugerirPonto} title="Sugerir ponto de TP">
+  <form onsubmit={enviarSugestaoPonto} class="space-y-3">
+    <p class="text-xs text-slate-500">O admin vai revisar antes do ponto aparecer nos agendamentos.</p>
+    <div>
+      <label for="sug-nome" class="block text-sm font-medium mb-1">Nome</label>
+      <input id="sug-nome" bind:value={sugestaoNome} required placeholder="Ex: Praça da minha área" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div>
+      <label for="sug-endereco" class="block text-sm font-medium mb-1">Endereço</label>
+      <input id="sug-endereco" bind:value={sugestaoEndereco} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm font-medium">Localização</span>
+        <button type="button" onclick={usarMinhaLocalizacaoSugestao} disabled={buscandoGPSSugestao} class="text-xs text-primary-700 hover:underline">
+          <Icon nome="map-pin" size={12} /> {buscandoGPSSugestao ? 'Buscando...' : 'Usar minha localização'}
+        </button>
+      </div>
+      {#if sugestaoLat != null && sugestaoLng != null}
+        <p class="text-xs text-slate-500">{sugestaoLat.toFixed(5)}, {sugestaoLng.toFixed(5)}</p>
+      {:else}
+        <p class="text-xs text-slate-400">Nenhuma localização marcada ainda.</p>
+      {/if}
+    </div>
+    <Button variant="primary" type="submit" loading={enviandoSugestao} disabled={sugestaoLat == null} class="w-full">Enviar sugestão</Button>
+  </form>
 </BottomSheet>

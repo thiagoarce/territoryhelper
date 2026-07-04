@@ -512,5 +512,25 @@ export const actions: Actions = {
     if (errItens) return fail(400, { erro: errItens.message });
 
     return { ok: true, msg: 'Relatório enviado' };
+  },
+
+  // TP-E: publicador sugere um ponto de TP na área dele — entra pendente
+  // pro admin validar (RLS tp_pontos_sugerir exige exatamente esse shape).
+  sugerirPonto: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const nome = String(fd.get('nome') ?? '').trim();
+    const endereco = String(fd.get('endereco') ?? '').trim() || null;
+    const lat = parseFloat(String(fd.get('lat') ?? ''));
+    const lng = parseFloat(String(fd.get('lng') ?? ''));
+    if (!nome) return fail(400, { erro: 'Nome obrigatório' });
+    if (!isFinite(lat) || !isFinite(lng)) return fail(400, { erro: 'Marque a localização (GPS)' });
+    const { error } = await locals.supabase.from('tp_pontos').insert({
+      nome, endereco,
+      geo: { type: 'Point', coordinates: [lng, lat] },
+      pendente: true, ativo: false, criado_por: locals.user.id
+    });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Sugestão enviada — aguarde o admin aprovar' };
   }
 };

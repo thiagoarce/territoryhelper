@@ -75,7 +75,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tces` / `tce_unidades` | Território Comercial Especial (convex hull) |
 | `cartas_tokens` | link público de cartas |
 | `tp_carrinho_tipos` / `tp_pecas_catalogo` / `tp_carrinhos` | Equipamentos de TP (carrinho/display/quiosque/mesa) e catálogo de peças (física/literatura), com `cor` por equipamento pra "visão geral" |
-| `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso` |
+| `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso`; publicador pode sugerir (`pendente=true, ativo=false`, TP-E) via `/publicador/arranjo`, admin aprova/recusa em `/admin/tp/pontos` |
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
 | `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/perfil`, consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
 | `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações"), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
@@ -86,7 +86,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
-### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-B + TP-D + TP-F + P-A com UI)
+### Em construção — TP completo (migrations 041–049 escritas; TP-A + TP-B + TP-D + TP-E + TP-F + P-A com UI)
 
 Schema já definido/commitado, **código a construir** por incremento
 (blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
