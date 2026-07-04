@@ -12,7 +12,17 @@
   import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import { page } from '$app/stores';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { ArranjoLinha, ModalidadeLite, ParteLinha, TpCarrinhoLite, TpPontoLite, TpParticipanteLinha } from './$types';
+  import type {
+    ArranjoLinha,
+    ModalidadeLite,
+    ParteLinha,
+    TpCarrinhoLite,
+    TpPontoLite,
+    TpParticipanteLinha,
+    TpPecaCatalogoLite,
+    TpRelatorioLinha,
+    CampanhaPublicacaoLite
+  } from './$types';
 
   interface PredioChip {
     id: number;
@@ -42,6 +52,9 @@
       tpPontos: Record<number, TpPontoLite>;
       tpParticipantes: TpParticipanteLinha[];
       minhaDisponibilidadeVazia: boolean;
+      tpPecasCatalogo: TpPecaCatalogoLite[];
+      campanhaPublicacao: CampanhaPublicacaoLite | null;
+      tpRelatorios: TpRelatorioLinha[];
     };
   } = $props();
 
@@ -76,10 +89,123 @@
     return m;
   });
 
+  // Relatório de fim de agendamento já enviado, por ocorrência (TP-D) —
+  // 1 por ocorrência; quem mandou primeiro é "dono" (RLS só deixa ele/admin editar depois)
+  const relatorioPorOcorrencia = $derived.by(() => {
+    const m: Record<string, TpRelatorioLinha> = {};
+    for (const r of data.tpRelatorios) m[r.agendamento_id + '|' + r.data] = r;
+    return m;
+  });
+  const hojeIso = new Date().toISOString().substring(0, 10);
+
   let acaoEmCurso = $state<string | null>(null);
   let assumindoId = $state<number | null>(null);
   function isBusy(key: string): boolean {
     return acaoEmCurso === key;
+  }
+
+  // === Sheet relatório de fim de agendamento (TP-D) ===
+  interface ItemChecklist {
+    pecaId: number | null;
+    tipoId: number;
+    nome: string;
+    categoria: 'fisica' | 'literatura';
+    estado: string;
+    qtdColocada: string;
+    obs: string;
+    publicacaoVirtualId: number | null;
+    nomeVirtual: string | null;
+  }
+  let sheetRelatorio = $state(false);
+  let relatorioOcAtual = $state<{ agendamento_id: number; data: string } | null>(null);
+  let relatorioSomenteLeitura = $state(false);
+  let relatorioAutorNome = $state('');
+  let itensRelatorio = $state<ItemChecklist[]>([]);
+  let notasRelatorio = $state('');
+  let enviandoRelatorio = $state(false);
+
+  function abrirRelatorio(oc: { agendamento_id: number; data: string; carrinho_id: number }) {
+    const carrinho = data.tpCarrinhos[oc.carrinho_id];
+    const tipoId = carrinho?.tipo_id ?? 0;
+    const pecas = data.tpPecasCatalogo.filter((p) => p.tipo_id === tipoId);
+    const existente = relatorioPorOcorrencia[oc.agendamento_id + '|' + oc.data];
+
+    relatorioSomenteLeitura = !!existente && existente.publicador_id !== data.minhaId;
+    relatorioAutorNome = existente ? (data.nomesPorId[existente.publicador_id] ?? '?') : '';
+    notasRelatorio = existente?.notas ?? '';
+
+    const itensExistentesPorPeca = new Map((existente?.itens ?? []).map((i) => [i.peca_id, i]));
+    itensRelatorio = pecas.map((p) => {
+      const ex = itensExistentesPorPeca.get(p.id);
+      return {
+        pecaId: p.id,
+        tipoId,
+        nome: p.nome,
+        categoria: p.categoria,
+        estado: ex?.estado ?? 'ok',
+        qtdColocada: ex?.qtd_colocada != null ? String(ex.qtd_colocada) : '',
+        obs: ex?.obs ?? '',
+        publicacaoVirtualId: null,
+        nomeVirtual: null
+      };
+    });
+
+    // Publicação principal da campanha ativa — se ainda não é uma peça
+    // real do catálogo desse tipo, entra como item "virtual" (o server
+    // cria a linha de catálogo sob demanda ao salvar).
+    const cp = data.campanhaPublicacao;
+    if (cp && !pecas.some((p) => p.publicacao_id === cp.publicacao_id)) {
+      const exVirtual = (existente?.itens ?? []).find((i) => {
+        const p = data.tpPecasCatalogo.find((pc) => pc.id === i.peca_id);
+        return p?.publicacao_id === cp.publicacao_id;
+      });
+      itensRelatorio = [
+        ...itensRelatorio,
+        {
+          pecaId: exVirtual?.peca_id ?? null,
+          tipoId,
+          nome: cp.nome + ' (campanha)',
+          categoria: 'literatura',
+          estado: exVirtual?.estado ?? 'ok',
+          qtdColocada: exVirtual?.qtd_colocada != null ? String(exVirtual.qtd_colocada) : '',
+          obs: exVirtual?.obs ?? '',
+          publicacaoVirtualId: exVirtual ? null : cp.publicacao_id,
+          nomeVirtual: cp.nome
+        }
+      ];
+    }
+
+    relatorioOcAtual = { agendamento_id: oc.agendamento_id, data: oc.data };
+    sheetRelatorio = true;
+  }
+
+  async function enviarRelatorio() {
+    if (!relatorioOcAtual) return;
+    enviandoRelatorio = true;
+    const itensPayload = itensRelatorio.map((it) => ({
+      peca_id: it.pecaId,
+      tipo_id: it.tipoId,
+      estado: it.estado,
+      qtd_colocada: it.qtdColocada === '' ? null : Number(it.qtdColocada),
+      obs: it.obs,
+      publicacao_virtual_id: it.publicacaoVirtualId,
+      nome_virtual: it.nomeVirtual
+    }));
+    const fd = new FormData();
+    fd.append('agendamento_id', String(relatorioOcAtual.agendamento_id));
+    fd.append('data', relatorioOcAtual.data);
+    fd.append('notas', notasRelatorio);
+    fd.append('itens_json', JSON.stringify(itensPayload));
+    const res = await fetch('?/salvarRelatorio', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    enviandoRelatorio = false;
+    if (parsed.type === 'success') {
+      toast.success('Relatório enviado');
+      sheetRelatorio = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
   }
 
   async function inscreverAgendamento(agendamentoId: number, dataOc: string) {
@@ -289,6 +415,7 @@
                 {@const ponto = oc.ponto_id ? data.tpPontos[oc.ponto_id] : null}
                 {@const inscritos = inscritosPorOcorrencia[oc.agendamento_id + '|' + oc.data] ?? []}
                 {@const souInscrito = inscritos.some((i) => i.publicador_id === data.minhaId)}
+                {@const relatorio = relatorioPorOcorrencia[oc.agendamento_id + '|' + oc.data]}
                 <Card padding="md">
                   <div class="flex items-start gap-3">
                     <span class="w-2 self-stretch rounded shrink-0 bg-teal-500"></span>
@@ -304,11 +431,16 @@
                       <div class="mt-1 text-xs text-slate-500">
                         {#if inscritos.length > 0}{inscritos.map((i) => i.nome).join(', ')}{:else}Ninguém inscrito ainda{/if}
                       </div>
-                      <div class="mt-2">
+                      <div class="mt-2 flex flex-wrap gap-1.5">
                         {#if souInscrito}
                           <Button variant="secondary" size="sm" loading={isBusy(`agendamento:${oc.agendamento_id}:${oc.data}`)} onclick={() => sairAgendamento(oc.agendamento_id, oc.data)}>Sair do agendamento</Button>
                         {:else}
                           <Button variant="primary" size="sm" loading={isBusy(`agendamento:${oc.agendamento_id}:${oc.data}`)} onclick={() => inscreverAgendamento(oc.agendamento_id, oc.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
+                        {/if}
+                        {#if oc.data <= hojeIso && souInscrito && carrinho}
+                          <Button variant="secondary" size="sm" onclick={() => abrirRelatorio(oc)}>
+                            <Icon nome="file-text" size={12} /> {relatorio ? 'Ver relatório' : 'Relatório do turno'}
+                          </Button>
                         {/if}
                       </div>
                     </div>
@@ -572,4 +704,70 @@
       </div>
     </form>
   {/if}
+</BottomSheet>
+
+<!-- Sheet relatório de fim de agendamento (TP-D) -->
+<BottomSheet bind:open={sheetRelatorio} title="Relatório do turno">
+  {#if relatorioSomenteLeitura}
+    <p class="text-xs text-slate-500 mb-3">Enviado por {relatorioAutorNome} — só quem enviou (ou admin) pode editar.</p>
+  {/if}
+  <div class="space-y-3">
+    {#each itensRelatorio as item, i}
+      <div class="rounded-lg border border-slate-200 p-2.5">
+        <div class="text-sm font-medium mb-1.5">{item.nome}</div>
+        <div class="flex flex-wrap gap-1.5">
+          {#each (item.categoria === 'fisica' ? ['ok', 'danificado'] : ['ok', 'acabando', 'zerado']) as opcao}
+            <label class="cursor-pointer">
+              <input
+                type="radio"
+                name="estado-{i}"
+                value={opcao}
+                checked={item.estado === opcao}
+                disabled={relatorioSomenteLeitura}
+                onchange={() => (itensRelatorio[i].estado = opcao)}
+                class="peer sr-only"
+              />
+              <div class="text-xs px-2.5 py-1 rounded-full border border-slate-300 peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 peer-disabled:opacity-50">
+                {opcao === 'ok' ? 'OK' : opcao === 'acabando' ? 'Acabando' : opcao === 'zerado' ? 'Zerado' : 'Danificado'}
+              </div>
+            </label>
+          {/each}
+        </div>
+        {#if item.categoria === 'literatura'}
+          <input
+            type="number"
+            min="0"
+            placeholder="Qtd colocada"
+            value={item.qtdColocada}
+            disabled={relatorioSomenteLeitura}
+            oninput={(e) => (itensRelatorio[i].qtdColocada = (e.target as HTMLInputElement).value)}
+            class="mt-1.5 w-32 rounded-lg border border-slate-300 px-2 py-1 text-sm disabled:opacity-50 disabled:bg-slate-50"
+          />
+        {/if}
+        {#if item.estado !== 'ok'}
+          <input
+            placeholder="Obs (opcional)"
+            value={item.obs}
+            disabled={relatorioSomenteLeitura}
+            oninput={(e) => (itensRelatorio[i].obs = (e.target as HTMLInputElement).value)}
+            class="mt-1.5 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm disabled:opacity-50 disabled:bg-slate-50"
+          />
+        {/if}
+      </div>
+    {/each}
+    <div>
+      <label for="rel-notas" class="block text-sm font-medium mb-1">Notas gerais</label>
+      <textarea
+        id="rel-notas"
+        rows="2"
+        value={notasRelatorio}
+        disabled={relatorioSomenteLeitura}
+        oninput={(e) => (notasRelatorio = (e.target as HTMLTextAreaElement).value)}
+        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 disabled:bg-slate-50"
+      ></textarea>
+    </div>
+    {#if !relatorioSomenteLeitura}
+      <Button variant="primary" loading={enviandoRelatorio} onclick={enviarRelatorio} class="w-full">Enviar relatório</Button>
+    {/if}
+  </div>
 </BottomSheet>

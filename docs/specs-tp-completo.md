@@ -71,7 +71,18 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
   campanha ficou como link pra `/admin/campanha` (só aparece pro admin —
   um servo não-admin não consegue seguir esse link hoje, mesma razão de
   layout; ficou registrado como limitação conhecida, não escondido).
-- ⏳ Código (actions/telas): incrementos TP-D, TP-E, PUSH-A a construir.
+- ✅ **TP-D concluído**, com uma simplificação deliberada: o botão
+  "Relatório do turno" só entra em `/publicador/arranjo` (a Agenda cheia,
+  que já tinha card com clock+ponto+ações de TP); a home
+  (`/publicador`) continua só com o resumo compacto que já existia e
+  linka pra Agenda — não duplica o fluxo completo ali (mesmo padrão já
+  usado pelo card "Você dirige", que linka "Repartir →" em vez de
+  embutir o repartir inline). Item "virtual" da publicação da campanha:
+  como `tp_relatorio_itens.peca_id` é `NOT NULL` (FK real), a linha de
+  catálogo pra publicação da campanha é criada sob demanda (find-or-create
+  por `tipo_id`+`publicacao_id`) na hora de salvar, não author manualmente
+  antes.
+- ⏳ Código (actions/telas): incrementos TP-E, PUSH-A a construir.
 
 ## Regras inegociáveis (CLAUDE.md — o que morde)
 - **Svelte 5 runes**: em `$effect` leia as deps ANTES de qualquer
@@ -375,7 +386,7 @@ do catálogo OU texto livre + qtd → insere `pedidos_publicacao`.
 flag) abre `/admin/publicacoes`, marca entregue; publicador vê o status
 mudar.
 
-## TP-D — Relatório de fim de agendamento · migration 045
+## TP-D — Relatório de fim de agendamento · migration 045 · ✅ CONCLUÍDO
 **Schema**: `tp_relatorios` (agendamento+data unique, FK
 `tp_agendamentos` — ajustado na 045 durante o pivô TP-F), `tp_relatorio_itens`
 (peca_id, estado ok/acabando/zerado/danificado, qtd_colocada, resolvido_*).
