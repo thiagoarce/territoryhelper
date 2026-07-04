@@ -41,6 +41,7 @@
       tpCarrinhos: Record<number, TpCarrinhoLite>;
       tpPontos: Record<number, TpPontoLite>;
       tpParticipantes: TpParticipanteLinha[];
+      minhaDisponibilidadeVazia: boolean;
     };
   } = $props();
 
@@ -234,6 +235,16 @@
     <h1 class="text-2xl font-bold">Arranjo</h1>
     <p class="text-sm text-slate-500">Saídas em grupo — planeje com antecedência</p>
   </div>
+
+  {#if data.minhaDisponibilidadeVazia && Object.keys(data.tpCarrinhos).length > 0}
+    <a
+      href="/perfil"
+      class="flex items-center justify-between gap-2 text-sm bg-teal-50 border border-teal-200 text-teal-800 rounded-lg px-3 py-2 hover:bg-teal-100"
+    >
+      <span><Icon nome="megaphone" size={14} /> Informe sua disponibilidade pro testemunho público</span>
+      <Icon nome="chevron-right" size={14} />
+    </a>
+  {/if}
 
   <div class="flex items-center justify-between flex-wrap gap-2">
     <div class="flex gap-1 bg-slate-100 rounded-lg p-1">

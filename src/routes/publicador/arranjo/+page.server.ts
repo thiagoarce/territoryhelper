@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     tcesMap: {} as Record<string, string>, quadrasGeo: [] as QuadraGeo[], minhaId: '', podeCoordenar: false,
     tpAgendamentos: [] as AgendamentoBase[], tpExcecoes: [] as ExcecaoBase[],
     tpCarrinhos: {} as Record<number, TpCarrinhoLite>, tpPontos: {} as Record<number, TpPontoLite>,
-    tpParticipantes: [] as TpParticipanteLinha[]
+    tpParticipantes: [] as TpParticipanteLinha[], minhaDisponibilidadeVazia: false
   };
 
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
@@ -64,7 +64,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const escalaAte = new Date(Date.now() + 370 * 86400000).toISOString().slice(0, 10);
   const escalaDesde = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
 
-  const [arranjos, modalidades, { data: profs }, publicadores, partesRes, tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpParticipantesRes] = await Promise.all([
+  const [arranjos, modalidades, { data: profs }, publicadores, partesRes, tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpParticipantesRes, tpDispRes] = await Promise.all([
     selectAll<ArranjoLinha>(
       locals.supabase
         .from('arranjos')
@@ -92,7 +92,12 @@ export const load: PageServerLoad = async ({ locals }) => {
     selectAll<TpParticipanteLinha>(
       locals.supabase.from('tp_agendamento_participantes').select('agendamento_id, data, publicador_id')
         .gte('data', escalaDesde).lte('data', escalaAte)
-    )
+    ),
+    // TP-B: card "Informe sua disponibilidade" só aparece se ainda não cadastrou nada
+    locals.supabase
+      .from('tp_disponibilidade')
+      .select('id', { count: 'exact', head: true })
+      .eq('publicador_id', locals.user.id)
   ]);
 
   const tpAgendamentos = (tpAgendamentosRes.data ?? []) as AgendamentoBase[];
@@ -164,7 +169,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   return {
     arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, quadrasGeo,
-    minhaId: locals.user.id, podeCoordenar, tpAgendamentos, tpExcecoes, tpCarrinhos, tpPontos, tpParticipantes
+    minhaId: locals.user.id, podeCoordenar, tpAgendamentos, tpExcecoes, tpCarrinhos, tpPontos, tpParticipantes,
+    minhaDisponibilidadeVazia: (tpDispRes.count ?? 0) === 0
   };
 };
 

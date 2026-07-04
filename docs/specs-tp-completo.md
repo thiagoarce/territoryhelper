@@ -39,8 +39,24 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
   (Planner/Visão geral/Pontos/Equipamentos/Publicadores) com navegação
   compartilhada (`TpNav.svelte` — sidebar no desktop, `BottomSheet` no
   mobile). Detalhes completos na seção **TP-F** abaixo.
-- ⏳ Código (actions/telas): incrementos TP-B, TP-F, P-A, TP-D, TP-E,
-  PUSH-A a construir.
+- ✅ **Planner virou grade semanal de verdade** (pós-TP-F, mesmo incremento
+  de UI): a lista de ocorrências da semana virou uma grade dias×horas
+  (`TpGradeSemana.svelte`) — clicar/arrastar um horário vazio cria
+  agendamento, arrastar a borda de um card ajusta início/fim direto (sem
+  abrir sheet). Chips de equipamento viraram filtro multi-seleção (antes
+  era single-select) — com vários marcados, os agendamentos aparecem
+  sobrepostos na mesma grade, cada um com a cor do seu carrinho. Mês
+  continua como lista.
+- ✅ **TP-B concluído**: seção "Testemunho público" em `/perfil` —
+  checkbox de transporte + notas (`tp_preferencias`) e janelas de
+  disponibilidade dia/hora com adicionar/remover inline
+  (`tp_disponibilidade`). Atalho "Informe sua disponibilidade →" no topo
+  de `/publicador/arranjo` quando o publicador ainda não cadastrou
+  nenhuma janela (só aparece se já existe equipamento cadastrado).
+  `/admin/tp/publicadores` e o badge "disponível" do Designar no Planner
+  passam a ter dado real.
+- ⏳ Código (actions/telas): incrementos P-A, TP-D, TP-E, PUSH-A a
+  construir.
 
 ## Regras inegociáveis (CLAUDE.md — o que morde)
 - **Svelte 5 runes**: em `$effect` leia as deps ANTES de qualquer
@@ -142,7 +158,7 @@ retrabalhada — só mudou de arquivo (da aba "Equipamentos" de uma página
 só pra `/admin/tp/equipamentos/+page.server.ts`/`.svelte`), ganhando
 também o campo `cor` do carrinho (necessário pra Visão geral).
 
-## TP-B — Disponibilidade + transporte · migration 042
+## TP-B — Disponibilidade + transporte · migration 042 · ✅ CONCLUÍDO
 **Tabelas**: `tp_preferencias` (transporta_carrinho, notas),
 `tp_disponibilidade` (janelas dia_semana/hora).
 
