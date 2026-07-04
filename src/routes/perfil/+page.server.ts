@@ -100,5 +100,37 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('tp_disponibilidade').delete().eq('id', id).eq('publicador_id', locals.user.id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Janela removida' };
+  },
+
+  // PUSH-A: grava a subscription do Web Push deste dispositivo. Upsert por
+  // endpoint (unique) — resubscrever o mesmo device reaproveita a linha.
+  registrarPush: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const endpoint = String(fd.get('endpoint') ?? '').trim();
+    const p256dh = String(fd.get('p256dh') ?? '').trim();
+    const auth = String(fd.get('auth') ?? '').trim();
+    const userAgent = String(fd.get('user_agent') ?? '').trim() || null;
+    if (!endpoint || !p256dh || !auth) return fail(400, { erro: 'Subscription incompleta' });
+    const { error } = await locals.supabase.from('push_subscriptions').upsert(
+      { publicador_id: locals.user.id, endpoint, p256dh, auth, user_agent: userAgent, falhas: 0 },
+      { onConflict: 'endpoint' }
+    );
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Notificações ativadas' };
+  },
+
+  removerPush: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const endpoint = String(fd.get('endpoint') ?? '').trim();
+    if (!endpoint) return fail(400, { erro: 'endpoint obrigatório' });
+    const { error } = await locals.supabase
+      .from('push_subscriptions')
+      .delete()
+      .eq('endpoint', endpoint)
+      .eq('publicador_id', locals.user.id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Notificações desativadas' };
   }
 };

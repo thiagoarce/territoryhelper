@@ -11,7 +11,7 @@
     SquareCheck, Pin, Clock, FileText, Shield, CircleDot, Plug, Sparkles,
     Smartphone, MailOpen, Megaphone, Wheat, Tag, Info, Zap, Play,
     ChevronDown, ChevronRight, Shapes, Menu, History, Square, SquareParking, Search,
-    Circle, ArrowRightLeft, LoaderCircle
+    Circle, ArrowRightLeft, LoaderCircle, Bell
   } from 'lucide-svelte';
 
   export const ICONES = {
@@ -89,7 +89,8 @@
     search: Search,
     circle: Circle,
     swap: ArrowRightLeft,
-    loader: LoaderCircle
+    loader: LoaderCircle,
+    bell: Bell
   } as const;
 
   export type NomeIcone = keyof typeof ICONES;

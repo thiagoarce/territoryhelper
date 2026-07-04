@@ -88,7 +88,35 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
   essas duas colunas; sem migration o admin não teria como ver quais
   pontos são sugestão pendente). Coluna nova no FINAL do select, como
   manda o anti-padrão do CLAUDE.md.
-- ⏳ Código (actions/telas): incremento PUSH-A a construir.
+- ✅ **PUSH-A concluído** — arquitetura seguida à risca (tickle sem
+  payload + JWT VAPID via WebCrypto). Desvios/notas:
+  - `scripts/gerar-vapid.mjs` (novo) gera o par de chaves — não precisa
+    da lib `web-push` do npm nem de ferramenta externa, só `node:crypto`.
+  - `criarNotificacao`/`enviarTickle` rodam com `await` direto dentro da
+    action (não usam `platform.context.waitUntil` do adapter-cloudflare)
+    — mais simples e sem código específico de plataforma que não dava
+    pra testar aqui, ao custo de adicionar a latência do envio à resposta
+    da action que dispara a notificação (pequena, mas existe).
+  - Os 4 disparos v1 do spec estão todos implementados: designação de
+    território (`/admin` criarDesignacao), cartas designadas
+    (`/admin/predios` designarCartas), `designarParticipante` (TP-F),
+    status de `pedidos_publicacao` mudou (P-A) → solicitante, saída de
+    agendamento em <48h (`sairAgendamento`) → todos os admins (o spec diz
+    "servo/admin", mas quem gerencia a escala de TP no Planner é sempre
+    admin — não há uma noção de "servo do TP", só servo_publicacoes que é
+    outra capacidade).
+  - **Não foi possível testar Web Push de ponta a ponta** neste ambiente
+    (sem browser real, sem chaves VAPID de produção, sem dispositivo com
+    PWA instalado). O sino in-app (fallback universal) foi só revisado
+    por leitura de código — build/testes passam, mas a func real
+    (permissão do navegador, `pushManager.subscribe`, chegada do push,
+    clique abrindo a URL certa) precisa de verificação manual do usuário
+    num celular/navegador real.
+  - Chaves de exemplo foram geradas e postas no `.env` local (não
+    commitado) só pra `npm run build` funcionar aqui — **o usuário precisa
+    gerar seu próprio par** com `node scripts/gerar-vapid.mjs` pra
+    produção (`wrangler secret put VAPID_PRIVATE_KEY` + a pública no
+    `wrangler.toml`/dashboard, que não é segredo).
 
 ## Regras inegociáveis (CLAUDE.md — o que morde)
 - **Svelte 5 runes**: em `$effect` leia as deps ANTES de qualquer
@@ -434,7 +462,7 @@ padrão do validar-prédio de `/admin/predios`.
 **Verificar**: publicador sugere ponto com GPS; admin aprova; ponto vira
 ativo e aparece na lista normal.
 
-## PUSH-A — Notificações (in-app + Web Push) · migration 046
+## PUSH-A — Notificações (in-app + Web Push) · migration 046 · ✅ CONCLUÍDO
 **Schema**: `notificacoes` (fonte da verdade, alimenta o sino),
 `push_subscriptions`.
 

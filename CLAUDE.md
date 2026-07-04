@@ -29,7 +29,15 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     read-only + compartilhar c/ imagem), `convite/[token]`, `c`, `login`
 - `src/lib/components/` — `MapaAdmin.svelte` (mapa de quadras reutilizável),
   `MapaPoligonos.svelte` (editor de polígonos + terra-draw), `AdminMapa.svelte`,
-  `EditarLocalSheet.svelte`, `InstallPrompt.svelte`
+  `EditarLocalSheet.svelte`, `InstallPrompt.svelte`, `TpGradeSemana.svelte`
+  (grade semanal do Planner de TP), `NotificacoesBell.svelte` (sino no
+  header global — fallback in-app de PUSH-A, funciona sem push)
+- `src/lib/server/push.ts` — `criarNotificacao(publicadorIds, {titulo,
+  corpo, url})` grava em `notificacoes` (via `supabaseAdmin`, bypassa RLS
+  pra notificar outros) e dispara `enviarTickle` (Web Push "tickle" sem
+  payload — JWT VAPID assinado via WebCrypto, não a lib `web-push` do npm,
+  que não roda em Cloudflare Workers). `/api/notificacoes` serve o sino
+  E o service worker (que busca o conteúdo ao receber o push vazio).
 - `src/lib/server/queries.ts` — helpers de query. **`selectAll<T>()`** pagina
   além do limite 1000 do PostgREST + dedup por id.
 - `src/lib/ui/` — primitives: `Button`, `Card`, `BottomSheet`, `toast.svelte.ts`
@@ -80,18 +88,17 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/perfil`, consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
 | `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações"), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
 | `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
+| `notificacoes` / `push_subscriptions` | PUSH-A — sino no header (`NotificacoesBell.svelte`, fallback universal, funciona sem push) + Web Push real (JWT VAPID assinado via WebCrypto, tickle sem payload — SW busca o conteúdo em `/api/notificacoes`). Disparado por `$lib/server/push.ts::criarNotificacao()` em: designação criada, cartas designadas, `designarParticipante` (TP-F), status de `pedidos_publicacao` mudou (P-A), saída de agendamento em <48h. Ativar em `/perfil` (botão, exige gesto do usuário) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
-### Em construção — TP completo (migrations 041–049 escritas; TP-A + TP-B + TP-D + TP-E + TP-F + P-A com UI)
+### TP completo — concluído (migrations 041–049)
 
-Schema já definido/commitado, **código a construir** por incremento
-(blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
-ainda sem UI própria: `notificacoes`/`push_subscriptions` (push, 046).
-Ao ganhar UI, mover pro modelo de dados acima.
+TP-A + TP-B + TP-D + TP-E + TP-F + P-A + PUSH-A, todos com UI. Histórico
+completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 
 ## Convenções
 
@@ -214,7 +221,10 @@ Ao ganhar UI, mover pro modelo de dados acima.
 - Migrations novas: rodar SQL no `/admin/dev/sql` (cola o conteúdo do arquivo
   `supabase/migrations/0XX_*.sql`).
 - `.env`: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY` (só pro script de migração).
+  `SUPABASE_SERVICE_ROLE_KEY` (só pro script de migração),
+  `PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` (Web Push, PUSH-A — gerar
+  com `node scripts/gerar-vapid.mjs`; em produção via `wrangler secret put
+  VAPID_PRIVATE_KEY` + a pública no `wrangler.toml`/dashboard, não é segredo).
 
 ## Anti-padrões (não cair)
 

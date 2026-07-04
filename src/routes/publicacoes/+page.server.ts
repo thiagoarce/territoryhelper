@@ -1,6 +1,11 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { exigirServoPub } from '$lib/server/guards';
+import { criarNotificacao } from '$lib/server/push';
+
+const STATUS_LABEL_NOTIF: Record<string, string> = {
+  aberto: 'reaberto', pedido: 'pedido ao fornecedor', entregue: 'entregue', cancelado: 'cancelado'
+};
 
 export interface PedidoLinha {
   id: number;
@@ -142,8 +147,22 @@ export const actions: Actions = {
     const notasEnviadas = fd.has('notas_servo');
     if (notasEnviadas) patch.notas_servo = String(fd.get('notas_servo') ?? '').trim() || null;
 
-    const { error } = await locals.supabase.from('pedidos_publicacao').update(patch).eq('id', id);
+    const { data: atualizado, error } = await locals.supabase
+      .from('pedidos_publicacao')
+      .update(patch)
+      .eq('id', id)
+      .select('publicador_id, descricao, publicacoes(nome)')
+      .single();
     if (error) return fail(400, { erro: error.message });
+
+    if (status && atualizado) {
+      const nomeItem = (atualizado as any).publicacoes?.nome ?? atualizado.descricao ?? 'Publicação';
+      await criarNotificacao([atualizado.publicador_id], {
+        titulo: `Seu pedido foi ${STATUS_LABEL_NOTIF[String(status)] ?? String(status)}`,
+        corpo: nomeItem,
+        url: '/publicador'
+      });
+    }
     return { ok: true, msg: 'Pedido atualizado' };
   },
 

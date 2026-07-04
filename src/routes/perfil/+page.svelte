@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
@@ -6,7 +7,19 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { DIAS_SEMANA } from '$lib/arranjos';
+  import { PUBLIC_VAPID_PUBLIC_KEY } from '$env/static/public';
   import type { TpDisponibilidadeLinha } from './$types';
+
+  // PUSH-A: base64url (mesmo formato do endpoint) → Uint8Array, formato
+  // que pushManager.subscribe espera em applicationServerKey.
+  function urlBase64ToUint8Array(base64url: string): Uint8Array {
+    const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
+    const base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(base64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
 
   let { data, form }: {
     data: {
@@ -36,6 +49,76 @@
     removendoId = null;
     if (parsed.type === 'success') { toast.success('Janela removida'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  // === Notificações (PUSH-A) ===
+  type StatusPush = 'verificando' | 'nao_suportado' | 'inativo' | 'ativo';
+  let statusPush = $state<StatusPush>('verificando');
+  let processandoPush = $state(false);
+
+  onMount(async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      statusPush = 'nao_suportado';
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      statusPush = sub ? 'ativo' : 'inativo';
+    } catch {
+      statusPush = 'nao_suportado';
+    }
+  });
+
+  async function ativarNotificacoes() {
+    processandoPush = true;
+    try {
+      const permissao = await Notification.requestPermission();
+      if (permissao !== 'granted') {
+        toast.error('Permissão de notificação negada');
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_PUBLIC_KEY) as BufferSource
+      });
+      const j = sub.toJSON();
+      const fd = new FormData();
+      fd.append('endpoint', j.endpoint ?? '');
+      fd.append('p256dh', j.keys?.p256dh ?? '');
+      fd.append('auth', j.keys?.auth ?? '');
+      fd.append('user_agent', navigator.userAgent);
+      const res = await fetch('?/registrarPush', { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') { toast.success('Notificações ativadas'); statusPush = 'ativo'; }
+      else toast.error(String(parsed.data?.erro || 'Falhou'));
+    } catch (e) {
+      toast.error('Não deu pra ativar notificações nesse aparelho');
+    } finally {
+      processandoPush = false;
+    }
+  }
+
+  async function desativarNotificacoes() {
+    processandoPush = true;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe();
+        const fd = new FormData();
+        fd.append('endpoint', endpoint);
+        const res = await fetch('?/removerPush', { method: 'POST', body: fd });
+        const parsed = deserialize(await res.text()) as any;
+        if (parsed.type !== 'success') toast.error(String(parsed.data?.erro || 'Falhou'));
+      }
+      statusPush = 'inativo';
+      toast.success('Notificações desativadas nesse aparelho');
+    } finally {
+      processandoPush = false;
+    }
   }
 </script>
 
@@ -121,6 +204,29 @@
       />
       <Button variant="primary" type="submit" loading={salvandoSenha} class="w-full">Trocar senha</Button>
     </form>
+  </Card>
+
+  <Card padding="md">
+    <h2 class="font-semibold mb-1">Notificações</h2>
+    <p class="text-xs text-slate-500 mb-3">
+      Avisa quando você recebe uma designação, é escalado num turno de TP,
+      ou um pedido de publicação muda de status. Funciona mesmo com o app
+      fechado (em iOS, precisa ter instalado o app na tela de início).
+    </p>
+    {#if statusPush === 'verificando'}
+      <p class="text-sm text-slate-400">Verificando suporte...</p>
+    {:else if statusPush === 'nao_suportado'}
+      <p class="text-sm text-slate-400">Esse navegador/aparelho não suporta notificações push. O sino no topo do app continua funcionando normalmente.</p>
+    {:else if statusPush === 'ativo'}
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-sm text-green-700"><Icon nome="check" size={14} /> Ativadas nesse aparelho</span>
+        <Button variant="secondary" size="sm" loading={processandoPush} onclick={desativarNotificacoes}>Desativar</Button>
+      </div>
+    {:else}
+      <Button variant="primary" loading={processandoPush} onclick={ativarNotificacoes} class="w-full">
+        <Icon nome="megaphone" size={14} /> Ativar notificações
+      </Button>
+    {/if}
   </Card>
 
   <Card padding="md">

@@ -4,6 +4,7 @@ import { selectAll, listarPublicadores, listarQuadrasComGeo } from '$lib/server/
 import type { QuadraGeo } from '$lib/server/queries';
 import type { ArranjoBase } from '$lib/arranjos';
 import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
+import { criarNotificacao } from '$lib/server/push';
 
 export interface ArranjoLinha extends ArranjoBase {}
 
@@ -413,6 +414,20 @@ export const actions: Actions = {
       .from('tp_agendamento_participantes').delete()
       .eq('agendamento_id', agendamentoId).eq('data', dataOc).eq('publicador_id', locals.user.id);
     if (error) return fail(400, { erro: error.message });
+
+    // Saída em cima da hora (< 48h) — avisa o admin pra achar reposição a tempo.
+    const horasAte = (new Date(dataOc + 'T12:00:00').getTime() - Date.now()) / 3600000;
+    if (horasAte >= 0 && horasAte <= 48) {
+      const { data: admins } = await locals.supabase.from('profiles').select('id').eq('role', 'admin');
+      const adminIds = (admins ?? []).map((a: any) => a.id as string);
+      if (adminIds.length > 0) {
+        await criarNotificacao(adminIds, {
+          titulo: `${locals.profile?.nome ?? 'Um publicador'} saiu de um turno de TP em <48h`,
+          corpo: new Date(dataOc + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }),
+          url: '/admin/tp'
+        });
+      }
+    }
     return { ok: true, msg: 'Saiu do agendamento' };
   },
 
