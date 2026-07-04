@@ -1,5 +1,10 @@
 # Specs: Campanhas v2 · Testemunho Público · Publicações
 
+> ➡️ **Continuação:** o TP e as Publicações ganharam uma 2ª fase (módulo
+> completo: equipamentos, disponibilidade, relatórios, área do servo,
+> push). Ver **`docs/specs-tp-completo.md`** — este doc cobre só a base
+> (grade de escala + suprimento) que aquele expande.
+
 > ✅ **Status: IMPLEMENTADO.** Os três módulos abaixo (C1–C3, TP1–TP2, P1)
 > foram construídos na ordem sugerida e estão em produção — migrations
 > `034_reserva_campanha.sql` a `037_publicacoes.sql`, telas `/admin/tp`,

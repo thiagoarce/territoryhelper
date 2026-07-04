@@ -81,6 +81,20 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
+### Em construção — TP completo (migrations 041–046 escritas; UI pendente)
+
+Schema já definido/commitado, **código a construir** por incremento
+(blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
+novas (existem assim que a migration é aplicada via `/admin/dev/sql`):
+`tp_carrinho_tipos`/`tp_pecas_catalogo`/`tp_carrinhos` (equipamentos, 041),
+`tp_preferencias`/`tp_disponibilidade` (disponibilidade + transporte, 042),
+`tp_turno_ocorrencias` + `tp_escala.origem`/`tp_turnos.carrinho_id` (escala
+designável, 043), `pedidos_publicacao` + `profiles.servo_publicacoes` +
+`is_servo_pub()` (área do servo, 044), `tp_relatorios`/`tp_relatorio_itens`
+(relatório de turno, 045), `notificacoes`/`push_subscriptions` (push, 046).
+Ao ganhar UI, mover pro modelo de dados acima e listar as telas
+(`/admin/publicacoes`, abas de `/admin/tp`) nas telas principais.
+
 ## Convenções
 
 ### Backend (`+page.server.ts`)
