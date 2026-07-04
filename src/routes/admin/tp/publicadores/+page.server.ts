@@ -14,9 +14,7 @@ export interface TpPublicadorLinha {
 }
 
 // Roster read-only: cadastrar disponibilidade é do próprio publicador em
-// /perfil (TP-B, ainda não construído) — aqui o admin só CONSULTA pra
-// montar a escala. As tabelas já existem (migration 042), só ficam vazias
-// até o TP-B ganhar UI própria.
+// /perfil (TP-B) — aqui o admin só CONSULTA pra montar a escala.
 export const load: PageServerLoad = async ({ locals }) => {
   const [publicadoresRes, prefsRes, dispRes] = await Promise.all([
     locals.supabase.from('profiles').select('id, nome').eq('ativo', true).order('nome'),

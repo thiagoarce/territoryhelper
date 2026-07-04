@@ -10,7 +10,7 @@
     Plus, Paperclip, TriangleAlert, Check, X, RotateCcw, RefreshCw, Eraser,
     SquareCheck, Pin, Clock, FileText, Shield, CircleDot, Plug, Sparkles,
     Smartphone, MailOpen, Megaphone, Wheat, Tag, Info, Zap, Play,
-    ChevronDown, Shapes, Menu, History, Square, SquareParking, Search,
+    ChevronDown, ChevronRight, Shapes, Menu, History, Square, SquareParking, Search,
     Circle, ArrowRightLeft, LoaderCircle
   } from 'lucide-svelte';
 
@@ -80,6 +80,7 @@
     zap: Zap,
     play: Play,
     'chevron-down': ChevronDown,
+    'chevron-right': ChevronRight,
     shapes: Shapes,
     menu: Menu,
     history: History,

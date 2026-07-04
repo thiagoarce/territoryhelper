@@ -77,26 +77,23 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tp_carrinho_tipos` / `tp_pecas_catalogo` / `tp_carrinhos` | Equipamentos de TP (carrinho/display/quiosque/mesa) e catálogo de peças (física/literatura), com `cor` por equipamento pra "visão geral" |
 | `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso` |
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
+| `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/perfil`, consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
 DERIVADOS de `data_conclusao` + `quadras_conclusoes`. Não existe mais
 status='pendente'/'concluido'.
 
-### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-F com UI)
+### Em construção — TP completo (migrations 041–048 escritas; TP-A + TP-B + TP-F com UI)
 
 Schema já definido/commitado, **código a construir** por incremento
 (blueprint em **`docs/specs-tp-completo.md`** — seguir à risca). Tabelas
-ainda sem UI própria: `tp_preferencias`/`tp_disponibilidade`
-(disponibilidade + transporte, 042 — schema existe, consulta read-only em
-`/admin/tp/publicadores`, mas o publicador ainda não tem tela em `/perfil`
-pra cadastrar a própria disponibilidade — TP-B), `pedidos_publicacao` +
-`profiles.servo_publicacoes` + `is_servo_pub()` (área do servo, mais ampla
-que só TP — qualquer publicação da congregação — 044), `tp_relatorios`/
-`tp_relatorio_itens` (relatório de fim de agendamento, 045),
-`notificacoes`/`push_subscriptions` (push, 046). Ao ganhar UI, mover pro
-modelo de dados acima e listar as telas (`/admin/publicacoes`) nas telas
-principais.
+ainda sem UI própria: `pedidos_publicacao` + `profiles.servo_publicacoes` +
+`is_servo_pub()` (área do servo, mais ampla que só TP — qualquer
+publicação da congregação — 044), `tp_relatorios`/`tp_relatorio_itens`
+(relatório de fim de agendamento, 045), `notificacoes`/`push_subscriptions`
+(push, 046). Ao ganhar UI, mover pro modelo de dados acima e listar as
+telas (`/admin/publicacoes`) nas telas principais.
 
 ## Convenções
 
