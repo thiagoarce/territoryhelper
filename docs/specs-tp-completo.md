@@ -11,8 +11,15 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
 - ✅ Migrations `041`–`046` escritas + commitadas (aplicar via `/admin/dev/sql`
   na ordem, uma por incremento — NÃO aplicar todas de uma vez; cada
   incremento aplica a sua e testa).
-- ⏳ Código (actions/telas): a construir, incrementos TP-A … PUSH-A.
-- ⏳ Seed do catálogo de peças (TP-A): depende do PDF do usuário.
+- ✅ **TP-A concluído**: abas em `/admin/tp` + CRUD de tipos/peças/carrinhos
+  (migration 041). Depois, o usuário mandou o PDF oficial de equipamentos
+  (catálogo S-80-T) — isso gerou a **`047_tp_pecas_codigo.sql`** (campo
+  `codigo`/mnemônico do JW Hub em tipo e peça, mesmo padrão de
+  `publicacoes.codigo`) e a **`048_tp_equipamentos_seed.sql`** (seed real:
+  5 tipos — Carrinho, Display Simples, Display Duplo, Quiosque, Mesa — e
+  19 peças, transcritos do PDF). Aplicar 047 e depois 048 (nessa ordem,
+  depois da 041) via `/admin/dev/sql`.
+- ⏳ Código (actions/telas): incrementos TP-B … PUSH-A a construir.
 
 ## Regras inegociáveis (CLAUDE.md — o que morde)
 - **Svelte 5 runes**: em `$effect` leia as deps ANTES de qualquer
@@ -53,10 +60,23 @@ se um ajuste de schema for mesmo necessário, abra uma migration NOVA
 
 ---
 
-## TP-A — Equipamentos (carrinhos) · migration 041
+## TP-A — Equipamentos (carrinhos) · migrations 041, 047, 048 · ✅ CONCLUÍDO
 **Tabelas**: `tp_carrinho_tipos`, `tp_pecas_catalogo` (categoria
 fisica/literatura, `publicacao_id` opcional), `tp_carrinhos` (tipo_id,
-guardado_em, custodia_id, status disponivel/manutencao/aposentado).
+guardado_em, custodia_id, status disponivel/manutencao/aposentado). A
+`047` adicionou `codigo` (mnemônico do JW Hub) em tipo e peça — mesmo
+padrão de `publicacoes.codigo`. Preço/dimensões do PDF ficaram de fora de
+propósito: mudam com o tempo e o app não tem controle financeiro em
+lugar nenhum; o preço atual mora no JW Hub.
+
+**Nomenclatura**: as tabelas se chamam `tp_carrinho(s)_tipos` (nome
+herdado de quando só existia "carrinho" no vocabulário), mas o catálogo
+real inclui Display, Quiosque e Mesa — não só carrinho literal. Decisão:
+**não renomear o schema** (custaria uma migration de rename + tocar em
+todo o código já commitado, só por estética); o rótulo visível na UI já
+foi trocado de "Carrinhos" pra "Equipamentos" (zero custo, resolve a
+confusão visual). Internamente "carrinho" é o termo guarda-chuva pros 5
+tipos de equipamento, como já é de praxe entre publicadores.
 
 **UI** — `/admin/tp` vira **abas**: `Escala | Pontos | Equipamentos`.
 Refatore o `+page.svelte` atual (que só tem a grade) pra um seletor de aba
@@ -76,11 +96,14 @@ traz tipos, peças, carrinhos (join custódia→nome). Actions:
 `criarTipo`/`atualizarTipo`/`apagarTipo`, `criarPeca`/`atualizarPeca`/
 `apagarPeca`, `criarCarrinho`/`atualizarCarrinho`/`apagarCarrinho`.
 
-**Seed**: quando o usuário mandar o PDF, gere um bloco SQL de INSERT dos
-tipos/peças pra colar no `/admin/dev/sql`. Até lá, cadastro manual pela UI.
+**Seed**: ✅ pronto em `048_tp_equipamentos_seed.sql` — 5 tipos (Carrinho de
+publicações, Display Simples, Display Duplo, Quiosque, Mesa) transcritos
+do PDF oficial S-80-T, com 19 peças (físicas + literatura) e os
+mnemônicos reais do JW Hub. É seed de dado (não idempotente) — rodar uma
+vez; ajustes depois pela própria UI.
 
-**Verificar**: cadastrar 1 tipo + 3 peças (2 físicas, 1 literatura) + 2
-carrinhos; custódia mostra o nome; status badge correto.
+**Verificado**: build + testes verdes. Conferência funcional dos 5 tipos
++ 19 peças fica pro usuário depois de aplicar 047+048 no `/admin/dev/sql`.
 
 ## TP-B — Disponibilidade + transporte · migration 042
 **Tabelas**: `tp_preferencias` (transporta_carrinho, notas),

@@ -32,6 +32,7 @@ export interface TpCarrinhoTipo {
   id: number;
   nome: string;
   descricao: string | null;
+  codigo: string | null;
   ativo: boolean;
 }
 
@@ -42,6 +43,7 @@ export interface TpPecaCatalogo {
   categoria: 'fisica' | 'literatura';
   publicacao_id: number | null;
   publicacao_nome: string | null;
+  codigo: string | null;
   ordem: number;
   ativo: boolean;
 }
@@ -144,6 +146,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     categoria: p.categoria,
     publicacao_id: p.publicacao_id,
     publicacao_nome: p.publicacao_id ? (nomePublicacaoPorId[p.publicacao_id] ?? null) : null,
+    codigo: p.codigo,
     ordem: p.ordem,
     ativo: p.ativo
   }));
@@ -276,8 +279,9 @@ export const actions: Actions = {
     const fd = await request.formData();
     const nome = String(fd.get('nome') ?? '').trim();
     const descricao = String(fd.get('descricao') ?? '').trim() || null;
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
     if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    const { error } = await locals.supabase.from('tp_carrinho_tipos').insert({ nome, descricao });
+    const { error } = await locals.supabase.from('tp_carrinho_tipos').insert({ nome, descricao, codigo });
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Tipo criado' };
   },
@@ -290,9 +294,10 @@ export const actions: Actions = {
     if (!id) return fail(400, { erro: 'id obrigatório' });
     const nome = String(fd.get('nome') ?? '').trim();
     const descricao = String(fd.get('descricao') ?? '').trim() || null;
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
     const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
     if (!nome) return fail(400, { erro: 'Nome obrigatório' });
-    const { error } = await locals.supabase.from('tp_carrinho_tipos').update({ nome, descricao, ativo }).eq('id', id);
+    const { error } = await locals.supabase.from('tp_carrinho_tipos').update({ nome, descricao, codigo, ativo }).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Tipo atualizado' };
   },
@@ -316,6 +321,7 @@ export const actions: Actions = {
     const nome = String(fd.get('nome') ?? '').trim();
     const categoria = String(fd.get('categoria') ?? '').trim();
     const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
     const ordem = Number(fd.get('ordem') ?? 0) || 0;
     if (!tipoId) return fail(400, { erro: 'tipo_id obrigatório' });
     if (!nome) return fail(400, { erro: 'Nome obrigatório' });
@@ -323,7 +329,7 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('tp_pecas_catalogo').insert({
       tipo_id: tipoId, nome, categoria,
       publicacao_id: categoria === 'literatura' ? publicacaoId : null,
-      ordem
+      codigo, ordem
     });
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Peça adicionada' };
@@ -338,6 +344,7 @@ export const actions: Actions = {
     const nome = String(fd.get('nome') ?? '').trim();
     const categoria = String(fd.get('categoria') ?? '').trim();
     const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
+    const codigo = String(fd.get('codigo') ?? '').trim() || null;
     const ordem = Number(fd.get('ordem') ?? 0) || 0;
     const ativo = fd.get('ativo') === 'on' || fd.get('ativo') === 'true';
     if (!nome) return fail(400, { erro: 'Nome obrigatório' });
@@ -345,7 +352,7 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('tp_pecas_catalogo').update({
       nome, categoria,
       publicacao_id: categoria === 'literatura' ? publicacaoId : null,
-      ordem, ativo
+      codigo, ordem, ativo
     }).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Peça atualizada' };

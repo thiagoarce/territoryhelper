@@ -286,7 +286,7 @@
     <div class="space-y-5">
       <div>
         <div class="flex items-center justify-between mb-2">
-          <h2 class="text-sm font-semibold text-slate-600 uppercase">Carrinhos</h2>
+          <h2 class="text-sm font-semibold text-slate-600 uppercase">Equipamentos</h2>
           <Button variant="primary" size="sm" onclick={novoCarrinho}><Icon nome="plus" size={14} /> Carrinho</Button>
         </div>
         <div class="space-y-2">
@@ -331,6 +331,7 @@
                 <div class="min-w-0">
                   <div class="font-semibold flex items-center gap-2">
                     {t.nome}
+                    {#if t.codigo}<span class="text-xs font-mono text-slate-400">{t.codigo}</span>{/if}
                     {#if !t.ativo}<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">inativo</span>{/if}
                   </div>
                   {#if t.descricao}<div class="text-xs text-slate-500 truncate">{t.descricao}</div>{/if}
@@ -352,6 +353,7 @@
                         <span class="text-[10px] px-1.5 py-0.5 rounded ml-1 {p.categoria === 'literatura' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'}">
                           {p.categoria === 'literatura' ? 'Literatura' : 'Física'}
                         </span>
+                        {#if p.codigo}<span class="font-mono text-slate-400"> · {p.codigo}</span>{/if}
                         {#if p.publicacao_nome} · {p.publicacao_nome}{/if}
                         {#if !p.ativo} · inativa{/if}
                       </span>
@@ -510,6 +512,10 @@
       <label for="tipo-descricao" class="block text-sm font-medium mb-1">Descrição (opcional)</label>
       <textarea id="tipo-descricao" name="descricao" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{tipoEdit?.descricao ?? ''}</textarea>
     </div>
+    <div>
+      <label for="tipo-codigo" class="block text-sm font-medium mb-1">Código (mnemônico do JW Hub, opcional)</label>
+      <input id="tipo-codigo" name="codigo" value={tipoEdit?.codigo ?? ''} placeholder="Ex: ldcrt-1 (3516-1)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono" />
+    </div>
     {#if tipoEdit?.id}
       <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-50">
         <input type="checkbox" name="ativo" checked={tipoEdit?.ativo ?? true} class="w-4 h-4 rounded" />
@@ -570,6 +576,10 @@
     <div>
       <label for="peca-ordem" class="block text-sm font-medium mb-1">Ordem</label>
       <input id="peca-ordem" name="ordem" type="number" min="0" value={pecaEdit?.ordem ?? 0} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div>
+      <label for="peca-codigo" class="block text-sm font-medium mb-1">Código (mnemônico do JW Hub, opcional)</label>
+      <input id="peca-codigo" name="codigo" value={pecaEdit?.codigo ?? ''} placeholder="Ex: ldcrtadp (3520)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono" />
     </div>
     {#if pecaEdit?.id}
       <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-50">
