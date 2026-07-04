@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { supabaseAdmin } from '$lib/server/supabase-admin';
+import { criarNotificacao } from '$lib/server/push';
 import type { Role, UsuarioComEmail } from '$lib/types';
 
 const ROLES_VALIDAS: Role[] = ['admin', 'dirigente', 'publicador'];
@@ -204,6 +205,20 @@ export const actions: Actions = {
     const { error } = await supabaseAdmin.from('convites').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Convite revogado' };
+  },
+
+  // Manda uma notificação de teste pro publicador (sino in-app + tickle de
+  // Web Push, se as chaves VAPID já estiverem configuradas) — pra admin
+  // confirmar que o pipeline ponta-a-ponta funciona depois de configurar.
+  enviarNotificacaoTeste: async ({ request }) => {
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    await criarNotificacao([id], {
+      titulo: 'Oi!',
+      corpo: 'Notificação de teste do Territory Helper — se você recebeu isso, tá tudo funcionando.'
+    });
+    return { ok: true, msg: 'Notificação de teste enviada' };
   },
 
   // Exclui usuário (auth + profile via CASCADE).

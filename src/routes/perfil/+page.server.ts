@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { supabaseAdmin } from '$lib/server/supabase-admin';
+import { criarNotificacao } from '$lib/server/push';
 
 export interface TpDisponibilidadeLinha {
   id: number;
@@ -132,5 +133,16 @@ export const actions: Actions = {
       .eq('publicador_id', locals.user.id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Notificações desativadas' };
+  },
+
+  // Manda uma notificação de teste pra si mesmo — valida o pipeline
+  // completo (sino + tickle de Web Push assinado com as chaves VAPID).
+  enviarTeste: async ({ locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    await criarNotificacao([locals.user.id], {
+      titulo: 'Oi!',
+      corpo: 'Notificação de teste do Territory Helper — se você recebeu isso, tá tudo funcionando.'
+    });
+    return { ok: true, msg: 'Notificação de teste enviada' };
   }
 };

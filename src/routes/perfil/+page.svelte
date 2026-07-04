@@ -56,6 +56,19 @@
   type StatusPush = 'verificando' | 'nao_suportado' | 'nao_configurado' | 'inativo' | 'ativo';
   let statusPush = $state<StatusPush>('verificando');
   let processandoPush = $state(false);
+  let enviandoTeste = $state(false);
+
+  async function enviarTeste() {
+    enviandoTeste = true;
+    try {
+      const res = await fetch('?/enviarTeste', { method: 'POST', body: new FormData() });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') toast.success('Notificação de teste enviada — confere o sino ou a notificação do aparelho');
+      else toast.error(String(parsed.data?.erro || 'Falhou'));
+    } finally {
+      enviandoTeste = false;
+    }
+  }
 
   onMount(async () => {
     if (!publicEnv.PUBLIC_VAPID_PUBLIC_KEY) {
@@ -230,6 +243,9 @@
         <span class="text-sm text-green-700"><Icon nome="check" size={14} /> Ativadas nesse aparelho</span>
         <Button variant="secondary" size="sm" loading={processandoPush} onclick={desativarNotificacoes}>Desativar</Button>
       </div>
+      <Button variant="secondary" size="sm" loading={enviandoTeste} onclick={enviarTeste} class="w-full mt-2">
+        Enviar notificação de teste
+      </Button>
     {:else}
       <Button variant="primary" loading={processandoPush} onclick={ativarNotificacoes} class="w-full">
         <Icon nome="megaphone" size={14} /> Ativar notificações
