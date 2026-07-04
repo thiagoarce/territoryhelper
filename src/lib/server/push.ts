@@ -93,12 +93,18 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
   // Chaves VAPID ainda não configuradas (gerar_vapid.mjs + variáveis de
   // ambiente) — sino in-app já fica salvo em `notificacoes`, só o Web
   // Push real fica pendente até configurar.
-  if (!privateEnv.VAPID_PRIVATE_KEY || !publicEnv.PUBLIC_VAPID_PUBLIC_KEY) return;
+  if (!privateEnv.VAPID_PRIVATE_KEY || !publicEnv.PUBLIC_VAPID_PUBLIC_KEY) {
+    console.warn('[enviarTickle] VAPID não configurado neste ambiente — pulando envio real');
+    return;
+  }
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, falhas')
     .in('publicador_id', publicadorIds);
-  if (!subs || subs.length === 0) return;
+  if (!subs || subs.length === 0) {
+    console.warn('[enviarTickle] nenhuma push_subscription pra', publicadorIds);
+    return;
+  }
 
   await Promise.all(
     (subs as PushSubscriptionRow[]).map(async (sub) => {
@@ -119,8 +125,11 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
           }
         } else if (res.status === 404 || res.status === 410) {
           // Endpoint não existe mais (usuário desinstalou/revogou) — remove direto.
+          console.warn('[enviarTickle] endpoint morto (', res.status, ') — removendo subscription', sub.id);
           await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id);
         } else {
+          const corpo = await res.text().catch(() => '');
+          console.error('[enviarTickle] push service respondeu', res.status, corpo.slice(0, 300));
           const falhas = sub.falhas + 1;
           if (falhas >= PODA_APOS_FALHAS) {
             await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id);
@@ -128,8 +137,9 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
             await supabaseAdmin.from('push_subscriptions').update({ falhas }).eq('id', sub.id);
           }
         }
-      } catch {
-        // Erro de rede etc. — conta como falha, mesma poda de acima.
+      } catch (e) {
+        console.error('[enviarTickle] erro de rede/assinatura ao enviar pra', sub.endpoint, e);
+        // Conta como falha, mesma poda de acima.
         const falhas = sub.falhas + 1;
         if (falhas >= PODA_APOS_FALHAS) {
           await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id);
