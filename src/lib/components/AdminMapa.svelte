@@ -21,7 +21,8 @@
     colorirPor = 'status',
     destacarIds = [],
     selecionadasIds = [],
-    pois = []
+    pois = [],
+    legenda = true
   }: {
     quadras: QuadraGeo[];
     altura?: number;
@@ -35,7 +36,29 @@
     // Quadras selecionadas no modo multi-seleção (borda azul grossa)
     selecionadasIds?: string[];
     pois?: POI[];
+    // Legenda de cor no canto — desliga só se o chamador já explica as cores em outro lugar.
+    legenda?: boolean;
   } = $props();
+
+  // Itens da legenda batendo com o fillColor calculado mais abaixo (densidade > recência > status).
+  const legendaItens = $derived.by(() => {
+    if (densidade) {
+      return [{ cor: 'linear-gradient(90deg, #fef3c7, #dc2626)', label: 'Poucos → muitos endereços' }];
+    }
+    if (colorirPor === 'recencia') {
+      return [
+        { cor: 'rgba(220, 38, 38, 0.75)', label: 'Concluída há <15 dias' },
+        { cor: 'rgba(245, 158, 11, 0.7)', label: 'Concluída há 15–45 dias' },
+        { cor: 'rgba(34, 197, 94, 0.6)', label: 'Livre pra trabalhar' },
+        { cor: 'rgba(148, 163, 184, 0.5)', label: 'Inativa' }
+      ];
+    }
+    return [
+      { cor: 'rgba(34, 197, 94, 0.6)', label: 'Concluída' },
+      { cor: 'rgba(245, 158, 11, 0.6)', label: 'Pendente' },
+      { cor: 'rgba(148, 163, 184, 0.5)', label: 'Inativa' }
+    ];
+  });
 
   let container: HTMLDivElement;
   let mapa: any = null;
@@ -317,8 +340,21 @@
   });
 </script>
 
-<div
-  bind:this={container}
-  class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
-  style:height={altura + 'px'}
-></div>
+<div class="relative">
+  <div
+    bind:this={container}
+    class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
+    style:height={altura + 'px'}
+  ></div>
+
+  {#if legenda && carregado}
+    <div class="absolute bottom-2 left-2 z-10 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-sm px-2 py-1.5 text-[11px] space-y-1 pointer-events-none">
+      {#each legendaItens as item}
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style:background={item.cor}></span>
+          <span class="text-slate-600">{item.label}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
+</div>

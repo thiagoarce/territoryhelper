@@ -24,6 +24,7 @@
 
   interface MinhaParte {
     id: number;
+    arranjo_id: number | null;
     arranjo_nome: string;
     arranjo_data: string | null;
     hora_inicio: string | null;
@@ -215,6 +216,24 @@
     return [...ids].map((id) => data.quadrasMap[id]).filter(Boolean);
   });
 
+  // Quando o dirigente também ganhou uma parte no PRÓPRIO arranjo (comum:
+  // ele mesmo se inclui na repartição), evita mostrar "Grupo X" duas vezes
+  // (Você dirige + Pregação em grupo) — mostra só uma vez, com a parte
+  // embutida dentro do card de dirigente.
+  const parteDoArranjoQueDirijo = (arranjoId: number) =>
+    data.minhasPartes.find((p) => p.arranjo_id === arranjoId);
+  const partesSeparadas = $derived(
+    data.minhasPartes.filter((p) => !data.arranjosQueDirijo.some((a) => a.id === p.arranjo_id))
+  );
+
+  // "Minha carteira" ocupa a tela toda mesmo vazia — colapsa quando não há
+  // nada (nem território pessoal, nem cartas, nem TCE) pra não competir
+  // com o que já foi mostrado nos cards de cima.
+  const carteiraTemAlgo = $derived(
+    data.abertas.length > 0 || data.concluidas.length > 0 ||
+    (data.cartasDesignadas?.length ?? 0) > 0 || (data.tces?.length ?? 0) > 0
+  );
+
   function diasAteOuApos(dataStr: string | null): string {
     if (!dataStr) return '';
     const hoje = new Date();
@@ -248,6 +267,7 @@
     <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2"><Icon nome="tent" size={14} /> Você dirige</div>
     {#each data.arranjosQueDirijo as a}
       {@const prog = progressoQuadras(a.quadras_ids)}
+      {@const minhaParte = parteDoArranjoQueDirijo(a.id)}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-medium">{a.nome}</span>
@@ -257,7 +277,7 @@
         {#if prog}
           <div class="mt-1.5">
             <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
-              <span>Progresso</span>
+              <span>Progresso do grupo todo</span>
               <span class="font-medium">{prog.feitas}/{prog.total}</span>
             </div>
             <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
@@ -281,6 +301,24 @@
             <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {a.tce_id}</span>
           {/if}
         </div>
+        {#if minhaParte}
+          <div class="mt-2 pt-2 border-t border-slate-100">
+            <div class="text-xs font-medium text-amber-800"><Icon nome="walk" size={14} /> Sua parte nesse grupo{minhaParte.colegas.length > 0 ? ` (com ${minhaParte.colegas.join(', ')})` : ''}:</div>
+            <div class="flex flex-wrap gap-1.5 mt-1">
+              {#each minhaParte.quadras_ids as qid}
+                {@const q = data.quadrasMap[qid]}
+                <a href="/publicador/quadra/{encodeURIComponent(qid)}"
+                  class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200">
+                  {#if q}<span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>{/if}
+                  <span>{qid}</span>
+                </a>
+              {/each}
+              {#each minhaParte.locais_ids as lid}
+                <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:bg-amber-200"><Icon nome="mail" size={14} /> #{lid}</a>
+              {/each}
+            </div>
+          </div>
+        {/if}
         <div class="mt-2 flex items-center gap-3">
           <a href="/publicador/arranjo" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
           <button type="button" disabled={gerandoLink === `arranjo:${a.id}`} onclick={() => abrirLinkPublico('arranjo', a.id)}
@@ -291,10 +329,10 @@
   </div>
 {/if}
 
-{#if data.minhasPartes.length > 0}
+{#if partesSeparadas.length > 0}
   <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
     <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2"><Icon nome="walk" size={14} /> Pregação em grupo — sua parte</div>
-    {#each data.minhasPartes as p}
+    {#each partesSeparadas as p}
       {@const prog = progressoQuadras(p.quadras_ids)}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
         <div class="flex items-center gap-2 flex-wrap">
@@ -454,6 +492,12 @@
   </p>
 </div>
 
+{#if !carteiraTemAlgo}
+  <div class="mt-3 text-sm text-slate-400 italic bg-slate-50 rounded-lg p-3">
+    Sem território pessoal, cartas ou território comercial designado no momento.
+  </div>
+{:else}
+
 {#if quadrasMapa.length > 0 && aba === 'abertas'}
   <div class="mt-4">
     <AdminMapa quadras={quadrasMapa} altura={220} onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))} />
@@ -587,6 +631,8 @@
     </section>
   {/if}
 </div>
+
+{/if}
 </div>
 
 <BottomSheet bind:open={sheetPedido} title="Pedir publicação">
