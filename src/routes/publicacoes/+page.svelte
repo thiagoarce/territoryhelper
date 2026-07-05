@@ -6,7 +6,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao } from './$types';
+  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha } from './$types';
 
   let { data }: {
     data: {
@@ -16,6 +16,9 @@
       reposicao: ReposicaoItem[];
       tendencia: TendenciaMes[];
       catalogo: PublicacaoCatalogo[];
+      publicadores: PublicadorLinha[];
+      controlePublicacaoId: number | null;
+      controle: ControleLinha[];
       erro?: string;
     };
   } = $props();
@@ -135,6 +138,43 @@
     processandoId = null;
     if (parsed.type === 'success') { toast.success('Notas salvas'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  // Lista de controle — servo escolhe uma publicação e confirma quanto cada
+  // publicador pediu/recebeu (contador independente do fluxo de
+  // pedidos_publicacao, que é pra pedido especial avulso).
+  function selecionarControle(id: string) {
+    const usp = new URLSearchParams(window.location.search);
+    if (id) usp.set('controle', id); else usp.delete('controle');
+    goto(`?${usp.toString()}`, { keepFocus: true, noScroll: true });
+  }
+
+  let controleEmEdicao: Record<string, number> = $state({});
+  function chaveControle(publicadorId: string, campo: 'qtd_pedida' | 'qtd_entregue') {
+    return `${publicadorId}|${campo}`;
+  }
+  function controleAtual(publicadorId: string, campo: 'qtd_pedida' | 'qtd_entregue'): number {
+    const chave = chaveControle(publicadorId, campo);
+    if (chave in controleEmEdicao) return controleEmEdicao[chave];
+    return data.controle.find((c) => c.publicador_id === publicadorId)?.[campo] ?? 0;
+  }
+  let salvandoControle = $state<string | null>(null);
+  async function ajustarControle(publicadorId: string, campo: 'qtd_pedida' | 'qtd_entregue', delta: number) {
+    if (!data.controlePublicacaoId) return;
+    const chave = chaveControle(publicadorId, campo);
+    const novoValor = Math.max(0, controleAtual(publicadorId, campo) + delta);
+    controleEmEdicao[chave] = novoValor;
+    salvandoControle = chave;
+    const fd = new FormData();
+    fd.append('publicacao_id', String(data.controlePublicacaoId));
+    fd.append('publicador_id', publicadorId);
+    fd.append('campo', campo);
+    fd.append('valor', String(novoValor));
+    const res = await fetch('?/atualizarControle', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoControle = null;
+    if (parsed.type !== 'success') toast.error(String(parsed.data?.erro || 'Falhou'));
+    await invalidateAll();
   }
 </script>
 
@@ -298,6 +338,75 @@
         <p class="text-sm text-slate-400 italic">Nenhuma publicação cadastrada.</p>
       {/if}
     </div>
+  </div>
+
+  <div>
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
+      <Icon nome="square-check" size={14} /> Lista de controle
+    </h2>
+    <p class="text-xs text-slate-500 mb-2">Escolha uma publicação e confirme quanto cada publicador pediu e já recebeu.</p>
+    <select
+      value={data.controlePublicacaoId ?? ''}
+      onchange={(e) => selecionarControle((e.target as HTMLSelectElement).value)}
+      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm mb-2"
+    >
+      <option value="">Escolha uma publicação...</option>
+      {#each ORDEM_CATEGORIAS as cat}
+        {@const itens = catalogoAgrupado[cat] ?? []}
+        {#if itens.length > 0}
+          <optgroup label={CATEGORIA_LABEL[cat]}>
+            {#each itens as p}<option value={p.id}>{p.nome}</option>{/each}
+          </optgroup>
+        {/if}
+      {/each}
+    </select>
+
+    {#if data.controlePublicacaoId}
+      {#if data.publicadores.length === 0}
+        <p class="text-sm text-slate-400 italic">Nenhum publicador ativo cadastrado.</p>
+      {:else}
+        <div class="space-y-1">
+          <div class="grid grid-cols-[1fr_auto_auto] gap-2 text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-2.5">
+            <span>Publicador</span><span>Pedido</span><span>Entregue</span>
+          </div>
+          {#each data.publicadores as pub (pub.id)}
+            <div class="grid grid-cols-[1fr_auto_auto] items-center gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5 text-sm">
+              <span class="truncate">{pub.nome}</span>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={salvandoControle === chaveControle(pub.id, 'qtd_pedida')}
+                  onclick={() => ajustarControle(pub.id, 'qtd_pedida', -1)}
+                  class="w-6 h-6 rounded bg-white border border-slate-300 text-slate-600 disabled:opacity-40"
+                >−</button>
+                <span class="w-5 text-center font-medium">{controleAtual(pub.id, 'qtd_pedida')}</span>
+                <button
+                  type="button"
+                  disabled={salvandoControle === chaveControle(pub.id, 'qtd_pedida')}
+                  onclick={() => ajustarControle(pub.id, 'qtd_pedida', 1)}
+                  class="w-6 h-6 rounded bg-white border border-slate-300 text-slate-600 disabled:opacity-40"
+                >+</button>
+              </div>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={salvandoControle === chaveControle(pub.id, 'qtd_entregue')}
+                  onclick={() => ajustarControle(pub.id, 'qtd_entregue', -1)}
+                  class="w-6 h-6 rounded bg-white border border-slate-300 text-slate-600 disabled:opacity-40"
+                >−</button>
+                <span class="w-5 text-center font-medium">{controleAtual(pub.id, 'qtd_entregue')}</span>
+                <button
+                  type="button"
+                  disabled={salvandoControle === chaveControle(pub.id, 'qtd_entregue')}
+                  onclick={() => ajustarControle(pub.id, 'qtd_entregue', 1)}
+                  class="w-6 h-6 rounded bg-white border border-slate-300 text-slate-600 disabled:opacity-40"
+                >+</button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
   </div>
 </div>
 

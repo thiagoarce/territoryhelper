@@ -50,6 +50,17 @@ export interface PublicacaoCatalogo {
   ativo: boolean;
 }
 
+export interface PublicadorLinha {
+  id: string;
+  nome: string;
+}
+
+export interface ControleLinha {
+  publicador_id: string;
+  qtd_pedida: number;
+  qtd_entregue: number;
+}
+
 const CATEGORIAS_VALIDAS: CategoriaPublicacao[] = ['biblia', 'livro', 'brochura', 'folheto', 'cartao_visita', 'revista', 'formulario', 'outro'];
 
 const FILTROS_VALIDOS = ['pendentes', 'entregue', 'cancelado', 'todos'] as const;
@@ -147,7 +158,30 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     .order('nome');
   const catalogo = (catalogoRows ?? []) as PublicacaoCatalogo[];
 
-  return { pedidos, filtro, souAdmin: locals.profile?.role === 'admin', reposicao, tendencia, catalogo };
+  // Lista de controle: publicação escolhida via ?controle=<id>. Mostra
+  // todos os publicadores ativos + o que já foi registrado pra essa
+  // publicação (0 se ainda não tem linha).
+  const controlePublicacaoId = Number(url.searchParams.get('controle') ?? 0) || null;
+  const { data: publicadoresRows } = await locals.supabase
+    .from('profiles')
+    .select('id, nome')
+    .eq('ativo', true)
+    .order('nome');
+  const publicadores = (publicadoresRows ?? []) as PublicadorLinha[];
+
+  let controle: ControleLinha[] = [];
+  if (controlePublicacaoId) {
+    const { data: controleRows } = await locals.supabase
+      .from('publicacao_controle')
+      .select('publicador_id, qtd_pedida, qtd_entregue')
+      .eq('publicacao_id', controlePublicacaoId);
+    controle = (controleRows ?? []) as ControleLinha[];
+  }
+
+  return {
+    pedidos, filtro, souAdmin: locals.profile?.role === 'admin', reposicao, tendencia, catalogo,
+    publicadores, controlePublicacaoId, controle
+  };
 };
 
 export const actions: Actions = {
@@ -238,6 +272,31 @@ export const actions: Actions = {
       .eq('id', id);
     if (errPub) return fail(400, { erro: errPub.message });
     return { ok: true, imagem_url: pub.publicUrl };
+  },
+
+  // Lista de controle: salva o valor absoluto (o client já soma o delta
+  // localmente, mesmo padrão de salvarNecessidadeRegular) pra pedida ou
+  // entregue de um publicador numa publicação.
+  atualizarControle: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
+      return fail(403, { erro: 'Só o servo de publicações' });
+    }
+    const fd = await request.formData();
+    const publicacaoId = Number(fd.get('publicacao_id') ?? 0);
+    const publicadorId = String(fd.get('publicador_id') ?? '');
+    const campo = String(fd.get('campo') ?? '');
+    const valor = Number(fd.get('valor') ?? 0);
+    if (!publicacaoId || !publicadorId) return fail(400, { erro: 'publicacao_id e publicador_id obrigatórios' });
+    if (campo !== 'qtd_pedida' && campo !== 'qtd_entregue') return fail(400, { erro: 'campo inválido' });
+    if (valor < 0) return fail(400, { erro: 'Quantidade inválida' });
+
+    const { error } = await locals.supabase.from('publicacao_controle').upsert(
+      { publicacao_id: publicacaoId, publicador_id: publicadorId, [campo]: valor, atualizado_em: new Date().toISOString() },
+      { onConflict: 'publicacao_id,publicador_id' }
+    );
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true };
   },
 
   resolverReposicao: async ({ request, locals }) => {
