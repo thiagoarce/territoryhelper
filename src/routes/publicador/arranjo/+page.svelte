@@ -5,13 +5,11 @@
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
-  import AdminMapa from '$lib/components/AdminMapa.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
   import { ocorrenciasAgendamentoEntre } from '$lib/tp-agendamentos';
   import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import { page } from '$app/stores';
-  import type { QuadraGeo } from '$lib/server/queries';
   import type {
     ArranjoLinha,
     ModalidadeLite,
@@ -39,11 +37,9 @@
       modalidades: ModalidadeLite[];
       dirigentes: Record<string, string>;
       prediosMap: Record<number, PredioChip>;
-      publicadores: { id: string; nome: string; role: string }[];
       partes: ParteLinha[];
       nomesPorId: Record<string, string>;
       tcesMap: Record<string, string>;
-      quadrasGeo: QuadraGeo[];
       minhaId: string;
       podeCoordenar: boolean;
       tpAgendamentos: AgendamentoBase[];
@@ -238,92 +234,6 @@
     for (const p of data.partes) (m[p.arranjo_id] ||= []).push(p);
     return m;
   });
-
-  function nomeParte(p: ParteLinha): string {
-    return p.publicadores.map((id) => data.nomesPorId[id] ?? '?').join(' + ');
-  }
-
-  // === Sheet repartir (dirigente do arranjo) ===
-  let sheetRepartir = $state(false);
-  let arranjoRep = $state<ArranjoLinha | null>(null);
-  let pubsSel = $state<Set<string>>(new Set());
-  let quadrasSel = $state<Set<string>>(new Set());
-  let locaisSel = $state<Set<number>>(new Set());
-  let notasParte = $state('');
-  let repartindo = $state(false);
-
-  // O que do território ainda NÃO está em nenhuma parte (sugestão visual)
-  const jaRepartidas = $derived.by(() => {
-    if (!arranjoRep) return { q: new Set<string>(), l: new Set<number>() };
-    const partes = partesPorArranjo[arranjoRep.id] ?? [];
-    return {
-      q: new Set(partes.flatMap((p) => p.quadras_ids)),
-      l: new Set(partes.flatMap((p) => p.locais_ids))
-    };
-  });
-
-  // Interessados (inscrição antecipada) aparecem primeiro na lista, com selo
-  const publicadoresParaRepartir = $derived.by(() => {
-    const interessados = new Set(arranjoRep?.interessados ?? []);
-    return [...data.publicadores].sort((a, b) => {
-      const ia = interessados.has(a.id) ? 0 : 1;
-      const ib = interessados.has(b.id) ? 0 : 1;
-      return ia - ib;
-    });
-  });
-
-  // Geometrias das quadras do arranjo sendo repartido (mini-mapa do sheet)
-  const quadrasRepGeo = $derived(
-    arranjoRep
-      ? data.quadrasGeo.filter((q) => (arranjoRep!.quadras_ids ?? []).includes(q.id))
-      : []
-  );
-
-  // Quem já está com um item (pra montar o alerta de conflito)
-  function donosDoItem(qid: string | null, lid: number | null): string[] {
-    if (!arranjoRep) return [];
-    const partes = partesPorArranjo[arranjoRep.id] ?? [];
-    const nomes: string[] = [];
-    for (const p of partes) {
-      const bate = (qid && p.quadras_ids.includes(qid)) || (lid != null && p.locais_ids.includes(lid));
-      if (bate) nomes.push(nomeParte(p));
-    }
-    return nomes;
-  }
-
-  function abrirRepartir(a: ArranjoLinha) {
-    arranjoRep = a;
-    pubsSel = new Set();
-    quadrasSel = new Set();
-    locaisSel = new Set();
-    notasParte = '';
-    sheetRepartir = true;
-  }
-  function togglePub(id: string) {
-    if (pubsSel.has(id)) pubsSel.delete(id); else pubsSel.add(id);
-    pubsSel = new Set(pubsSel);
-  }
-  function toggleQuadra(id: string) {
-    if (quadrasSel.has(id)) quadrasSel.delete(id); else quadrasSel.add(id);
-    quadrasSel = new Set(quadrasSel);
-  }
-  function toggleLocal(id: number) {
-    if (locaisSel.has(id)) locaisSel.delete(id); else locaisSel.add(id);
-    locaisSel = new Set(locaisSel);
-  }
-
-  async function apagarParte(id: number) {
-    if (!confirm('Remover essa parte? O publicador perde o acesso.')) return;
-    const key = `parte:${id}`;
-    acaoEmCurso = key;
-    const fd = new FormData();
-    fd.append('id', String(id));
-    const res = await fetch('?/apagarParte', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
-    acaoEmCurso = null;
-    if (parsed.type === 'success') { toast.success('Removida'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
 
   // Link público do arranjo — abre /t/<token> onde dá pra compartilhar
   // com imagem do mapa (WhatsApp)
@@ -595,25 +505,13 @@
                   {#if data.podeCoordenar}
                     {@const ehMeu = a.dirigente_id === data.minhaId}
                     {#if ehMeu}
-                      <!-- Partes já criadas (visão do dirigente) -->
                       {#if partesDoArranjo.length > 0}
-                        <div class="mt-2 pt-2 border-t border-slate-100 space-y-1">
-                          <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Partes ({partesDoArranjo.length})</div>
-                          {#each partesDoArranjo as pt (pt.id)}
-                            <div class="flex items-center gap-2 text-xs bg-slate-50 rounded p-1.5">
-                              <span class="flex-1 min-w-0 truncate">
-                                <strong>{nomeParte(pt)}</strong> —
-                                <span class="font-mono">{pt.quadras_ids.join(', ')}</span>
-                                {#if pt.locais_ids.length > 0}{pt.quadras_ids.length > 0 ? ' + ' : ''}{pt.locais_ids.length} prédio(s){/if}
-                              </span>
-                              <button type="button" disabled={isBusy(`parte:${pt.id}`)} onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40"><Icon nome={isBusy(`parte:${pt.id}`) ? 'loader' : 'trash'} size={14} spin={isBusy(`parte:${pt.id}`)} /></button>
-                            </div>
-                          {/each}
+                        <div class="mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+                          {partesDoArranjo.length} parte(s) já repartida(s) — <a href="/publicador/casa-a-casa" class="text-primary-700 hover:underline">gerencie em Casa a casa →</a>
                         </div>
-                      {/if}
-                      {#if (a.quadras_ids?.length ?? 0) > 0 || (a.cartas_locais_ids?.length ?? 0) > 0}
+                      {:else if (a.quadras_ids?.length ?? 0) > 0 || (a.cartas_locais_ids?.length ?? 0) > 0}
                         <div class="mt-2 pt-2 border-t border-slate-100">
-                          <Button variant="primary" onclick={() => abrirRepartir(a)} class="w-full"><Icon nome="scissors" size={14} /> Repartir território</Button>
+                          <a href="/publicador/casa-a-casa" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território (em Casa a casa) →</a>
                         </div>
                       {/if}
                     {:else}
@@ -647,120 +545,6 @@
     </div>
   {/if}
 </div>
-
-<!-- Sheet repartir: subconjunto do território → 1+ publicadores (mesma parte) -->
-<BottomSheet bind:open={sheetRepartir} title="Repartir território">
-  {#if arranjoRep}
-    <form
-      method="POST"
-      action="?/criarParte"
-      use:enhance={({ cancel }) => {
-        // Alerta: itens já repartidos pra outro publicador
-        const confQ = [...quadrasSel].filter((q) => jaRepartidas.q.has(q));
-        const confL = [...locaisSel].filter((l) => jaRepartidas.l.has(l));
-        if (confQ.length > 0 || confL.length > 0) {
-          const detalhes = [
-            ...confQ.map((q) => `${q} (com ${donosDoItem(q, null).join(' / ')})`),
-            ...confL.map((l) => `prédio #${l} (com ${donosDoItem(null, l).join(' / ')})`)
-          ].join(', ');
-          if (!confirm(`Já repartido: ${detalhes}.\n\nRepartir de novo mesmo assim? Os dois vão trabalhar o mesmo lugar.`)) {
-            cancel();
-            return;
-          }
-        }
-        repartindo = true;
-        return async ({ result, update }) => {
-        await update(); repartindo = false;
-        if (result.type === 'success') {
-          toast.success(String((result.data as any)?.msg || 'Parte criada'));
-          sheetRepartir = false; await invalidateAll();
-        } else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
-      }; }}
-      class="space-y-3"
-    >
-      <input type="hidden" name="arranjo_id" value={arranjoRep.id} />
-      {#each [...pubsSel] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
-      {#each [...quadrasSel] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
-      {#each [...locaisSel] as lid}<input type="hidden" name="locais_ids" value={lid} />{/each}
-
-      <p class="text-xs text-slate-500">Toque nas quadras no mapa (ou nos chips) pra montar a parte. Itens acinzentados já estão em outra parte — repartir de novo pede confirmação.</p>
-
-      {#if quadrasRepGeo.length > 0}
-        <AdminMapa
-          quadras={quadrasRepGeo}
-          selecionadasIds={[...quadrasSel]}
-          altura={280}
-          onQuadraClick={(q) => toggleQuadra(q.id)}
-        />
-      {/if}
-
-      {#if (arranjoRep.quadras_ids?.length ?? 0) > 0}
-        <div>
-          <span class="block text-sm font-medium mb-1">Quadras</span>
-          <div class="flex flex-wrap gap-1.5">
-            {#each arranjoRep.quadras_ids ?? [] as q}
-              {@const emParte = jaRepartidas.q.has(q)}
-              <button type="button" onclick={() => toggleQuadra(q)}
-                class="text-xs font-mono px-2 py-1 rounded border transition-colors"
-                class:bg-primary-600={quadrasSel.has(q)}
-                class:text-white={quadrasSel.has(q)}
-                class:border-primary-600={quadrasSel.has(q)}
-                class:bg-slate-100={!quadrasSel.has(q) && emParte}
-                class:text-slate-400={!quadrasSel.has(q) && emParte}
-                class:border-slate-200={!quadrasSel.has(q) && emParte}
-                class:bg-white={!quadrasSel.has(q) && !emParte}
-                class:border-slate-300={!quadrasSel.has(q) && !emParte}
-              >{q}</button>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      {#if (arranjoRep.cartas_locais_ids?.length ?? 0) > 0}
-        <div>
-          <span class="block text-sm font-medium mb-1">Prédios (cartas)</span>
-          <div class="max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-            {#each arranjoRep.cartas_locais_ids ?? [] as lid}
-              {@const p = data.prediosMap[lid]}
-              {@const emParte = jaRepartidas.l.has(lid)}
-              <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm" class:opacity-50={emParte && !locaisSel.has(lid)}>
-                <input type="checkbox" checked={locaisSel.has(lid)} onchange={() => toggleLocal(lid)} class="w-4 h-4 rounded" />
-                <span class="flex-1 truncate"><Icon nome="mail" size={14} /> {p?.nome || (p ? `${p.logradouro ?? ''}, ${p.numero ?? ''}` : `#${lid}`)}</span>
-              </label>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <div>
-        <span class="block text-sm font-medium mb-1">Publicadores (dupla/trio)</span>
-        <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-          {#each publicadoresParaRepartir as p}
-            {@const interessado = (arranjoRep?.interessados ?? []).includes(p.id)}
-            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
-              <input type="checkbox" checked={pubsSel.has(p.id)} onchange={() => togglePub(p.id)} class="w-4 h-4 rounded" />
-              <span class="flex-1">{p.nome}</span>
-              {#if interessado}<span class="text-[10px] px-1.5 py-0.5 rounded bg-primary-100 text-primary-700"><Icon nome="hand" size={10} /> interessado</span>{/if}
-              <span class="text-xs text-slate-400">{p.role}</span>
-            </label>
-          {/each}
-        </div>
-        <p class="text-xs text-slate-500 mt-1">{pubsSel.size} publicador(es) · {quadrasSel.size} quadra(s) · {locaisSel.size} prédio(s)</p>
-      </div>
-
-      <div>
-        <label for="notas-pt" class="block text-sm font-medium mb-1">Notas (opcional)</label>
-        <input id="notas-pt" name="notas" bind:value={notasParte} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-      </div>
-
-      <div class="flex gap-2 pt-2">
-        <Button variant="secondary" onclick={() => (sheetRepartir = false)} class="flex-1">Cancelar</Button>
-        <Button variant="primary" type="submit" loading={repartindo} class="flex-1"
-          disabled={pubsSel.size === 0 || (quadrasSel.size === 0 && locaisSel.size === 0)}>Criar parte</Button>
-      </div>
-    </form>
-  {/if}
-</BottomSheet>
 
 <!-- Sheet relatório de fim de agendamento (TP-D) -->
 <BottomSheet bind:open={sheetRelatorio} title="Relatório do turno">

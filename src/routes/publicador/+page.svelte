@@ -320,7 +320,7 @@
           </div>
         {/if}
         <div class="mt-2 flex items-center gap-3">
-          <a href="/publicador/arranjo" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
+          <a href="/publicador/casa-a-casa" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
           <button type="button" disabled={gerandoLink === `arranjo:${a.id}`} onclick={() => abrirLinkPublico('arranjo', a.id)}
             class="text-xs font-medium text-primary-700 hover:underline disabled:opacity-40"><Icon nome={gerandoLink === `arranjo:${a.id}` ? 'loader' : 'share'} size={14} spin={gerandoLink === `arranjo:${a.id}`} /> Compartilhar</button>
         </div>
