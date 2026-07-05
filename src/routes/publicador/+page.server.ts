@@ -174,6 +174,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const nomePorId = new Map((profRes.data ?? []).map((p: any) => [p.id, p.nome as string]));
   const minhasPartes = (partesRes.data ?? []).map((p: any) => ({
     id: p.id,
+    arranjo_id: p.arranjos?.id ?? null,
     arranjo_nome: p.arranjos?.nome ?? 'Arranjo',
     arranjo_data: p.arranjos?.data ?? null,
     hora_inicio: p.arranjos?.hora_inicio ?? null,

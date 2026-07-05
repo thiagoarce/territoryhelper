@@ -374,7 +374,7 @@
           aria-label={opt.label}
           class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {ativo ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-100'}"
         >
-          <Icon nome={opt.icone} size={16} /> <span class={modoSimples ? '' : 'hidden sm:inline'}>{opt.label}</span>
+          <Icon nome={opt.icone} size={16} /> <span>{opt.label}</span>
         </button>
       </form>
     {/each}
@@ -391,7 +391,7 @@
         aria-label="Carta entregue"
         class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {cartaMarcada ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-300 hover:bg-slate-100'}"
       >
-        <Icon nome="mail" size={14} /> <span class={modoSimples ? '' : 'hidden sm:inline'}>Carta</span>
+        <Icon nome="mail" size={14} /> <span>Carta</span>
       </button>
     </form>
   </div>

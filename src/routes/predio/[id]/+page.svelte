@@ -341,8 +341,8 @@
                   onclick={() => toggleCarta(u, opt.c)}
                   title={opt.l}
                   aria-label={opt.l}
-                  class="px-3 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
-                ><Icon nome={opt.icone} size={18} /></button>
+                  class="px-2 py-1.5 rounded border flex flex-col items-center gap-0.5 {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
+                ><Icon nome={opt.icone} size={16} /><span class="text-[9px] leading-none whitespace-nowrap">{opt.l}</span></button>
               {/each}
             </div>
           {:else}
@@ -359,8 +359,8 @@
                   onclick={() => marcarDesfecho(u, opt.t)}
                   title={opt.l}
                   aria-label={opt.l}
-                  class="px-2.5 py-2 rounded text-base border {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
-                ><Icon nome={opt.icone} size={18} /></button>
+                  class="px-2 py-1.5 rounded border flex flex-col items-center gap-0.5 {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
+                ><Icon nome={opt.icone} size={16} /><span class="text-[9px] leading-none whitespace-nowrap">{opt.l}</span></button>
               {/each}
             </div>
           {/if}
