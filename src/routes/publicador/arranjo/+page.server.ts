@@ -319,6 +319,13 @@ export const actions: Actions = {
       criado_por: locals.user.id
     });
     if (error) return fail(400, { erro: error.message });
+
+    await criarNotificacao(publicadorIds, {
+      titulo: 'Você recebeu uma parte do território',
+      corpo: arr.nome ?? 'Pregação em grupo',
+      url: '/publicador/casa-a-casa'
+    });
+
     return { ok: true, msg: `Parte criada pra ${publicadorIds.length} publicador(es)` };
   },
 

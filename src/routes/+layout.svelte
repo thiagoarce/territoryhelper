@@ -67,15 +67,15 @@
       ? [
           { href: '/publicador', label: 'Designações', icon: 'home' },
           { href: '/publicador/mapa', label: 'Mapa', icon: 'map' },
+          { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
           { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' },
-          { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
+          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' }
         ]
       : [
           { href: '/publicador', label: 'Designações', icon: 'home' },
+          { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
           { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' },
-          { href: '/publicador/campanha', label: 'Campanha', icon: 'chart' }
+          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' }
         ]
   );
 
