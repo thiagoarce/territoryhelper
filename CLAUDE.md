@@ -90,6 +90,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacoes` | Catálogo real (transcrito do S-14-T/S-28-T oficial, migration 052) — `categoria` (biblia/livro/brochura/folheto/cartao_visita/revista/formulario/outro), `qtd_estoque` (snapshot MANUAL, o servo atualiza batendo com o relatório do JW Hub — não é movimento entrada/saída), `imagem_url` (capa, bucket `fotos-publicacoes`). Gerenciado em `/publicacoes` |
 | `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações", mostra estoque atual antes de pedir), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
 | `publicador_necessidade_regular` | "Normalmente preciso de N" — só revistas (Despertai/Sentinela, que chegam pela via normal, não por pedido especial); preferência informativa sem status, publicador ajusta em `/publicador` |
+| `publicacao_controle` | Lista de controle por publicação — servo escolhe uma publicação em `/publicacoes` e confirma, publicador a publicador, `qtd_pedida`/`qtd_entregue` (contador +/-). Diferente de `pedidos_publicacao` (fila de pedido especial avulso com status): aqui é registro manual sem fluxo, 1 linha por (publicação, publicador). Gate por `is_servo_pub()`, mesma capacidade de sempre |
 | `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
 | `notificacoes` / `push_subscriptions` | PUSH-A — sino no header (`NotificacoesBell.svelte`, fallback universal, funciona sem push) + Web Push real (JWT VAPID assinado via WebCrypto, tickle sem payload — SW busca o conteúdo em `/api/notificacoes`). Disparado por `$lib/server/push.ts::criarNotificacao()` em: designação criada, cartas designadas, `designarParticipante` (TP-F), status de `pedidos_publicacao` mudou (P-A), saída de agendamento em <48h. Ativar em `/perfil` (botão, exige gesto do usuário) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
@@ -181,7 +182,9 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   (filtro pendentes/entregue/cancelado/todos), avançar status + notas do
   servo; **Reposição** (itens de relatório de TP != ok ainda não
   resolvidos, agrupados por carrinho/ponto, botão Resolvido) + card
-  simples de tendência (soma de qtd colocada por publicação/mês);
+  simples de tendência (soma de qtd colocada por publicação/mês); **Lista
+  de controle** (escolhe publicação → checklist de todo publicador ativo
+  com contador +/- de pedido e de entrega, `publicacao_controle`);
   suprimento de campanha é só um link pra `/admin/campanha`. Fica FORA de
   `/admin/*` de propósito — a rota é guardada por `exigirServoPub` (admin
   OU `profiles.servo_publicacoes`), não por role, pra um servo publicador
