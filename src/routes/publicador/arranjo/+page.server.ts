@@ -1,7 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { selectAll, listarPublicadores, listarQuadrasComGeo } from '$lib/server/queries';
-import type { QuadraGeo } from '$lib/server/queries';
+import { selectAll } from '$lib/server/queries';
 import type { ArranjoBase } from '$lib/arranjos';
 import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
 import { criarNotificacao } from '$lib/server/push';
@@ -83,8 +82,8 @@ export interface ParteLinha {
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) return {
     arranjos: [], modalidades: [], dirigentes: {}, prediosMap: {} as Record<number, PredioChip>,
-    publicadores: [], partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>,
-    tcesMap: {} as Record<string, string>, quadrasGeo: [] as QuadraGeo[], minhaId: '', podeCoordenar: false,
+    partes: [] as ParteLinha[], nomesPorId: {} as Record<string, string>,
+    tcesMap: {} as Record<string, string>, minhaId: '', podeCoordenar: false,
     tpAgendamentos: [] as AgendamentoBase[], tpExcecoes: [] as ExcecaoBase[],
     tpCarrinhos: {} as Record<number, TpCarrinhoLite>, tpPontos: {} as Record<number, TpPontoLite>,
     tpParticipantes: [] as TpParticipanteLinha[], minhaDisponibilidadeVazia: false,
@@ -97,7 +96,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const escalaAte = new Date(Date.now() + 370 * 86400000).toISOString().slice(0, 10);
   const escalaDesde = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
 
-  const [arranjos, modalidades, { data: profs }, publicadores, partesRes, tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpParticipantesRes, tpDispRes, tpPecasRes, campanhaAtivaRes, tpRelatoriosRes] = await Promise.all([
+  const [arranjos, modalidades, { data: profs }, partesRes, tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpParticipantesRes, tpDispRes, tpPecasRes, campanhaAtivaRes, tpRelatoriosRes] = await Promise.all([
     selectAll<ArranjoLinha>(
       locals.supabase
         .from('arranjos')
@@ -111,7 +110,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     ),
     // Todos os profiles pra resolver nomes (dirigentes E membros de partes)
     locals.supabase.from('profiles').select('id, nome, role'),
-    podeCoordenar ? listarPublicadores(locals.supabase) : Promise.resolve([]),
     // Partes dos arranjos (RLS: publicador vê as dele; dirigente/admin veem todas)
     locals.supabase
       .from('arranjo_partes')
@@ -190,17 +188,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     for (const t of (tces ?? []) as any[]) tcesMap[t.id] = t.nome;
   }
 
-  // Geometria das quadras referenciadas pelos arranjos — pro mini-mapa do
-  // sheet Repartir (só dirigente/admin usam; poupa payload do publicador)
-  let quadrasGeo: QuadraGeo[] = [];
-  if (podeCoordenar) {
-    const idsUsados = new Set(arranjos.flatMap((a) => a.quadras_ids ?? []));
-    if (idsUsados.size > 0) {
-      const todas = await listarQuadrasComGeo(locals.supabase);
-      quadrasGeo = todas.filter((q) => idsUsados.has(q.id));
-    }
-  }
-
   // Coleta ids únicos de prédios referenciados nos arranjos e busca detalhes + stats
   const predioIds = Array.from(
     new Set(arranjos.flatMap((a) => a.cartas_locais_ids ?? []).filter((n) => Number.isFinite(n)))
@@ -233,7 +220,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
 
   return {
-    arranjos, modalidades, dirigentes, prediosMap, publicadores, partes, nomesPorId, tcesMap, quadrasGeo,
+    arranjos, modalidades, dirigentes, prediosMap, partes, nomesPorId, tcesMap,
     minhaId: locals.user.id, podeCoordenar, tpAgendamentos, tpExcecoes, tpCarrinhos, tpPontos, tpParticipantes,
     minhaDisponibilidadeVazia: (tpDispRes.count ?? 0) === 0,
     tpPecasCatalogo, campanhaPublicacao, tpRelatorios
@@ -271,64 +258,6 @@ export const actions: Actions = {
     return { ok: true, msg: `Você é o novo dirigente de "${arr.nome ?? 'arranjo'}"` };
   },
 
-  // Reparte o território do arranjo: cria uma PARTE (subconjunto de
-  // quadras/prédios → 1+ publicadores; dupla/trio compartilham a mesma
-  // parte). Substitui o antigo distribuirQuadras — não cria designações.
-  criarParte: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin pode repartir' });
-    }
-    const fd = await request.formData();
-    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
-    const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
-    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
-    const locaisIds = fd.getAll('locais_ids').map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
-    if (publicadorIds.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
-    if (quadrasIds.length === 0 && locaisIds.length === 0) {
-      return fail(400, { erro: 'Selecione ao menos uma quadra ou prédio' });
-    }
-
-    const ehAdmin = locals.profile?.role === 'admin';
-    const { data: arr, error: errA } = await locals.supabase
-      .from('arranjos')
-      .select('id, nome, quadras_ids, cartas_locais_ids, dirigente_id')
-      .eq('id', arranjoId).single();
-    if (errA || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
-    if (!ehAdmin && arr.dirigente_id !== locals.user.id) {
-      return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
-    }
-
-    // Parte tem que ser subconjunto do território do arranjo
-    const quadrasArr = new Set((arr.quadras_ids ?? []) as string[]);
-    const locaisArr = new Set((arr.cartas_locais_ids ?? []) as number[]);
-    const foraQ = quadrasIds.filter((q) => !quadrasArr.has(q));
-    const foraL = locaisIds.filter((l) => !locaisArr.has(l));
-    if (foraQ.length > 0 || foraL.length > 0) {
-      return fail(400, { erro: 'Itens fora do território do arranjo: ' + [...foraQ, ...foraL].join(', ') });
-    }
-
-    const { error } = await locals.supabase.from('arranjo_partes').insert({
-      arranjo_id: arranjoId,
-      quadras_ids: quadrasIds,
-      locais_ids: locaisIds,
-      publicadores: publicadorIds,
-      notas,
-      criado_por: locals.user.id
-    });
-    if (error) return fail(400, { erro: error.message });
-
-    await criarNotificacao(publicadorIds, {
-      titulo: 'Você recebeu uma parte do território',
-      corpo: arr.nome ?? 'Pregação em grupo',
-      url: '/publicador/casa-a-casa'
-    });
-
-    return { ok: true, msg: `Parte criada pra ${publicadorIds.length} publicador(es)` };
-  },
-
   // Gera link público /t/<token> do arranjo (pra WhatsApp — quem não abre o app)
   gerarLinkTerritorio: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
@@ -345,32 +274,6 @@ export const actions: Actions = {
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, token: data.token };
-  },
-
-  apagarParte: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin' });
-    }
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-
-    // Dirigente só apaga partes de arranjos dele
-    if (locals.profile?.role !== 'admin') {
-      const { data: pt } = await locals.supabase
-        .from('arranjo_partes')
-        .select('id, arranjos!inner(dirigente_id)')
-        .eq('id', id)
-        .maybeSingle();
-      if (!pt || (pt as any).arranjos?.dirigente_id !== locals.user.id) {
-        return fail(403, { erro: 'Essa parte não é de um arranjo seu' });
-      }
-    }
-
-    const { error } = await locals.supabase.from('arranjo_partes').delete().eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Parte removida' };
   },
 
   // Inscrição antecipada — sinal de interesse, não cria parte automaticamente.

@@ -18,12 +18,16 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     home/carteira (território pessoal + ✉ cartas + pregação em grupo via
     `arranjo_partes` + TCEs), `quadra/[id]` (com "Marcar concluída" se
     dirigente), `mapa` (mapa estratégico com POIs + criar parte — só
-    dirigente/admin), `casa-a-casa` (mapa simples com GPS pra publicador
-    E dirigente identificarem qual quadra é qual dentro do território
-    designado agora — pessoal + parte + arranjo que dirijo — banner
-    linkando pra Prédios; notificação de "parte criada" leva pra cá),
+    dirigente/admin), `casa-a-casa` (mapa com GPS pra publicador E
+    dirigente identificarem qual quadra é qual — 3 seções possíveis:
+    "seu grupo" = mapa do arranjo INTEIRO que você dirige + botão
+    **Repartir território** (migrou de `arranjo`, fica junto do mapa que
+    edita) + lista de partes já criadas; "sua parte" = mapa só do
+    subconjunto que te cabe; "território pessoal". Banner linkando pra
+    Prédios; notificação de "parte criada" leva pra cá),
     `predios` (busca+GPS+criar pendente+designar),
-    `arranjo` (agenda + inscrição em TP; dirigente ganha Repartir/Assumir),
+    `arranjo` (agenda + inscrição em TP; dirigente ganha Assumir —
+    Repartir mudou pra `casa-a-casa`),
     `campanha` (sem ícone na bottom nav — acessível pelo banner na home),
     `tce/[id]`
   - `dirigente/` — só um `+layout.server.ts` que redireciona pra
