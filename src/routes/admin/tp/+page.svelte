@@ -17,6 +17,7 @@
 
   let { data }: {
     data: {
+      tpMeses: { mes: string; fase: string | null }[];
       periodo: 'semana' | 'mes';
       range: { isoIni: string; isoFim: string; label: string };
       carrinhos: TpCarrinhoLite[];
@@ -275,9 +276,67 @@
     if (!designarAgendamentoId || !designarData) return [] as TpParticipanteLinha[];
     return data.participantesPorOcorrencia[designarAgendamentoId + '|' + designarData] ?? [];
   });
+
+  // ── T26: controle de fase do mês (disponibilidade → montagem →
+  // publicado → fechado). Publicar dispara notificação pros designados.
+  const FASES = ['disponibilidade', 'montagem', 'publicado', 'fechado'] as const;
+  const FASE_LABEL: Record<string, string> = {
+    disponibilidade: 'Disponibilidade aberta',
+    montagem: 'Montagem dos turnos',
+    publicado: 'Publicado (aceites)',
+    fechado: 'Fechado'
+  };
+  let definindoFase = $state<string | null>(null);
+  function proximaFase(atual: string | null): string | null {
+    if (atual === null) return 'disponibilidade';
+    const i = FASES.indexOf(atual as any);
+    return i >= 0 && i < FASES.length - 1 ? FASES[i + 1] : null;
+  }
+  async function definirFase(mes: string, fase: string) {
+    const aviso = fase === 'publicado'
+      ? `Publicar ${fmtMesRotulo(mes)}? Todos os designados do mês serão notificados pra aceitar/recusar.`
+      : `Mudar ${fmtMesRotulo(mes)} pra "${FASE_LABEL[fase]}"?`;
+    if (!confirm(aviso)) return;
+    definindoFase = mes;
+    const fd = new FormData();
+    fd.append('mes', mes);
+    fd.append('fase', fase);
+    const res = await fetch('?/definirFaseMes', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    definindoFase = null;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Fase atualizada')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+  function fmtMesRotulo(mes: string): string {
+    return new Date(mes + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  }
 </script>
 
 <div class="p-4 space-y-3 pb-10">
+  <!-- T26: fases do TP mensal -->
+  <div class="rounded-xl border border-teal-200 bg-teal-50 p-3">
+    <div class="text-[10px] uppercase tracking-wider font-semibold text-teal-800 mb-1.5">Ciclo mensal do TP</div>
+    <div class="grid gap-1.5 sm:grid-cols-3">
+      {#each data.tpMeses as m (m.mes)}
+        {@const prox = proximaFase(m.fase)}
+        <div class="bg-white rounded-lg px-2.5 py-2 flex items-center justify-between gap-2 text-xs">
+          <div>
+            <div class="font-semibold capitalize">{fmtMesRotulo(m.mes)}</div>
+            <div class="{m.fase === 'publicado' ? 'text-green-700' : m.fase === null ? 'text-slate-400' : 'text-teal-700'}">
+              {m.fase ? FASE_LABEL[m.fase] : 'não aberto'}
+            </div>
+          </div>
+          {#if prox}
+            <button type="button" disabled={definindoFase === m.mes}
+              onclick={() => definirFase(m.mes, prox)}
+              class="shrink-0 text-teal-700 font-medium hover:underline disabled:opacity-40">
+              {definindoFase === m.mes ? '...' : m.fase === null ? 'Abrir' : `→ ${FASE_LABEL[prox]}`}
+            </button>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </div>
   <div class="flex items-center justify-between flex-wrap gap-2">
     <div class="flex gap-1 bg-slate-100 rounded-lg p-1">
       {#each [['semana', 'Semana'], ['mes', 'Mês']] as [p, label]}

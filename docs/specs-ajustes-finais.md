@@ -169,13 +169,12 @@ O publicador edita e vale na hora ("temporário"); o admin **confirma**
   null` (migration 057). Ordenação da lista: `ordem_na_quadra` quando
   presente, senão a heurística atual. Edição gera linha de curadoria
   (`tipo='edicao'`, campo ordem) — admin confirma/reverte como o resto.
-- **Comércios espalhados**: na lista do detalhamento da quadra os
-  comércios aparecem soltos em vez de agrupados como na aba Prédios.
-  Diagnóstico esperado: o agrupamento por local funciona pra
-  tipo='predio' mas comércios com mesmo endereço são `locais` distintos
-  (1 unidade cada). Corrigir agrupando visualmente por
-  `logradouro+numero` (mesmo prédio físico): um card "galeria/prédio
-  comercial" com os comércios dentro, igual à aba Prédios faz.
+- **Comércios espalhados** (confirmado por screenshot: MARIAH HOME
+  SERVICE, 1 local tipo comercio com 91 unidades, vira 91 cards no
+  detalhamento da quadra): o agrupamento com expansor só trata
+  tipo='predio'. Corrigir o critério: agrupar QUALQUER local com mais
+  de 1 unidade (predio, comercio, coletivo) no card expansível — igual
+  à aba Prédios, que já faz certo.
 
 ## A9 — Offline mínimo viável
 

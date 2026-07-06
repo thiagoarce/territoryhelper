@@ -60,15 +60,28 @@ async function cacheFirst(req: Request): Promise<Response> {
   return res;
 }
 
+// iOS/WebKit REJEITA replay de resposta com `redirected: true` servida
+// pelo SW em navegação ("Response served by service worker has
+// redirections") — ex: `/` 303→/publicador. Antes de cachear, re-embrulha
+// o corpo numa Response "limpa" (200, sem flag de redirect).
+async function semFlagDeRedirect(res: Response): Promise<Response> {
+  if (!res.redirected) return res;
+  const body = await res.blob();
+  const headers = new Headers(res.headers);
+  return new Response(body, { status: 200, statusText: 'OK', headers });
+}
+
 async function networkFirst(req: Request): Promise<Response> {
   const cache = await caches.open(CACHE);
   try {
     const res = await fetch(req);
-    if (res.ok) cache.put(req, res.clone());
+    if (res.ok) cache.put(req, await semFlagDeRedirect(res.clone()));
     return res;
   } catch (e) {
     const cached = await cache.match(req);
-    if (cached) return cached;
+    // Entrada antiga ainda com flag de redirect (cache de versão anterior
+    // ao fix) não pode ser servida em navegação — cai pro offline.html.
+    if (cached && !(req.mode === 'navigate' && cached.redirected)) return cached;
     // Navegação pra rota nunca visitada, sem rede: página offline amigável
     // (static/offline.html, pré-cacheada) em vez do erro do Safari.
     if (req.mode === 'navigate') {
