@@ -194,13 +194,15 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   (`/admin/tp/equipamentos`, CRUD tipos/peças/carrinhos, catálogo real
   S-80-T), **Publicadores** (`/admin/tp/publicadores`, roster read-only de
   disponibilidade)
-- **Publicações** (`/publicacoes`, P-A + TP-D) — fila de `pedidos_publicacao`
+- **Publicações** (`/publicacoes`, P-A + TP-D) — 4 seções com chips no
+  topo (Pedidos/Reposição/Catálogo/Controle): fila de `pedidos_publicacao`
   (filtro pendentes/entregue/cancelado/todos), avançar status + notas do
   servo; **Reposição** (itens de relatório de TP != ok ainda não
   resolvidos, agrupados por carrinho/ponto, botão Resolvido) + card
   simples de tendência (soma de qtd colocada por publicação/mês); **Lista
   de controle** (escolhe publicação → checklist de todo publicador ativo
-  com contador +/- de pedido e de entrega, `publicacao_controle`);
+  com contador +/- de pedido e de entrega, busca por nome e totais,
+  `publicacao_controle`);
   suprimento de campanha é só um link pra `/admin/campanha`. Fica FORA de
   `/admin/*` de propósito — a rota é guardada por `exigirServoPub` (admin
   OU `profiles.servo_publicacoes`), não por role, pra um servo publicador
