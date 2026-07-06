@@ -11,6 +11,7 @@
     id: number;
     complemento: string | null;
     carta_entregue: string | null;
+    carta_escrita_por_nome?: string | null;
     desocupado: boolean;
     nao_escrever: boolean;
     nota: string | null;
@@ -265,7 +266,7 @@
         </div>
       </div>
       <div>
-        <div class="flex justify-between text-xs mb-0.5"><span><Icon nome="mail" size={14} /> Cartas</span><span class="font-bold">{entregues}/{total}</span></div>
+        <div class="flex justify-between text-xs mb-0.5"><span><Icon nome="mail" size={14} /> Escritas</span><span class="font-bold">{entregues}/{total}</span></div>
         <div class="h-2 rounded-full bg-white/30 overflow-hidden">
           <div class="h-full bg-white" style:width="{total === 0 ? 0 : (entregues / total) * 100}%"></div>
         </div>
@@ -322,7 +323,7 @@
         <div class="flex items-center justify-between gap-2">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold text-sm">{rotuloUnidade(u, indice)}</div>
-            {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue ? fmtDataCarta(u.carta_entregue) : 'hoje'}</div>{/if}
+            {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> escrita {u.carta_entregue ? fmtDataCarta(u.carta_entregue) : 'hoje'}{#if u.carta_escrita_por_nome}<span class="text-purple-500"> · {u.carta_escrita_por_nome}</span>{/if}</div>{/if}
             {#if modo === 'casa' && tipoEfetivo(u) && tipoEfetivo(u) !== 'desfeito' && tipoEfetivo(u) !== 'carta_undo'}
               <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{rotulos[tipoEfetivo(u)!] ?? tipoEfetivo(u)}</span>
             {/if}
@@ -331,7 +332,7 @@
           {#if modo === 'cartas'}
             <div class="flex gap-1">
               {#each [
-                { c: 'carta_entregue' as const, icone: 'mail', cls: 'bg-purple-600', l: 'Carta entregue' },
+                { c: 'carta_entregue' as const, icone: 'mail', cls: 'bg-purple-600', l: 'Carta escrita' },
                 { c: 'desocupado' as const, icone: 'door-closed', cls: 'bg-slate-600', l: 'Desocupado' },
                 { c: 'nao_escrever' as const, icone: 'ban', cls: 'bg-red-600', l: 'Não escrever' }
               ] as opt}
@@ -354,12 +355,13 @@
                 { t: 'carta', icone: 'mail', cls: 'bg-purple-600', l: 'Deixou carta' }
               ] as opt}
                 {@const ativo = tipoEfetivo(u) === opt.t}
+                {@const entregaPendente = opt.t === 'carta' && !ativo && campoEfetivo(u, 'carta_entregue') && tipoEfetivo(u) !== 'carta'}
                 <button
                   type="button"
                   onclick={() => marcarDesfecho(u, opt.t)}
-                  title={opt.l}
+                  title={entregaPendente ? 'Carta escrita — falta entregar' : opt.l}
                   aria-label={opt.l}
-                  class="px-2 py-1.5 rounded border flex flex-col items-center gap-0.5 {ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"
+                  class="px-2 py-1.5 rounded border flex flex-col items-center gap-0.5 {ativo ? opt.cls + ' text-white border-transparent' : entregaPendente ? 'border-purple-400 bg-purple-50 text-purple-800 ring-2 ring-purple-300 animate-pulse' : 'border-slate-300 bg-white hover:bg-slate-50'}"
                 ><Icon nome={opt.icone} size={16} /><span class="text-[9px] leading-none whitespace-nowrap">{opt.l}</span></button>
               {/each}
             </div>

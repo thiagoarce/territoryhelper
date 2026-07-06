@@ -310,7 +310,7 @@
             {#if p.tipo_entrada === 'eletronica'}<span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Eletrônica</span>{/if}
             {#if p.acesso_caixas}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded"><Icon nome="inbox" size={14} /></span>{/if}
             {#if p.acesso_interfones}<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded"><Icon nome="phone" size={14} /></span>{/if}
-            <span class="text-[10px] text-slate-500 ml-auto">{p.qtd_carta_entregue}/{p.qtd_aptos} entregues</span>
+            <span class="text-[10px] text-slate-500 ml-auto">{p.qtd_carta_entregue}/{p.qtd_aptos} escritas</span>
           </div>
           <div class="mt-1 h-1 rounded-full bg-slate-100 overflow-hidden">
             <div class="h-full bg-purple-500" style:width="{pct(p.qtd_carta_entregue, p.qtd_aptos)}%"></div>
