@@ -59,25 +59,19 @@
     : (role === 'admin' ? 'admin' : 'campo')
   );
 
-  // Bottom nav do modo campo. Dirigente/admin ganham item "Mapa" extra que
-  // leva ao mapa estratégico (concluir + POIs + PNG).
+  // Bottom nav do modo campo. "Mapa estratégico" (visão geral read-only da
+  // congregação, só dirigente/admin) virou ícone no header — não é mais
+  // aba, já que concluir/repartir no geral saiu de lá (fica em Casa a
+  // casa, escopado ao território designado). TP (testemunho público) tem
+  // agenda própria, separada de Arranjo (só pregação em grupo).
   const podeDirigir = $derived(['dirigente', 'admin'].includes(role ?? ''));
-  const bottomNav = $derived<{ href: string; label: string; icon: NomeIcone }[]>(
-    podeDirigir
-      ? [
-          { href: '/publicador', label: 'Designações', icon: 'home' },
-          { href: '/publicador/mapa', label: 'Mapa', icon: 'map' },
-          { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
-          { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' }
-        ]
-      : [
-          { href: '/publicador', label: 'Designações', icon: 'home' },
-          { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
-          { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-          { href: '/publicador/predios', label: 'Prédios', icon: 'mail' }
-        ]
-  );
+  const bottomNav = $derived<{ href: string; label: string; icon: NomeIcone }[]>([
+    { href: '/publicador', label: 'Designações', icon: 'home' },
+    { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
+    { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
+    { href: '/publicador/tp', label: 'TP', icon: 'megaphone' },
+    { href: '/publicador/predios', label: 'Prédios', icon: 'mail' }
+  ]);
 
   // Drawer admin
   let drawerAberto = $state(false);
@@ -176,6 +170,12 @@
       {iniciais}
     </div>
     <h1 class="text-lg font-bold flex-1 truncate">{tituloHeader}</h1>
+
+    {#if modoAtual === 'campo' && podeDirigir}
+      <a href="/publicador/mapa" aria-label="Território da congregação" title="Território da congregação" class="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600">
+        <Icon nome="map" size={18} />
+      </a>
+    {/if}
 
     <a href="/buscar" aria-label="Buscar" class="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3" stroke-linecap="round"/></svg>
