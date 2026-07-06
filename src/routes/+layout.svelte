@@ -34,11 +34,27 @@
     }
     if (sincronizadas > 0 || falhas > 0) await invalidateAll();
   }
+  // Banner "sem conexão" — o app continua navegável no que já foi
+  // cacheado pelo service worker; escritas entram na fila.
+  let online = $state(true);
+  function aoFicarOffline() {
+    online = false;
+    contarFila().then((n) => (pendentesOffline = n));
+  }
+  function aoVoltarOnline() {
+    online = true;
+    sincronizarFila();
+  }
   onMount(() => {
+    online = navigator.onLine;
     sincronizarFila();
     contarFila().then((n) => (pendentesOffline = n));
-    window.addEventListener('online', sincronizarFila);
-    return () => window.removeEventListener('online', sincronizarFila);
+    window.addEventListener('online', aoVoltarOnline);
+    window.addEventListener('offline', aoFicarOffline);
+    return () => {
+      window.removeEventListener('online', aoVoltarOnline);
+      window.removeEventListener('offline', aoFicarOffline);
+    };
   });
 
   let { data, children }: { data: { profile: any }; children: Snippet } = $props();
@@ -141,8 +157,14 @@
   </div>
 {/if}
 
-<!-- Aviso de ações pendentes de sincronizar (sinal ruim em campo) -->
-{#if pendentesOffline > 0}
+<!-- Sem conexão: o que já foi carregado continua acessível (SW) -->
+{#if !online}
+  <div class="fixed top-0 left-0 right-0 z-[59] bg-slate-700 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
+    <Icon nome="alert" size={14} />
+    <span class="flex-1">Sem conexão — mostrando o que já foi carregado{pendentesOffline > 0 ? ` · ${pendentesOffline} ação(ões) na fila` : ''}</span>
+  </div>
+{:else if pendentesOffline > 0}
+  <!-- Aviso de ações pendentes de sincronizar (sinal ruim em campo) -->
   <div class="fixed top-0 left-0 right-0 z-[59] bg-amber-600 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
     <Icon nome="refresh" size={14} />
     <span class="flex-1">{pendentesOffline} ação(ões) salva(s) offline — sincroniza sozinho quando o sinal voltar</span>
