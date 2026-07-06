@@ -123,6 +123,21 @@
     if (parsed.type === 'success') { toast.success('Removida'); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
+
+  let gerandoLink = $state<number | null>(null);
+  async function abrirLinkPublico(arranjoId: number) {
+    gerandoLink = arranjoId;
+    const fd = new FormData();
+    fd.append('arranjo_id', String(arranjoId));
+    const res = await fetch('?/gerarLinkTerritorio', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    gerandoLink = null;
+    if (parsed.type === 'success' && parsed.data?.token) {
+      window.open('/t/' + parsed.data.token, '_blank', 'noopener');
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou gerar link'));
+    }
+  }
 </script>
 
 <div class="p-4 space-y-4">
@@ -158,6 +173,9 @@
           <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
         {/each}
       </div>
+
+      <button type="button" disabled={gerandoLink === a.id} onclick={() => abrirLinkPublico(a.id)}
+        class="mt-1.5 text-xs text-primary-700 hover:underline disabled:opacity-40"><Icon nome={gerandoLink === a.id ? 'loader' : 'share'} size={14} spin={gerandoLink === a.id} /> Compartilhar (WhatsApp c/ mapa)</button>
 
       {#if partesDoArranjo.length > 0}
         <div class="mt-2 pt-2 border-t border-primary-100 space-y-1">
