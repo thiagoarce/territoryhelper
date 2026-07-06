@@ -204,6 +204,17 @@
   const PEDIDO_STATUS_LABEL: Record<string, string> = {
     aberto: 'Aberto', pedido: 'Pedido feito', entregue: 'Entregue', cancelado: 'Cancelado'
   };
+
+  // Card compacto: só pedidos em andamento aparecem direto; o histórico
+  // (entregue/cancelado) e os contadores de revista ficam atrás de toggles.
+  let mostrarHistoricoPedidos = $state(false);
+  let mostrarRevistas = $state(false);
+  const pedidosAtivos = $derived(
+    data.meusPedidosPublicacao.filter((p) => p.status === 'aberto' || p.status === 'pedido')
+  );
+  const pedidosAntigos = $derived(
+    data.meusPedidosPublicacao.filter((p) => p.status === 'entregue' || p.status === 'cancelado')
+  );
   const PEDIDO_STATUS_CLASSE: Record<string, string> = {
     aberto: 'bg-slate-100 text-slate-700',
     pedido: 'bg-blue-100 text-blue-700',
@@ -286,8 +297,51 @@
       {data.pendentesFinalizar.length === 1
         ? `"${data.pendentesFinalizar[0].nome}" (${fmtDia(data.pendentesFinalizar[0].data)}) já passou e ainda tá aberta.`
         : `${data.pendentesFinalizar.length} designações já passaram e ainda estão abertas.`}
-      Concluir em Casa a casa →
+      Finalizar em Casa a casa →
     </p>
+  </a>
+{/if}
+
+{#if data.campanhaAtiva?.status === 'planejada'}
+  {@const c = data.campanhaAtiva}
+  <a
+    href="/publicador/campanha"
+    class="flex items-center gap-3 mb-4 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
+  >
+    {#if c.imagemUrl}<img src={c.imagemUrl} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0 shadow" />{/if}
+    <div class="flex-1 min-w-0">
+      <div class="text-xs opacity-80 uppercase tracking-wider">Campanha se aproxima</div>
+      <div class="text-lg font-bold truncate">Faltam {c.diasParaComecar} dia(s) — {c.nome}</div>
+      <div class="mt-1 text-xs opacity-90">
+        Início {new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · veja os objetivos da campanha →
+      </div>
+    </div>
+  </a>
+{:else if data.campanhaAtiva?.status === 'em_andamento'}
+  {@const c = data.campanhaAtiva}
+  {@const pct = c.total_meta > 0 ? Math.round((c.concluidas_no_periodo / c.total_meta) * 100) : 0}
+  <a
+    href="/publicador/campanha"
+    class="block mb-4 rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
+  >
+    <div class="flex items-center justify-between gap-2">
+      {#if c.imagemUrl}<img src={c.imagemUrl} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0 shadow" />{/if}
+      <div class="flex-1 min-w-0">
+        <div class="text-xs opacity-80 uppercase tracking-wider">Campanha ativa</div>
+        <div class="text-lg font-bold truncate">{c.nome}</div>
+      </div>
+      <div class="text-2xl font-bold">{pct}%</div>
+    </div>
+    <div class="mt-2 h-2 rounded-full bg-white/20 overflow-hidden">
+      <div class="h-full bg-white" style:width="{pct}%"></div>
+    </div>
+    <div class="mt-2 flex justify-between text-xs opacity-90">
+      <span>{c.concluidas_no_periodo}/{c.total_meta} quadras</span>
+      <span>{new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {new Date(c.data_alvo + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
+    </div>
+    {#if c.notasSuprimento}
+      <div class="mt-2 pt-2 border-t border-white/20 text-xs opacity-90"><Icon nome="mail" size={12} /> {c.notasSuprimento}</div>
+    {/if}
   </a>
 {/if}
 
@@ -354,7 +408,9 @@
           </div>
         {/if}
         <div class="mt-2 flex items-center gap-3">
-          <a href="/publicador/casa-a-casa" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
+          {#if data.minhaRole === 'dirigente' || data.minhaRole === 'admin'}
+            <a href="/publicador/casa-a-casa" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
+          {/if}
           <button type="button" disabled={gerandoLink === `arranjo:${a.id}`} onclick={() => abrirLinkPublico('arranjo', a.id)}
             class="text-xs font-medium text-primary-700 hover:underline disabled:opacity-40"><Icon nome={gerandoLink === `arranjo:${a.id}` ? 'loader' : 'share'} size={14} spin={gerandoLink === `arranjo:${a.id}`} /> Compartilhar</button>
         </div>
@@ -412,7 +468,7 @@
     <div class="text-xs uppercase tracking-wider font-bold text-teal-900 mb-2"><Icon nome="megaphone" size={14} /> Seus turnos de TP (próximos 7 dias)</div>
     <div class="flex flex-wrap gap-1.5">
       {#each data.meusAgendamentosTp as t}
-        <a href="/publicador/arranjo" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-teal-300 bg-white text-teal-900 hover:bg-teal-100">
+        <a href="/publicador/tp" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-teal-300 bg-white text-teal-900 hover:bg-teal-100">
           <span class="font-medium">{t.ponto_nome}</span>
           <span class="text-teal-700">{fmtDia(t.data)} · {t.hora_inicio.substring(0, 5)}</span>
         </a>
@@ -421,103 +477,8 @@
   </div>
 {/if}
 
-{#if data.souServoPub}
-  <a href="/publicacoes" class="mb-4 flex items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-50 p-3 hover:bg-amber-100 transition-colors">
-    <span class="text-sm font-bold text-amber-900"><Icon nome="inbox" size={14} /> Área do servo — pedidos de publicação</span>
-    <Icon nome="chevron-right" size={16} class="text-amber-700" />
-  </a>
-{/if}
-
-<div class="mb-4 rounded-xl border border-slate-200 bg-white p-3">
-  <div class="flex items-center justify-between gap-2">
-    <div class="text-xs uppercase tracking-wider font-bold text-slate-600"><Icon nome="inbox" size={14} /> Publicações</div>
-    <button type="button" onclick={() => (sheetPedido = true)} class="text-xs font-medium text-primary-700 hover:underline">+ Pedir publicação</button>
-  </div>
-  {#if data.meusPedidosPublicacao.length > 0}
-    <div class="mt-2 space-y-1">
-      {#each data.meusPedidosPublicacao as p (p.id)}
-        <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
-          <span class="truncate">{p.publicacao_nome ?? p.descricao} <span class="text-slate-400">×{p.qtd}</span></span>
-          <span class="flex items-center gap-1.5 shrink-0">
-            <span class="text-[10px] px-1.5 py-0.5 rounded-full {PEDIDO_STATUS_CLASSE[p.status]}">{PEDIDO_STATUS_LABEL[p.status]}</span>
-            {#if p.status === 'aberto'}
-              <button
-                type="button"
-                disabled={cancelandoPedidoId === p.id}
-                onclick={() => cancelarPedido(p.id)}
-                class="text-red-600 hover:underline disabled:opacity-40"
-              ><Icon nome={cancelandoPedidoId === p.id ? 'loader' : 'x'} size={12} spin={cancelandoPedidoId === p.id} /></button>
-            {/if}
-          </span>
-        </div>
-      {/each}
-    </div>
-  {:else}
-    <p class="mt-2 text-xs text-slate-400">Nenhum pedido ainda.</p>
-  {/if}
-
-  {#if (catalogoAgrupado['revista'] ?? []).length > 0}
-    <div class="mt-3 pt-3 border-t border-slate-100">
-      <div class="text-xs text-slate-500 mb-1.5">Normalmente preciso de (Despertai/Sentinela chegam pela via normal):</div>
-      <div class="flex flex-wrap gap-2">
-        {#each catalogoAgrupado['revista'] as p (p.id)}
-          <div class="flex items-center gap-1.5 text-sm bg-slate-50 rounded-lg px-2 py-1">
-            <span class="truncate">{p.nome}</span>
-            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, -1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">−</button>
-            <span class="w-5 text-center font-medium">{necessidadeAtual(p.id)}</span>
-            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, 1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">+</button>
-          </div>
-        {/each}
-      </div>
-    </div>
-  {/if}
-</div>
-
-{#if data.campanhaAtiva?.status === 'planejada'}
-  {@const c = data.campanhaAtiva}
-  <a
-    href="/publicador/arranjo?periodo=tres_meses"
-    class="flex items-center gap-3 mb-4 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
-  >
-    {#if c.imagemUrl}<img src={c.imagemUrl} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0 shadow" />{/if}
-    <div class="flex-1 min-w-0">
-      <div class="text-xs opacity-80 uppercase tracking-wider">Campanha se aproxima</div>
-      <div class="text-lg font-bold truncate">Faltam {c.diasParaComecar} dia(s) — {c.nome}</div>
-      <div class="mt-1 text-xs opacity-90">
-        Início {new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · veja os arranjos da campanha →
-      </div>
-    </div>
-  </a>
-{:else if data.campanhaAtiva?.status === 'em_andamento'}
-  {@const c = data.campanhaAtiva}
-  {@const pct = c.total_meta > 0 ? Math.round((c.concluidas_no_periodo / c.total_meta) * 100) : 0}
-  <a
-    href="/publicador/campanha"
-    class="block mb-4 rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 text-white p-4 shadow-sm hover:shadow transition-shadow"
-  >
-    <div class="flex items-center justify-between gap-2">
-      {#if c.imagemUrl}<img src={c.imagemUrl} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0 shadow" />{/if}
-      <div class="flex-1 min-w-0">
-        <div class="text-xs opacity-80 uppercase tracking-wider">Campanha ativa</div>
-        <div class="text-lg font-bold truncate">{c.nome}</div>
-      </div>
-      <div class="text-2xl font-bold">{pct}%</div>
-    </div>
-    <div class="mt-2 h-2 rounded-full bg-white/20 overflow-hidden">
-      <div class="h-full bg-white" style:width="{pct}%"></div>
-    </div>
-    <div class="mt-2 flex justify-between text-xs opacity-90">
-      <span>{c.concluidas_no_periodo}/{c.total_meta} quadras</span>
-      <span>{new Date(c.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {new Date(c.data_alvo + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
-    </div>
-    {#if c.notasSuprimento}
-      <div class="mt-2 pt-2 border-t border-white/20 text-xs opacity-90"><Icon nome="mail" size={12} /> {c.notasSuprimento}</div>
-    {/if}
-  </a>
-{/if}
-
 <div>
-  <h1 class="text-2xl font-bold">Minha carteira</h1>
+  <h1 class="text-2xl font-bold">Minhas designações</h1>
   <p class="mt-1 text-sm text-slate-500">
     Território pessoal · pregação em grupo · cartas.
     {#if data.minhaRole === 'admin' || data.minhaRole === 'dirigente'}
@@ -547,7 +508,7 @@
         <a href="/publicador/tce/{t.id}" class="block rounded-lg border border-purple-200 bg-purple-50 p-3 hover:bg-purple-100 transition-colors">
           <div class="font-medium flex items-center justify-between">
             {t.nome}
-            {#if t.prazo}<span class="text-xs text-amber-700">prazo {t.prazo}</span>{/if}
+            {#if t.prazo}<span class="text-xs text-amber-700">prazo {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</span>{/if}
           </div>
           <div class="text-xs text-slate-500 mt-0.5">{t.tipo} · toque pra trabalhar</div>
         </a>
@@ -667,6 +628,82 @@
 </div>
 
 {/if}
+
+{#if data.souServoPub}
+  <a href="/publicacoes" class="mt-4 flex items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-50 p-3 hover:bg-amber-100 transition-colors">
+    <span class="text-sm font-bold text-amber-900"><Icon nome="inbox" size={14} /> Área do servo — pedidos de publicação</span>
+    <Icon nome="chevron-right" size={16} class="text-amber-700" />
+  </a>
+{/if}
+
+<div class="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+  <div class="flex items-center justify-between gap-2">
+    <div class="text-xs uppercase tracking-wider font-bold text-slate-600"><Icon nome="inbox" size={14} /> Publicações</div>
+    <button type="button" onclick={() => (sheetPedido = true)} class="text-xs font-medium text-primary-700 hover:underline">+ Pedir publicação</button>
+  </div>
+  {#if pedidosAtivos.length > 0}
+    <div class="mt-2 space-y-1">
+      {#each pedidosAtivos as p (p.id)}
+        <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
+          <span class="truncate">{p.publicacao_nome ?? p.descricao} <span class="text-slate-400">×{p.qtd}</span></span>
+          <span class="flex items-center gap-1.5 shrink-0">
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full {PEDIDO_STATUS_CLASSE[p.status]}">{PEDIDO_STATUS_LABEL[p.status]}</span>
+            {#if p.status === 'aberto'}
+              <button
+                type="button"
+                disabled={cancelandoPedidoId === p.id}
+                onclick={() => cancelarPedido(p.id)}
+                class="text-red-600 hover:underline disabled:opacity-40"
+              ><Icon nome={cancelandoPedidoId === p.id ? 'loader' : 'x'} size={12} spin={cancelandoPedidoId === p.id} /></button>
+            {/if}
+          </span>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <p class="mt-2 text-xs text-slate-400">Nenhum pedido em andamento.</p>
+  {/if}
+
+  <div class="mt-2 flex items-center gap-3">
+    {#if pedidosAntigos.length > 0}
+      <button type="button" onclick={() => (mostrarHistoricoPedidos = !mostrarHistoricoPedidos)} class="text-xs text-slate-500 hover:underline">
+        {mostrarHistoricoPedidos ? 'Esconder histórico' : `Histórico (${pedidosAntigos.length})`}
+      </button>
+    {/if}
+    {#if (catalogoAgrupado['revista'] ?? []).length > 0}
+      <button type="button" onclick={() => (mostrarRevistas = !mostrarRevistas)} class="text-xs text-slate-500 hover:underline">
+        {mostrarRevistas ? 'Esconder revistas' : 'Minhas revistas (qtd regular)'}
+      </button>
+    {/if}
+  </div>
+
+  {#if mostrarHistoricoPedidos && pedidosAntigos.length > 0}
+    <div class="mt-2 space-y-1">
+      {#each pedidosAntigos as p (p.id)}
+        <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5 opacity-70">
+          <span class="truncate">{p.publicacao_nome ?? p.descricao} <span class="text-slate-400">×{p.qtd}</span></span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0 {PEDIDO_STATUS_CLASSE[p.status]}">{PEDIDO_STATUS_LABEL[p.status]}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if mostrarRevistas && (catalogoAgrupado['revista'] ?? []).length > 0}
+    <div class="mt-2 pt-2 border-t border-slate-100">
+      <div class="text-xs text-slate-500 mb-1.5">Normalmente preciso de (Despertai/Sentinela chegam pela via normal):</div>
+      <div class="flex flex-wrap gap-2">
+        {#each catalogoAgrupado['revista'] as p (p.id)}
+          <div class="flex items-center gap-1.5 text-sm bg-slate-50 rounded-lg px-2 py-1">
+            <span class="truncate">{p.nome}</span>
+            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, -1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">−</button>
+            <span class="w-5 text-center font-medium">{necessidadeAtual(p.id)}</span>
+            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, 1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">+</button>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
+</div>
 </div>
 
 <!-- Modal "todas as designações" — o card acima já mostra só a próxima -->
