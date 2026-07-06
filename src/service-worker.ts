@@ -69,6 +69,12 @@ async function networkFirst(req: Request): Promise<Response> {
   } catch (e) {
     const cached = await cache.match(req);
     if (cached) return cached;
+    // Navegação pra rota nunca visitada, sem rede: página offline amigável
+    // (static/offline.html, pré-cacheada) em vez do erro do Safari.
+    if (req.mode === 'navigate') {
+      const off = await cache.match('/offline.html');
+      if (off) return off;
+    }
     throw e;
   }
 }

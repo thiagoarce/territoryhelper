@@ -131,7 +131,7 @@
       convite pra usuário existente) + tela "esqueci minha senha"
       informativa no /login. (+ e-mail de reset só se SMTP existir.)
 
-- [ ] 🔴 **T22 (A9)** Offline mínimo: SW com precache do shell + página
+- [x] 🔴 **T22 (A9)** ✅ feita pelo Fable Offline mínimo: SW com precache do shell + página
       /offline + runtime cache das rotas do campo + banner
       online/offline com contagem da fila.
 
