@@ -85,17 +85,28 @@ interface PushSubscriptionRow {
   falhas: number;
 }
 
+// Resumo do envio — vira feedback observável na notificação de teste do
+// /perfil (antes o resultado real morria no console do Worker).
+export interface ResumoTickle {
+  configurado: boolean;
+  aparelhos: number;
+  entregues: number;
+  falhas: number;
+}
+
 // Envia o "tickle" (push vazio) pras subscriptions dos publicadores
 // alvo. Falha isolada de um endpoint não derruba os outros — poda a
 // subscription depois de muitas falhas seguidas (endpoint morto/expirado).
-export async function enviarTickle(publicadorIds: string[]): Promise<void> {
-  if (publicadorIds.length === 0) return;
+export async function enviarTickle(publicadorIds: string[]): Promise<ResumoTickle> {
+  const resumo: ResumoTickle = { configurado: true, aparelhos: 0, entregues: 0, falhas: 0 };
+  if (publicadorIds.length === 0) return resumo;
   // Chaves VAPID ainda não configuradas (gerar_vapid.mjs + variáveis de
   // ambiente) — sino in-app já fica salvo em `notificacoes`, só o Web
   // Push real fica pendente até configurar.
   if (!privateEnv.VAPID_PRIVATE_KEY || !publicEnv.PUBLIC_VAPID_PUBLIC_KEY) {
     console.warn('[enviarTickle] VAPID não configurado neste ambiente — pulando envio real');
-    return;
+    resumo.configurado = false;
+    return resumo;
   }
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
@@ -103,8 +114,9 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
     .in('publicador_id', publicadorIds);
   if (!subs || subs.length === 0) {
     console.warn('[enviarTickle] nenhuma push_subscription pra', publicadorIds);
-    return;
+    return resumo;
   }
+  resumo.aparelhos = subs.length;
 
   await Promise.all(
     (subs as PushSubscriptionRow[]).map(async (sub) => {
@@ -120,16 +132,19 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
           }
         });
         if (res.ok) {
+          resumo.entregues++;
           if (sub.falhas > 0) {
             await supabaseAdmin.from('push_subscriptions').update({ falhas: 0 }).eq('id', sub.id);
           }
         } else if (res.status === 404 || res.status === 410) {
           // Endpoint não existe mais (usuário desinstalou/revogou) — remove direto.
           console.warn('[enviarTickle] endpoint morto (', res.status, ') — removendo subscription', sub.id);
+          resumo.falhas++;
           await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id);
         } else {
           const corpo = await res.text().catch(() => '');
           console.error('[enviarTickle] push service respondeu', res.status, corpo.slice(0, 300));
+          resumo.falhas++;
           const falhas = sub.falhas + 1;
           if (falhas >= PODA_APOS_FALHAS) {
             await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id);
@@ -140,6 +155,7 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
       } catch (e) {
         console.error('[enviarTickle] erro de rede/assinatura ao enviar pra', sub.endpoint, e);
         // Conta como falha, mesma poda de acima.
+        resumo.falhas++;
         const falhas = sub.falhas + 1;
         if (falhas >= PODA_APOS_FALHAS) {
           await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id);
@@ -149,6 +165,7 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
       }
     })
   );
+  return resumo;
 }
 
 // Fonte da verdade do sino (in-app) + dispara o tickle de Web Push.
@@ -157,7 +174,7 @@ export async function enviarTickle(publicadorIds: string[]): Promise<void> {
 export async function criarNotificacao(
   publicadorIds: string[],
   opts: { titulo: string; corpo?: string; url?: string }
-): Promise<void> {
+): Promise<ResumoTickle | void> {
   const ids = [...new Set(publicadorIds)].filter(Boolean);
   if (ids.length === 0) return;
   const { error } = await supabaseAdmin.from('notificacoes').insert(
@@ -172,5 +189,5 @@ export async function criarNotificacao(
     console.error('[criarNotificacao] falhou gravar notificacoes:', error.message);
     return;
   }
-  await enviarTickle(ids);
+  return await enviarTickle(ids);
 }

@@ -24,6 +24,7 @@
     data: {
       profile: any;
       email: string;
+      qtdPushSubscriptions: number;
     };
     form: any;
   } = $props();
@@ -41,29 +42,56 @@
     try {
       const res = await fetch('?/enviarTeste', { method: 'POST', body: new FormData() });
       const parsed = deserialize(await res.text()) as any;
-      if (parsed.type === 'success') toast.success('Notificação de teste enviada — confere o sino ou a notificação do aparelho');
+      if (parsed.type === 'success') toast.success(String(parsed.data?.msg || 'Notificação de teste enviada'));
       else toast.error(String(parsed.data?.erro || 'Falhou'));
     } finally {
       enviandoTeste = false;
     }
   }
 
+  // Checklist de diagnóstico — cada pré-condição do Web Push visível,
+  // em vez de um status opaco (no iPhone a pegadinha clássica é não
+  // estar instalado na tela de início).
+  interface DiagPush {
+    chaveServidor: boolean;
+    suporteNavegador: boolean;
+    appInstalado: boolean;
+    ehIos: boolean;
+    permissao: string;
+    inscritoNesteAparelho: boolean;
+  }
+  let diag = $state<DiagPush | null>(null);
+
   onMount(async () => {
+    const ehIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const appInstalado = window.matchMedia('(display-mode: standalone)').matches
+      || (navigator as any).standalone === true;
+    const suporteNavegador = 'serviceWorker' in navigator && 'PushManager' in window;
+    let inscrito = false;
+    if (suporteNavegador) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        inscrito = !!(await reg.pushManager.getSubscription());
+      } catch { /* sem SW ativo */ }
+    }
+    diag = {
+      chaveServidor: !!publicEnv.PUBLIC_VAPID_PUBLIC_KEY,
+      suporteNavegador,
+      appInstalado,
+      ehIos,
+      permissao: 'Notification' in window ? Notification.permission : 'indisponível',
+      inscritoNesteAparelho: inscrito
+    };
+
     if (!publicEnv.PUBLIC_VAPID_PUBLIC_KEY) {
       statusPush = 'nao_configurado';
       return;
     }
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (!suporteNavegador) {
       statusPush = 'nao_suportado';
       return;
     }
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      statusPush = sub ? 'ativo' : 'inativo';
-    } catch {
-      statusPush = 'nao_suportado';
-    }
+    statusPush = inscrito ? 'ativo' : 'inativo';
   });
 
   async function ativarNotificacoes() {
@@ -228,6 +256,32 @@
       <Button variant="primary" loading={processandoPush} onclick={ativarNotificacoes} class="w-full">
         <Icon nome="megaphone" size={14} /> Ativar notificações
       </Button>
+    {/if}
+
+    {#if diag}
+      <div class="mt-3 pt-3 border-t border-slate-100 space-y-1 text-xs">
+        <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Diagnóstico</div>
+        {#snippet check(ok: boolean, rotulo: string)}
+          <div class="flex items-center gap-1.5 {ok ? 'text-green-700' : 'text-red-600'}">
+            <Icon nome={ok ? 'check' : 'x'} size={12} /> {rotulo}
+          </div>
+        {/snippet}
+        {@render check(diag.chaveServidor, 'Chave de push configurada no servidor')}
+        {@render check(diag.suporteNavegador, 'Navegador suporta push')}
+        {#if diag.ehIos}
+          {@render check(diag.appInstalado, 'App instalado na tela de início (obrigatório no iPhone)')}
+        {/if}
+        {@render check(diag.permissao === 'granted', `Permissão de notificação: ${diag.permissao}`)}
+        {@render check(diag.inscritoNesteAparelho, 'Este aparelho está inscrito')}
+        {@render check(data.qtdPushSubscriptions > 0, `Aparelhos inscritos na sua conta: ${data.qtdPushSubscriptions}`)}
+        {#if diag.ehIos && !diag.appInstalado}
+          <p class="text-amber-700 bg-amber-50 rounded-lg p-2 mt-1.5">
+            No iPhone, o push SÓ funciona com o app instalado: abra no Safari,
+            toque em Compartilhar e em "Adicionar à Tela de Início". Depois
+            abra pelo ícone e ative as notificações aqui.
+          </p>
+        {/if}
+      </div>
     {/if}
   </Card>
 

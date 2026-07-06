@@ -6,9 +6,17 @@ import { criarNotificacao } from '$lib/server/push';
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user || !locals.profile) throw redirect(303, '/login');
 
+  // Diagnóstico de push: quantos aparelhos deste usuário têm subscription
+  // salva (RLS: só as próprias linhas são visíveis).
+  const { count } = await locals.supabase
+    .from('push_subscriptions')
+    .select('id', { count: 'exact', head: true })
+    .eq('publicador_id', locals.user.id);
+
   return {
     profile: locals.profile,
-    email: locals.user.email
+    email: locals.user.email,
+    qtdPushSubscriptions: count ?? 0
   };
 };
 
@@ -71,10 +79,15 @@ export const actions: Actions = {
   // completo (sino + tickle de Web Push assinado com as chaves VAPID).
   enviarTeste: async ({ locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    await criarNotificacao([locals.user.id], {
+    const resumo = await criarNotificacao([locals.user.id], {
       titulo: 'Oi!',
       corpo: 'Notificação de teste do Territory Helper — se você recebeu isso, tá tudo funcionando.'
     });
-    return { ok: true, msg: 'Notificação de teste enviada' };
+    // Devolve o que o servidor VIU — antes o resultado real do envio
+    // morria no console do Worker e o diagnóstico virava adivinhação.
+    if (!resumo) return { ok: true, msg: 'Sino atualizado (sem detalhes do push)' };
+    if (!resumo.configurado) return { ok: true, msg: 'Sino atualizado. Web Push: chaves VAPID NÃO configuradas no servidor (runtime)' };
+    if (resumo.aparelhos === 0) return { ok: true, msg: 'Sino atualizado. Web Push: nenhum aparelho inscrito — ative as notificações neste aparelho primeiro' };
+    return { ok: true, msg: `Sino atualizado. Web Push: ${resumo.entregues}/${resumo.aparelhos} aparelho(s) receberam do serviço de push${resumo.falhas > 0 ? ` (${resumo.falhas} falha(s) — ver logs)` : ''}` };
   }
 };

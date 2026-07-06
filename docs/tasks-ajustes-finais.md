@@ -135,7 +135,7 @@
       /offline + runtime cache das rotas do campo + banner
       online/offline com contagem da fila.
 
-- [ ] 🔴 **T23 (A10)** Diagnóstico do push com o roteiro do spec
+- [x] 🔴 **T23 (A10)** ✅ lado-código feito pelo Fable (falta o teste no aparelho — ver relatório) Diagnóstico do push com o roteiro do spec
       (runtime vars → subscription no iPhone com PWA instalado →
       status do tickle). Entregar relatório + fix pontual se for app.
 
