@@ -191,7 +191,7 @@
 - [ ] 🟢 **T33 (A27)** Histórico do publicador em /admin/usuarios
       (card read-only: registros/mês, conclusões, turnos TP, cartas).
 
-- [ ] 🔴 **T34 (A25)** Backup: export JSON completo em
+- [x] 🔴 **T34 (A25)** ✅ feita pelo Fable Backup: export JSON completo em
       /admin/dev/backup + restore por upsert em ordem de FK com
       confirmação forte. Export primeiro (entrega valor sozinho);
       restore como sub-incremento separado, revisado.

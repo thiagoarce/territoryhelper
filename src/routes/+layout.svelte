@@ -110,7 +110,8 @@
       titulo: 'Sistema',
       items: [
         { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'users' },
-        { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' }
+        { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' },
+        { href: '/admin/dev/backup', label: 'Backup', icon: 'inbox' }
       ]
     },
     {
