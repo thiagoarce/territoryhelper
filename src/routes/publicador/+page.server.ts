@@ -48,10 +48,25 @@ export interface NecessidadeRegularLinha {
   qtd: number;
 }
 
+export interface ArranjoPendenteFinalizar {
+  id: number;
+  nome: string;
+  data: string;
+  quadras_ids: string[];
+  cartas_locais_ids: number[];
+}
+
+// Servidor roda em UTC (Cloudflare) — Brasil é UTC-3, então a hora local
+// é a hora UTC menos 3 (com wrap pro dia anterior perto da meia-noite).
+function horaAtualBrasil(): number {
+  return (new Date().getUTCHours() + 24 - 3) % 24;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
   const hoje = new Date().toISOString().substring(0, 10);
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
   const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10);
+  const ha60dias = new Date(Date.now() - 60 * 86400000).toISOString().substring(0, 10);
 
   const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes, necessidadeRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
@@ -70,14 +85,17 @@ export const load: PageServerLoad = async ({ locals }) => {
       .contains('publicadores', [locals.user!.id])
       .eq('arranjos.ativo', true)
       .order('criada_em', { ascending: false }),
-    // Arranjos que EU dirijo — card "Você dirige"
+    // Arranjos que EU dirijo — card "Você dirige" (futuros/atuais) + os
+    // últimos 60 dias (pra achar os que passaram e ainda não foram
+    // finalizados — "Finalize a designação")
     locals.supabase
       .from('arranjos')
       .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id, recorrente, data_fim')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
+      .or(`data.gte.${ha60dias},data.is.null`)
       .order('data', { nullsFirst: false })
-      .limit(20),
+      .limit(50),
     locals.supabase.from('profiles').select('id, nome'),
     // Meus agendamentos de TP nos próximos 7 dias — seção "Seus turnos de TP" no home
     locals.supabase
@@ -117,11 +135,31 @@ export const load: PageServerLoad = async ({ locals }) => {
   const partesValidas = (partesRes.data ?? []).filter((p: any) => arranjoAindaVale(p.arranjos, ontem));
   const dirijoValidos = (dirijoRes.data ?? []).filter((a: any) => arranjoAindaVale(a, ontem));
 
+  // Arranjos que dirijo cujo dia já passou (ou é hoje e já são 20h+) e
+  // ainda estão ativos — precisam ser finalizados (concluir quadras que
+  // sobraram + liberar o que não foi feito + encerrar as partes).
+  const pendentesFinalizar: ArranjoPendenteFinalizar[] = ((dirijoRes.data ?? []) as any[])
+    .filter((a) => {
+      if (!a.data) return false;
+      if (a.data < hoje) return true;
+      if (a.data === hoje && horaAtualBrasil() >= 20) return true;
+      return false;
+    })
+    .map((a) => ({
+      id: a.id,
+      nome: a.nome ?? 'Arranjo',
+      data: a.data as string,
+      quadras_ids: (a.quadras_ids ?? []) as string[],
+      cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[]
+    }));
+
   // Cobertura pra barra de progresso nos cards do home: território pessoal
-  // + quadras dos arranjos que dirijo + da minha parte (dupla/trio)
+  // + quadras dos arranjos que dirijo + da minha parte (dupla/trio) +
+  // pendentes de finalizar
   const idsPartes = partesValidas.flatMap((p: any) => p.quadras_ids ?? []);
   const idsDirijo = dirijoValidos.flatMap((a: any) => a.quadras_ids ?? []);
-  const idsCobertura = [...new Set([...abertas.flatMap((d) => d.quadras_ids), ...idsPartes, ...idsDirijo])];
+  const idsPendentes = pendentesFinalizar.flatMap((a) => a.quadras_ids);
+  const idsCobertura = [...new Set([...abertas.flatMap((d) => d.quadras_ids), ...idsPartes, ...idsDirijo, ...idsPendentes])];
   const cobertura = idsCobertura.length > 0
     ? await calcularCoberturaPorQuadra(locals.supabase, idsCobertura)
     : new Map();
@@ -280,6 +318,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     campanhaAtiva,
     minhasPartes,
     arranjosQueDirijo,
+    pendentesFinalizar,
     cartasDesignadas,
     meusAgendamentosTp,
     meusPedidosPublicacao,
@@ -309,6 +348,35 @@ export const actions: Actions = {
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, token: data.token };
+  },
+
+  // Finaliza a designação de um arranjo que já passou: marca ativo=false
+  // e apaga as partes daquele arranjo (encerra o acesso de quem tinha
+  // parte lá). Quadras não concluídas ficam livres pra outro arranjo —
+  // a trava de exclusividade (quadrasEmArranjoFuturo) já para de
+  // considerar arranjo com data passada, então ativo=false aqui é mais
+  // sobre fechar o registro do que sobre "liberar" de fato.
+  finalizarArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+
+    const { data: arr, error: errA } = await locals.supabase
+      .from('arranjos').select('id, dirigente_id').eq('id', arranjoId).single();
+    if (errA || !arr) return fail(404, { erro: 'Arranjo não encontrado' });
+    if (locals.profile?.role !== 'admin' && arr.dirigente_id !== locals.user.id) {
+      return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
+    }
+
+    const { error: errUp } = await locals.supabase.from('arranjos').update({ ativo: false }).eq('id', arranjoId);
+    if (errUp) return fail(400, { erro: errUp.message });
+    await locals.supabase.from('arranjo_partes').delete().eq('arranjo_id', arranjoId);
+
+    return { ok: true, msg: 'Designação finalizada' };
   },
 
   // Pedido de publicação avulso (P-A) — catálogo OU descrição livre.
