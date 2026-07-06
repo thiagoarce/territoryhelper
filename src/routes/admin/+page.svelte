@@ -432,7 +432,7 @@
               <div class="text-xs text-slate-500 mt-0.5">
                 {d.quadras_ids.length} quadra(s) · {d.quadras_ids.join(', ')}
               </div>
-              {#if d.prazo}<div class="text-xs text-amber-700 mt-1">prazo: {d.prazo}</div>{/if}
+              {#if d.prazo}<div class="text-xs text-amber-700 mt-1">prazo: {new Date(d.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</div>{/if}
               {#if d.notas}<div class="text-xs text-slate-500 italic mt-1">{d.notas}</div>{/if}
             </div>
             <div class="flex flex-col gap-1">
@@ -470,7 +470,7 @@
               <div class="font-medium truncate">{t.nome}</div>
               <div class="text-xs text-slate-500">
                 {#if t.publicador_nome}<Icon nome="user" size={14} /> {t.publicador_nome}{:else}sem designação{/if}
-                {#if t.prazo}· prazo {t.prazo}{/if}
+                {#if t.prazo}· prazo {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}{/if}
               </div>
             </div>
             <button onclick={() => { tceAtribuir = { id: t.id, nome: t.nome, publicador_id: t.publicador_id, prazo: t.prazo }; sheetDesignacoes = false; sheetAtribuirTce = true; }} class="text-[11px] text-primary-700 hover:underline whitespace-nowrap">Designar</button>
@@ -760,7 +760,7 @@
       <div>
         <span class="text-slate-500">Última conclusão:</span>
         {#if quadraDetalhe.data_conclusao}
-          <span class="font-medium">{quadraDetalhe.data_conclusao}</span>
+          <span class="font-medium">{new Date(quadraDetalhe.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
           <span class="text-xs text-slate-400 ml-1">({dias}d atrás)</span>
         {:else}
           <span class="font-medium text-slate-400">nunca</span>
@@ -777,7 +777,7 @@
           <ul class="text-xs space-y-1">
             {#each historicoQuadra as h}
               <li class="flex items-center justify-between">
-                <span class="font-mono">{h.data_conclusao}</span>
+                <span class="font-mono">{new Date(h.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                 <span class="text-slate-500">{h.nome ?? '(sem autor)'}</span>
               </li>
             {/each}
@@ -797,7 +797,7 @@
     <div class="space-y-3 text-sm">
       <p class="text-slate-600">
         Você está marcando <strong>{conflito.ids.length} quadra(s)</strong> como concluídas em
-        <strong class="font-mono">{conflito.data}</strong>,
+        <strong class="font-mono">{new Date(conflito.data + 'T12:00:00').toLocaleDateString('pt-BR')}</strong>,
         mas essas quadras já têm conclusão mais recente:
       </p>
       <ul class="text-xs space-y-1 max-h-32 overflow-y-auto bg-slate-50 rounded p-2">
