@@ -70,7 +70,7 @@
     { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
     { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
     { href: '/publicador/tp', label: 'TP', icon: 'megaphone' },
-    { href: '/publicador/predios', label: 'Prédios', icon: 'mail' }
+    { href: '/publicador/predios', label: 'Prédios', icon: 'building' }
   ]);
 
   // Drawer admin

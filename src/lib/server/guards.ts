@@ -3,6 +3,7 @@
 import { redirect, error } from '@sveltejs/kit';
 import type { Role } from '$lib/types';
 import { podeTrabalharQuadra } from './posse';
+import { arranjoAindaVale } from '$lib/arranjos';
 
 export function exigirRole(locals: App.Locals, rolesPermitidas: Role[]) {
   if (!locals.session || !locals.profile) throw redirect(303, '/login');
@@ -41,7 +42,6 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
   if (ehAdminOuDirigente) return;
 
   const userId = locals.user.id;
-  const hoje = new Date().toISOString().substring(0, 10);
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
 
   const [dqRes, dqPartRes, partesRes] = await Promise.all([
@@ -61,29 +61,29 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
       .eq('designacoes.designacao_publicadores.publicador_id', userId)
       .limit(1),
     // Parte de arranjo ativa que me inclui (dirigente repartiu essa quadra
-    // pra mim/minha dupla). Validade deriva da data do arranjo pai.
+    // pra mim/minha dupla). Validade deriva da data do arranjo pai —
+    // filtrada em JS logo abaixo (arranjoAindaVale), não dá pra expressar
+    // "recorrente OR pontual não vencido" num único .or() do PostgREST.
     locals.supabase
       .from('arranjo_partes')
-      .select('id, arranjos!inner(ativo, data)')
+      .select('id, arranjos!inner(ativo, data, recorrente, data_fim)')
       .contains('publicadores', [userId])
       .contains('quadras_ids', [quadraId])
       .eq('arranjos.ativo', true)
-      .or(`data.gte.${ontem},data.is.null`, { foreignTable: 'arranjos' })
-      .limit(1)
   ]);
+  const partesValidas = (partesRes.data ?? []).filter((p: any) => arranjoAindaVale(p.arranjos, ontem));
 
   // Só busca a 4ª cláusula (mais cara — 2 round trips) se nenhuma das
   // anteriores já resolveu.
   let ehColegaDeArranjo = false;
-  if (!dqRes.data?.length && !dqPartRes.data?.length && !partesRes.data?.length) {
-    const { data: arranjosDaQuadra } = await locals.supabase
+  if (!dqRes.data?.length && !dqPartRes.data?.length && !partesValidas.length) {
+    const { data: arranjosDaQuadraRaw } = await locals.supabase
       .from('arranjos')
-      .select('id')
+      .select('id, data, recorrente, data_fim')
       .eq('ativo', true)
-      .contains('quadras_ids', [quadraId])
-      .or(`data.gte.${ontem},data.is.null`)
-      .or(`recorrente.eq.false,data_fim.is.null,data_fim.gte.${hoje}`);
-    if (arranjosDaQuadra && arranjosDaQuadra.length > 0) {
+      .contains('quadras_ids', [quadraId]);
+    const arranjosDaQuadra = (arranjosDaQuadraRaw ?? []).filter((a) => arranjoAindaVale(a, ontem));
+    if (arranjosDaQuadra.length > 0) {
       const { data: partesDoArranjo } = await locals.supabase
         .from('arranjo_partes')
         .select('id')
@@ -98,7 +98,7 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
     ehAdminOuDirigente,
     ehLiderDeDesignacaoAberta: !!dqRes.data?.length,
     ehParticipanteDeDesignacaoAberta: !!dqPartRes.data?.length,
-    ehIncluidoEmParteDeArranjoAtiva: !!partesRes.data?.length,
+    ehIncluidoEmParteDeArranjoAtiva: !!partesValidas.length,
     quadraEmArranjoAtivo: ehColegaDeArranjo
   });
   if (!pode) throw error(403, 'Você não tem essa quadra designada.');
