@@ -123,6 +123,25 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  // Link público /t/<token> do arranjo (WhatsApp c/ mapa) — migrou de
+  // /publicador/arranjo junto com o resto das ações de "seu grupo".
+  gerarLinkTerritorio: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+    const { data, error } = await locals.supabase
+      .from('territorio_tokens')
+      .insert({ arranjo_id: arranjoId, criado_por: locals.user.id })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, token: data.token };
+  },
+
   // Reparte o território do arranjo: cria uma PARTE (subconjunto de
   // quadras/prédios → 1+ publicadores; dupla/trio compartilham a mesma
   // parte). Migrou de /publicador/arranjo pra cá (fica junto do mapa que
