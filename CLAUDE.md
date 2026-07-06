@@ -13,7 +13,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   - `admin/` — Geral (`/admin`, com concluir/reverter/histórico de
     conclusão — Registro foi fundido aqui), `poligonos`, `predios`
     (com Trabalhar + GPS + Designar cartas), `campanha`, `arranjos`,
-    `tp`, `designacoes`, `usuarios`, `auditoria`, `dev/sql`
+    `tp`, `designacoes`, `usuarios`, `auditoria`, `dev/sql`,
+    `dev/backup` (export JSON de todas as tabelas + restore por upsert)
   - `publicador/` — modo campo (**tanto publicador quanto dirigente**):
     home/carteira (território pessoal + ✉ cartas + pregação em grupo via
     `arranjo_partes` + TCEs), `quadra/[id]` (com "Marcar concluída" se
