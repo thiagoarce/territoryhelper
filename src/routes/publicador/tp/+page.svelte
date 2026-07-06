@@ -78,8 +78,17 @@
     return celulas;
   });
 
-  const datasParaMostrar = $derived(
-    diaSelecionado ? [diaSelecionado] : Object.keys(agendamentosPorData).sort()
+  // Sem dia selecionado, a lista mostra só o que vem pela frente — os dias
+  // que já passaram ficam atrás de um toggle (antes era preciso rolar por
+  // todo o começo do mês pra achar o próximo turno).
+  let mostrarPassados = $state(false);
+  const datasParaMostrar = $derived.by(() => {
+    if (diaSelecionado) return [diaSelecionado];
+    const todas = Object.keys(agendamentosPorData).sort();
+    return mostrarPassados ? todas : todas.filter((d) => d >= hojeIso);
+  });
+  const qtdDiasPassados = $derived(
+    diaSelecionado ? 0 : Object.keys(agendamentosPorData).filter((d) => d < hojeIso).length
   );
 
   const nomeMesExibido = $derived(mesRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
@@ -392,6 +401,16 @@
       </div>
     </Card>
   {:else}
+    {#if qtdDiasPassados > 0}
+      <button type="button" onclick={() => (mostrarPassados = !mostrarPassados)} class="text-xs text-slate-500 hover:underline">
+        {mostrarPassados ? 'Esconder dias passados' : `Mostrar ${qtdDiasPassados} dia(s) que já passaram`}
+      </button>
+    {/if}
+    {#if datasParaMostrar.length === 0}
+      <Card padding="md">
+        <div class="text-center py-6 text-sm text-slate-500">Os turnos desse mês já passaram — toque acima pra revê-los.</div>
+      </Card>
+    {:else}
     <div class="grid gap-3">
       {#each datasParaMostrar as dataIso}
         <div>
@@ -440,6 +459,7 @@
         </div>
       {/each}
     </div>
+    {/if}
   {/if}
 
 </div>
