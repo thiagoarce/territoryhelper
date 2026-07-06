@@ -1,6 +1,7 @@
 // Helpers de query que reusam padrões comuns. Mantém os +page.server.ts
 // finos e centralizam o tratamento de erro/tipos.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { desfechoNoCicloAtual, cartaEscritaNoCiclo } from '$lib/ciclos';
 import type { Quadra, Territorio, Profile, Designacao, Local, Unidade, TipoRegistro } from '$lib/types';
 import { arranjoAindaVale } from '$lib/arranjos';
 
@@ -168,17 +169,26 @@ export async function calcularCoberturaPorQuadra(
       .order('ts', { ascending: false })
   );
 
-  const ultimoPorUnidade = new Map<number, string>();
+  const ultimoPorUnidade = new Map<number, { tipo: string; ts: string }>();
   for (const r of registros) {
-    if (!ultimoPorUnidade.has(r.unidade_id)) ultimoPorUnidade.set(r.unidade_id, r.tipo);
+    if (!ultimoPorUnidade.has(r.unidade_id)) ultimoPorUnidade.set(r.unidade_id, { tipo: r.tipo, ts: r.ts });
   }
+
+  // "Feita" = desfecho do CICLO ATUAL da quadra (posterior à última
+  // conclusão) — senão a barra de progresso começava o ciclo novo cheia.
+  const idsQuadras = [...totalPorQuadra.keys()];
+  const { data: quadrasCiclo } = await supabase
+    .from('quadras')
+    .select('id, data_conclusao')
+    .in('id', idsQuadras);
+  const conclusaoPorQuadra = new Map((quadrasCiclo ?? []).map((q: any) => [q.id, q.data_conclusao as string | null]));
 
   const feitasPorQuadra = new Map<string, number>();
   for (const [uid, q] of quadraPorUnidade) {
-    const tipo = ultimoPorUnidade.get(uid);
-    if (tipo && tipo !== 'desfeito' && tipo !== 'carta_undo') {
-      feitasPorQuadra.set(q, (feitasPorQuadra.get(q) ?? 0) + 1);
-    }
+    const ult = ultimoPorUnidade.get(uid);
+    if (!ult || ult.tipo === 'desfeito' || ult.tipo === 'carta_undo') continue;
+    if (!desfechoNoCicloAtual(ult.ts, conclusaoPorQuadra.get(q))) continue;
+    feitasPorQuadra.set(q, (feitasPorQuadra.get(q) ?? 0) + 1);
   }
 
   const result = new Map<string, CoberturaQuadra>();
@@ -212,7 +222,7 @@ export interface PredioListado {
 export async function listarPredios(supabase: SupabaseClient): Promise<PredioListado[]> {
   // Paginação obrigatória pra unidades (19k+ no banco) e pra prédios
   // (potencialmente 2774 — passa do limite default).
-  const [predios, unidades] = await Promise.all([
+  const [predios, unidades, ciclo] = await Promise.all([
     selectAll<any>(
       supabase
         .from('locais')
@@ -224,7 +234,8 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
     ),
     selectAll<{ local_id: number; carta_entregue: string | null; desocupado: boolean; nao_escrever: boolean }>(
       supabase.from('unidades').select('local_id, carta_entregue, desocupado, nao_escrever')
-    )
+    ),
+    cicloCartasAtual(supabase)
   ]);
 
   type Counts = { qtd: number; carta: number; desoc: number; naoescr: number };
@@ -232,7 +243,7 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
   for (const u of unidades) {
     const c = porLocal.get(u.local_id) ?? { qtd: 0, carta: 0, desoc: 0, naoescr: 0 };
     c.qtd++;
-    if (u.carta_entregue) c.carta++;
+    if (cartaEscritaNoCiclo(u.carta_entregue, ciclo?.iniciado_em)) c.carta++;
     if (u.desocupado) c.desoc++;
     if (u.nao_escrever) c.naoescr++;
     porLocal.set(u.local_id, c);
@@ -249,6 +260,23 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
   });
 }
 
+// Ciclo ATUAL do trabalho de cartas (tabela cartas_ciclos, migration 056)
+// — null se nenhum ciclo foi iniciado ainda (toda marca vale).
+export interface CicloCartas {
+  iniciado_em: string;
+  iniciado_por_nome: string | null;
+}
+export async function cicloCartasAtual(supabase: SupabaseClient): Promise<CicloCartas | null> {
+  const { data } = await supabase
+    .from('cartas_ciclos')
+    .select('iniciado_em, profiles(nome)')
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  return { iniciado_em: (data as any).iniciado_em, iniciado_por_nome: (data as any).profiles?.nome ?? null };
+}
+
 export interface PredioDetalhado extends PredioListado {
   nome_irmao: string | null;
   notas: string | null;
@@ -258,7 +286,8 @@ export interface PredioDetalhado extends PredioListado {
 
 export async function carregarPredioDetalhado(
   supabase: SupabaseClient,
-  predioId: number
+  predioId: number,
+  cicloCartasInicio?: string | null
 ): Promise<PredioDetalhado | null> {
   const [pRes, uRes] = await Promise.all([
     supabase
@@ -282,7 +311,7 @@ export async function carregarPredioDetalhado(
   const stats = unidades.reduce(
     (acc, u) => ({
       qtd_aptos: acc.qtd_aptos + 1,
-      qtd_carta_entregue: acc.qtd_carta_entregue + (u.carta_entregue ? 1 : 0),
+      qtd_carta_entregue: acc.qtd_carta_entregue + (cartaEscritaNoCiclo(u.carta_entregue, cicloCartasInicio) ? 1 : 0),
       qtd_desocupado: acc.qtd_desocupado + (u.desocupado ? 1 : 0),
       qtd_nao_escrever: acc.qtd_nao_escrever + (u.nao_escrever ? 1 : 0)
     }),
@@ -358,9 +387,14 @@ export async function listarDesignacoes(
 // ============================================================================
 
 export interface UnidadeEnriquecida extends Unidade {
+  // Só o desfecho do CICLO ATUAL da quadra (posterior à última conclusão)
+  // aparece "pressionado". O que veio antes vira desfecho_anterior, pra UI
+  // mostrar esmaecido sem apagar o histórico.
   ultimo_tipo: TipoRegistro | string | null;
   ultimo_ts: string | null;
   ultimo_publicador_nome: string | null;
+  desfecho_anterior: string | null;
+  desfecho_anterior_ts: string | null;
 }
 
 export interface LocalComUnidades extends Local {
@@ -383,7 +417,7 @@ export async function carregarQuadraComLocais(
   const [qBase, profRes, terrRes] = await Promise.all([
     supabase
       .from('quadras')
-      .select('id, color, territorio_id, status')
+      .select('id, color, territorio_id, status, data_conclusao')
       .eq('id', quadraId)
       .maybeSingle(),
     supabase.from('profiles').select('id, nome'),
@@ -475,14 +509,19 @@ export async function carregarQuadraComLocais(
 
   const nomePorId = new Map((profRes.data ?? []).map((p) => [p.id, p.nome]));
 
+  const dataConclusao = (qBase.data as any).data_conclusao as string | null;
   const unidadesPorLocal = new Map<number, UnidadeEnriquecida[]>();
   for (const u of unidades) {
     const ult = ultimoPorUnidade.get(u.id);
+    const noCiclo = desfechoNoCicloAtual(ult?.ts, dataConclusao);
+    const ehDesfeito = ult?.tipo === 'desfeito' || ult?.tipo === 'carta_undo';
     const enriq: UnidadeEnriquecida = {
       ...u,
-      ultimo_tipo: ult?.tipo ?? null,
-      ultimo_ts: ult?.ts ?? null,
-      ultimo_publicador_nome: ult?.publicador_id ? nomePorId.get(ult.publicador_id) ?? null : null
+      ultimo_tipo: noCiclo ? ult?.tipo ?? null : null,
+      ultimo_ts: noCiclo ? ult?.ts ?? null : null,
+      ultimo_publicador_nome: noCiclo && ult?.publicador_id ? nomePorId.get(ult.publicador_id) ?? null : null,
+      desfecho_anterior: !noCiclo && ult && !ehDesfeito ? ult.tipo : null,
+      desfecho_anterior_ts: !noCiclo && ult && !ehDesfeito ? ult.ts : null
     };
     const arr = unidadesPorLocal.get(u.local_id) ?? [];
     arr.push(enriq);

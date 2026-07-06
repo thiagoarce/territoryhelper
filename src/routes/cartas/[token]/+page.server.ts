@@ -26,7 +26,16 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
   const unidades = (data as any)?.unidades ?? [];
   if (!local) throw error(404, 'Prédio não encontrado');
 
-  return { token: params.token, local, unidades };
+  // Início do ciclo atual de cartas — marca anterior a ele aparece solta
+  // (a policy de cartas_ciclos libera SELECT pra anon; é só uma data)
+  const { data: ciclo } = await supa
+    .from('cartas_ciclos')
+    .select('iniciado_em')
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return { token: params.token, local, unidades, cicloCartasInicio: (ciclo as any)?.iniciado_em ?? null };
 };
 
 export const actions: Actions = {

@@ -4,10 +4,12 @@
   import { invalidateAll } from '$app/navigation';
   import Toaster from '$lib/ui/Toaster.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { cartaEscritaNoCiclo } from '$lib/ciclos';
 
   let { data, form }: { data: any; form: any } = $props();
 
-  const entregues = $derived(data.unidades.filter((u: any) => u.carta_entregue).length);
+  const escrita = (u: any) => cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio);
+  const entregues = $derived(data.unidades.filter(escrita).length);
 </script>
 
 <svelte:head>
@@ -51,7 +53,7 @@
   <!-- Lista -->
   <div class="p-4 space-y-1">
     {#each data.unidades as u, indice (u.id)}
-      {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : u.carta_entregue ? 'entregue' : 'pendente'}
+      {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : escrita(u) ? 'entregue' : 'pendente'}
       <div
         class="rounded-lg border p-3 transition-colors"
         class:bg-purple-50={st === 'entregue'}
@@ -66,13 +68,14 @@
         <div class="flex items-center justify-between gap-3">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold">{u.complemento || u.nota || `Unidade ${indice + 1}`}</div>
-            {#if u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> escrita {new Date(u.carta_entregue + 'T12:00:00').toLocaleDateString('pt-BR')}</div>{/if}
+            {#if escrita(u)}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> escrita {new Date(u.carta_entregue + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+            {:else if u.carta_entregue}<div class="text-xs text-slate-400"><Icon nome="mail" size={12} /> escrita {new Date(u.carta_entregue + 'T12:00:00').toLocaleDateString('pt-BR')} (ciclo anterior)</div>{/if}
           </div>
           <div class="flex gap-1">
             {#each [
-              { c: 'carta_entregue', icone: 'mail', ativo: !!u.carta_entregue, cls: 'bg-purple-600', l: 'Carta escrita' },
-              { c: 'desocupado', icone: 'door-closed', ativo: u.desocupado, cls: 'bg-slate-600', l: 'Desocupado' },
-              { c: 'nao_escrever', icone: 'ban', ativo: u.nao_escrever, cls: 'bg-red-600', l: 'Não escrever' }
+              { c: 'carta_entregue', icone: 'mail' as const, ativo: escrita(u), cls: 'bg-purple-600', l: 'Carta escrita' },
+              { c: 'desocupado', icone: 'door-closed' as const, ativo: u.desocupado, cls: 'bg-slate-600', l: 'Desocupado' },
+              { c: 'nao_escrever', icone: 'ban' as const, ativo: u.nao_escrever, cls: 'bg-red-600', l: 'Não escrever' }
             ] as opt}
               <form
                 method="POST"

@@ -1,14 +1,24 @@
 import type { Actions, PageServerLoad } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
-import { carregarPredioDetalhado, selectAll } from '$lib/server/queries';
+import { carregarPredioDetalhado, selectAll, cicloCartasAtual } from '$lib/server/queries';
+import { desfechoNoCicloAtual, cartaEscritaNoCiclo } from '$lib/ciclos';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw error(401, 'Faça login');
   const id = Number(params.id);
   if (!Number.isFinite(id) || id <= 0) throw error(400, 'ID inválido');
-  const predio = await carregarPredioDetalhado(locals.supabase, id);
+  const ciclo = await cicloCartasAtual(locals.supabase);
+  const predio = await carregarPredioDetalhado(locals.supabase, id, ciclo?.iniciado_em);
   if (!predio) throw error(404, 'Prédio não encontrado');
+
+  // Ciclo do casa em casa = última conclusão da quadra do prédio
+  let dataConclusaoQuadra: string | null = null;
+  if (predio.quadra_id) {
+    const { data: q } = await locals.supabase
+      .from('quadras').select('data_conclusao').eq('id', predio.quadra_id).maybeSingle();
+    dataConclusaoQuadra = q?.data_conclusao ?? null;
+  }
 
   // Enriquece unidades com último registro (pra modo casa-em-casa)
   const unidadeIds = predio.unidades.map((u) => u.id);
@@ -35,14 +45,25 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     nomeEscritorPorId = new Map((profs ?? []).map((p: any) => [p.id, p.nome]));
   }
 
-  const unidades = predio.unidades.map((u: any) => ({
-    ...u,
-    ultimo_tipo: ultimoPorUnidade[u.id]?.tipo ?? null,
-    ultimo_ts: ultimoPorUnidade[u.id]?.ts ?? null,
-    carta_escrita_por_nome: u.carta_escrita_por ? nomeEscritorPorId.get(u.carta_escrita_por) ?? null : null
-  }));
+  const unidades = predio.unidades.map((u: any) => {
+    const ult = ultimoPorUnidade[u.id];
+    const noCiclo = desfechoNoCicloAtual(ult?.ts, dataConclusaoQuadra);
+    const ehDesfeito = ult?.tipo === 'desfeito' || ult?.tipo === 'carta_undo';
+    return {
+      ...u,
+      ultimo_tipo: noCiclo ? ult?.tipo ?? null : null,
+      ultimo_ts: noCiclo ? ult?.ts ?? null : null,
+      desfecho_anterior: !noCiclo && ult && !ehDesfeito ? ult.tipo : null,
+      desfecho_anterior_ts: !noCiclo && ult && !ehDesfeito ? ult.ts : null,
+      carta_escrita_por_nome: u.carta_escrita_por ? nomeEscritorPorId.get(u.carta_escrita_por) ?? null : null
+    };
+  });
 
-  return { predio: { ...predio, unidades }, minhaRole: locals.profile?.role };
+  return {
+    predio: { ...predio, unidades },
+    minhaRole: locals.profile?.role,
+    cicloCartasInicio: ciclo?.iniciado_em ?? null
+  };
 };
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', 'carta', ''] as const;
@@ -105,8 +126,10 @@ export const actions: Actions = {
     const patch: Record<string, unknown> = {};
     if (campo === 'carta_entregue') {
       // Semântica: carta ESCRITA (a entrega é o desfecho casa-em-casa).
-      // Guarda quem escreveu junto com a data; desmarcar limpa os dois.
-      const escrevendo = !u.carta_entregue;
+      // Marca de ciclo PASSADO conta como não-escrita: o toggle re-escreve
+      // com a data de hoje em vez de desmarcar. Desmarcar limpa data+autor.
+      const ciclo = await cicloCartasAtual(locals.supabase);
+      const escrevendo = !cartaEscritaNoCiclo(u.carta_entregue, ciclo?.iniciado_em);
       patch.carta_entregue = escrevendo ? hojeIsoBrasil() : null;
       patch.carta_escrita_por = escrevendo ? locals.user.id : null;
     } else if (campo === 'desocupado') {
