@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import {
   listarQuadrasComGeo,
@@ -123,6 +124,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   // Designa um TCE a um publicador/dirigente com prazo (mesmo lugar das designações)
   atribuirTce: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -138,6 +141,8 @@ export const actions: Actions = {
   // Admin designa TERRITÓRIO PESSOAL direto da Geral (sempre pessoal —
   // saída em grupo é arranjo, gerido em /admin/arranjos com dirigente).
   criarDesignacao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
@@ -187,6 +192,8 @@ export const actions: Actions = {
   },
 
   encerrarDesignacao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -198,6 +205,8 @@ export const actions: Actions = {
   },
 
   editarDesignacao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -234,6 +243,8 @@ export const actions: Actions = {
   // Anexa quadras selecionadas a um arranjo (tipo 'quadras'). Admin → arranjo
   // direto, sem precisar de dirigente. Junta com as quadras_ids existentes.
   adicionarQuadrasAoArranjo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const arranjoId = Number(fd.get('arranjo_id') ?? 0);
@@ -277,6 +288,8 @@ export const actions: Actions = {
   // Remove quadras de QUALQUER arranjo onde estão (libera a trava).
   // Útil pra desfazer engano ou liberar quadra concluída.
   liberarQuadrasDeArranjos: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
@@ -303,6 +316,8 @@ export const actions: Actions = {
   // Reserva quadras selecionadas pra uma campanha planejada ("quarentena")
   // — descansa o território até o início. Admin só (defesa em profundidade).
   reservarQuadras: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
     const fd = await request.formData();
@@ -318,6 +333,8 @@ export const actions: Actions = {
 
   // Libera a reserva das quadras selecionadas (não precisa ser da mesma campanha).
   liberarReservaQuadras: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
     const fd = await request.formData();
@@ -333,6 +350,8 @@ export const actions: Actions = {
   // Concluir quadra — fundido de /admin/registro (rota removida).
   // ============================================================
   marcarConcluidas: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
@@ -455,6 +474,8 @@ export const actions: Actions = {
   // (só 1 ou 0 entradas no histórico), NÃO apaga — só avisa.
   // Nunca destrói dado sem ter alternativa pra mostrar.
   reverter: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
@@ -497,6 +518,8 @@ export const actions: Actions = {
 
   // Limpar conclusão (botão explícito, destrutivo) — apaga TODO o histórico e data
   limparConclusao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
@@ -512,6 +535,8 @@ export const actions: Actions = {
 
   // Histórico de conclusões de uma quadra (pro long-press / detalhe)
   historico: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     if (!id) return fail(400, { erro: 'id obrigatório' });

@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import type { Campanha } from '$lib/types';
 import { listarQuadrasComGeo, selectAll } from '$lib/server/queries';
@@ -180,6 +181,8 @@ const TIPOS = ['geral', 'semana'] as const;
 
 export const actions: Actions = {
   criar: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const tipo = String(fd.get('tipo') ?? '');
     const modalidade = String(fd.get('modalidade') ?? '');
@@ -204,6 +207,8 @@ export const actions: Actions = {
   },
 
   atualizar: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     const titulo = String(fd.get('titulo') ?? '').trim();
@@ -220,6 +225,8 @@ export const actions: Actions = {
   },
 
   excluir: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
@@ -230,6 +237,8 @@ export const actions: Actions = {
 
   // Criar/editar período da campanha
   salvarPeriodo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -278,6 +287,8 @@ export const actions: Actions = {
   },
 
   ativarPeriodo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -290,6 +301,8 @@ export const actions: Actions = {
   },
 
   desativarPeriodo: async ({ locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const { error } = await locals.supabase.from('campanhas').update({ ativa: false }).eq('ativa', true);
     if (error) return fail(400, { erro: error.message });
@@ -298,6 +311,8 @@ export const actions: Actions = {
 
   // Catálogo de publicações (sheet dentro da tela — não merece rota própria)
   criarPublicacao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const nome = String(fd.get('nome') ?? '').trim();
@@ -309,6 +324,8 @@ export const actions: Actions = {
   },
 
   atualizarPublicacao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -324,6 +341,8 @@ export const actions: Actions = {
 
   // Suprimento: linha campanha × publicação (necessária/em mãos/pedido)
   criarSuprimento: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const campanhaId = Number(fd.get('campanha_id') ?? 0);
@@ -338,6 +357,8 @@ export const actions: Actions = {
   },
 
   atualizarSuprimento: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -355,6 +376,8 @@ export const actions: Actions = {
   },
 
   apagarSuprimento: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);

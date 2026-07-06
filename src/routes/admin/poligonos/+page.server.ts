@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import { selectAll, listarQuadrasComGeo, listarPublicadores } from '$lib/server/queries';
 
@@ -135,6 +136,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   autoVincular: async ({ locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const { data, error } = await locals.supabase.rpc('auto_vincular_enderecos' as any);
     if (error) return fail(400, { erro: error.message });
@@ -143,6 +146,8 @@ export const actions: Actions = {
   },
 
   vincularManual: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
@@ -155,6 +160,8 @@ export const actions: Actions = {
 
   // Marca/desmarca endereços como "não visitar" — esconde do publicador
   toggleAtivacao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
@@ -169,6 +176,8 @@ export const actions: Actions = {
 
   // Remove vínculo (volta pra "sem quadra")
   desvincular: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const localIds = fd.getAll('local_ids').map((v) => Number(v)).filter(Boolean);
@@ -182,6 +191,8 @@ export const actions: Actions = {
   // Ativa/inativa a quadra. 'concluído' / 'pendente' são derivados de data_conclusao,
   // não setados aqui.
   alterarStatusQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -197,6 +208,8 @@ export const actions: Actions = {
 
   // Cria território de quadras selecionadas. Gera id único a partir do nome.
   criarTerritorio: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const nome = String(fd.get('nome') ?? '').trim();
@@ -226,6 +239,8 @@ export const actions: Actions = {
   },
 
   atualizarTerritorio: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -242,6 +257,8 @@ export const actions: Actions = {
 
   // Adiciona quadras selecionadas a um território existente
   adicionarQuadrasAoTerritorio: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -255,6 +272,8 @@ export const actions: Actions = {
 
   // Remove quadras de qualquer território (viram órfãs)
   removerQuadrasDoTerritorio: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
@@ -267,6 +286,8 @@ export const actions: Actions = {
 
   // Deleta território. FK ON DELETE SET NULL deixa as quadras órfãs.
   deletarTerritorio: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -278,6 +299,8 @@ export const actions: Actions = {
 
   // ===== Modo TCE =====
   criarTce: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const nome = String(fd.get('nome') ?? '').trim();
@@ -293,6 +316,8 @@ export const actions: Actions = {
   },
 
   alterarStatusTce: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -306,6 +331,8 @@ export const actions: Actions = {
   },
 
   deletarTce: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -318,6 +345,8 @@ export const actions: Actions = {
   // ===== Geometria (terra-draw) =====
   // Salva polígono: cria quadra nova ou edita forma de existente
   salvarPoligonoQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '').trim();
@@ -336,6 +365,8 @@ export const actions: Actions = {
   },
 
   juntarQuadras: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
@@ -347,6 +378,8 @@ export const actions: Actions = {
 
   // Divide a quadra por uma linha (split). Cria uma nova quadra com a outra metade.
   dividirQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -364,6 +397,8 @@ export const actions: Actions = {
 
   // Exclui quadra. locais ficam órfãos (FK SET NULL); designacao_quadras cascata.
   excluirQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -375,6 +410,8 @@ export const actions: Actions = {
 
   // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)
   vincularTerritorioQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -391,6 +428,8 @@ export const actions: Actions = {
   // Mas como nossas FKs estão como ON DELETE SET NULL/CASCADE e não ON UPDATE,
   // fazemos manualmente: insere nova, copia, atualiza refs, deleta antiga.
   renomearQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const idAntigo = String(fd.get('id_antigo') ?? '');

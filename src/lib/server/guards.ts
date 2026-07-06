@@ -1,6 +1,6 @@
 // Guards reutilizáveis pra rotas server-side. Use em +layout.server.ts
 // das pastas /admin, /dirigente, /publicador.
-import { redirect, error } from '@sveltejs/kit';
+import { redirect, error, fail } from '@sveltejs/kit';
 import type { Role } from '$lib/types';
 import { podeTrabalharQuadra } from './posse';
 import { arranjoAindaVale } from '$lib/arranjos';
@@ -11,6 +11,17 @@ export function exigirRole(locals: App.Locals, rolesPermitidas: Role[]) {
   if (!rolesPermitidas.includes(locals.profile.role)) {
     throw error(403, 'Acesso negado pra essa área.');
   }
+}
+
+// Guard de ACTION (não de load): no SvelteKit, uma form action roda ANTES
+// do load do +layout.server.ts — o guard do layout /admin NÃO protege as
+// actions contra POST direto. Toda action mutante de rota admin precisa se
+// auto-guardar com isso no topo:
+//   const guard = exigirAdminAction(locals); if (guard) return guard;
+export function exigirAdminAction(locals: App.Locals) {
+  if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+  if (locals.profile?.role !== 'admin') return fail(403, { erro: 'Só admin' });
+  return null;
 }
 
 // Servo de publicações NÃO é role — é uma capacidade (profiles.servo_publicacoes)
