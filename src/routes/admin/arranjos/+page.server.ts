@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import { selectAll, quadrasEmArranjoFuturo, msgConflitoArranjo } from '$lib/server/queries';
 import { statusCampanha } from '$lib/campanhas';
@@ -243,6 +244,8 @@ function arranjoFromForm(fd: FormData) {
 
 export const actions: Actions = {
   criarModalidade: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const nome = String(fd.get('nome') ?? '').trim();
@@ -269,6 +272,8 @@ export const actions: Actions = {
   },
 
   atualizarModalidade: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -299,6 +304,8 @@ export const actions: Actions = {
   },
 
   deletarModalidade: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -309,6 +316,8 @@ export const actions: Actions = {
   },
 
   criarArranjo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const data = arranjoFromForm(fd);
@@ -357,6 +366,8 @@ export const actions: Actions = {
   },
 
   atualizarArranjo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -380,6 +391,8 @@ export const actions: Actions = {
   },
 
   deletarArranjo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -390,6 +403,8 @@ export const actions: Actions = {
   },
 
   uploadArquivo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const file = fd.get('arquivo') as File | null;

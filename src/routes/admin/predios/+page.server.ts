@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import { listarPredios, carregarPredioDetalhado, listarPublicadores, selectAll } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
@@ -79,6 +80,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 export const actions: Actions = {
   // Carrega detalhes de UM prédio (pro modal inline)
   detalhe: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
@@ -88,6 +91,8 @@ export const actions: Actions = {
   },
 
   atualizar: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -132,6 +137,8 @@ export const actions: Actions = {
   },
 
   gerarLink: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
@@ -207,6 +214,8 @@ export const actions: Actions = {
   // Anexa prédios selecionados a um arranjo de cartas (tipo 'cartas_lista').
   // Junta com os cartas_locais_ids existentes (ou substitui).
   adicionarPrediosAoArranjo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const arranjoId = Number(fd.get('arranjo_id') ?? 0);

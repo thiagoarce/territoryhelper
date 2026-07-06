@@ -331,7 +331,7 @@ export const actions: Actions = {
     const diaSemana = Number(fd.get('dia_semana') ?? -1);
     const horaInicio = String(fd.get('hora_inicio') ?? '').trim();
     const horaFim = String(fd.get('hora_fim') ?? '').trim();
-    if (diaSemana < 0 || diaSemana > 6) return fail(400, { erro: 'Dia da semana inválido' });
+    if (!Number.isInteger(diaSemana) || diaSemana < 0 || diaSemana > 6) return fail(400, { erro: 'Dia da semana inválido' });
     if (!horaInicio || !horaFim) return fail(400, { erro: 'Horário obrigatório' });
     if (horaFim <= horaInicio) return fail(400, { erro: 'Hora de fim precisa ser depois da hora de início' });
     const { error } = await locals.supabase.from('tp_disponibilidade').insert({

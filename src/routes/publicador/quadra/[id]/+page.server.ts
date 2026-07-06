@@ -65,6 +65,7 @@ export const actions: Actions = {
     const file = fd.get('foto') as File;
     if (!localId || !file || file.size === 0) return fail(400, { erro: 'Arquivo obrigatório' });
     if (file.size > 5 * 1024 * 1024) return fail(400, { erro: 'Foto > 5MB' });
+    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse local' });
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `local-${localId}-${Date.now()}.${ext}`;
     const { error: errUp } = await locals.supabase.storage
@@ -86,6 +87,7 @@ export const actions: Actions = {
     const fd = await request.formData();
     const localId = Number(fd.get('local_id') ?? 0);
     if (!localId) return fail(400, { erro: 'id obrigatório' });
+    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse local' });
     const { error } = await locals.supabase.from('locais').update({ foto_url: null }).eq('id', localId);
     if (error) return fail(400, { erro: error.message });
     return { ok: true };
@@ -155,6 +157,10 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
+    const localId = await localIdDaUnidade(locals, id);
+    if (!localId || !(await podeEditarLocal(locals, localId))) {
+      return fail(403, { erro: 'Você não tem posse dessa unidade' });
+    }
     const { error: err } = await locals.supabase.from('unidades').delete().eq('id', id);
     if (err) return fail(400, { erro: err.message });
     return { ok: true, msg: 'Unidade excluída' };
@@ -164,6 +170,13 @@ export const actions: Actions = {
   // Vincula automaticamente à quadra atual.
   criarLocal: async ({ request, locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    // Mesma posse exigida no load — sem isso um POST direto injeta locais
+    // numa quadra que não é do publicador.
+    try {
+      await exigirQuadraDesignada(locals, params.id);
+    } catch {
+      return fail(403, { erro: 'Você não tem essa quadra designada' });
+    }
     const fd = await request.formData();
     const tipo = String(fd.get('tipo') ?? 'casa');
     const logradouro = String(fd.get('logradouro') ?? '').trim();
@@ -223,6 +236,7 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
+    if (!(await podeEditarLocal(locals, id))) return fail(403, { erro: 'Você não tem posse desse local' });
     const { error } = await locals.supabase.from('locais').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Local excluído' };

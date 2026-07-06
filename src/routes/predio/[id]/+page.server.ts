@@ -109,6 +109,7 @@ export const actions: Actions = {
   atualizarLocal: async ({ request, locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const localId = Number(params.id);
+    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse prédio' });
     const fd = await request.formData();
     const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar'];
     const booleanos = new Set(['irmao_mora', 'acesso_caixas', 'acesso_interfones', 'nao_visitar']);

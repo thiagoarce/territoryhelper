@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { supabaseAdmin } from '$lib/server/supabase-admin';
 import { criarNotificacao } from '$lib/server/push';
+import { exigirAdminAction } from '$lib/server/guards';
 import type { Role, UsuarioComEmail } from '$lib/types';
 
 const ROLES_VALIDAS: Role[] = ['admin', 'dirigente', 'publicador'];
@@ -66,7 +67,9 @@ async function criarUsuarioProvisorio(email: string, nome: string, role: Role) {
 
 export const actions: Actions = {
   // Cria 1 usuário (email + senha + nome + role).
-  criar: async ({ request }) => {
+  criar: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const email = String(fd.get('email') ?? '').trim().toLowerCase();
     const senha = String(fd.get('senha') ?? '');
@@ -95,7 +98,9 @@ export const actions: Actions = {
   },
 
   // Atualiza role/ativo/nome de um usuário existente.
-  atualizar: async ({ request }) => {
+  atualizar: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     const nome = String(fd.get('nome') ?? '').trim();
@@ -120,6 +125,8 @@ export const actions: Actions = {
   // território pra ele antes de abrir o link. Gera token único, irmão
   // acessa /convite/[token] só pra DEFINIR a própria senha.
   criarConvite: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const email = String(fd.get('email') ?? '').trim().toLowerCase();
     const nome = String(fd.get('nome') ?? '').trim();
@@ -143,6 +150,8 @@ export const actions: Actions = {
   // os links de uma vez, pra mandar por WhatsApp. Cada linha já cria o
   // publicador provisório (mesma lógica do criarConvite acima).
   criarConvitesEmLote: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const csv = String(fd.get('csv') ?? '').trim();
     if (!csv) return fail(400, { erro: 'Lista vazia' });
@@ -190,7 +199,9 @@ export const actions: Actions = {
   // Revoga um convite ainda não usado — como o publicador já foi criado
   // (provisório) na hora do convite, apaga o usuário junto (senão fica um
   // fantasma sem dono, ninguém nunca vai conseguir logar nele mesmo).
-  revogarConvite: async ({ request }) => {
+  revogarConvite: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     if (!id) return fail(400, { erro: 'id obrigatório' });
@@ -210,7 +221,9 @@ export const actions: Actions = {
   // Manda uma notificação de teste pro publicador (sino in-app + tickle de
   // Web Push, se as chaves VAPID já estiverem configuradas) — pra admin
   // confirmar que o pipeline ponta-a-ponta funciona depois de configurar.
-  enviarNotificacaoTeste: async ({ request }) => {
+  enviarNotificacaoTeste: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     if (!id) return fail(400, { erro: 'id obrigatório' });
@@ -222,7 +235,9 @@ export const actions: Actions = {
   },
 
   // Exclui usuário (auth + profile via CASCADE).
-  excluir: async ({ request }) => {
+  excluir: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     if (!id) return fail(400, { erro: 'id obrigatório' });
@@ -234,7 +249,9 @@ export const actions: Actions = {
 
   // Import em lote. Textarea com linhas "email,senha,nome,role".
   // Tolerante: pula linhas vazias, reporta erros por linha, segue até o fim.
-  importarLote: async ({ request }) => {
+  importarLote: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const csv = String(fd.get('csv') ?? '').trim();
     if (!csv) return fail(400, { erro: 'CSV vazio' });
