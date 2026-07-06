@@ -44,6 +44,13 @@
     cartas_locais_ids: number[];
     tce_id: string | null;
   }
+  interface ArranjoPendenteFinalizar {
+    id: number;
+    nome: string;
+    data: string;
+    quadras_ids: string[];
+    cartas_locais_ids: number[];
+  }
   interface CartaDesignada {
     designacao_id: number;
     prazo: string | null;
@@ -88,6 +95,7 @@
       campanhaAtiva: CampanhaAtiva | null;
       minhasPartes: MinhaParte[];
       arranjosQueDirijo: ArranjoQueDirijo[];
+      pendentesFinalizar: ArranjoPendenteFinalizar[];
       cartasDesignadas: CartaDesignada[];
       meusAgendamentosTp: MeuAgendamentoTp[];
       meusPedidosPublicacao: MeuPedidoPublicacao[];
@@ -259,9 +267,74 @@
     if (total === 0) return null;
     return { feitas, total, pct: Math.round((feitas / total) * 100) };
   }
+
+  let finalizando = $state<number | null>(null);
+  async function finalizarDesignacao(a: ArranjoPendenteFinalizar) {
+    const prog = progressoQuadras(a.quadras_ids);
+    const faltam = prog ? prog.total - prog.feitas : null;
+    const aviso = faltam && faltam > 0
+      ? `Ainda faltam ${faltam} endereço(s) sem concluir em "${a.nome}". As quadras não concluídas ficam livres pra outro arranjo. Finalizar mesmo assim?`
+      : `Finalizar "${a.nome}"? Isso encerra as partes dessa designação.`;
+    if (!confirm(aviso)) return;
+    finalizando = a.id;
+    const fd = new FormData();
+    fd.append('arranjo_id', String(a.id));
+    const res = await fetch('?/finalizarArranjo', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    finalizando = null;
+    if (parsed.type === 'success') { toast.success('Designação finalizada'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
 </script>
 
 <div class="p-4">
+{#if data.pendentesFinalizar.length > 0}
+  <div class="mb-4 rounded-xl border-2 border-red-400 bg-red-50 p-3">
+    <div class="text-xs uppercase tracking-wider font-bold text-red-900 mb-2"><Icon nome="alert" size={14} /> Finalize a designação</div>
+    {#each data.pendentesFinalizar as a}
+      {@const prog = progressoQuadras(a.quadras_ids)}
+      <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium">{a.nome}</span>
+          <span class="text-xs text-red-700 font-medium">{fmtDia(a.data)}</span>
+        </div>
+        {#if prog}
+          <div class="mt-1.5">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
+              <span>Quadras concluídas</span>
+              <span class="font-medium">{prog.feitas}/{prog.total}</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full bg-red-500" style:width="{prog.pct}%"></div>
+            </div>
+          </div>
+        {/if}
+        <div class="flex flex-wrap gap-1.5 mt-1.5">
+          {#each a.quadras_ids as qid}
+            {@const q = data.quadrasMap[qid]}
+            {@const cov = data.cobertura[qid]}
+            <a href="/publicador/quadra/{encodeURIComponent(qid)}"
+              class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-red-200 bg-red-100 text-red-900 hover:bg-red-200">
+              {#if q}<span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>{/if}
+              <span>{qid}</span>
+              {#if cov && cov.total > 0}<span class="text-[10px] text-red-700">{cov.feitas}/{cov.total}</span>{/if}
+            </a>
+          {/each}
+          {#each a.cartas_locais_ids as lid}
+            <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
+          {/each}
+        </div>
+        <button
+          type="button"
+          disabled={finalizando === a.id}
+          onclick={() => finalizarDesignacao(a)}
+          class="mt-2 w-full rounded-lg bg-red-600 text-white text-sm font-medium py-2 hover:bg-red-700 disabled:opacity-40"
+        >{finalizando === a.id ? 'Finalizando...' : 'Finalizar designação'}</button>
+      </div>
+    {/each}
+  </div>
+{/if}
+
 {#if data.arranjosQueDirijo.length > 0}
   <div class="mb-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
     <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2"><Icon nome="tent" size={14} /> Você dirige</div>
