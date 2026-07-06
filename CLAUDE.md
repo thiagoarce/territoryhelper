@@ -75,6 +75,9 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 - `scripts/fill-complementos.ts` — patch idempotente pra preencher
   `unidades.complemento` do CSV sem destruir dados
 - `tests/` — `node tests/run.js`
+- `docs/specs-ajustes-finais.md` + `docs/tasks-ajustes-finais.md` —
+  rodada atual de ajustes (A1–A24 / T1–T30): specs prontos pra agente
+  executor implementar em incrementos
 
 ## Modelo de dados (Supabase / Postgres)
 
