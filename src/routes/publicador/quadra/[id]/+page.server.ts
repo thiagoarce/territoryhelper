@@ -3,6 +3,7 @@ import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
 import { carregarQuadraComLocais, cicloCartasAtual } from '$lib/server/queries';
 import { exigirQuadraDesignada } from '$lib/server/guards';
+import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
@@ -69,7 +70,7 @@ export const actions: Actions = {
     const file = fd.get('foto') as File;
     if (!localId || !file || file.size === 0) return fail(400, { erro: 'Arquivo obrigatório' });
     if (file.size > 5 * 1024 * 1024) return fail(400, { erro: 'Foto > 5MB' });
-    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse local' });
+    const { data: antesFoto } = await locals.supabase.from('locais').select('foto_url').eq('id', localId).maybeSingle();
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `local-${localId}-${Date.now()}.${ext}`;
     const { error: errUp } = await locals.supabase.storage
@@ -82,6 +83,7 @@ export const actions: Actions = {
       .update({ foto_url: pub.publicUrl })
       .eq('id', localId);
     if (errL) return fail(400, { erro: errL.message });
+    await registrarCuradoria(locals, { local_id: localId, tipo: 'edicao', antes: { foto_url: antesFoto?.foto_url ?? null }, depois: { foto_url: pub.publicUrl } });
     return { ok: true, foto_url: pub.publicUrl };
   },
 
@@ -91,9 +93,10 @@ export const actions: Actions = {
     const fd = await request.formData();
     const localId = Number(fd.get('local_id') ?? 0);
     if (!localId) return fail(400, { erro: 'id obrigatório' });
-    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse local' });
+    const { data: antesFoto } = await locals.supabase.from('locais').select('foto_url').eq('id', localId).maybeSingle();
     const { error } = await locals.supabase.from('locais').update({ foto_url: null }).eq('id', localId);
     if (error) return fail(400, { erro: error.message });
+    await registrarCuradoria(locals, { local_id: localId, tipo: 'edicao', antes: { foto_url: antesFoto?.foto_url ?? null }, depois: { foto_url: null } });
     return { ok: true };
   },
 
@@ -105,7 +108,8 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
-    if (!(await podeEditarLocal(locals, id))) return fail(403, { erro: 'Você não tem posse desse local' });
+    // Overlay é edição livre (migration 057) — trigger barra estrutura,
+    // curadoria registra pro admin confirmar/reverter.
     const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar', 'tipo'];
     const booleanos = new Set(['irmao_mora', 'acesso_caixas', 'acesso_interfones', 'nao_visitar']);
     const tiposValidos = new Set(['casa', 'predio', 'comercio', 'coletivo', 'terreno']);
@@ -123,8 +127,10 @@ export const actions: Actions = {
         patch[k] = s === '' ? null : s;
       }
     }
+    const { data: atual } = await locals.supabase.from('locais').select('*').eq('id', id).maybeSingle();
     const { error: err } = await locals.supabase.from('locais').update(patch).eq('id', id);
     if (err) return fail(400, { erro: err.message });
+    await registrarCuradoria(locals, { local_id: id, tipo: 'edicao', antes: snapshotAntes(atual, patch), depois: patch });
     return { ok: true, msg: 'Local atualizado' };
   },
 
@@ -136,9 +142,7 @@ export const actions: Actions = {
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
     const localId = await localIdDaUnidade(locals, id);
-    if (!localId || !(await podeEditarLocal(locals, localId))) {
-      return fail(403, { erro: 'Você não tem posse dessa unidade' });
-    }
+    if (!localId) return fail(404, { erro: 'Unidade não encontrada' });
     const permitidos = ['complemento', 'nota', 'desocupado', 'nao_escrever'];
     const patch: Record<string, unknown> = {};
     for (const k of permitidos) {
@@ -150,8 +154,10 @@ export const actions: Actions = {
         patch[k] = s === '' ? null : s;
       }
     }
+    const { data: atualU } = await locals.supabase.from('unidades').select('*').eq('id', id).maybeSingle();
     const { error: err } = await locals.supabase.from('unidades').update(patch).eq('id', id);
     if (err) return fail(400, { erro: err.message });
+    await registrarCuradoria(locals, { local_id: localId, unidade_id: id, tipo: 'edicao', antes: snapshotAntes(atualU, patch), depois: patch });
     return { ok: true, msg: 'Unidade atualizada' };
   },
 
@@ -174,13 +180,6 @@ export const actions: Actions = {
   // Vincula automaticamente à quadra atual.
   criarLocal: async ({ request, locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    // Mesma posse exigida no load — sem isso um POST direto injeta locais
-    // numa quadra que não é do publicador.
-    try {
-      await exigirQuadraDesignada(locals, params.id);
-    } catch {
-      return fail(403, { erro: 'Você não tem essa quadra designada' });
-    }
     const fd = await request.formData();
     const tipo = String(fd.get('tipo') ?? 'casa');
     const logradouro = String(fd.get('logradouro') ?? '').trim();
@@ -200,6 +199,9 @@ export const actions: Actions = {
 
     const geo = isFinite(lat) && isFinite(lng) ? `SRID=4326;POINT(${lng} ${lat})` : null;
 
+    // Publicador comum cria PENDENTE (admin valida em /admin/predios);
+    // dirigente/admin cria direto. Entra na curadoria de qualquer jeito.
+    const pendente = locals.profile?.role === 'publicador';
     const { data: novoLocal, error: errLoc } = await locals.supabase
       .from('locais')
       .insert({
@@ -210,11 +212,16 @@ export const actions: Actions = {
         geo,
         quadra_id: params.id,
         face_ibge,
+        pendente,
         criado_por: locals.user.id
       })
       .select('id')
       .single();
     if (errLoc) return fail(400, { erro: errLoc.message });
+    await registrarCuradoria(locals, {
+      local_id: novoLocal.id, tipo: 'criacao',
+      depois: { tipo, logradouro, numero, nome, quadra_id: params.id, pendente }
+    });
 
     // Gera unidades
     const unidades: any[] = [];

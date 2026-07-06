@@ -101,6 +101,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacoes` | catálogo de publicações (nome/código/ativo) usado pelo suprimento e como "publicação principal" de um período |
 | `tces` / `tce_unidades` | Território Comercial Especial (convex hull) |
 | `cartas_tokens` | link público de cartas |
+| `curadoria_edicoes` | fila de curadoria (migration 057): edição de overlay por não-admin vale na hora mas fica `pendente` com snapshots `antes`/`depois`; admin confirma ou reverte (aplica `antes`). Tipos: edicao/criacao/nao_existe |
 | `cartas_ciclos` | ciclos do trabalho de cartas (append-only, o atual = maior id; iniciado manualmente pelo admin em `/admin/predios` — "Iniciar novo ciclo"). Marca de carta escrita só "vale" se >= `iniciado_em` do ciclo atual. Casa em casa não precisa de tabela: o ciclo é a última `data_conclusao` da quadra. Helpers puros em `$lib/ciclos.ts` (`desfechoNoCicloAtual`/`cartaEscritaNoCiclo`), usados em queries/telas — marcas de ciclo passado aparecem esmaecidas ("ciclo anterior"), histórico intacto |
 | `tp_carrinho_tipos` / `tp_pecas_catalogo` / `tp_carrinhos` | Equipamentos de TP (carrinho/display/quiosque/mesa) e catálogo de peças (física/literatura), com `cor` por equipamento pra "visão geral" |
 | `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso`; publicador pode sugerir (`pendente=true, ativo=false`, TP-E) via `/publicador/arranjo`, admin aprova/recusa em `/admin/tp/pontos` |
@@ -133,9 +134,15 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 - **Defesa em profundidade**: além de RLS, checar `locals.profile?.role`
   no início das actions que precisam ser role-restritas (concluir quadra,
   repartir/assumir arranjo, designar cartas).
-- **RLS de `locais`/`unidades`** (migration 026/029/040) usa
-  `pode_editar_local(bigint)` — publicador só edita local que está em
-  designação pessoal, arranjo (dirigente) ou `arranjo_partes` ativa dele.
+- **RLS de `locais`/`unidades`**: desde a migration 057, UPDATE de
+  OVERLAY (nome/notas/portaria/foto/tipo/complemento…) é LIVRE pra
+  qualquer autenticado — um trigger de guarda barra colunas ESTRUTURAIS
+  (geo/quadra_id/logradouro/numero/IBGE/pendente) pra não-admin e exige
+  `pode_editar_local(bigint)` pra colunas de CARTA. Desfechos
+  (`registros`), cartas e EXCLUSÕES continuam exigindo posse. Toda
+  edição de overlay por não-admin gera linha em `curadoria_edicoes`
+  (helper `$lib/server/curadoria.ts::registrarCuradoria`) — admin
+  confirma ou reverte.
 - Geometria escrita via **GeoJSON** (`{type,coordinates}`) — PostgREST coage
   pra `geometry`. Operações geométricas via **RPC PostGIS** (`ST_Union`,
   `ST_ConvexHull`, `ST_Split`, `ST_GeomFromGeoJSON`) — sem Turf no front.

@@ -3,6 +3,7 @@ import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
 import { carregarPredioDetalhado, selectAll, cicloCartasAtual } from '$lib/server/queries';
 import { desfechoNoCicloAtual, cartaEscritaNoCiclo } from '$lib/ciclos';
+import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw error(401, 'Faça login');
@@ -143,10 +144,11 @@ export const actions: Actions = {
   },
 
   // Edit modal — atualiza overlay do prédio (mesma lógica de /admin/predios)
+  // Overlay é edição LIVRE (sem posse) desde a migration 057 — o trigger
+  // do banco barra coluna estrutural e a curadoria registra pro admin.
   atualizarLocal: async ({ request, locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const localId = Number(params.id);
-    if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse prédio' });
     const fd = await request.formData();
     const permitidos = ['nome', 'irmao_mora', 'nome_irmao', 'notas', 'tipo_entrada', 'acesso_caixas', 'acesso_interfones', 'nao_visitar'];
     const booleanos = new Set(['irmao_mora', 'acesso_caixas', 'acesso_interfones', 'nao_visitar']);
@@ -161,8 +163,10 @@ export const actions: Actions = {
       }
     }
     if (Object.keys(patch).length === 0) return { ok: true };
+    const { data: atual } = await locals.supabase.from('locais').select('*').eq('id', localId).maybeSingle();
     const { error: err } = await locals.supabase.from('locais').update(patch).eq('id', localId);
     if (err) return fail(400, { erro: err.message });
+    await registrarCuradoria(locals, { local_id: localId, tipo: 'edicao', antes: snapshotAntes(atual, patch), depois: patch });
     return { ok: true, msg: 'Atualizado' };
   },
 
