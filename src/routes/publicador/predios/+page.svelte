@@ -157,7 +157,7 @@
       if (result.type === 'success' && result.data?.token) {
         const url = `${window.location.origin}/cartas/${result.data.token}`;
         const msg = `Trabalho de cartas — *${nome || logradouro + ', ' + numero}*\n\n${url}`;
-        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
         return;
       }
       throw new Error(result.data?.erro || 'sem token');

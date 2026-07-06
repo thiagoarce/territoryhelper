@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, listarPublicadores, type QuadraGeo } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
@@ -40,9 +41,9 @@ export interface MinhaParte {
 // num indicativo "+N outras" com modal) + repartir território; (2) "sua
 // parte" — mapa só do subconjunto que te cabe; (3) território pessoal.
 export const load: PageServerLoad = async ({ locals }) => {
-  const hoje = new Date().toISOString().substring(0, 10);
-  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
-  const ha60dias = new Date(Date.now() - 60 * 86400000).toISOString().substring(0, 10);
+  const hoje = hojeIsoBrasil();
+  const ontem = hojeIsoBrasil(-1);
+  const ha60dias = hojeIsoBrasil(-60);
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
   const [designacoes, quadras, partesMinhasRes, dirijoRes, profRes] = await Promise.all([
@@ -60,7 +61,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, quadras_ids, cartas_locais_ids, interessados, recorrente, data, data_fim')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .or(`data.gte.${ha60dias},data.is.null`)
+      .or(`data.gte.${ha60dias},data.is.null,recorrente.eq.true`)
       .limit(50),
     locals.supabase.from('profiles').select('id, nome')
   ]);

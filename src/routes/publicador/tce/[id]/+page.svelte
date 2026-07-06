@@ -30,7 +30,7 @@
     <h1 class="text-2xl font-bold mt-1"><Icon nome="store" size={14} /> {data.tce.nome}</h1>
     <p class="text-sm text-slate-500">
       {data.enderecos.length} endereço(s) · {feitos} trabalhado(s)
-      {#if data.tce.prazo}· prazo {data.tce.prazo}{/if}
+      {#if data.tce.prazo}· prazo {new Date(data.tce.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}{/if}
     </p>
   </div>
 
@@ -52,7 +52,11 @@
         {/if}
 
         <div class="mt-2 flex gap-1.5 flex-wrap">
-          {#each [['naoAtendeu', ''], ['semConversa', ''], ['conversou', '']] as [tipo, icon]}
+          {#each [
+            { tipo: 'naoAtendeu', icone: 'door-closed', rotulo: 'Não atendeu' },
+            { tipo: 'semConversa', icone: 'door', rotulo: 'Sem conversa' },
+            { tipo: 'conversou', icone: 'chat', rotulo: 'Conversou' }
+          ] as opt}
             <form
               method="POST"
               action="?/marcarDesfecho"
@@ -63,13 +67,15 @@
               }}
             >
               <input type="hidden" name="unidade_id" value={e.unidade_id} />
-              <input type="hidden" name="tipo" value={e.ultimoTipo === tipo ? '' : tipo} />
+              <input type="hidden" name="tipo" value={e.ultimoTipo === opt.tipo ? '' : opt.tipo} />
               <button type="submit"
-                class="w-10 h-10 rounded-lg border flex items-center justify-center text-lg"
-                class:bg-green-100={e.ultimoTipo === tipo}
-                class:border-green-500={e.ultimoTipo === tipo}
-                class:border-slate-200={e.ultimoTipo !== tipo}
-              >{icon}</button>
+                class="w-10 h-10 rounded-lg border flex items-center justify-center"
+                class:bg-green-100={e.ultimoTipo === opt.tipo}
+                class:border-green-500={e.ultimoTipo === opt.tipo}
+                class:border-slate-200={e.ultimoTipo !== opt.tipo}
+                title={opt.rotulo}
+                aria-label={opt.rotulo}
+              ><Icon nome={opt.icone} size={16} /></button>
             </form>
           {/each}
 

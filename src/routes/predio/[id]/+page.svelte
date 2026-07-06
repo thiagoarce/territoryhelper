@@ -220,7 +220,7 @@
         const url = `${window.location.origin}/cartas/${result.data.token}`;
         const nome = data.predio.nome || `${data.predio.logradouro}, ${data.predio.numero}`;
         const msg = `Trabalho de cartas — *${nome}*\n\n${url}`;
-        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
         return;
       }
       throw new Error(result.data?.erro || 'sem token');

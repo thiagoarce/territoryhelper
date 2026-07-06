@@ -2,7 +2,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   let { data }: { data: { objetivos: any[] } } = $props();
 
-  const MOD_INFO: Record<string, { label: string; icon: string; cor: string }> = {
+  const MOD_INFO: Record<string, { label: string; icone: string; cor: string }> = {
     casa: { icone: 'home', label: 'Casa em casa', cor: 'from-blue-500 to-blue-700' },
     comercial: { icone: 'store', label: 'Comercial', cor: 'from-emerald-500 to-emerald-700' },
     rural: { icone: 'wheat', label: 'Rural', cor: 'from-amber-500 to-amber-700' },
@@ -40,7 +40,7 @@
     {:else}
       <div class="space-y-6">
         {#each [...porMod] as [mod, objs]}
-          {@const info = MOD_INFO[mod] ?? { label: mod, icon: '·', cor: 'from-slate-500 to-slate-700' }}
+          {@const info = MOD_INFO[mod] ?? { label: mod, icone: 'circle-dot', cor: 'from-slate-500 to-slate-700' }}
           <section>
             <h2 class="text-sm font-semibold text-slate-600 uppercase mb-3 flex items-center gap-2">
               <span><Icon nome={info.icone} size={24} /></span>

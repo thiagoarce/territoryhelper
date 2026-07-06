@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
@@ -125,7 +126,7 @@ export const actions: Actions = {
     if (!tceVisivel) return fail(403, { erro: 'TCE não é seu' });
     const { error: err } = await locals.supabase
       .from('tces')
-      .update({ status: 'concluido', data_conclusao: new Date().toISOString().substring(0, 10) })
+      .update({ status: 'concluido', data_conclusao: hojeIsoBrasil() })
       .eq('id', id);
     if (err) return fail(400, { erro: err.message });
     return { ok: true, msg: 'TCE concluído' };

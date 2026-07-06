@@ -4,6 +4,7 @@ import { redirect, error, fail } from '@sveltejs/kit';
 import type { Role } from '$lib/types';
 import { podeTrabalharQuadra } from './posse';
 import { arranjoAindaVale } from '$lib/arranjos';
+import { hojeIsoBrasil } from '$lib/utils/data';
 
 export function exigirRole(locals: App.Locals, rolesPermitidas: Role[]) {
   if (!locals.session || !locals.profile) throw redirect(303, '/login');
@@ -53,7 +54,7 @@ export async function exigirQuadraDesignada(locals: App.Locals, quadraId: string
   if (ehAdminOuDirigente) return;
 
   const userId = locals.user.id;
-  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+  const ontem = hojeIsoBrasil(-1);
 
   const [dqRes, dqPartRes, partesRes] = await Promise.all([
     locals.supabase

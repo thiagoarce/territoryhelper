@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra } from '$lib/server/queries';
 import { statusCampanha, type StatusCampanha } from '$lib/campanhas';
@@ -57,10 +58,10 @@ export interface ArranjoPendenteFinalizar {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const hoje = new Date().toISOString().substring(0, 10);
-  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
-  const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().substring(0, 10);
-  const ha60dias = new Date(Date.now() - 60 * 86400000).toISOString().substring(0, 10);
+  const hoje = hojeIsoBrasil();
+  const ontem = hojeIsoBrasil(-1);
+  const em7dias = hojeIsoBrasil(7);
+  const ha60dias = hojeIsoBrasil(-60);
 
   const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes, necessidadeRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
@@ -87,7 +88,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id, recorrente, data_fim')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .or(`data.gte.${ha60dias},data.is.null`)
+      .or(`data.gte.${ha60dias},data.is.null,recorrente.eq.true`)
       .order('data', { nullsFirst: false })
       .limit(50),
     locals.supabase.from('profiles').select('id, nome'),

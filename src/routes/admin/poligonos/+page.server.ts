@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import { selectAll, listarQuadrasComGeo, listarPublicadores } from '$lib/server/queries';
@@ -324,7 +325,7 @@ export const actions: Actions = {
     const status = String(fd.get('status') ?? '');
     if (!id || !['aberto', 'concluido', 'cancelado'].includes(status)) return fail(400, { erro: 'inválido' });
     const patch: any = { status };
-    if (status === 'concluido') patch.data_conclusao = new Date().toISOString().substring(0, 10);
+    if (status === 'concluido') patch.data_conclusao = hojeIsoBrasil();
     const { error } = await locals.supabase.from('tces').update(patch).eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `TCE ${status}` };

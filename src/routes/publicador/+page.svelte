@@ -6,6 +6,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { hojeIsoLocal } from '$lib/utils/data';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/server/queries';
 
   interface CampanhaAtiva {
@@ -109,7 +110,7 @@
 
   function fmtDia(iso: string | null): string {
     if (!iso) return '';
-    const hoje = new Date().toISOString().substring(0, 10);
+    const hoje = hojeIsoLocal();
     if (iso === hoje) return 'hoje';
     return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
   }

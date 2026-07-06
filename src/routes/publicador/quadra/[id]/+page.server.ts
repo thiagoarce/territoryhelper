@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
 import { carregarQuadraComLocais } from '$lib/server/queries';
 import { exigirQuadraDesignada } from '$lib/server/guards';
@@ -250,7 +251,7 @@ export const actions: Actions = {
       return fail(403, { erro: 'Só dirigente/admin pode marcar conclusão' });
     }
     const fd = await request.formData();
-    const data = String(fd.get('data') ?? '').trim() || new Date().toISOString().substring(0, 10);
+    const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
     const { error: err } = await locals.supabase
       .from('quadras')
       .update({ data_conclusao: data })
@@ -286,7 +287,7 @@ export const actions: Actions = {
       return fail(403, { erro: 'Você não tem posse dessa unidade' });
     }
 
-    const hoje = new Date().toISOString().substring(0, 10);
+    const hoje = hojeIsoBrasil();
     const { error: errUpd } = await locals.supabase
       .from('unidades')
       .update({ carta_entregue: marcar ? hoje : null })
