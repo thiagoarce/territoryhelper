@@ -70,7 +70,7 @@
 
 ## Onda 3 — Curadoria + edição livre + feedback de precisão
 
-- [ ] 🔴 **T11 (A5+A6)** Migration 057: `curadoria_edicoes` +
+- [x] 🔴 **T11 (A5+A6)** ✅ feita pelo Fable (migration 057) Migration 057: `curadoria_edicoes` +
       `locais.marcado_nao_existe/por/em` + `locais.ordem_na_quadra` +
       ajuste de RLS/trigger pra edição de overlay por qualquer
       autenticado (validar 2x no Postgres local). Remover
