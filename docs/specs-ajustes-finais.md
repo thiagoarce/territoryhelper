@@ -434,9 +434,9 @@ calendário"):
 ### UI publicador (`/publicador/tp`)
 - Fase disponibilidade: modal atual vira "Disponível em <mês>" com
   mini-calendário do mês (grid que já existe) — tap no dia abre
-  horários (chips de faixas: manhã/tarde/noite ou hora a hora,
-  conforme granularity dos turnos: usar faixas de 2h). Tirar textos
-  "costumo estar disponível".
+  horários em chips de faixas de 2h **e** dois inputs `type="time"` pra
+  quem quiser digitar o horário exato (as faixas só pré-preenchem os
+  inputs). Tirar textos "costumo estar disponível".
 - Fase publicado: **grade** (não lista): mobile retrato = coluna por
   dia (navegação por dia/dias-da-semana), paisagem/desktop = grade
   semanal/mensal (adaptar `TpGradeSemana.svelte`, que já desenha grade
@@ -444,9 +444,27 @@ calendário"):
   equipamento; badge "aceitar/recusar" se pendente), turno de outros
   (neutro), **sobra** (célula vazia clicável → sheet de reserva:
   escolher tipo de equipamento COM equipamento cadastrado e livre
-  naquele horário, convidar publicadores, confirmar).
+  naquele horário, convidar publicadores, confirmar). A reserva só é
+  válida com o conjunto completo: equipamento livre + ponto + só
+  publicadores **aprovados** (ver "Aprovação" abaixo) — o sheet não
+  deixa confirmar sem isso.
 - Relatório de turno (TP-D) continua como está (botão no turno passado
   em que participou).
+
+### Aprovação de publicador pra carrinho
+Nem todo publicador é aprovado pro testemunho público. As listas de
+publicador em TODO o fluxo de TP (montagem automática/manual, convites
+de reserva, designação) só mostram os aprovados.
+- Migration: `profiles.tp_aprovado boolean not null default false`
+  (fica em profiles porque é o ADMIN que concede — RLS de profiles já
+  é admin-managed; `tp_preferencias` é do próprio publicador, não
+  serve).
+- `/admin/tp/publicadores` (o roster read-only) ganha a função: toggle
+  "Aprovado" por publicador (action admin-guarded) + a coluna no
+  roster. Vira a "aba de publicadores aprovados".
+- Publicador NÃO aprovado ainda marca disponibilidade normalmente (o
+  admin pode aprovar depois) — mas não aparece pra
+  montagem/reserva/designação enquanto não aprovado.
 
 ### UI admin (`/admin/tp`)
 - Controle de fase do mês (abrir disponibilidade → montar → publicar →
@@ -491,23 +509,63 @@ calendário"):
   curadoria pendentes (A6: inserções, edições, não-existe) com link pra
   efetivar em Polígonos/curadoria.
 
+## A25 — Backup: exportar tudo + restaurar
+
+O dado da congregação só existe no Supabase. Precisamos de export
+completo e de um caminho de restauração.
+
+- **Export**: página `/admin/dev/backup` (admin-only, fora da bottom
+  nav): botão "Exportar backup" gera um JSON com TODAS as tabelas de
+  dados (profiles sem campos de auth, territorios, quadras,
+  quadras_conclusoes, locais, unidades, registros, designacoes + N:N,
+  arranjos, arranjo_partes, tces, tce_unidades, cartas_*, campanha*,
+  publicacoes, pedidos_publicacao, publicacao_controle,
+  publicador_necessidade_regular, tp_*, notificacoes NÃO — é
+  descartável). Server lê via `selectAll` + `supabaseAdmin` (algumas
+  tabelas são RLS-fechadas), monta `{ versao, gerado_em, tabelas: {...} }`
+  e devolve como download. Geometrias exportadas como GeoJSON (usar as
+  views `*_geo`).
+- **Restore**: na mesma página, upload do JSON + confirmação digitando
+  "RESTAURAR". Estratégia: **upsert por id, na ordem de FKs**
+  (territorios → quadras → locais → unidades → registros → ...), sem
+  deletar nada que não esteja no arquivo (restore é "recuperar", não
+  "espelhar"). Geometria reconvertida via `ST_GeomFromGeoJSON` (RPC).
+  Processar em lotes de 500 (limite de payload do Workers ~100MB —
+  se o arquivo for grande, aceitar upload por tabela).
+- Risco alto: task marcada pra execução com revisão reforçada.
+
+## A26 — Transferir dirigência em série
+
+Dirigente de férias: hoje é editar arranjo por arranjo.
+- Em `/admin/arranjos`: ação "Transferir dirigência" — escolhe
+  dirigente A, dirigente B e um período (default: tudo futuro); um
+  UPDATE em `arranjos` (`dirigente_id A→B` nas ocorrências ativas com
+  `data >= hoje` do período). Confirm com contagem ("7 designações de
+  X serão transferidas pra Y"). Notificar B (`criarNotificacao`).
+- O próprio dirigente NÃO transfere (só admin) — evita surpresas.
+
+## A27 — Histórico do publicador (admin)
+
+Em `/admin/usuarios`, expandir um usuário mostra um resumo de
+atividade: quadras que trabalhou (registros por publicador_id — count
+por mês, últimos 6 meses), conclusões que marcou (quadras_conclusoes),
+turnos de TP no mês (tp_agendamento_participantes), cartas escritas
+(unidades.carta_escrita_por). Read-only, um card compacto — serve pro
+admin acompanhar e pro algoritmo de TP ser justo no futuro.
+
 ---
 
-## Perguntas em aberto (não travam o início)
+## Decisões confirmadas pelo usuário (06/07/2026)
 
-1. **A5/RLS**: liberar UPDATE de overlay pra qualquer autenticado é
-   decisão de segurança consciente (mitigada pela curadoria + trilha).
-   Confirmar que está ok pra congregação (~dezenas de usuários de
-   confiança).
-2. **A12b**: quantidades da edição de ESTUDO d'A Sentinela são por
-   publicador também, ou só a de público? (Spec assume ambas, com
-   variante.)
-3. **A22**: granularidade dos horários de disponibilidade — faixas
-   fixas (manhã/tarde/noite) ou horas? (Spec assume faixas de 2h
-   alinhadas aos turnos típicos; admin define os horários-alvo dos
-   turnos.)
-4. **A22**: reserva de publicador precisa de aprovação do admin ou
-   nasce valendo? (Spec assume: nasce valendo, admin pode cancelar.)
-5. **A21**: TCEs designados a dirigente via arranjo já cobrem o caso de
-   uso, ou precisa também de "designação pessoal de TCE" na primeira
-   fase? (Spec faz arranjo primeiro, pessoal na fase 2.)
+1. **A5/RLS**: liberar edição de overlay pra qualquer autenticado — OK
+   (mitigada pela curadoria + trilha).
+2. **A22 reserva**: nasce valendo, admin pode cancelar — OK, DESDE QUE
+   completa (equipamento + ponto + publicadores aprovados).
+3. **A22 disponibilidade**: faixas de 2h — OK, mantendo inputs de
+   horário exato digitável.
+4. **A12b**: publicador informa quantidade da edição de estudo também
+   (com letras grandes) — OK.
+5. **A11**: recuperação de senha por link gerado pelo admin — OK.
+6. Novos aceitos: A25 (backup export+restore), A26 (transferir
+   dirigência), A27 (histórico do publicador), aprovação de publicador
+   pra carrinho (dentro do A22).
