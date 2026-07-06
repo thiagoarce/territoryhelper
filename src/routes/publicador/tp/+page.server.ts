@@ -14,6 +14,7 @@ export interface TpCarrinhoLite {
   id: number;
   nome: string;
   tipo_id: number;
+  cor: string;
 }
 
 export interface TpPecaCatalogoLite {
@@ -49,6 +50,7 @@ export interface TpParticipanteLinha {
   agendamento_id: number;
   data: string;
   publicador_id: string;
+  status: 'designado' | 'aceito' | 'recusado';
 }
 
 export interface TpDisponibilidadeLinha {
@@ -58,8 +60,19 @@ export interface TpDisponibilidadeLinha {
   hora_fim: string;
 }
 
+import { hojeIsoBrasil } from '$lib/utils/data';
+
 function mesAtual(): string {
-  return new Date().toISOString().substring(0, 7); // 'YYYY-MM'
+  return hojeIsoBrasil().substring(0, 7); // 'YYYY-MM'
+}
+
+// Meses do ciclo do TP mensal: atual + 2 seguintes
+function mesesAlvo(): string[] {
+  const [y, m] = mesAtual().split('-').map(Number);
+  return [0, 1, 2].map((off) => {
+    const d = new Date(y, m - 1 + off, 1, 12);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
 }
 
 // TP separado de Arranjo: arranjo é só pregação em grupo (criada em
@@ -75,14 +88,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   const [
     tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpParticipantesRes,
     tpPecasRes, campanhaAtivaRes, tpRelatoriosRes, nomesRes,
-    prefRes, dispRes, confirmacaoRes
+    prefRes, dispRes, mesesRes, dispMesRes
   ] = await Promise.all([
     locals.supabase.from('tp_agendamentos').select('*').eq('ativo', true),
     locals.supabase.from('tp_agendamento_excecoes').select('*'),
-    locals.supabase.from('tp_carrinhos').select('id, nome, tipo_id'),
+    locals.supabase.from('tp_carrinhos').select('id, nome, tipo_id, cor'),
     locals.supabase.from('tp_pontos').select('id, nome, endereco').eq('ativo', true),
     selectAll<TpParticipanteLinha>(
-      locals.supabase.from('tp_agendamento_participantes').select('agendamento_id, data, publicador_id')
+      locals.supabase.from('tp_agendamento_participantes').select('agendamento_id, data, publicador_id, status')
         .gte('data', escalaDesde).lte('data', escalaAte)
     ),
     locals.supabase
@@ -113,18 +126,20 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('publicador_id', locals.user!.id)
       .order('dia_semana')
       .order('hora_inicio'),
+    locals.supabase.from('tp_meses').select('mes, fase').in('mes', mesesAlvo()),
     locals.supabase
-      .from('tp_disponibilidade_confirmacoes')
-      .select('mes_referencia, confirmado_em')
+      .from('tp_disponibilidade_mes')
+      .select('id, mes, dia, hora_inicio, hora_fim')
       .eq('publicador_id', locals.user!.id)
-      .eq('mes_referencia', mes)
-      .maybeSingle()
+      .in('mes', mesesAlvo())
+      .order('dia')
+      .order('hora_inicio')
   ]);
 
   const tpAgendamentos = (tpAgendamentosRes.data ?? []) as AgendamentoBase[];
   const tpExcecoes = (tpExcecoesRes.data ?? []) as ExcecaoBase[];
   const tpCarrinhos: Record<number, TpCarrinhoLite> = {};
-  for (const c of (tpCarrinhosRes.data ?? []) as any[]) tpCarrinhos[c.id] = { id: c.id, nome: c.nome, tipo_id: c.tipo_id };
+  for (const c of (tpCarrinhosRes.data ?? []) as any[]) tpCarrinhos[c.id] = { id: c.id, nome: c.nome, tipo_id: c.tipo_id, cor: c.cor };
   const tpPontos: Record<number, TpPontoLite> = {};
   for (const p of (tpPontosRes.data ?? []) as any[]) tpPontos[p.id] = { id: p.id, nome: p.nome, endereco: p.endereco };
   const tpParticipantes = (tpParticipantesRes ?? []) as TpParticipanteLinha[];
@@ -150,7 +165,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     tpPreferencias: prefRes.data ?? { transporta_carrinho: false, notas: null },
     tpDisponibilidade: (dispRes.data ?? []) as TpDisponibilidadeLinha[],
     mesAtual: mes,
-    disponibilidadeConfirmada: !!confirmacaoRes.data
+    tpMeses: ((mesesRes.data ?? []) as { mes: string; fase: string }[]),
+    mesesAlvo: mesesAlvo(),
+    dispMes: ((dispMesRes.data ?? []) as { id: number; mes: string; dia: string; hora_inicio: string; hora_fim: string }[])
   };
 };
 
@@ -354,16 +371,100 @@ export const actions: Actions = {
     return { ok: true, msg: 'Janela removida' };
   },
 
-  // Confirma que a disponibilidade fixa ainda vale pro mês corrente —
-  // o Planner é mensal, então isso precisa se repetir todo mês.
-  confirmarDisponibilidadeMes: async ({ locals }) => {
+  // T26: salva as janelas de UM DIA do mês (substitui as existentes do
+  // dia). janelas_json = [{inicio:'HH:MM', fim:'HH:MM'}] — vazio limpa o dia.
+  salvarDisponibilidadeDia: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    const mes = mesAtual();
-    const { error } = await locals.supabase.from('tp_disponibilidade_confirmacoes').upsert(
-      { publicador_id: locals.user.id, mes_referencia: mes, confirmado_em: new Date().toISOString() },
-      { onConflict: 'publicador_id,mes_referencia' }
-    );
+    const fd = await request.formData();
+    const mes = String(fd.get('mes') ?? '').trim();
+    const dia = String(fd.get('dia') ?? '').trim();
+    if (!/^\d{4}-\d{2}$/.test(mes) || !dia.startsWith(mes)) return fail(400, { erro: 'Dia/mês inválido' });
+    let janelas: { inicio: string; fim: string }[] = [];
+    try {
+      janelas = JSON.parse(String(fd.get('janelas_json') ?? '[]'));
+    } catch {
+      return fail(400, { erro: 'janelas_json inválido' });
+    }
+    for (const j of janelas) {
+      if (!/^\d{2}:\d{2}$/.test(j.inicio) || !/^\d{2}:\d{2}$/.test(j.fim) || j.fim <= j.inicio) {
+        return fail(400, { erro: `Janela inválida: ${j.inicio}–${j.fim}` });
+      }
+    }
+    const del = await locals.supabase
+      .from('tp_disponibilidade_mes')
+      .delete()
+      .eq('publicador_id', locals.user.id)
+      .eq('dia', dia);
+    if (del.error) return fail(400, { erro: del.error.message });
+    if (janelas.length > 0) {
+      const { error } = await locals.supabase.from('tp_disponibilidade_mes').insert(
+        janelas.map((j) => ({
+          publicador_id: locals.user!.id, mes, dia,
+          hora_inicio: j.inicio, hora_fim: j.fim
+        }))
+      );
+      if (error) return fail(400, { erro: error.message });
+    }
+    return { ok: true, msg: 'Dia salvo' };
+  },
+
+  // T26: pré-preenche o mês inteiro a partir do padrão semanal
+  // (tp_disponibilidade). Só quando o mês ainda está vazio — não
+  // sobrescreve ajustes manuais.
+  preencherMesDoPadrao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const mes = String(fd.get('mes') ?? '').trim();
+    if (!/^\d{4}-\d{2}$/.test(mes)) return fail(400, { erro: 'Mês inválido' });
+    const { count } = await locals.supabase
+      .from('tp_disponibilidade_mes')
+      .select('id', { count: 'exact', head: true })
+      .eq('publicador_id', locals.user.id)
+      .eq('mes', mes);
+    if ((count ?? 0) > 0) return fail(400, { erro: 'O mês já tem dias marcados — ajuste dia a dia' });
+    const { data: padrao } = await locals.supabase
+      .from('tp_disponibilidade')
+      .select('dia_semana, hora_inicio, hora_fim')
+      .eq('publicador_id', locals.user.id);
+    if (!padrao || padrao.length === 0) return fail(400, { erro: 'Sem padrão semanal cadastrado' });
+    const [y, m] = mes.split('-').map(Number);
+    const ultimoDia = new Date(y, m, 0, 12).getDate();
+    const linhas: any[] = [];
+    for (let d = 1; d <= ultimoDia; d++) {
+      const data = new Date(y, m - 1, d, 12);
+      for (const p of padrao as any[]) {
+        if (p.dia_semana === data.getDay()) {
+          linhas.push({
+            publicador_id: locals.user.id, mes,
+            dia: `${mes}-${String(d).padStart(2, '0')}`,
+            hora_inicio: p.hora_inicio, hora_fim: p.hora_fim
+          });
+        }
+      }
+    }
+    if (linhas.length === 0) return fail(400, { erro: 'Padrão semanal não gera nenhum dia nesse mês' });
+    const { error } = await locals.supabase.from('tp_disponibilidade_mes').insert(linhas);
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Disponibilidade confirmada' };
+    return { ok: true, msg: `${linhas.length} janela(s) criadas do padrão` };
+  },
+
+  // T27: aceitar/recusar a designação de um turno (só o próprio registro)
+  responderDesignacao: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const agendamentoId = Number(fd.get('agendamento_id') ?? 0);
+    const dataOc = String(fd.get('data') ?? '').trim();
+    const resposta = String(fd.get('resposta') ?? '').trim();
+    if (!agendamentoId || !dataOc) return fail(400, { erro: 'Parâmetros obrigatórios' });
+    if (!['aceito', 'recusado'].includes(resposta)) return fail(400, { erro: 'Resposta inválida' });
+    const { error, count } = await locals.supabase
+      .from('tp_agendamento_participantes')
+      .update({ status: resposta }, { count: 'exact' })
+      .eq('agendamento_id', agendamentoId)
+      .eq('data', dataOc)
+      .eq('publicador_id', locals.user.id);
+    if (error) return fail(400, { erro: error.message });
+    if (!count) return fail(404, { erro: 'Você não está designado nesse turno' });
+    return { ok: true, msg: resposta === 'aceito' ? 'Designação aceita' : 'Designação recusada' };
   }
 };
