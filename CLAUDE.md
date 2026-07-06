@@ -98,6 +98,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacoes` | catálogo de publicações (nome/código/ativo) usado pelo suprimento e como "publicação principal" de um período |
 | `tces` / `tce_unidades` | Território Comercial Especial (convex hull) |
 | `cartas_tokens` | link público de cartas |
+| `cartas_ciclos` | ciclos do trabalho de cartas (append-only, o atual = maior id; iniciado manualmente pelo admin em `/admin/predios` — "Iniciar novo ciclo"). Marca de carta escrita só "vale" se >= `iniciado_em` do ciclo atual. Casa em casa não precisa de tabela: o ciclo é a última `data_conclusao` da quadra. Helpers puros em `$lib/ciclos.ts` (`desfechoNoCicloAtual`/`cartaEscritaNoCiclo`), usados em queries/telas — marcas de ciclo passado aparecem esmaecidas ("ciclo anterior"), histórico intacto |
 | `tp_carrinho_tipos` / `tp_pecas_catalogo` / `tp_carrinhos` | Equipamentos de TP (carrinho/display/quiosque/mesa) e catálogo de peças (física/literatura), com `cor` por equipamento pra "visão geral" |
 | `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso`; publicador pode sugerir (`pendente=true, ativo=false`, TP-E) via `/publicador/arranjo`, admin aprova/recusa em `/admin/tp/pontos` |
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
@@ -239,7 +240,10 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   Cartas tem DOIS momentos: aba Cartas = ESCRITA (marca "Carta escrita"
   + data + quem escreveu); ENTREGA = desfecho "Deixou carta" do casa em
   casa, que brilha (ring roxo pulsante) quando a unidade tem carta
-  escrita sem entrega. Correio é o fallback, mesmo botão.
+  escrita sem entrega. Correio é o fallback, mesmo botão. Botões NÃO
+  ficam pressionados pra sempre: casa em casa reseta na conclusão da
+  quadra, cartas resetam quando o admin inicia novo ciclo (ver
+  `cartas_ciclos`).
   Header tem ✏ Editar + 📤 WhatsApp share. Progresso duplo.
 
 ## Deploy

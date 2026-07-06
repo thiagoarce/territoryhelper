@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
+  import { cartaEscritaNoCiclo } from '$lib/ciclos';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
@@ -281,12 +282,14 @@
                         <div class="flex items-center justify-between gap-2 mb-1">
                           <span class="font-mono text-sm">
                             {u.complemento || u.nota || `Apto ${indice + 1}`}
-                            {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue"><Icon nome="mail" size={14} /></span>{/if}
+                            {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio)}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
                           </span>
                           {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
                             <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
                               {rotulos[u.ultimo_tipo] ?? u.ultimo_tipo}
                             </span>
+                          {:else if u.desfecho_anterior}
+                            <span class="text-xs rounded px-2 py-0.5 bg-slate-100 text-slate-400">{rotulos[u.desfecho_anterior] ?? u.desfecho_anterior} · ciclo anterior</span>
                           {/if}
                         </div>
                         {@render botoes(u)}
@@ -305,7 +308,7 @@
                           {l.nome || `${l.logradouro}, ${l.numero}`}
                           {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm"><Icon nome="user" size={14} /></span>{/if}
                           {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
-                          {#if u.carta_entregue}<span class="text-purple-600 ml-1" title="carta entregue"><Icon nome="mail" size={14} /></span>{/if}
+                          {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio)}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
                         </div>
                         <div class="text-xs text-slate-500">
                           {l.tipo} · {l.logradouro}, {l.numero}{u.complemento ? ' · ' + u.complemento : ''}
@@ -316,6 +319,8 @@
                           <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
                             {rotulos[u.ultimo_tipo] ?? u.ultimo_tipo}
                           </span>
+                        {:else if u.desfecho_anterior}
+                          <span class="text-xs rounded px-2 py-0.5 bg-slate-100 text-slate-400">{rotulos[u.desfecho_anterior] ?? u.desfecho_anterior} · ciclo anterior</span>
                         {/if}
                         <button
                           type="button"

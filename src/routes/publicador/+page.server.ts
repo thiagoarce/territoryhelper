@@ -1,7 +1,8 @@
 import type { Actions, PageServerLoad } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
-import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra } from '$lib/server/queries';
+import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra, cicloCartasAtual } from '$lib/server/queries';
+import { cartaEscritaNoCiclo } from '$lib/ciclos';
 import { statusCampanha, type StatusCampanha } from '$lib/campanhas';
 import { arranjoAindaVale, precisaFinalizar } from '$lib/arranjos';
 
@@ -252,15 +253,16 @@ export const load: PageServerLoad = async ({ locals }) => {
       .in('designacao_id', desigIds);
     const localIds = Array.from(new Set((locaisJoin ?? []).map((r: any) => r.local_id)));
     if (localIds.length > 0) {
-      const [locDetalhes, unidsPorLocal] = await Promise.all([
+      const [locDetalhes, unidsPorLocal, cicloCartas] = await Promise.all([
         locals.supabase.from('locais').select('id, nome, logradouro, numero').in('id', localIds),
-        locals.supabase.from('unidades').select('local_id, carta_entregue').in('local_id', localIds)
+        locals.supabase.from('unidades').select('local_id, carta_entregue').in('local_id', localIds),
+        cicloCartasAtual(locals.supabase)
       ]);
       const stats: Record<number, { qtd: number; ent: number }> = {};
       for (const u of (unidsPorLocal.data ?? []) as any[]) {
         const s = (stats[u.local_id] ||= { qtd: 0, ent: 0 });
         s.qtd++;
-        if (u.carta_entregue) s.ent++;
+        if (cartaEscritaNoCiclo(u.carta_entregue, cicloCartas?.iniciado_em)) s.ent++;
       }
       const detById = new Map((locDetalhes.data ?? []).map((l: any) => [l.id, l]));
       const prediosPorDesig: Record<number, any[]> = {};

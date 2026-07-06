@@ -5,6 +5,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { cartaEscritaNoCiclo } from '$lib/ciclos';
   import { postComFila } from '$lib/offline';
 
   interface UnidadeEnriched {
@@ -12,6 +13,8 @@
     complemento: string | null;
     carta_entregue: string | null;
     carta_escrita_por_nome?: string | null;
+    desfecho_anterior?: string | null;
+    desfecho_anterior_ts?: string | null;
     desocupado: boolean;
     nao_escrever: boolean;
     nota: string | null;
@@ -36,6 +39,7 @@
         unidades: UnidadeEnriched[];
       };
       minhaRole?: string;
+      cicloCartasInicio?: string | null;
     };
   } = $props();
 
@@ -104,7 +108,7 @@
   function campoEfetivo(u: UnidadeEnriched, campo: 'carta_entregue' | 'desocupado' | 'nao_escrever'): boolean {
     const ov = overrideCartas[u.id];
     if (ov && campo in ov) return !!ov[campo];
-    return campo === 'carta_entregue' ? !!u.carta_entregue : !!(u as any)[campo];
+    return campo === 'carta_entregue' ? cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio) : !!(u as any)[campo];
   }
 
   async function marcarDesfecho(u: UnidadeEnriched, tipo: string) {
@@ -198,7 +202,7 @@
   }
 
   const visitadas = $derived(data.predio.unidades.filter(unidadeVisitada).length);
-  const entregues = $derived(data.predio.unidades.filter((u) => u.carta_entregue).length);
+  const entregues = $derived(data.predio.unidades.filter((u) => cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio)).length);
   const total = $derived(data.predio.unidades.length);
 
   function voltar() {
@@ -303,7 +307,7 @@
   <!-- Lista (swipe esquerda/direita navega entre aptos) -->
   <div class="p-4 space-y-1">
     {#each data.predio.unidades as u, indice (u.id)}
-      {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : u.carta_entregue ? 'entregue' : 'pendente'}
+      {@const st = u.nao_escrever ? 'naoescrever' : u.desocupado ? 'desocupado' : cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio) ? 'entregue' : 'pendente'}
       <div
         bind:this={cardRefs[u.id]}
         ontouchstart={(e) => onTouchStart(e, u.id)}
@@ -324,8 +328,14 @@
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold text-sm">{rotuloUnidade(u, indice)}</div>
             {#if modo === 'cartas' && campoEfetivo(u, 'carta_entregue')}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> escrita {u.carta_entregue ? fmtDataCarta(u.carta_entregue) : 'hoje'}{#if u.carta_escrita_por_nome}<span class="text-purple-500"> · {u.carta_escrita_por_nome}</span>{/if}</div>{/if}
+            {#if modo === 'cartas' && !campoEfetivo(u, 'carta_entregue') && u.carta_entregue}
+              <div class="text-xs text-slate-400"><Icon nome="mail" size={12} /> escrita {fmtDataCarta(u.carta_entregue)} (ciclo anterior)</div>
+            {/if}
             {#if modo === 'casa' && tipoEfetivo(u) && tipoEfetivo(u) !== 'desfeito' && tipoEfetivo(u) !== 'carta_undo'}
               <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 {cores[tipoEfetivo(u)!] ?? 'bg-slate-100'}">{rotulos[tipoEfetivo(u)!] ?? tipoEfetivo(u)}</span>
+            {/if}
+            {#if modo === 'casa' && !tipoEfetivo(u) && u.desfecho_anterior}
+              <span class="inline-block text-xs rounded px-2 py-0.5 mt-1 bg-slate-100 text-slate-400">{rotulos[u.desfecho_anterior] ?? u.desfecho_anterior} · ciclo anterior</span>
             {/if}
           </div>
 
@@ -349,10 +359,10 @@
           {:else}
             <div class="flex gap-1">
               {#each [
-                { t: 'conversou', icone: 'chat', cls: 'bg-green-600', l: 'Conversou' },
-                { t: 'semConversa', icone: 'door', cls: 'bg-amber-600', l: 'Sem palestra' },
-                { t: 'naoAtendeu', icone: 'door-closed', cls: 'bg-slate-600', l: 'Não atendeu' },
-                { t: 'carta', icone: 'mail', cls: 'bg-purple-600', l: 'Deixou carta' }
+                { t: 'conversou', icone: 'chat' as const, cls: 'bg-green-600', l: 'Conversou' },
+                { t: 'semConversa', icone: 'door' as const, cls: 'bg-amber-600', l: 'Sem palestra' },
+                { t: 'naoAtendeu', icone: 'door-closed' as const, cls: 'bg-slate-600', l: 'Não atendeu' },
+                { t: 'carta', icone: 'mail' as const, cls: 'bg-purple-600', l: 'Deixou carta' }
               ] as opt}
                 {@const ativo = tipoEfetivo(u) === opt.t}
                 {@const entregaPendente = opt.t === 'carta' && !ativo && campoEfetivo(u, 'carta_entregue') && tipoEfetivo(u) !== 'carta'}

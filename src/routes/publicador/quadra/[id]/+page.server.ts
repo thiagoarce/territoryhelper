@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
-import { carregarQuadraComLocais } from '$lib/server/queries';
+import { carregarQuadraComLocais, cicloCartasAtual } from '$lib/server/queries';
 import { exigirQuadraDesignada } from '$lib/server/guards';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
@@ -24,9 +24,12 @@ async function localIdDaUnidade(locals: App.Locals, unidadeId: number): Promise<
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   await exigirQuadraDesignada(locals, params.id);
-  const dados = await carregarQuadraComLocais(locals.supabase, params.id);
+  const [dados, ciclo] = await Promise.all([
+    carregarQuadraComLocais(locals.supabase, params.id),
+    cicloCartasAtual(locals.supabase)
+  ]);
   if (!dados) throw error(404, 'Quadra não encontrada');
-  return { ...dados, minhaRole: locals.profile?.role };
+  return { ...dados, minhaRole: locals.profile?.role, cicloCartasInicio: ciclo?.iniciado_em ?? null };
 };
 
 export const actions: Actions = {
