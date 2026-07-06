@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, listarPublicadores, type QuadraGeo } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
+import { arranjoAindaVale } from '$lib/arranjos';
 
 export interface ArranjoQueDirijo {
   id: number;
@@ -49,23 +50,24 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('arranjos.ativo', true),
     locals.supabase
       .from('arranjos')
-      .select('id, nome, quadras_ids, cartas_locais_ids, interessados')
+      .select('id, nome, quadras_ids, cartas_locais_ids, interessados, recorrente, data, data_fim')
       .eq('ativo', true)
-      .eq('dirigente_id', locals.user!.id)
-      .or(`data.gte.${ontem},data.is.null`),
+      .eq('dirigente_id', locals.user!.id),
     locals.supabase.from('profiles').select('id, nome')
   ]);
 
   const nomesPorId = new Map((profRes.data ?? []).map((p: any) => [p.id, p.nome as string]));
   const quadrasMap = new Map(quadras.map((q) => [q.id, q]));
 
-  const arranjosQueDirijo: ArranjoQueDirijo[] = ((dirijoRes.data ?? []) as any[]).map((a) => ({
-    id: a.id,
-    nome: a.nome ?? 'Arranjo',
-    quadras_ids: (a.quadras_ids ?? []) as string[],
-    cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
-    interessados: (a.interessados ?? []) as string[]
-  }));
+  const arranjosQueDirijo: ArranjoQueDirijo[] = ((dirijoRes.data ?? []) as any[])
+    .filter((a) => arranjoAindaVale(a, ontem))
+    .map((a) => ({
+      id: a.id,
+      nome: a.nome ?? 'Arranjo',
+      quadras_ids: (a.quadras_ids ?? []) as string[],
+      cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
+      interessados: (a.interessados ?? []) as string[]
+    }));
 
   const minhasPartes: MinhaParte[] = ((partesMinhasRes.data ?? []) as any[]).map((p) => ({
     id: p.id,

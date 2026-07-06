@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra } from '$lib/server/queries';
 import { statusCampanha, type StatusCampanha } from '$lib/campanhas';
+import { arranjoAindaVale } from '$lib/arranjos';
 
 export interface CampanhaAtiva {
   id: number;
@@ -60,24 +61,23 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa, publicacao_id, publicacoes(imagem_url)')
       .eq('ativa', true)
       .maybeSingle(),
-    // Partes de arranjo que me incluem (dupla/trio) — válidas pela data do arranjo
+    // Partes de arranjo que me incluem (dupla/trio) — recorrente continua
+    // valendo mesmo com a data-âncora do arranjo no passado (filtra em JS
+    // abaixo, não dá pra expressar recorrente/data_fim num .or() simples)
     locals.supabase
       .from('arranjo_partes')
-      .select('id, quadras_ids, locais_ids, publicadores, notas, arranjos!inner(id, nome, data, hora_inicio, local_endereco, dirigente_id, ativo)')
+      .select('id, quadras_ids, locais_ids, publicadores, notas, arranjos!inner(id, nome, data, hora_inicio, local_endereco, dirigente_id, ativo, recorrente, data_fim)')
       .contains('publicadores', [locals.user!.id])
       .eq('arranjos.ativo', true)
-      .or(`data.gte.${ontem},data.is.null`, { foreignTable: 'arranjos' })
       .order('criada_em', { ascending: false }),
-    // Arranjos que EU dirijo (de ontem em diante — a saída de ontem à noite
-    // ainda interessa de manhã) — card "Você dirige"
+    // Arranjos que EU dirijo — card "Você dirige"
     locals.supabase
       .from('arranjos')
-      .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id')
+      .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id, recorrente, data_fim')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
-      .or(`data.gte.${ontem},data.is.null`)
       .order('data', { nullsFirst: false })
-      .limit(5),
+      .limit(20),
     locals.supabase.from('profiles').select('id, nome'),
     // Meus agendamentos de TP nos próximos 7 dias — seção "Seus turnos de TP" no home
     locals.supabase
@@ -114,10 +114,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   const abertas = minhas.filter((d) => d.status === 'aberta');
   const concluidas = minhas.filter((d) => d.status === 'concluida');
 
+  const partesValidas = (partesRes.data ?? []).filter((p: any) => arranjoAindaVale(p.arranjos, ontem));
+  const dirijoValidos = (dirijoRes.data ?? []).filter((a: any) => arranjoAindaVale(a, ontem));
+
   // Cobertura pra barra de progresso nos cards do home: território pessoal
   // + quadras dos arranjos que dirijo + da minha parte (dupla/trio)
-  const idsPartes = (partesRes.data ?? []).flatMap((p: any) => p.quadras_ids ?? []);
-  const idsDirijo = (dirijoRes.data ?? []).flatMap((a: any) => a.quadras_ids ?? []);
+  const idsPartes = partesValidas.flatMap((p: any) => p.quadras_ids ?? []);
+  const idsDirijo = dirijoValidos.flatMap((a: any) => a.quadras_ids ?? []);
   const idsCobertura = [...new Set([...abertas.flatMap((d) => d.quadras_ids), ...idsPartes, ...idsDirijo])];
   const cobertura = idsCobertura.length > 0
     ? await calcularCoberturaPorQuadra(locals.supabase, idsCobertura)
@@ -172,7 +175,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // Partes de arranjo que eu recebi (card no topo do home)
   const nomePorId = new Map((profRes.data ?? []).map((p: any) => [p.id, p.nome as string]));
-  const minhasPartes = (partesRes.data ?? []).map((p: any) => ({
+  const minhasPartes = partesValidas.map((p: any) => ({
     id: p.id,
     arranjo_id: p.arranjos?.id ?? null,
     arranjo_nome: p.arranjos?.nome ?? 'Arranjo',
@@ -188,7 +191,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   }));
 
   // Arranjos que eu dirijo — card "Você dirige" com o território completo
-  const arranjosQueDirijo = (dirijoRes.data ?? []).map((a: any) => ({
+  const arranjosQueDirijo = dirijoValidos.map((a: any) => ({
     id: a.id,
     nome: a.nome ?? 'Arranjo',
     data: a.data as string,

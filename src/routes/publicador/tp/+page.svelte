@@ -6,7 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { rangeDoPeriodo, DIAS_SEMANA, type Periodo } from '$lib/arranjos';
+  import { DIAS_SEMANA } from '$lib/arranjos';
   import { ocorrenciasAgendamentoEntre } from '$lib/tp-agendamentos';
   import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import type {
@@ -33,18 +33,55 @@
     };
   } = $props();
 
-  let periodo = $state<Periodo>('semana');
-  const range = $derived(rangeDoPeriodo(periodo));
+  // === Calendário mensal ===
+  function isoDate(d: Date): string { return d.toISOString().substring(0, 10); }
+  const hojeIso = isoDate(new Date());
+
+  let mesRef = $state(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  let diaSelecionado = $state<string | null>(null);
+
+  function mudarMes(delta: number) {
+    mesRef = new Date(mesRef.getFullYear(), mesRef.getMonth() + delta, 1);
+    diaSelecionado = null;
+  }
+
+  const mesIniIso = $derived(isoDate(new Date(mesRef.getFullYear(), mesRef.getMonth(), 1)));
+  const mesFimIso = $derived(isoDate(new Date(mesRef.getFullYear(), mesRef.getMonth() + 1, 0)));
+
   const ocAgendamentos = $derived(
-    ocorrenciasAgendamentoEntre(data.tpAgendamentos, data.tpExcecoes, range.isoIni, range.isoFim)
+    ocorrenciasAgendamentoEntre(data.tpAgendamentos, data.tpExcecoes, mesIniIso, mesFimIso)
   );
   const agendamentosPorData = $derived.by(() => {
     const m: Record<string, typeof ocAgendamentos> = {};
     for (const oc of ocAgendamentos) (m[oc.data] ||= []).push(oc);
     return m;
   });
-  const datasOrdenadas = $derived(Object.keys(agendamentosPorData).sort());
-  const hojeIso = new Date().toISOString().substring(0, 10);
+
+  // Grade de 42 células (6 semanas), começando no domingo antes/no dia 1
+  const celulasCalendario = $derived.by(() => {
+    const primeiroDoMes = new Date(mesRef.getFullYear(), mesRef.getMonth(), 1);
+    const inicioGrid = new Date(primeiroDoMes);
+    inicioGrid.setDate(primeiroDoMes.getDate() - primeiroDoMes.getDay());
+    const celulas: { iso: string; dia: number; noMes: boolean; qtd: number }[] = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(inicioGrid);
+      d.setDate(inicioGrid.getDate() + i);
+      const iso = isoDate(d);
+      celulas.push({
+        iso,
+        dia: d.getDate(),
+        noMes: d.getMonth() === mesRef.getMonth(),
+        qtd: (agendamentosPorData[iso] ?? []).length
+      });
+    }
+    return celulas;
+  });
+
+  const datasParaMostrar = $derived(
+    diaSelecionado ? [diaSelecionado] : Object.keys(agendamentosPorData).sort()
+  );
+
+  const nomeMesExibido = $derived(mesRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
 
   const inscritosPorOcorrencia = $derived.by(() => {
     const m: Record<string, { publicador_id: string; nome: string }[]> = {};
@@ -242,7 +279,8 @@
     }
   }
 
-  // === Disponibilidade (movida de /perfil) ===
+  // === Disponibilidade (movida de /perfil, agora num modal) ===
+  let sheetDisponibilidade = $state(false);
   let salvandoPreferencias = $state(false);
   let adicionandoDisponibilidade = $state(false);
   let removendoId = $state<number | null>(null);
@@ -282,54 +320,79 @@
     <p class="text-sm text-slate-500">Agenda mensal — turnos, ponto e sua disponibilidade</p>
   </div>
 
-  {#if !data.disponibilidadeConfirmada && data.tpDisponibilidade.length > 0}
-    <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-3 flex items-center justify-between gap-2">
-      <div class="text-sm text-amber-900">
-        <Icon nome="alert" size={14} /> Confirme sua disponibilidade de <strong class="capitalize">{nomeMesAtual}</strong> pro admin montar a escala.
+  <button
+    type="button"
+    onclick={() => (sheetDisponibilidade = true)}
+    class="w-full flex items-center justify-between gap-2 rounded-xl border-2 p-3 text-left transition-colors {data.disponibilidadeConfirmada ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-amber-400 bg-amber-50 hover:bg-amber-100'}"
+  >
+    <div>
+      <div class="text-sm font-semibold {data.disponibilidadeConfirmada ? 'text-green-900' : 'text-amber-900'}">
+        {#if data.disponibilidadeConfirmada}
+          <Icon nome="check" size={14} /> Disponibilidade de <span class="capitalize">{nomeMesAtual}</span> confirmada
+        {:else}
+          <Icon nome="alert" size={14} /> Confirmar disponibilidade de <span class="capitalize">{nomeMesAtual}</span>
+        {/if}
       </div>
-      <Button variant="primary" size="sm" loading={confirmandoMes} onclick={confirmarDisponibilidadeMes}>Confirmar</Button>
+      <div class="text-xs {data.disponibilidadeConfirmada ? 'text-green-700' : 'text-amber-700'} mt-0.5">Toque pra revisar seus horários</div>
     </div>
-  {:else if data.disponibilidadeConfirmada}
-    <div class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-      <Icon nome="check" size={14} /> Disponibilidade de <strong class="capitalize">{nomeMesAtual}</strong> confirmada.
-    </div>
-  {/if}
+    <Icon nome="chevron-right" size={16} class={data.disponibilidadeConfirmada ? 'text-green-700' : 'text-amber-700'} />
+  </button>
 
   <button type="button" onclick={abrirSugerirPonto} class="text-xs text-primary-700 hover:underline">
     <Icon nome="map-pin" size={12} /> Sugerir ponto de testemunho público
   </button>
 
-  <div class="flex items-center justify-between flex-wrap gap-2">
-    <div class="flex gap-1 bg-slate-100 rounded-lg p-1">
-      {#each [['semana', 'Semana'], ['mes', 'Mês']] as [p, label]}
+  <div class="rounded-xl border border-slate-200 bg-white p-3">
+    <div class="flex items-center justify-between mb-2">
+      <button type="button" onclick={() => mudarMes(-1)} aria-label="Mês anterior" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 text-lg">‹</button>
+      <div class="font-semibold capitalize">{nomeMesExibido}</div>
+      <button type="button" onclick={() => mudarMes(1)} aria-label="Próximo mês" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 text-lg">›</button>
+    </div>
+    <div class="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-400 mb-1">
+      {#each DIAS_SEMANA as d}<div>{d}</div>{/each}
+    </div>
+    <div class="grid grid-cols-7 gap-1">
+      {#each celulasCalendario as c (c.iso)}
         <button
           type="button"
-          onclick={() => (periodo = p as Periodo)}
-          class="px-3 py-1 text-xs font-medium rounded transition-colors"
-          class:bg-white={periodo === p}
-          class:shadow-sm={periodo === p}
-          class:text-slate-900={periodo === p}
-          class:text-slate-500={periodo !== p}
-        >{label}</button>
+          onclick={() => (diaSelecionado = diaSelecionado === c.iso ? null : c.iso)}
+          class="aspect-square rounded-lg text-sm flex flex-col items-center justify-center gap-0.5 transition-colors"
+          class:text-slate-300={!c.noMes}
+          class:text-slate-700={c.noMes && diaSelecionado !== c.iso}
+          class:bg-primary-600={diaSelecionado === c.iso}
+          class:text-white={diaSelecionado === c.iso}
+          class:font-bold={c.iso === hojeIso}
+          class:bg-slate-50={diaSelecionado !== c.iso && c.noMes}
+          class:hover:bg-slate-100={diaSelecionado !== c.iso}
+        >
+          <span>{c.dia}</span>
+          {#if c.qtd > 0}<span class="w-1 h-1 rounded-full {diaSelecionado === c.iso ? 'bg-white' : 'bg-teal-500'}"></span>{/if}
+        </button>
       {/each}
     </div>
-    <div class="text-xs text-slate-400">
-      {new Date(range.isoIni + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-      — {new Date(range.isoFim + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-      · {ocAgendamentos.length} turno(s)
-    </div>
+    {#if diaSelecionado}
+      <button type="button" onclick={() => (diaSelecionado = null)} class="mt-2 text-xs text-primary-700 hover:underline">
+        <Icon nome="x" size={12} /> Ver o mês todo
+      </button>
+    {/if}
   </div>
 
   {#if ocAgendamentos.length === 0}
     <Card padding="md">
       <div class="text-center py-8">
         <Icon nome="megaphone" size={40} class="mx-auto text-slate-300" />
-        <div class="font-medium mt-2">Sem turnos de TP nesse período</div>
+        <div class="font-medium mt-2">Sem turnos de TP nesse mês</div>
+      </div>
+    </Card>
+  {:else if diaSelecionado && (agendamentosPorData[diaSelecionado] ?? []).length === 0}
+    <Card padding="md">
+      <div class="text-center py-6">
+        <div class="font-medium text-sm text-slate-500">Sem turnos nesse dia</div>
       </div>
     </Card>
   {:else}
     <div class="grid gap-3">
-      {#each datasOrdenadas as dataIso}
+      {#each datasParaMostrar as dataIso}
         <div>
           <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1.5">
             {new Date(dataIso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
@@ -378,10 +441,17 @@
     </div>
   {/if}
 
-  <Card padding="md">
-    <h2 class="font-semibold mb-1">Sua disponibilidade</h2>
-    <p class="text-xs text-slate-500 mb-3">Ajuda o admin a te escalar num horário que funciona pra você.</p>
+</div>
 
+<!-- Sheet disponibilidade (movida de /perfil) — botão abre; confirmação mensal fica no topo -->
+<BottomSheet bind:open={sheetDisponibilidade} title="Sua disponibilidade">
+  <p class="text-xs text-slate-500 mb-3">Ajuda o admin a te escalar num horário que funciona pra você.</p>
+
+  <Button variant="primary" loading={confirmandoMes} onclick={confirmarDisponibilidadeMes} class="w-full mb-4">
+    <Icon nome="check" size={14} /> Confirmar disponibilidade de <span class="capitalize ml-1">{nomeMesAtual}</span>
+  </Button>
+
+  <div class="pb-4 mb-4 border-b border-slate-100">
     <form
       method="POST"
       action="?/salvarPreferenciasTp"
@@ -408,8 +478,9 @@
       >{data.tpPreferencias.notas ?? ''}</textarea>
       <Button variant="primary" type="submit" loading={salvandoPreferencias} class="w-full">Salvar</Button>
     </form>
+  </div>
 
-    <div class="mt-4 pt-4 border-t border-slate-100">
+    <div>
       <div class="text-sm font-medium mb-2">Horários que costumo estar disponível</div>
       <div class="space-y-1.5 mb-3">
         {#each data.tpDisponibilidade as d (d.id)}
@@ -465,8 +536,7 @@
         <Button variant="secondary" type="submit" loading={adicionandoDisponibilidade}><Icon nome="plus" size={14} /></Button>
       </form>
     </div>
-  </Card>
-</div>
+</BottomSheet>
 
 <!-- Sheet relatório de fim de agendamento (TP-D) -->
 <BottomSheet bind:open={sheetRelatorio} title="Relatório do turno">

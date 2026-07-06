@@ -2,6 +2,7 @@
 // finos e centralizam o tratamento de erro/tipos.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Quadra, Territorio, Profile, Designacao, Local, Unidade, TipoRegistro } from '$lib/types';
+import { arranjoAindaVale } from '$lib/arranjos';
 
 // ============================================================================
 // IMPORTANTE: Supabase tem limite default de 1000 rows por query.
@@ -529,13 +530,14 @@ export async function quadrasEmArranjoFuturo(
   const hoje = new Date().toISOString().slice(0, 10);
   let q = supabase
     .from('arranjos')
-    .select('id, nome, data, quadras_ids')
+    .select('id, nome, data, quadras_ids, recorrente, data_fim')
     .eq('ativo', true)
-    .or(`data.gte.${hoje},data.is.null`)
     .overlaps('quadras_ids', quadrasIds);
   for (const id of excetoIds) q = q.neq('id', id);
   const { data } = await q;
-  for (const a of (data ?? []) as any[]) {
+  // Recorrente conta como "futuro" mesmo com a data-âncora velha (a
+  // trava de exclusividade não pode deixar passar despercebido).
+  for (const a of ((data ?? []) as any[]).filter((a) => arranjoAindaVale(a, hoje))) {
     for (const qd of (a.quadras_ids ?? []) as string[]) {
       if (quadrasIds.includes(qd) && !out.has(qd)) out.set(qd, { id: a.id, nome: a.nome, data: a.data });
     }

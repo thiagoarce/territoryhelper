@@ -32,6 +32,24 @@ export interface Ocorrencia<A extends ArranjoBase = ArranjoBase> {
 export const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 export const DIAS_ORDENADOS = [1, 2, 3, 4, 5, 6, 0]; // seg→dom
 
+// Um arranjo recorrente continua valendo mesmo com `data` (a âncora
+// original) no passado — a data de cada ocorrência real vem de
+// dia_semana, não desse campo. Só um arranjo PONTUAL (recorrente=false)
+// sai de circulação quando sua única data já passou. Usar sempre que
+// filtrar "arranjos ainda válidos" fora do cálculo de ocorrências (ex:
+// checar posse de quadra, cards de resumo) — nunca reimplementar como
+// `.or('data.gte.X,data.is.null')` na query: isso corta recorrentes cuja
+// âncora ficou velha (já aconteceu, escondia "Você dirige"/"sua parte"
+// e chegou a negar acesso de posse de quadra).
+export function arranjoAindaVale(
+  a: { recorrente?: boolean | null; data?: string | null; data_fim?: string | null } | null | undefined,
+  cutoffIso: string
+): boolean {
+  if (!a) return false;
+  if (a.recorrente) return !a.data_fim || a.data_fim >= cutoffIso;
+  return !!a.data && a.data >= cutoffIso;
+}
+
 export function semanaAtual() {
   const hoje = new Date();
   hoje.setHours(12, 0, 0, 0);
