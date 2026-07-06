@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { criarNotificacao } from '$lib/server/push';
 import { fail } from '@sveltejs/kit';
 import { listarPredios, listarPublicadores, selectAll } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
@@ -146,6 +147,13 @@ export const actions: Actions = {
         .from('designacao_publicadores')
         .insert({ designacao_id: des.id, publicador_id: pubId, papel: 'lider' });
     }
+    // Mesmo aviso que o fluxo do admin dispara — sem isso quem foi
+    // designado pelo dirigente nunca ficava sabendo.
+    await criarNotificacao(publicadores, {
+      titulo: 'Você recebeu cartas designadas',
+      corpo: `${prediosIds.length} prédio(s) pra trabalhar por carta`,
+      url: '/publicador'
+    });
     return { ok: true, msg: `Designado ${prediosIds.length} prédio(s) pra ${publicadores.length} publicador(es)` };
   },
 

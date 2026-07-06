@@ -112,6 +112,38 @@
   let processandoId = $state<number | null>(null);
   let notasEmEdicao: Record<number, string> = $state({});
 
+  // A página tinha 6 blocos empilhados (rolagem infinita) — virou seções
+  // navegáveis. Abrir com ?controle=X cai direto na Lista de controle.
+  type Secao = 'pedidos' | 'reposicao' | 'catalogo' | 'controle';
+  let secao = $state<Secao>(data.controlePublicacaoId ? 'controle' : 'pedidos');
+  const SECOES = [
+    { v: 'pedidos', label: 'Pedidos', icone: 'inbox' },
+    { v: 'reposicao', label: 'Reposição', icone: 'alert' },
+    { v: 'catalogo', label: 'Catálogo', icone: 'clipboard' },
+    { v: 'controle', label: 'Controle', icone: 'square-check' }
+  ] as const;
+  const pedidosPendentesQtd = $derived(
+    data.pedidos.filter((p) => p.status === 'aberto' || p.status === 'pedido').length
+  );
+
+  // Busca na lista de controle — congregação grande fica impossível de
+  // rolar publicador a publicador sem filtro.
+  let buscaPublicador = $state('');
+  const publicadoresFiltrados = $derived(
+    buscaPublicador.trim()
+      ? data.publicadores.filter((p) => p.nome.toLowerCase().includes(buscaPublicador.trim().toLowerCase()))
+      : data.publicadores
+  );
+  const totaisControle = $derived.by(() => {
+    let pedida = 0, entregue = 0;
+    for (const c of data.controle) { pedida += c.qtd_pedida; entregue += c.qtd_entregue; }
+    return { pedida, entregue };
+  });
+
+  function fmtMes(mes: string): string {
+    return new Date(mes + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+  }
+
   function mudarFiltro(f: string) {
     goto(`?status=${f}`, { keepFocus: true });
   }
@@ -181,9 +213,31 @@
 <div class="p-4 space-y-3 pb-10 max-w-2xl mx-auto">
   <div>
     <h1 class="text-2xl font-bold">Área do servo</h1>
-    <p class="text-sm text-slate-500">Pedidos de publicação da congregação</p>
+    <p class="text-sm text-slate-500">Pedidos, reposição de TP, catálogo e lista de controle</p>
   </div>
 
+  <div class="flex gap-1 bg-slate-100 rounded-lg p-1 w-full overflow-x-auto">
+    {#each SECOES as s (s.v)}
+      <button
+        type="button"
+        onclick={() => (secao = s.v)}
+        class="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap"
+        class:bg-white={secao === s.v}
+        class:shadow-sm={secao === s.v}
+        class:text-slate-900={secao === s.v}
+        class:text-slate-500={secao !== s.v}
+      >
+        <Icon nome={s.icone} size={13} /> {s.label}
+        {#if s.v === 'pedidos' && pedidosPendentesQtd > 0}
+          <span class="text-[10px] px-1.5 rounded-full bg-primary-100 text-primary-700">{pedidosPendentesQtd}</span>
+        {:else if s.v === 'reposicao' && data.reposicao.length > 0}
+          <span class="text-[10px] px-1.5 rounded-full bg-amber-100 text-amber-700">{data.reposicao.length}</span>
+        {/if}
+      </button>
+    {/each}
+  </div>
+
+{#if secao === 'pedidos'}
   <div class="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
     {#each FILTROS as [f, label]}
       <button
@@ -245,7 +299,9 @@
       {/each}
     </div>
   {/if}
+{/if}
 
+{#if secao === 'reposicao'}
   <div>
     <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
       <Icon nome="alert" size={14} /> Reposição
@@ -287,14 +343,16 @@
       <div class="space-y-1 text-sm">
         {#each data.tendencia as t}
           <div class="flex items-center justify-between">
-            <span class="text-slate-600">{t.mes} · {t.publicacao_nome}</span>
+            <span class="text-slate-600 capitalize">{fmtMes(t.mes)} · {t.publicacao_nome}</span>
             <span class="font-medium">{t.qtd}</span>
           </div>
         {/each}
       </div>
     </Card>
   {/if}
+{/if}
 
+{#if secao === 'catalogo'}
   <Card padding="md">
     <h2 class="font-semibold mb-1">Suprimento de campanha</h2>
     {#if data.souAdmin}
@@ -339,7 +397,9 @@
       {/if}
     </div>
   </div>
+{/if}
 
+{#if secao === 'controle'}
   <div>
     <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
       <Icon nome="square-check" size={14} /> Lista de controle
@@ -365,11 +425,22 @@
       {#if data.publicadores.length === 0}
         <p class="text-sm text-slate-400 italic">Nenhum publicador ativo cadastrado.</p>
       {:else}
+        <div class="flex items-center gap-2 mb-2">
+          <div class="relative flex-1">
+            <input
+              bind:value={buscaPublicador}
+              placeholder="Buscar publicador..."
+              class="w-full rounded-lg border border-slate-300 pl-8 pr-3 py-1.5 text-sm"
+            />
+            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon nome="search" size={14} /></span>
+          </div>
+          <span class="text-xs text-slate-500 shrink-0">Σ {totaisControle.pedida} ped · {totaisControle.entregue} entr</span>
+        </div>
         <div class="space-y-1">
           <div class="grid grid-cols-[1fr_auto_auto] gap-2 text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-2.5">
             <span>Publicador</span><span>Pedido</span><span>Entregue</span>
           </div>
-          {#each data.publicadores as pub (pub.id)}
+          {#each publicadoresFiltrados as pub (pub.id)}
             <div class="grid grid-cols-[1fr_auto_auto] items-center gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5 text-sm">
               <span class="truncate">{pub.nome}</span>
               <div class="flex items-center gap-1">
@@ -408,6 +479,7 @@
       {/if}
     {/if}
   </div>
+{/if}
 </div>
 
 <BottomSheet bind:open={sheetCatalogo} title={pubEdit?.id ? 'Editar publicação' : 'Nova publicação'}>
