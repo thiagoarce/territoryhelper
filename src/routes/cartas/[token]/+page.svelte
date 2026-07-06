@@ -35,7 +35,7 @@
     <!-- Progresso -->
     <div class="mt-4">
       <div class="flex justify-between text-sm mb-1">
-        <span>Entregues</span>
+        <span>Escritas</span>
         <span class="font-bold">{entregues} de {data.unidades.length}</span>
       </div>
       <div class="h-2 rounded-full bg-white/20 overflow-hidden">
@@ -66,13 +66,13 @@
         <div class="flex items-center justify-between gap-3">
           <div class="flex-1 min-w-0">
             <div class="font-mono font-semibold">{u.complemento || u.nota || `Unidade ${indice + 1}`}</div>
-            {#if u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> {u.carta_entregue}</div>{/if}
+            {#if u.carta_entregue}<div class="text-xs text-purple-700"><Icon nome="mail" size={14} /> escrita {new Date(u.carta_entregue + 'T12:00:00').toLocaleDateString('pt-BR')}</div>{/if}
           </div>
           <div class="flex gap-1">
             {#each [
-              { c: 'carta_entregue', icone: 'mail', ativo: !!u.carta_entregue, cls: 'bg-purple-600' },
-              { c: 'desocupado', icone: 'door-closed', ativo: u.desocupado, cls: 'bg-slate-600' },
-              { c: 'nao_escrever', icone: 'ban', ativo: u.nao_escrever, cls: 'bg-red-600' }
+              { c: 'carta_entregue', icone: 'mail', ativo: !!u.carta_entregue, cls: 'bg-purple-600', l: 'Carta escrita' },
+              { c: 'desocupado', icone: 'door-closed', ativo: u.desocupado, cls: 'bg-slate-600', l: 'Desocupado' },
+              { c: 'nao_escrever', icone: 'ban', ativo: u.nao_escrever, cls: 'bg-red-600', l: 'Não escrever' }
             ] as opt}
               <form
                 method="POST"
@@ -85,7 +85,7 @@
               >
                 <input type="hidden" name="unidade_id" value={u.id} />
                 <input type="hidden" name="campo" value={opt.c} />
-                <button class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
+                <button title={opt.l} aria-label={opt.l} class="px-3 py-2 rounded text-base border {opt.ativo ? opt.cls + ' text-white border-transparent' : 'border-slate-300 bg-white hover:bg-slate-50'}"><Icon nome={opt.icone} size={18} /></button>
               </form>
             {/each}
           </div>

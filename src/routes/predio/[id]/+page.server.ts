@@ -27,10 +27,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       }
     }
   }
-  const unidades = predio.unidades.map((u) => ({
+  // Nome de quem escreveu a carta (aba Cartas mostra pequeno ao lado da data)
+  const escritores = [...new Set(predio.unidades.map((u: any) => u.carta_escrita_por).filter(Boolean))] as string[];
+  let nomeEscritorPorId = new Map<string, string>();
+  if (escritores.length > 0) {
+    const { data: profs } = await locals.supabase.from('profiles').select('id, nome').in('id', escritores);
+    nomeEscritorPorId = new Map((profs ?? []).map((p: any) => [p.id, p.nome]));
+  }
+
+  const unidades = predio.unidades.map((u: any) => ({
     ...u,
     ultimo_tipo: ultimoPorUnidade[u.id]?.tipo ?? null,
-    ultimo_ts: ultimoPorUnidade[u.id]?.ts ?? null
+    ultimo_ts: ultimoPorUnidade[u.id]?.ts ?? null,
+    carta_escrita_por_nome: u.carta_escrita_por ? nomeEscritorPorId.get(u.carta_escrita_por) ?? null : null
   }));
 
   return { predio: { ...predio, unidades }, minhaRole: locals.profile?.role };
@@ -95,7 +104,11 @@ export const actions: Actions = {
     if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse prédio' });
     const patch: Record<string, unknown> = {};
     if (campo === 'carta_entregue') {
-      patch.carta_entregue = u.carta_entregue ? null : hojeIsoBrasil();
+      // Semântica: carta ESCRITA (a entrega é o desfecho casa-em-casa).
+      // Guarda quem escreveu junto com a data; desmarcar limpa os dois.
+      const escrevendo = !u.carta_entregue;
+      patch.carta_entregue = escrevendo ? hojeIsoBrasil() : null;
+      patch.carta_escrita_por = escrevendo ? locals.user.id : null;
     } else if (campo === 'desocupado') {
       patch.desocupado = !u.desocupado;
     } else {

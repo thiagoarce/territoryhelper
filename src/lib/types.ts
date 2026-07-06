@@ -83,7 +83,8 @@ export interface Unidade {
   desocupado: boolean;
   nao_escrever: boolean;
   carta_escrita: string | null;
-  carta_entregue: string | null;
+  carta_entregue: string | null; // data em que a carta foi ESCRITA (a entrega é registro tipo='carta')
+  carta_escrita_por: string | null;
   nota: string | null;
   legacy_row: number | null;
   criado_em: string;

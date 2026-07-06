@@ -86,7 +86,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao`, `reservada_campanha_id` (quarentena — some do pool geral enquanto reservada pra campanha) |
 | `quadras_conclusoes` | histórico append-only de conclusões (data, autor) |
 | `locais` | endereço físico: `geo Point`, tipo (casa/predio/comercio/coletivo/terreno), `quadra_id`, setor/quadra_ibge/face_ibge, portaria, `nao_eh_predio`, **`pendente`** (criado pelo publicador; admin valida) |
-| `unidades` | apto/unidade dentro de um local (carta, desocupado…) |
+| `unidades` | apto/unidade dentro de um local. `carta_entregue` (date) = carta ESCRITA (+ `carta_escrita_por`, migration 055) — a ENTREGA é registro tipo='carta' no casa a casa |
 | `registros` | trilha append-only de eventos por unidade (conversou/carta/desfeito…) |
 | `designacoes` | **território pessoal** (tipo pessoal/cartas), sempre `publicador_id` — dirigente NÃO existe aqui (é atributo do arranjo) |
 | `designacao_quadras` / `designacao_publicadores` / `designacao_locais` | N:N (locais só p/ tipo='cartas') |
@@ -235,7 +235,11 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 - **Campanha** (`/publicador/campanha`) — objetivos + gráfico.
 - **/predio/[id]** — tela ÚNICA de trabalhar um prédio. Toggle
   **🚪 Casa em casa** (registros: conversou/semConversa/naoAtendeu/carta)
-  vs **✉ Cartas** (unidades: carta_entregue/desocupado/nao_escrever).
+  vs **✉ Cartas** (unidades: carta escrita/desocupado/nao_escrever).
+  Cartas tem DOIS momentos: aba Cartas = ESCRITA (marca "Carta escrita"
+  + data + quem escreveu); ENTREGA = desfecho "Deixou carta" do casa em
+  casa, que brilha (ring roxo pulsante) quando a unidade tem carta
+  escrita sem entrega. Correio é o fallback, mesmo botão.
   Header tem ✏ Editar + 📤 WhatsApp share. Progresso duplo.
 
 ## Deploy
