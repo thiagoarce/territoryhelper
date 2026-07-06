@@ -5,6 +5,7 @@ import { ocorrenciasAgendamentoEntre, ocorrenciaConflitante } from '$lib/tp-agen
 import type { AgendamentoBase, ExcecaoBase, Recorrencia, OcorrenciaAgendamento } from '$lib/tp-agendamentos';
 import { exigirAdmin, carregarAgendamentosEExcecoes, janelaChecagem } from './_shared';
 import { criarNotificacao } from '$lib/server/push';
+import { hojeIsoBrasil } from '$lib/utils/data';
 
 export interface TpCarrinhoLite {
   id: number;
@@ -56,6 +57,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         .lte('data', range.isoFim),
       locals.supabase.from('tp_disponibilidade').select('publicador_id, dia_semana, hora_inicio, hora_fim')
     ]);
+
+  // Fases do TP mensal (T26): mês atual + 2 seguintes. Mês sem linha em
+  // tp_meses ainda não foi aberto pelo admin.
+  const mesAtual = hojeIsoBrasil().substring(0, 7);
+  const mesesAlvo = [0, 1, 2].map((off) => {
+    const [y, m] = mesAtual.split('-').map(Number);
+    const d = new Date(y, m - 1 + off, 1, 12);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const { data: mesesRows } = await locals.supabase
+    .from('tp_meses').select('mes, fase').in('mes', mesesAlvo);
+  const fasePorMes = new Map((mesesRows ?? []).map((r: any) => [r.mes, r.fase as string]));
+  const tpMeses = mesesAlvo.map((mes) => ({ mes, fase: fasePorMes.get(mes) ?? null }));
 
   const nomeTipoPorId: Record<number, string> = {};
   for (const t of (tiposRes.data ?? []) as any[]) nomeTipoPorId[t.id] = t.nome;
@@ -113,6 +127,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const agendamentosDoCarrinho = agendamentos.filter((a) => carrinhosSelecionados.includes(a.carrinho_id));
 
   return {
+    tpMeses,
     periodo,
     range,
     carrinhos,
@@ -137,7 +152,49 @@ function validarCampos(fd: FormData) {
   return { carrinhoId, pontoId, pontoAvulso, horaInicio, horaFim, notas };
 }
 
+const FASES: string[] = ['disponibilidade', 'montagem', 'publicado', 'fechado'];
+
 export const actions: Actions = {
+  // T26: abre/avança a fase de um mês. Ao chegar em 'publicado', notifica
+  // todos os publicadores designados em turnos daquele mês (é a hora de
+  // aceitar/recusar).
+  definirFaseMes: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const mes = String(fd.get('mes') ?? '').trim();
+    const fase = String(fd.get('fase') ?? '').trim();
+    if (!/^\d{4}-\d{2}$/.test(mes)) return fail(400, { erro: 'Mês inválido' });
+    if (!FASES.includes(fase)) return fail(400, { erro: 'Fase inválida' });
+
+    const { error } = await locals.supabase.from('tp_meses').upsert(
+      { mes, fase, atualizado_por: locals.user!.id, atualizado_em: new Date().toISOString() },
+      { onConflict: 'mes' }
+    );
+    if (error) return fail(400, { erro: error.message });
+
+    if (fase === 'publicado') {
+      const ini = `${mes}-01`;
+      const [y, mm] = mes.split('-').map(Number);
+      const fimMes = new Date(y, mm, 0, 12);
+      const fim = `${mes}-${String(fimMes.getDate()).padStart(2, '0')}`;
+      const { data: parts } = await locals.supabase
+        .from('tp_agendamento_participantes')
+        .select('publicador_id')
+        .gte('data', ini)
+        .lte('data', fim);
+      const ids = [...new Set(((parts ?? []) as any[]).map((p) => p.publicador_id))];
+      if (ids.length > 0) {
+        await criarNotificacao(ids, {
+          titulo: 'Agenda de testemunho público publicada',
+          corpo: 'Você foi designado em turno(s) do mês — abra pra aceitar ou recusar.',
+          url: '/publicador/tp'
+        });
+      }
+    }
+    return { ok: true, msg: `Mês ${mes} → ${fase}` };
+  },
+
   criarAgendamento: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
