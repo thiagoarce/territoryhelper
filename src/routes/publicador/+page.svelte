@@ -94,7 +94,8 @@
       tces: { id: string; nome: string; tipo: string; prazo: string | null; status: string }[];
       campanhaAtiva: CampanhaAtiva | null;
       minhasPartes: MinhaParte[];
-      arranjosQueDirijo: ArranjoQueDirijo[];
+      arranjoQueDirijo: ArranjoQueDirijo | null;
+      outrosArranjosQueDirijo: ArranjoQueDirijo[];
       pendentesFinalizar: ArranjoPendenteFinalizar[];
       cartasDesignadas: CartaDesignada[];
       meusAgendamentosTp: MeuAgendamentoTp[];
@@ -231,7 +232,14 @@
   const parteDoArranjoQueDirijo = (arranjoId: number) =>
     data.minhasPartes.find((p) => p.arranjo_id === arranjoId);
   const partesSeparadas = $derived(
-    data.minhasPartes.filter((p) => !data.arranjosQueDirijo.some((a) => a.id === p.arranjo_id))
+    data.minhasPartes.filter((p) => p.arranjo_id !== data.arranjoQueDirijo?.id)
+  );
+
+  // Modal "todas as designações" — detalhe completo do que a home resume
+  // a 1 card + indicativo, pra não competir com o resto da carteira.
+  let sheetTodasArranjos = $state(false);
+  const todosArranjosQueDirijo = $derived(
+    data.arranjoQueDirijo ? [data.arranjoQueDirijo, ...data.outrosArranjosQueDirijo] : data.outrosArranjosQueDirijo
   );
 
   // "Minha carteira" ocupa a tela toda mesmo vazia — colapsa quando não há
@@ -268,77 +276,30 @@
     return { feitas, total, pct: Math.round((feitas / total) * 100) };
   }
 
-  let finalizando = $state<number | null>(null);
-  async function finalizarDesignacao(a: ArranjoPendenteFinalizar) {
-    const prog = progressoQuadras(a.quadras_ids);
-    const faltam = prog ? prog.total - prog.feitas : null;
-    const aviso = faltam && faltam > 0
-      ? `Ainda faltam ${faltam} endereço(s) sem concluir em "${a.nome}". As quadras não concluídas ficam livres pra outro arranjo. Finalizar mesmo assim?`
-      : `Finalizar "${a.nome}"? Isso encerra as partes dessa designação.`;
-    if (!confirm(aviso)) return;
-    finalizando = a.id;
-    const fd = new FormData();
-    fd.append('arranjo_id', String(a.id));
-    const res = await fetch('?/finalizarArranjo', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
-    finalizando = null;
-    if (parsed.type === 'success') { toast.success('Designação finalizada'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
 </script>
 
 <div class="p-4">
 {#if data.pendentesFinalizar.length > 0}
-  <div class="mb-4 rounded-xl border-2 border-red-400 bg-red-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-bold text-red-900 mb-2"><Icon nome="alert" size={14} /> Finalize a designação</div>
-    {#each data.pendentesFinalizar as a}
-      {@const prog = progressoQuadras(a.quadras_ids)}
-      <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-medium">{a.nome}</span>
-          <span class="text-xs text-red-700 font-medium">{fmtDia(a.data)}</span>
-        </div>
-        {#if prog}
-          <div class="mt-1.5">
-            <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
-              <span>Quadras concluídas</span>
-              <span class="font-medium">{prog.feitas}/{prog.total}</span>
-            </div>
-            <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-              <div class="h-full bg-red-500" style:width="{prog.pct}%"></div>
-            </div>
-          </div>
-        {/if}
-        <div class="flex flex-wrap gap-1.5 mt-1.5">
-          {#each a.quadras_ids as qid}
-            {@const q = data.quadrasMap[qid]}
-            {@const cov = data.cobertura[qid]}
-            <a href="/publicador/quadra/{encodeURIComponent(qid)}"
-              class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-red-200 bg-red-100 text-red-900 hover:bg-red-200">
-              {#if q}<span class="inline-block w-2 h-2 rounded" style:background-color={q.color}></span>{/if}
-              <span>{qid}</span>
-              {#if cov && cov.total > 0}<span class="text-[10px] text-red-700">{cov.feitas}/{cov.total}</span>{/if}
-            </a>
-          {/each}
-          {#each a.cartas_locais_ids as lid}
-            <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
-          {/each}
-        </div>
-        <button
-          type="button"
-          disabled={finalizando === a.id}
-          onclick={() => finalizarDesignacao(a)}
-          class="mt-2 w-full rounded-lg bg-red-600 text-white text-sm font-medium py-2 hover:bg-red-700 disabled:opacity-40"
-        >{finalizando === a.id ? 'Finalizando...' : 'Finalizar designação'}</button>
-      </div>
-    {/each}
-  </div>
+  <a href="/publicador/casa-a-casa" class="mb-4 block rounded-xl border-2 border-red-400 bg-red-50 p-3 hover:bg-red-100 transition-colors">
+    <div class="text-xs uppercase tracking-wider font-bold text-red-900 mb-1 flex items-center gap-2"><Icon nome="alert" size={14} /> Finalize a designação</div>
+    <p class="text-sm text-red-800">
+      {data.pendentesFinalizar.length === 1
+        ? `"${data.pendentesFinalizar[0].nome}" (${fmtDia(data.pendentesFinalizar[0].data)}) já passou e ainda tá aberta.`
+        : `${data.pendentesFinalizar.length} designações já passaram e ainda estão abertas.`}
+      Concluir em Casa a casa →
+    </p>
+  </a>
 {/if}
 
-{#if data.arranjosQueDirijo.length > 0}
+{#if data.arranjoQueDirijo}
   <div class="mb-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2"><Icon nome="tent" size={14} /> Você dirige</div>
-    {#each data.arranjosQueDirijo as a}
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <div class="text-xs uppercase tracking-wider font-bold text-primary-900 flex items-center gap-2"><Icon nome="tent" size={14} /> Você dirige</div>
+      {#if data.outrosArranjosQueDirijo.length > 0}
+        <button type="button" onclick={() => (sheetTodasArranjos = true)} class="text-[11px] font-medium text-primary-700 hover:underline shrink-0">+{data.outrosArranjosQueDirijo.length} outra(s)</button>
+      {/if}
+    </div>
+    {#each [data.arranjoQueDirijo] as a}
       {@const prog = progressoQuadras(a.quadras_ids)}
       {@const minhaParte = parteDoArranjoQueDirijo(a.id)}
       <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
@@ -707,6 +668,30 @@
 
 {/if}
 </div>
+
+<!-- Modal "todas as designações" — o card acima já mostra só a próxima -->
+<BottomSheet bind:open={sheetTodasArranjos} title="Suas designações de grupo">
+  <div class="space-y-2">
+    {#each todosArranjosQueDirijo as a (a.id)}
+      <div class="rounded-lg border border-slate-200 p-3">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium text-sm">{a.nome}</span>
+          <span class="text-xs text-primary-700 font-medium">{fmtDia(a.data)}{a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}</span>
+        </div>
+        {#if a.local_endereco}<div class="text-xs text-slate-500 mt-0.5"><Icon nome="map-pin" size={14} /> {a.local_endereco}</div>{/if}
+        <div class="flex flex-wrap gap-1.5 mt-1.5">
+          {#each a.quadras_ids as qid}
+            <span class="inline-flex items-center rounded-lg px-2 py-1 text-xs font-mono border border-primary-200 bg-primary-50 text-primary-900">{qid}</span>
+          {/each}
+          {#each a.cartas_locais_ids as lid}
+            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200"><Icon nome="mail" size={14} /> #{lid}</span>
+          {/each}
+        </div>
+      </div>
+    {/each}
+  </div>
+  <a href="/publicador/casa-a-casa" class="mt-3 block text-center text-sm font-medium text-primary-700 hover:underline">Repartir/finalizar em Casa a casa →</a>
+</BottomSheet>
 
 <BottomSheet bind:open={sheetPedido} title="Pedir publicação">
   <form onsubmit={enviarPedido} class="space-y-3">

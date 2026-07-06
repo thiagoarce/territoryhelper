@@ -50,6 +50,25 @@ export function arranjoAindaVale(
   return !!a.data && a.data >= cutoffIso;
 }
 
+// Servidor roda em UTC (Cloudflare) — Brasil é UTC-3, então a hora local
+// é a hora UTC menos 3 (com wrap pro dia anterior perto da meia-noite).
+export function horaAtualBrasil(): number {
+  return (new Date().getUTCHours() + 24 - 3) % 24;
+}
+
+// Um arranjo pontual que já passou (ou é hoje depois das 20h) e ainda tá
+// ativo precisa ser finalizado pelo dirigente — ver "Finalize a
+// designação" em Casa a casa.
+export function precisaFinalizar(
+  a: { data?: string | null } | null | undefined,
+  hojeIso: string
+): boolean {
+  if (!a?.data) return false;
+  if (a.data < hojeIso) return true;
+  if (a.data === hojeIso && horaAtualBrasil() >= 20) return true;
+  return false;
+}
+
 export function semanaAtual() {
   const hoje = new Date();
   hoje.setHours(12, 0, 0, 0);
