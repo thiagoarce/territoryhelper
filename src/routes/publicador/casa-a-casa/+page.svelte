@@ -12,9 +12,18 @@
   interface ArranjoQueDirijo {
     id: number;
     nome: string;
+    data: string;
     quadras_ids: string[];
     cartas_locais_ids: number[];
     interessados: string[];
+    quadrasGeo: QuadraGeo[];
+  }
+  interface PendenteFinalizar {
+    id: number;
+    nome: string;
+    data: string;
+    quadras_ids: string[];
+    cartas_locais_ids: number[];
     quadrasGeo: QuadraGeo[];
   }
   interface MinhaParte {
@@ -37,7 +46,9 @@
 
   let { data }: {
     data: {
-      arranjosQueDirijo: ArranjoQueDirijo[];
+      arranjoQueDirijo: ArranjoQueDirijo | null;
+      outrosArranjosQueDirijo: ArranjoQueDirijo[];
+      pendentesFinalizar: PendenteFinalizar[];
       minhasPartes: MinhaParte[];
       partesDosMeusArranjos: ParteLinha[];
       publicadoresParaRepartir: { id: string; nome: string; role: string }[];
@@ -51,9 +62,36 @@
     window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id);
   }
 
+  function fmtDia(iso: string | null): string {
+    if (!iso) return '';
+    const hoje = new Date().toISOString().substring(0, 10);
+    if (iso === hoje) return 'hoje';
+    return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+  }
+
   const semNada = $derived(
-    data.arranjosQueDirijo.length === 0 && data.minhasPartes.length === 0 && data.territorioPessoal.length === 0
+    !data.arranjoQueDirijo && data.minhasPartes.length === 0 && data.territorioPessoal.length === 0
   );
+
+  // Modal "todas as designações" — o featured (arranjoQueDirijo) + os outros,
+  // pra não encher a tela mas ainda dar acesso ao detalhe completo.
+  let sheetTodas = $state(false);
+  const todosArranjosQueDirijo = $derived(
+    data.arranjoQueDirijo ? [data.arranjoQueDirijo, ...data.outrosArranjosQueDirijo] : data.outrosArranjosQueDirijo
+  );
+
+  let finalizando = $state<number | null>(null);
+  async function finalizarDesignacao(a: PendenteFinalizar) {
+    if (!confirm(`Finalizar "${a.nome}"? Quadras não concluídas ficam livres pra outro arranjo e as partes dessa designação são encerradas.`)) return;
+    finalizando = a.id;
+    const fd = new FormData();
+    fd.append('arranjo_id', String(a.id));
+    const res = await fetch('?/finalizarArranjo', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    finalizando = null;
+    if (parsed.type === 'success') { toast.success('Designação finalizada'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
 
   const partesPorArranjo = $derived.by(() => {
     const m: Record<number, ParteLinha[]> = {};
@@ -156,10 +194,47 @@
     </Card>
   {/if}
 
-  {#each data.arranjosQueDirijo as a (a.id)}
+  {#if data.pendentesFinalizar.length > 0}
+    <div class="rounded-xl border-2 border-red-400 bg-red-50 p-3">
+      <h2 class="text-xs uppercase tracking-wider font-bold text-red-900 mb-2 flex items-center gap-2"><Icon nome="alert" size={14} /> Finalize a designação</h2>
+      {#each data.pendentesFinalizar as a (a.id)}
+        <div class="bg-white rounded-lg p-3 mb-1 last:mb-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-medium">{a.nome}</span>
+            <span class="text-xs text-red-700 font-medium">{fmtDia(a.data)}</span>
+          </div>
+          {#if a.quadrasGeo.length > 0}
+            <Card padding="sm" class="mt-1.5">
+              <AdminMapa quadras={a.quadrasGeo} altura={220} destacarIds={a.quadras_ids} onQuadraClick={abrirQuadra} />
+            </Card>
+          {/if}
+          <div class="flex flex-wrap gap-1.5 mt-1.5">
+            {#each a.quadras_ids as qid}
+              <a href="/publicador/quadra/{encodeURIComponent(qid)}" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-red-200 bg-red-100 text-red-900 hover:bg-red-200">{qid}</a>
+            {/each}
+            {#each a.cartas_locais_ids as lid}
+              <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
+            {/each}
+          </div>
+          <button type="button" disabled={finalizando === a.id} onclick={() => finalizarDesignacao(a)}
+            class="mt-2 w-full rounded-lg bg-red-600 text-white text-sm font-medium py-2 hover:bg-red-700 disabled:opacity-40"
+          >{finalizando === a.id ? 'Finalizando...' : 'Finalizar designação'}</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if data.arranjoQueDirijo}
+    {@const a = data.arranjoQueDirijo}
     {@const partesDoArranjo = partesPorArranjo[a.id] ?? []}
     <div class="rounded-xl border-2 border-primary-200 bg-primary-50/40 p-3">
-      <h2 class="text-xs uppercase tracking-wider font-bold text-primary-900 mb-2 flex items-center gap-2"><Icon nome="tent" size={14} /> Seu grupo — {a.nome}</h2>
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <h2 class="text-xs uppercase tracking-wider font-bold text-primary-900 flex items-center gap-2"><Icon nome="tent" size={14} /> Seu grupo — {a.nome}</h2>
+        {#if data.outrosArranjosQueDirijo.length > 0}
+          <button type="button" onclick={() => (sheetTodas = true)} class="text-[11px] font-medium text-primary-700 hover:underline shrink-0">+{data.outrosArranjosQueDirijo.length} outra(s)</button>
+        {/if}
+      </div>
+      <div class="text-xs text-primary-700 font-medium mb-1.5">{fmtDia(a.data)}</div>
       {#if a.quadrasGeo.length > 0}
         <Card padding="sm">
           <AdminMapa quadras={a.quadrasGeo} altura={300} destacarIds={a.quadras_ids} onQuadraClick={abrirQuadra} />
@@ -199,7 +274,7 @@
         <Button variant="primary" onclick={() => abrirRepartir(a)} class="w-full mt-2"><Icon nome="scissors" size={14} /> Repartir território</Button>
       {/if}
     </div>
-  {/each}
+  {/if}
 
   {#each data.minhasPartes as p (p.id)}
     <div class="rounded-xl border-2 border-amber-300 bg-amber-50/40 p-3">
@@ -242,6 +317,28 @@
     <p class="text-xs text-primary-700 mt-0.5">Busca por endereço, GPS de proximidade e designar cartas →</p>
   </a>
 </div>
+
+<!-- Modal "todas as designações" — detalhe completo, o card acima já mostra só o próximo -->
+<BottomSheet bind:open={sheetTodas} title="Suas designações de grupo">
+  <div class="space-y-2">
+    {#each todosArranjosQueDirijo as a (a.id)}
+      <div class="rounded-lg border border-slate-200 p-3">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-medium text-sm">{a.nome}</span>
+          <span class="text-xs text-primary-700 font-medium">{fmtDia(a.data)}</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-1.5">
+          {#each a.quadras_ids as qid}
+            <span class="inline-flex items-center rounded-lg px-2 py-1 text-xs font-mono border border-primary-200 bg-primary-50 text-primary-900">{qid}</span>
+          {/each}
+          {#each a.cartas_locais_ids as lid}
+            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200"><Icon nome="mail" size={14} /> #{lid}</span>
+          {/each}
+        </div>
+      </div>
+    {/each}
+  </div>
+</BottomSheet>
 
 <!-- Sheet repartir: subconjunto do território → 1+ publicadores (mesma parte) -->
 <BottomSheet bind:open={sheetRepartir} title="Repartir território">

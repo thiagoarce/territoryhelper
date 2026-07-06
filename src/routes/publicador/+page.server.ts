@@ -2,7 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, calcularCoberturaPorQuadra } from '$lib/server/queries';
 import { statusCampanha, type StatusCampanha } from '$lib/campanhas';
-import { arranjoAindaVale } from '$lib/arranjos';
+import { arranjoAindaVale, precisaFinalizar } from '$lib/arranjos';
 
 export interface CampanhaAtiva {
   id: number;
@@ -54,12 +54,6 @@ export interface ArranjoPendenteFinalizar {
   data: string;
   quadras_ids: string[];
   cartas_locais_ids: number[];
-}
-
-// Servidor roda em UTC (Cloudflare) — Brasil é UTC-3, então a hora local
-// é a hora UTC menos 3 (com wrap pro dia anterior perto da meia-noite).
-function horaAtualBrasil(): number {
-  return (new Date().getUTCHours() + 24 - 3) % 24;
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -136,15 +130,10 @@ export const load: PageServerLoad = async ({ locals }) => {
   const dirijoValidos = (dirijoRes.data ?? []).filter((a: any) => arranjoAindaVale(a, ontem));
 
   // Arranjos que dirijo cujo dia já passou (ou é hoje e já são 20h+) e
-  // ainda estão ativos — precisam ser finalizados (concluir quadras que
-  // sobraram + liberar o que não foi feito + encerrar as partes).
+  // ainda estão ativos — a home só AVISA (a ação "Finalizar designação"
+  // mora em Casa a casa, junto do resto das ações de dirigente).
   const pendentesFinalizar: ArranjoPendenteFinalizar[] = ((dirijoRes.data ?? []) as any[])
-    .filter((a) => {
-      if (!a.data) return false;
-      if (a.data < hoje) return true;
-      if (a.data === hoje && horaAtualBrasil() >= 20) return true;
-      return false;
-    })
+    .filter((a) => precisaFinalizar(a, hoje))
     .map((a) => ({
       id: a.id,
       nome: a.nome ?? 'Arranjo',
@@ -228,17 +217,23 @@ export const load: PageServerLoad = async ({ locals }) => {
     locais_ids: p.locais_ids as number[]
   }));
 
-  // Arranjos que eu dirijo — card "Você dirige" com o território completo
-  const arranjosQueDirijo = dirijoValidos.map((a: any) => ({
-    id: a.id,
-    nome: a.nome ?? 'Arranjo',
-    data: a.data as string,
-    hora_inicio: a.hora_inicio as string | null,
-    local_endereco: a.local_endereco as string | null,
-    quadras_ids: (a.quadras_ids ?? []) as string[],
-    cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
-    tce_id: a.tce_id as string | null
-  }));
+  // Arranjos que eu dirijo — card "Você dirige" mostra só o PRÓXIMO (evita
+  // encher a home); os demais entram num indicativo "+N outras" com modal.
+  const arranjosQueDirijoOrdenados = dirijoValidos
+    .slice()
+    .sort((a: any, b: any) => (a.data ?? '').localeCompare(b.data ?? ''))
+    .map((a: any) => ({
+      id: a.id,
+      nome: a.nome ?? 'Arranjo',
+      data: a.data as string,
+      hora_inicio: a.hora_inicio as string | null,
+      local_endereco: a.local_endereco as string | null,
+      quadras_ids: (a.quadras_ids ?? []) as string[],
+      cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
+      tce_id: a.tce_id as string | null
+    }));
+  const arranjoQueDirijo = arranjosQueDirijoOrdenados[0] ?? null;
+  const outrosArranjosQueDirijo = arranjosQueDirijoOrdenados.slice(1);
 
   // Designações de cartas (tipo='cartas') — resolve prédios associados via
   // designacao_locais + tabela locais pra mostrar chip clicável no home
@@ -317,7 +312,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     tces,
     campanhaAtiva,
     minhasPartes,
-    arranjosQueDirijo,
+    arranjoQueDirijo,
+    outrosArranjosQueDirijo,
     pendentesFinalizar,
     cartasDesignadas,
     meusAgendamentosTp,
@@ -348,35 +344,6 @@ export const actions: Actions = {
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, token: data.token };
-  },
-
-  // Finaliza a designação de um arranjo que já passou: marca ativo=false
-  // e apaga as partes daquele arranjo (encerra o acesso de quem tinha
-  // parte lá). Quadras não concluídas ficam livres pra outro arranjo —
-  // a trava de exclusividade (quadrasEmArranjoFuturo) já para de
-  // considerar arranjo com data passada, então ativo=false aqui é mais
-  // sobre fechar o registro do que sobre "liberar" de fato.
-  finalizarArranjo: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin' });
-    }
-    const fd = await request.formData();
-    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
-    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
-
-    const { data: arr, error: errA } = await locals.supabase
-      .from('arranjos').select('id, dirigente_id').eq('id', arranjoId).single();
-    if (errA || !arr) return fail(404, { erro: 'Arranjo não encontrado' });
-    if (locals.profile?.role !== 'admin' && arr.dirigente_id !== locals.user.id) {
-      return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
-    }
-
-    const { error: errUp } = await locals.supabase.from('arranjos').update({ ativo: false }).eq('id', arranjoId);
-    if (errUp) return fail(400, { erro: errUp.message });
-    await locals.supabase.from('arranjo_partes').delete().eq('arranjo_id', arranjoId);
-
-    return { ok: true, msg: 'Designação finalizada' };
   },
 
   // Pedido de publicação avulso (P-A) — catálogo OU descrição livre.

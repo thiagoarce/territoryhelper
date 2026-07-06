@@ -2,11 +2,12 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { listarDesignacoes, listarQuadrasComGeo, listarPublicadores, type QuadraGeo } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
-import { arranjoAindaVale } from '$lib/arranjos';
+import { arranjoAindaVale, precisaFinalizar } from '$lib/arranjos';
 
 export interface ArranjoQueDirijo {
   id: number;
   nome: string;
+  data: string;
   quadras_ids: string[];
   cartas_locais_ids: number[];
   interessados: string[];
@@ -31,13 +32,17 @@ export interface MinhaParte {
 }
 
 // Navegação: aba dedicada de "casa em casa" — mapa com GPS pra identificar
-// qual quadra é qual dentro do território designado agora. Três seções
-// possíveis: (1) "seu grupo" — mapa do arranjo INTEIRO que você dirige +
-// repartir território (migrou de /publicador/arranjo pra cá — o botão de
-// repartir fica junto do mapa que ele edita); (2) "sua parte" — mapa só
-// do subconjunto que te cabe (dupla/trio); (3) território pessoal.
+// qual quadra é qual dentro do território designado agora. Seções
+// possíveis: (0) "finalize a designação" — arranjos que dirijo cujo dia
+// já passou e ainda não fechei (toda AÇÃO do dirigente mora aqui, home
+// só avisa e linka); (1) "seu grupo" — mapa do PRÓXIMO arranjo que
+// dirijo (só o mais próximo, pra não encher a lista — os demais entram
+// num indicativo "+N outras" com modal) + repartir território; (2) "sua
+// parte" — mapa só do subconjunto que te cabe; (3) território pessoal.
 export const load: PageServerLoad = async ({ locals }) => {
+  const hoje = new Date().toISOString().substring(0, 10);
   const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+  const ha60dias = new Date(Date.now() - 60 * 86400000).toISOString().substring(0, 10);
   const podeCoordenar = ['dirigente', 'admin'].includes(locals.profile?.role ?? '');
 
   const [designacoes, quadras, partesMinhasRes, dirijoRes, profRes] = await Promise.all([
@@ -48,25 +53,51 @@ export const load: PageServerLoad = async ({ locals }) => {
       .select('id, arranjo_id, quadras_ids, locais_ids, publicadores, arranjos!inner(nome, ativo)')
       .contains('publicadores', [locals.user!.id])
       .eq('arranjos.ativo', true),
+    // Sem filtro de data aqui — pego 60 dias pra trás pra achar pendências
+    // de finalizar + futuros, e filtro os dois casos em JS abaixo.
     locals.supabase
       .from('arranjos')
       .select('id, nome, quadras_ids, cartas_locais_ids, interessados, recorrente, data, data_fim')
       .eq('ativo', true)
-      .eq('dirigente_id', locals.user!.id),
+      .eq('dirigente_id', locals.user!.id)
+      .or(`data.gte.${ha60dias},data.is.null`)
+      .limit(50),
     locals.supabase.from('profiles').select('id, nome')
   ]);
 
   const nomesPorId = new Map((profRes.data ?? []).map((p: any) => [p.id, p.nome as string]));
   const quadrasMap = new Map(quadras.map((q) => [q.id, q]));
+  const quadrasPorArranjo = (ids: string[]): QuadraGeo[] => ids.map((id) => quadrasMap.get(id)).filter(Boolean) as QuadraGeo[];
 
-  const arranjosQueDirijo: ArranjoQueDirijo[] = ((dirijoRes.data ?? []) as any[])
+  const brutos = (dirijoRes.data ?? []) as any[];
+
+  const arranjosQueDirijoOrdenados: ArranjoQueDirijo[] = brutos
     .filter((a) => arranjoAindaVale(a, ontem))
+    .sort((a, b) => (a.data ?? '').localeCompare(b.data ?? ''))
     .map((a) => ({
       id: a.id,
       nome: a.nome ?? 'Arranjo',
+      data: a.data as string,
       quadras_ids: (a.quadras_ids ?? []) as string[],
       cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
       interessados: (a.interessados ?? []) as string[]
+    }));
+  // Só o próximo aparece com mapa+repartir — o resto vira indicativo (evita
+  // encher a tela quando o dirigente tem várias saídas na agenda).
+  const arranjoQueDirijo = arranjosQueDirijoOrdenados[0] ?? null;
+  const outrosArranjosQueDirijo = arranjosQueDirijoOrdenados.slice(1);
+
+  // Arranjos que dirijo cujo dia já passou (ou é hoje 20h+) e ainda estão
+  // ativos — "Finalize a designação" (toda ação do dirigente mora aqui).
+  const pendentesFinalizar = brutos
+    .filter((a) => precisaFinalizar(a, hoje))
+    .map((a) => ({
+      id: a.id,
+      nome: a.nome ?? 'Arranjo',
+      data: a.data as string,
+      quadras_ids: (a.quadras_ids ?? []) as string[],
+      cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
+      quadrasGeo: quadrasPorArranjo((a.quadras_ids ?? []) as string[])
     }));
 
   const minhasPartes: MinhaParte[] = ((partesMinhasRes.data ?? []) as any[]).map((p) => ({
@@ -77,12 +108,12 @@ export const load: PageServerLoad = async ({ locals }) => {
     locais_ids: (p.locais_ids ?? []) as number[]
   }));
 
-  // Todas as partes JÁ CRIADAS dos arranjos que dirijo — pra lista "Partes
-  // criadas" + saber o que já foi repartido (evitar sobrepor sem avisar).
+  // Todas as partes JÁ CRIADAS dos arranjos que dirijo (válidos) — pra
+  // lista "Partes criadas" + saber o que já foi repartido.
   let partesDosMeusArranjos: ParteLinha[] = [];
   let publicadoresParaRepartir: { id: string; nome: string; role: string }[] = [];
-  if (podeCoordenar && arranjosQueDirijo.length > 0) {
-    const idsArranjos = arranjosQueDirijo.map((a) => a.id);
+  if (podeCoordenar && arranjosQueDirijoOrdenados.length > 0) {
+    const idsArranjos = arranjosQueDirijoOrdenados.map((a) => a.id);
     const [{ data: todasPartes }, pubs] = await Promise.all([
       locals.supabase
         .from('arranjo_partes')
@@ -91,7 +122,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         .order('criada_em'),
       listarPublicadores(locals.supabase)
     ]);
-    const nomePorArranjo = new Map(arranjosQueDirijo.map((a) => [a.id, a.nome]));
+    const nomePorArranjo = new Map(arranjosQueDirijoOrdenados.map((a) => [a.id, a.nome]));
     partesDosMeusArranjos = ((todasPartes ?? []) as any[]).map((p) => ({
       id: p.id,
       arranjo_id: p.arranjo_id,
@@ -105,14 +136,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
 
   // Território pessoal (designação individual, não é grupo) — pra 3ª seção.
-  const minhasComoLider = designacoes.filter((d) => d.publicador_id === locals.user!.id && d.status === 'aberta' && d.tipo !== 'cartas');
+  const minhasComoLider = designacoes.filter((d: any) => d.publicador_id === locals.user!.id && d.status === 'aberta' && d.tipo !== 'cartas');
   const idsPessoais = [...new Set(minhasComoLider.flatMap((d) => d.quadras_ids))];
   const territorioPessoal = idsPessoais.map((id) => quadrasMap.get(id)).filter(Boolean) as QuadraGeo[];
 
-  const quadrasPorArranjo = (ids: string[]): QuadraGeo[] => ids.map((id) => quadrasMap.get(id)).filter(Boolean) as QuadraGeo[];
-
   return {
-    arranjosQueDirijo: arranjosQueDirijo.map((a) => ({ ...a, quadrasGeo: quadrasPorArranjo(a.quadras_ids) })),
+    arranjoQueDirijo: arranjoQueDirijo ? { ...arranjoQueDirijo, quadrasGeo: quadrasPorArranjo(arranjoQueDirijo.quadras_ids) } : null,
+    outrosArranjosQueDirijo,
+    pendentesFinalizar,
     minhasPartes: minhasPartes.map((p) => ({ ...p, quadrasGeo: quadrasPorArranjo(p.quadras_ids) })),
     partesDosMeusArranjos,
     publicadoresParaRepartir,
@@ -223,5 +254,32 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('arranjo_partes').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Parte removida' };
+  },
+
+  // Finaliza a designação de um arranjo que já passou: marca ativo=false
+  // e apaga as partes daquele arranjo (encerra o acesso de quem tinha
+  // parte lá). Toda ação do dirigente mora aqui em Casa a casa — home só
+  // avisa e linka pra cá.
+  finalizarArranjo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+
+    const { data: arr, error: errA } = await locals.supabase
+      .from('arranjos').select('id, dirigente_id').eq('id', arranjoId).single();
+    if (errA || !arr) return fail(404, { erro: 'Arranjo não encontrado' });
+    if (locals.profile?.role !== 'admin' && arr.dirigente_id !== locals.user.id) {
+      return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
+    }
+
+    const { error: errUp } = await locals.supabase.from('arranjos').update({ ativo: false }).eq('id', arranjoId);
+    if (errUp) return fail(400, { erro: errUp.message });
+    await locals.supabase.from('arranjo_partes').delete().eq('arranjo_id', arranjoId);
+
+    return { ok: true, msg: 'Designação finalizada' };
   }
 };
