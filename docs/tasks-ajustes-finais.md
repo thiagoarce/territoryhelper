@@ -151,13 +151,13 @@
 
 ## Onda 8 — TP mensal (maior; 4 fases)
 
-- [ ] 🟡 **T26 (A22-f1)** Migrations do modelo (`tp_meses`,
+- [x] 🟡 **T26 (A22-f1)** ✅ feita pelo Fable (migration 058) Migrations do modelo (`tp_meses`,
       `tp_disponibilidade_mes`, `status` em participantes, `origem` em
       agendamentos) + controle de fase do mês no /admin/tp +
       disponibilidade mensal por mini-calendário no /publicador/tp
       (substitui semanal+confirmação; pré-preenche do padrão antigo).
 
-- [ ] 🔴 **T27 (A22-f2)** Grade do publicador (adaptar TpGradeSemana:
+- [x] 🔴 **T27 (A22-f2)** ✅ feita pelo Fable Grade do publicador (adaptar TpGradeSemana:
       retrato = por dia, paisagem/desktop = semana/mês) com turnos
       designados + Aceitar/Recusar + notificações.
 

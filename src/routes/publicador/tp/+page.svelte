@@ -9,6 +9,7 @@
   import { DIAS_SEMANA } from '$lib/arranjos';
   import { hojeIsoLocal } from '$lib/utils/data';
   import { ocorrenciasAgendamentoEntre } from '$lib/tp-agendamentos';
+  import TpGradeSemana from '$lib/components/TpGradeSemana.svelte';
   import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import type {
     TpCarrinhoLite, TpPontoLite, TpParticipanteLinha, TpPecaCatalogoLite,
@@ -30,7 +31,9 @@
       tpPreferencias: { transporta_carrinho: boolean; notas: string | null };
       tpDisponibilidade: TpDisponibilidadeLinha[];
       mesAtual: string;
-      disponibilidadeConfirmada: boolean;
+      tpMeses: { mes: string; fase: string }[];
+      mesesAlvo: string[];
+      dispMes: { id: number; mes: string; dia: string; hora_inicio: string; hora_fim: string }[];
     };
   } = $props();
 
@@ -107,36 +110,6 @@
     return m;
   });
 
-  let acaoEmCurso = $state<string | null>(null);
-  function isBusy(key: string): boolean {
-    return acaoEmCurso === key;
-  }
-
-  async function inscreverAgendamento(agendamentoId: number, dataOc: string) {
-    const key = `agendamento:${agendamentoId}:${dataOc}`;
-    acaoEmCurso = key;
-    const fd = new FormData();
-    fd.append('agendamento_id', String(agendamentoId));
-    fd.append('data', dataOc);
-    const res = await fetch('?/inscreverAgendamento', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
-    acaoEmCurso = null;
-    if (parsed.type === 'success') { toast.success('Inscrito'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
-
-  async function sairAgendamento(agendamentoId: number, dataOc: string) {
-    const key = `agendamento:${agendamentoId}:${dataOc}`;
-    acaoEmCurso = key;
-    const fd = new FormData();
-    fd.append('agendamento_id', String(agendamentoId));
-    fd.append('data', dataOc);
-    const res = await fetch('?/sairAgendamento', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
-    acaoEmCurso = null;
-    if (parsed.type === 'success') { toast.success('Saiu do agendamento'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
 
   // === Sheet relatório de fim de agendamento (TP-D) ===
   interface ItemChecklist {
@@ -294,7 +267,6 @@
   let salvandoPreferencias = $state(false);
   let adicionandoDisponibilidade = $state(false);
   let removendoId = $state<number | null>(null);
-  let confirmandoMes = $state(false);
   let novoDia = $state(1);
   let novaHoraInicio = $state('');
   let novaHoraFim = $state('');
@@ -310,19 +282,182 @@
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
 
-  async function confirmarDisponibilidadeMes() {
-    confirmandoMes = true;
-    const res = await fetch('?/confirmarDisponibilidadeMes', { method: 'POST', body: new FormData() });
-    const parsed = deserialize(await res.text()) as any;
-    confirmandoMes = false;
-    if (parsed.type === 'success') { toast.success('Disponibilidade confirmada'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
 
   const nomeMesAtual = $derived(
     new Date(data.mesAtual + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
   );
+
+  function fmtMesRotulo(mes: string): string {
+    return new Date(mes + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  }
+  const fasePorMes = $derived(new Map(data.tpMeses.map((m) => [m.mes, m.fase])));
+  const mesesEmDisponibilidade = $derived(data.mesesAlvo.filter((m) => fasePorMes.get(m) === 'disponibilidade'));
+
+  // ── T26: editor de disponibilidade DO MÊS (mini-calendário) ─────────
+  const FAIXAS: [string, string][] = [
+    ['08:00', '10:00'], ['10:00', '12:00'], ['14:00', '16:00'], ['16:00', '18:00'], ['18:00', '20:00']
+  ];
+  let sheetDispMes = $state(false);
+  let mesDisp = $state<string>('');
+  let diaDispSel = $state<string | null>(null);
+  let janelasDia = $state<{ inicio: string; fim: string }[]>([]);
+  let salvandoDia = $state(false);
+  let preenchendoPadrao = $state(false);
+  let horaCustomIni = $state('');
+  let horaCustomFim = $state('');
+
+  const janelasPorDia = $derived.by(() => {
+    const m: Record<string, { inicio: string; fim: string }[]> = {};
+    for (const d of data.dispMes) {
+      if (d.mes !== mesDisp) continue;
+      (m[d.dia] ??= []).push({ inicio: d.hora_inicio.substring(0, 5), fim: d.hora_fim.substring(0, 5) });
+    }
+    return m;
+  });
+  const mesDispVazio = $derived(data.dispMes.filter((d) => d.mes === mesDisp).length === 0);
+
+  const celulasDispMes = $derived.by(() => {
+    if (!mesDisp) return [] as { iso: string; dia: number; noMes: boolean; qtd: number }[];
+    const [y, m] = mesDisp.split('-').map(Number);
+    const primeiro = new Date(y, m - 1, 1);
+    const inicioGrid = new Date(primeiro);
+    inicioGrid.setDate(primeiro.getDate() - primeiro.getDay());
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(inicioGrid);
+      d.setDate(inicioGrid.getDate() + i);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { iso, dia: d.getDate(), noMes: d.getMonth() === m - 1, qtd: (janelasPorDia[iso] ?? []).length };
+    });
+  });
+
+  function abrirDispMes(mes: string) {
+    mesDisp = mes;
+    diaDispSel = null;
+    sheetDispMes = true;
+  }
+  function abrirDiaDisp(iso: string) {
+    diaDispSel = iso;
+    janelasDia = (janelasPorDia[iso] ?? []).map((j) => ({ ...j }));
+    horaCustomIni = '';
+    horaCustomFim = '';
+  }
+  function temJanela(ini: string, fim: string): boolean {
+    return janelasDia.some((j) => j.inicio === ini && j.fim === fim);
+  }
+  function toggleFaixa(ini: string, fim: string) {
+    if (temJanela(ini, fim)) janelasDia = janelasDia.filter((j) => !(j.inicio === ini && j.fim === fim));
+    else janelasDia = [...janelasDia, { inicio: ini, fim: fim }].sort((a, b) => a.inicio.localeCompare(b.inicio));
+  }
+  function addJanelaCustom() {
+    if (!horaCustomIni || !horaCustomFim || horaCustomFim <= horaCustomIni) {
+      toast.error('Horário inválido');
+      return;
+    }
+    if (!temJanela(horaCustomIni, horaCustomFim)) {
+      janelasDia = [...janelasDia, { inicio: horaCustomIni, fim: horaCustomFim }].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    }
+    horaCustomIni = '';
+    horaCustomFim = '';
+  }
+  async function salvarDiaDisp() {
+    if (!diaDispSel) return;
+    salvandoDia = true;
+    const fd = new FormData();
+    fd.append('mes', mesDisp);
+    fd.append('dia', diaDispSel);
+    fd.append('janelas_json', JSON.stringify(janelasDia));
+    const res = await fetch('?/salvarDisponibilidadeDia', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoDia = false;
+    if (parsed.type === 'success') { toast.success('Dia salvo'); diaDispSel = null; await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+  async function preencherPadrao() {
+    preenchendoPadrao = true;
+    const fd = new FormData();
+    fd.append('mes', mesDisp);
+    const res = await fetch('?/preencherMesDoPadrao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    preenchendoPadrao = false;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Preenchido')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  // ── T27: grade da semana (leitura) + aceitar/recusar ─────────────────
+  let visao = $state<'grade' | 'lista'>('grade');
+  let larguraTela = $state(1024);
+  function segundaDaSemana(base: Date): Date {
+    const d = new Date(base);
+    d.setHours(12, 0, 0, 0);
+    const dow = d.getDay();
+    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+    return d;
+  }
+  let inicioSemana = $state(segundaDaSemana(new Date()));
+  let diaGradeSel = $state(hojeIsoLocal());
+  function isoDe(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const diasSemanaGrade = $derived(
+    Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(inicioSemana);
+      d.setDate(inicioSemana.getDate() + i);
+      return isoDe(d);
+    })
+  );
+  const diasGrade = $derived(larguraTela >= 640 ? diasSemanaGrade : [diaGradeSel]);
+  function mudarSemana(delta: number) {
+    const d = new Date(inicioSemana);
+    d.setDate(d.getDate() + delta * 7);
+    inicioSemana = d;
+    if (larguraTela < 640) diaGradeSel = isoDe(d);
+  }
+  const ocGrade = $derived(
+    ocorrenciasAgendamentoEntre(data.tpAgendamentos, data.tpExcecoes, diasSemanaGrade[0], diasSemanaGrade[6])
+  );
+  const participantesGrade = $derived.by(() => {
+    const m: Record<string, { nome: string }[]> = {};
+    for (const p of data.tpParticipantes) {
+      (m[p.agendamento_id + '|' + p.data] ??= []).push({ nome: data.nomesPorId[p.publicador_id] ?? '?' });
+    }
+    return m;
+  });
+
+  // Sheet de detalhe do turno (clique num card da grade)
+  let sheetTurno = $state(false);
+  let turnoSel = $state<(typeof ocGrade)[number] | null>(null);
+  let respondendo = $state(false);
+  function abrirTurno(oc: (typeof ocGrade)[number]) {
+    turnoSel = oc;
+    sheetTurno = true;
+  }
+  const meuStatusTurno = $derived.by(() => {
+    if (!turnoSel) return null;
+    const p = data.tpParticipantes.find(
+      (x) => x.agendamento_id === turnoSel!.agendamento_id && x.data === turnoSel!.data && x.publicador_id === data.minhaId
+    );
+    return p?.status ?? null;
+  });
+  async function responder(oc: { agendamento_id: number; data: string }, resposta: 'aceito' | 'recusado') {
+    respondendo = true;
+    const fd = new FormData();
+    fd.append('agendamento_id', String(oc.agendamento_id));
+    fd.append('data', oc.data);
+    fd.append('resposta', resposta);
+    const res = await fetch('?/responderDesignacao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    respondendo = false;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Ok')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+  const STATUS_DESIGNACAO: Record<string, { rotulo: string; cls: string }> = {
+    designado: { rotulo: 'aguardando resposta', cls: 'bg-amber-100 text-amber-800' },
+    aceito: { rotulo: 'aceito', cls: 'bg-green-100 text-green-700' },
+    recusado: { rotulo: 'recusou', cls: 'bg-slate-200 text-slate-500' }
+  };
 </script>
+
+<svelte:window bind:innerWidth={larguraTela} />
 
 <div class="p-4 space-y-3">
   <div>
@@ -330,28 +465,80 @@
     <p class="text-sm text-slate-500">Agenda mensal — turnos, ponto e sua disponibilidade</p>
   </div>
 
-  <button
-    type="button"
-    onclick={() => (sheetDisponibilidade = true)}
-    class="w-full flex items-center justify-between gap-2 rounded-xl border-2 p-3 text-left transition-colors {data.disponibilidadeConfirmada ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-amber-400 bg-amber-50 hover:bg-amber-100'}"
-  >
-    <div>
-      <div class="text-sm font-semibold {data.disponibilidadeConfirmada ? 'text-green-900' : 'text-amber-900'}">
-        {#if data.disponibilidadeConfirmada}
-          <Icon nome="check" size={14} /> Disponibilidade de <span class="capitalize">{nomeMesAtual}</span> confirmada
-        {:else}
-          <Icon nome="alert" size={14} /> Confirmar disponibilidade de <span class="capitalize">{nomeMesAtual}</span>
-        {/if}
-      </div>
-      <div class="text-xs {data.disponibilidadeConfirmada ? 'text-green-700' : 'text-amber-700'} mt-0.5">Toque pra revisar seus horários</div>
-    </div>
-    <Icon nome="chevron-right" size={16} class={data.disponibilidadeConfirmada ? 'text-green-700' : 'text-amber-700'} />
+  {#if mesesEmDisponibilidade.length > 0}
+    {#each mesesEmDisponibilidade as mes (mes)}
+      {@const qtdDias = data.dispMes.filter((d) => d.mes === mes).length}
+      <button
+        type="button"
+        onclick={() => abrirDispMes(mes)}
+        class="w-full flex items-center justify-between gap-2 rounded-xl border-2 p-3 text-left transition-colors {qtdDias > 0 ? 'border-green-300 bg-green-50 hover:bg-green-100' : 'border-amber-400 bg-amber-50 hover:bg-amber-100'}"
+      >
+        <div>
+          <div class="text-sm font-semibold {qtdDias > 0 ? 'text-green-900' : 'text-amber-900'}">
+            {#if qtdDias > 0}
+              <Icon nome="check" size={14} /> Disponível em <span class="capitalize">{fmtMesRotulo(mes)}</span> — {qtdDias} janela(s)
+            {:else}
+              <Icon nome="alert" size={14} /> Marque seus dias de <span class="capitalize">{fmtMesRotulo(mes)}</span>
+            {/if}
+          </div>
+          <div class="text-xs {qtdDias > 0 ? 'text-green-700' : 'text-amber-700'} mt-0.5">Toque pra escolher dias e horários no calendário</div>
+        </div>
+        <Icon nome="chevron-right" size={16} class={qtdDias > 0 ? 'text-green-700' : 'text-amber-700'} />
+      </button>
+    {/each}
+  {/if}
+  <button type="button" onclick={() => (sheetDisponibilidade = true)} class="text-xs text-slate-500 hover:underline">
+    <Icon nome="clock" size={12} /> Meu padrão semanal (pré-preenche os meses)
   </button>
 
   <button type="button" onclick={abrirSugerirPonto} class="text-xs text-primary-700 hover:underline">
     <Icon nome="map-pin" size={12} /> Sugerir ponto de testemunho público
   </button>
 
+  <div class="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+    {#each [['grade', 'Grade'], ['lista', 'Lista']] as [v, rotulo]}
+      <button type="button" onclick={() => (visao = v as any)}
+        class="px-3 py-1 text-xs font-medium rounded transition-colors"
+        class:bg-white={visao === v} class:shadow-sm={visao === v}
+        class:text-slate-900={visao === v} class:text-slate-500={visao !== v}
+      >{rotulo}</button>
+    {/each}
+  </div>
+
+  {#if visao === 'grade'}
+    <!-- T27: grade da semana (desktop/paisagem = 7 dias; retrato = 1 dia) -->
+    <div class="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+      <div class="flex items-center justify-between">
+        <button type="button" onclick={() => mudarSemana(-1)} aria-label="Semana anterior" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 text-lg">‹</button>
+        <div class="text-sm font-semibold">
+          {new Date(diasSemanaGrade[0] + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+          — {new Date(diasSemanaGrade[6] + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+        </div>
+        <button type="button" onclick={() => mudarSemana(1)} aria-label="Próxima semana" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 text-lg">›</button>
+      </div>
+      {#if larguraTela < 640}
+        <div class="flex gap-1 overflow-x-auto pb-1">
+          {#each diasSemanaGrade as d (d)}
+            <button type="button" onclick={() => (diaGradeSel = d)}
+              class="shrink-0 px-2.5 py-1 rounded-lg text-xs border transition-colors"
+              class:bg-primary-600={diaGradeSel === d} class:text-white={diaGradeSel === d} class:border-primary-600={diaGradeSel === d}
+              class:border-slate-200={diaGradeSel !== d} class:text-slate-600={diaGradeSel !== d}
+            >{new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })}</button>
+          {/each}
+        </div>
+      {/if}
+      <TpGradeSemana
+        dias={diasGrade}
+        ocorrencias={ocGrade.filter((o) => diasGrade.includes(o.data))}
+        carrinhosPorId={data.tpCarrinhos}
+        pontos={data.tpPontos}
+        participantesPorOcorrencia={participantesGrade}
+        onEditar={abrirTurno}
+        readonly
+      />
+      <p class="text-[11px] text-slate-400">Toque num turno pra ver detalhes e responder à designação.</p>
+    </div>
+  {:else}
   <div class="rounded-xl border border-slate-200 bg-white p-3">
     <div class="flex items-center justify-between mb-2">
       <button type="button" onclick={() => mudarMes(-1)} aria-label="Mês anterior" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 text-lg">‹</button>
@@ -439,11 +626,16 @@
                     <div class="mt-1 text-xs text-slate-500">
                       {#if inscritos.length > 0}{inscritos.map((i) => i.nome).join(', ')}{:else}Ninguém inscrito ainda{/if}
                     </div>
-                    <div class="mt-2 flex flex-wrap gap-1.5">
+                    <div class="mt-2 flex flex-wrap items-center gap-1.5">
                       {#if souInscrito}
-                        <Button variant="secondary" size="sm" loading={isBusy(`agendamento:${oc.agendamento_id}:${oc.data}`)} onclick={() => sairAgendamento(oc.agendamento_id, oc.data)}>Sair do agendamento</Button>
-                      {:else}
-                        <Button variant="primary" size="sm" loading={isBusy(`agendamento:${oc.agendamento_id}:${oc.data}`)} onclick={() => inscreverAgendamento(oc.agendamento_id, oc.data)}><Icon nome="hand" size={12} /> Me inscrever</Button>
+                        {@const meu = data.tpParticipantes.find((x) => x.agendamento_id === oc.agendamento_id && x.data === oc.data && x.publicador_id === data.minhaId)}
+                        {#if meu}
+                          <span class="text-[10px] px-1.5 py-0.5 rounded-full {STATUS_DESIGNACAO[meu.status].cls}">{STATUS_DESIGNACAO[meu.status].rotulo}</span>
+                          {#if meu.status === 'designado' && oc.data >= hojeIso}
+                            <Button variant="primary" size="sm" loading={respondendo} onclick={() => responder(oc, 'aceito')}>Aceitar</Button>
+                            <Button variant="secondary" size="sm" loading={respondendo} onclick={() => responder(oc, 'recusado')}>Recusar</Button>
+                          {/if}
+                        {/if}
                       {/if}
                       {#if oc.data <= hojeIso && souInscrito && carrinho}
                         <Button variant="secondary" size="sm" onclick={() => abrirRelatorio(oc)}>
@@ -461,16 +653,13 @@
     </div>
     {/if}
   {/if}
+  {/if}
 
 </div>
 
 <!-- Sheet disponibilidade (movida de /perfil) — botão abre; confirmação mensal fica no topo -->
-<BottomSheet bind:open={sheetDisponibilidade} title="Sua disponibilidade">
-  <p class="text-xs text-slate-500 mb-3">Ajuda o admin a te escalar num horário que funciona pra você.</p>
-
-  <Button variant="primary" loading={confirmandoMes} onclick={confirmarDisponibilidadeMes} class="w-full mb-4">
-    <Icon nome="check" size={14} /> Confirmar disponibilidade de <span class="capitalize ml-1">{nomeMesAtual}</span>
-  </Button>
+<BottomSheet bind:open={sheetDisponibilidade} title="Padrão semanal">
+  <p class="text-xs text-slate-500 mb-3">Seu horário de costume — usado só pra PRÉ-PREENCHER o calendário de cada mês (o que vale é o que você marca no mês).</p>
 
   <div class="pb-4 mb-4 border-b border-slate-100">
     <form
@@ -502,7 +691,7 @@
   </div>
 
     <div>
-      <div class="text-sm font-medium mb-2">Horários que costumo estar disponível</div>
+      <div class="text-sm font-medium mb-2">Janelas do padrão</div>
       <div class="space-y-1.5 mb-3">
         {#each data.tpDisponibilidade as d (d.id)}
           <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-3 py-2">
@@ -557,6 +746,130 @@
         <Button variant="secondary" type="submit" loading={adicionandoDisponibilidade}><Icon nome="plus" size={14} /></Button>
       </form>
     </div>
+</BottomSheet>
+
+<!-- T26: calendário de disponibilidade do MÊS -->
+<BottomSheet bind:open={sheetDispMes} title="Disponível em {fmtMesRotulo(mesDisp)}">
+  {#if !diaDispSel}
+    <p class="text-xs text-slate-500 mb-2">Toque num dia pra marcar seus horários. Dias com janela ficam verdes.</p>
+    {#if mesDispVazio}
+      <Button variant="secondary" size="sm" loading={preenchendoPadrao} onclick={preencherPadrao} class="w-full mb-3">
+        <Icon nome="clock" size={14} /> Pré-preencher do padrão semanal
+      </Button>
+    {/if}
+    <div class="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-400 mb-1">
+      {#each DIAS_SEMANA as d}<div>{d}</div>{/each}
+    </div>
+    <div class="grid grid-cols-7 gap-1">
+      {#each celulasDispMes as c (c.iso)}
+        <button
+          type="button"
+          disabled={!c.noMes}
+          onclick={() => abrirDiaDisp(c.iso)}
+          class="aspect-square rounded-lg text-sm flex flex-col items-center justify-center gap-0.5 transition-colors disabled:opacity-0"
+          class:bg-green-100={c.qtd > 0}
+          class:text-green-900={c.qtd > 0}
+          class:bg-slate-50={c.qtd === 0}
+          class:text-slate-700={c.qtd === 0}
+          class:hover:bg-slate-100={c.qtd === 0}
+        >
+          <span>{c.dia}</span>
+          {#if c.qtd > 0}<span class="text-[9px] leading-none text-green-700">{c.qtd}</span>{/if}
+        </button>
+      {/each}
+    </div>
+  {:else}
+    <button type="button" onclick={() => (diaDispSel = null)} class="text-xs text-primary-700 hover:underline mb-2">← Voltar pro mês</button>
+    <div class="font-semibold mb-2 capitalize">{new Date(diaDispSel + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
+
+    <div class="text-xs text-slate-500 mb-1.5">Faixas rápidas (2h):</div>
+    <div class="flex flex-wrap gap-1.5 mb-3">
+      {#each FAIXAS as [ini, fim]}
+        <button type="button" onclick={() => toggleFaixa(ini, fim)}
+          class="text-xs px-2.5 py-1.5 rounded-full border transition-colors {temJanela(ini, fim) ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-50'}"
+        >{ini}–{fim}</button>
+      {/each}
+    </div>
+
+    <div class="text-xs text-slate-500 mb-1.5">Ou digite o horário exato:</div>
+    <div class="flex items-center gap-2 mb-3">
+      <input type="time" bind:value={horaCustomIni} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+      <span class="text-slate-400">—</span>
+      <input type="time" bind:value={horaCustomFim} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+      <Button variant="secondary" size="sm" onclick={addJanelaCustom}><Icon nome="plus" size={14} /></Button>
+    </div>
+
+    {#if janelasDia.length > 0}
+      <div class="space-y-1 mb-3">
+        {#each janelasDia as j (j.inicio + j.fim)}
+          <div class="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-1.5">
+            <span>{j.inicio}–{j.fim}</span>
+            <button type="button" onclick={() => (janelasDia = janelasDia.filter((x) => x !== j))} class="text-red-600"><Icon nome="trash" size={14} /></button>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="text-xs text-slate-400 mb-3">Nenhuma janela nesse dia (salvar assim limpa o dia).</p>
+    {/if}
+
+    <Button variant="primary" loading={salvandoDia} onclick={salvarDiaDisp} class="w-full">Salvar dia</Button>
+  {/if}
+</BottomSheet>
+
+<!-- T27: detalhe do turno (clique na grade) -->
+<BottomSheet bind:open={sheetTurno} title="Turno de testemunho público">
+  {#if turnoSel}
+    {@const carrinho = turnoSel.carrinho_id ? data.tpCarrinhos[turnoSel.carrinho_id] : null}
+    {@const ponto = turnoSel.ponto_id ? data.tpPontos[turnoSel.ponto_id] : null}
+    {@const parts = data.tpParticipantes.filter((x) => x.agendamento_id === turnoSel!.agendamento_id && x.data === turnoSel!.data)}
+    <div class="space-y-3">
+      <div>
+        <div class="font-semibold">{ponto?.nome ?? turnoSel.ponto_avulso ?? 'Testemunho público'}</div>
+        <div class="text-sm text-slate-600 mt-0.5">
+          {new Date(turnoSel.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })}
+          · {turnoSel.hora_inicio.substring(0, 5)}–{turnoSel.hora_fim.substring(0, 5)}
+          {#if carrinho}· {carrinho.nome}{/if}
+        </div>
+        {#if ponto?.endereco}<div class="text-xs text-slate-500 mt-0.5"><Icon nome="map-pin" size={12} /> {ponto.endereco}</div>{/if}
+      </div>
+
+      <div>
+        <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-1">Designados</div>
+        {#if parts.length === 0}
+          <p class="text-sm text-slate-400">Ninguém designado ainda.</p>
+        {:else}
+          <div class="space-y-1">
+            {#each parts as pt (pt.publicador_id)}
+              <div class="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-1.5">
+                <span>{data.nomesPorId[pt.publicador_id] ?? '?'}{pt.publicador_id === data.minhaId ? ' (você)' : ''}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full {STATUS_DESIGNACAO[pt.status].cls}">{STATUS_DESIGNACAO[pt.status].rotulo}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      {#if meuStatusTurno === 'designado' && turnoSel.data >= hojeIso}
+        <div class="flex gap-2">
+          <Button variant="primary" loading={respondendo} onclick={() => responder(turnoSel!, 'aceito')} class="flex-1"><Icon nome="check" size={14} /> Aceitar</Button>
+          <Button variant="secondary" loading={respondendo} onclick={() => responder(turnoSel!, 'recusado')} class="flex-1">Recusar</Button>
+        </div>
+      {:else if meuStatusTurno}
+        <p class="text-sm {meuStatusTurno === 'aceito' ? 'text-green-700' : 'text-slate-500'}">
+          Sua resposta: {STATUS_DESIGNACAO[meuStatusTurno].rotulo}.
+          {#if turnoSel.data >= hojeIso}
+            <button type="button" class="text-primary-700 hover:underline ml-1" onclick={() => responder(turnoSel!, meuStatusTurno === 'aceito' ? 'recusado' : 'aceito')}>mudar</button>
+          {/if}
+        </p>
+      {/if}
+
+      {#if turnoSel.data <= hojeIso && meuStatusTurno && turnoSel.carrinho_id}
+        <Button variant="secondary" size="sm" onclick={() => { sheetTurno = false; abrirRelatorio(turnoSel!); }} class="w-full">
+          <Icon nome="file-text" size={12} /> Relatório do turno
+        </Button>
+      {/if}
+    </div>
+  {/if}
 </BottomSheet>
 
 <!-- Sheet relatório de fim de agendamento (TP-D) -->

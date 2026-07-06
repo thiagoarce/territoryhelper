@@ -29,16 +29,20 @@
     participantesPorOcorrencia,
     onCriar,
     onEditar,
-    onAjustarHorario
+    onAjustarHorario,
+    readonly: somenteLeitura = false
   }: {
     dias: string[];
     ocorrencias: OcorrenciaAgendamento[];
     carrinhosPorId: Record<number, CarrinhoCor>;
     pontos: Record<number, PontoNome>;
     participantesPorOcorrencia: Record<string, ParticipanteResumo[]>;
-    onCriar: (dataIso: string, horaInicio: string, horaFim: string) => void;
+    onCriar?: (dataIso: string, horaInicio: string, horaFim: string) => void;
     onEditar: (oc: OcorrenciaAgendamento) => void;
-    onAjustarHorario: (oc: OcorrenciaAgendamento, horaInicio: string, horaFim: string) => void;
+    onAjustarHorario?: (oc: OcorrenciaAgendamento, horaInicio: string, horaFim: string) => void;
+    // Modo publicador: sem arrastar-pra-criar nem ajustar bordas — só
+    // clicar num card (onEditar) e, se onCriar existir, tocar num vazio.
+    readonly?: boolean;
   } = $props();
 
   const ALTURA_HORA = 52; // px por hora
@@ -124,12 +128,14 @@
   // Não decide ainda se é criar ou rolar a semana (mobile) — só registra o
   // ponto de partida. `mover` decide pelo eixo dominante do gesto.
   function iniciarCriacao(e: PointerEvent, dia: string, colIndex: number) {
+    if (somenteLeitura && !onCriar) return;
     if (e.button !== 0 && e.button !== undefined) return;
     const m = minutosDoY(colIndex, e.clientY);
     arrastando = { tipo: 'criar-pendente', dia, colIndex, startX: e.clientX, startY: e.clientY, origem: m };
   }
 
   function iniciarResize(e: PointerEvent, borda: 'ini' | 'fim', oc: OcorrenciaAgendamento, colIndex: number) {
+    if (somenteLeitura) return;
     e.stopPropagation();
     e.preventDefault();
     arrastando = {
@@ -185,13 +191,13 @@
     if (a.tipo === 'criar-pendente') {
       // Sem movimento (ou só um tap/click) — cria com duração padrão de 1h.
       const fim = Math.min(horaMax * 60, a.origem + 60);
-      onCriar(a.dia, minutosParaHora(a.origem), minutosParaHora(fim));
+      onCriar?.(a.dia, minutosParaHora(a.origem), minutosParaHora(fim));
       return;
     }
     if (a.tipo === 'criar') {
       let fim = a.fim;
       if (fim - a.inicio < PASSO_MIN) fim = Math.min(horaMax * 60, a.inicio + 60);
-      onCriar(a.dia, minutosParaHora(a.inicio), minutosParaHora(fim));
+      onCriar?.(a.dia, minutosParaHora(a.inicio), minutosParaHora(fim));
       return;
     }
     recemArrastado = true;
@@ -199,7 +205,7 @@
     const inicioOriginal = horaParaMinutos(a.oc.hora_inicio);
     const fimOriginal = horaParaMinutos(a.oc.hora_fim);
     if (a.inicio === inicioOriginal && a.fim === fimOriginal) return;
-    onAjustarHorario(a.oc, minutosParaHora(a.inicio), minutosParaHora(a.fim));
+    onAjustarHorario?.(a.oc, minutosParaHora(a.inicio), minutosParaHora(a.fim));
   }
 
   // Fim ANORMAL do gesto (pointercancel — ex: o navegador assumiu como
