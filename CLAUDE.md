@@ -17,8 +17,11 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   - `publicador/` — modo campo (**tanto publicador quanto dirigente**):
     home/carteira (território pessoal + ✉ cartas + pregação em grupo via
     `arranjo_partes` + TCEs), `quadra/[id]` (com "Marcar concluída" se
-    dirigente), `mapa` (mapa estratégico com POIs + criar parte — só
-    dirigente/admin), `casa-a-casa` (mapa com GPS pra publicador E
+    dirigente), `mapa` (visão geral READ-ONLY do território de toda a
+    congregação — só dirigente/admin, sem concluir/repartir/POI/PNG,
+    acessível por um ÍCONE no header, não é aba da bottom nav; concluir
+    geral e repartir geral são papel do admin/servo de território, não do
+    dirigente comum), `casa-a-casa` (mapa com GPS pra publicador E
     dirigente identificarem qual quadra é qual — 3 seções possíveis:
     "seu grupo" = mapa do arranjo INTEIRO que você dirige + botão
     **Repartir território** (migrou de `arranjo`, fica junto do mapa que
@@ -26,8 +29,11 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     subconjunto que te cabe; "território pessoal". Banner linkando pra
     Prédios; notificação de "parte criada" leva pra cá),
     `predios` (busca+GPS+criar pendente+designar),
-    `arranjo` (agenda + inscrição em TP; dirigente ganha Assumir —
-    Repartir mudou pra `casa-a-casa`),
+    `arranjo` (agenda só de pregação em grupo — inscrição de interesse,
+    dirigente ganha Assumir; TP e Repartir saíram daqui),
+    `tp` (agenda mensal de testemunho público — turnos/inscrição/
+    relatório/sugerir ponto + disponibilidade e confirmação mensal,
+    migrou de `arranjo` + `/perfil`),
     `campanha` (sem ícone na bottom nav — acessível pelo banner na home),
     `tce/[id]`
   - `dirigente/` — só um `+layout.server.ts` que redireciona pra
@@ -95,7 +101,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tp_carrinho_tipos` / `tp_pecas_catalogo` / `tp_carrinhos` | Equipamentos de TP (carrinho/display/quiosque/mesa) e catálogo de peças (física/literatura), com `cor` por equipamento pra "visão geral" |
 | `tp_pontos` | Pontos fixos de testemunho público (nome/endereço/GPS); ponto AVULSO (texto livre) não tem linha própria, mora em `tp_agendamentos.ponto_avulso`; publicador pode sugerir (`pendente=true, ativo=false`, TP-E) via `/publicador/arranjo`, admin aprova/recusa em `/admin/tp/pontos` |
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
-| `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/perfil`, consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
+| `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/publicador/tp` (migrou de `/perfil`), consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
+| `tp_disponibilidade_confirmacoes` | Planner é mensal — a disponibilidade fixa precisa ser CONFIRMADA a cada mês novo (1 linha por publicador+mês, `mes_referencia` 'YYYY-MM'); banner em `/publicador/tp` cobra a confirmação |
 | `publicacoes` | Catálogo real (transcrito do S-14-T/S-28-T oficial, migration 052) — `categoria` (biblia/livro/brochura/folheto/cartao_visita/revista/formulario/outro), `qtd_estoque` (snapshot MANUAL, o servo atualiza batendo com o relatório do JW Hub — não é movimento entrada/saída), `imagem_url` (capa, bucket `fotos-publicacoes`). Gerenciado em `/publicacoes` |
 | `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações", mostra estoque atual antes de pedir), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
 | `publicador_necessidade_regular` | "Normalmente preciso de N" — só revistas (Despertai/Sentinela, que chegam pela via normal, não por pedido especial); preferência informativa sem status, publicador ajusta em `/publicador` |
