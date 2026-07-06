@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
 import { carregarPredioDetalhado, selectAll } from '$lib/server/queries';
 
@@ -94,7 +95,7 @@ export const actions: Actions = {
     if (!(await podeEditarLocal(locals, localId))) return fail(403, { erro: 'Você não tem posse desse prédio' });
     const patch: Record<string, unknown> = {};
     if (campo === 'carta_entregue') {
-      patch.carta_entregue = u.carta_entregue ? null : new Date().toISOString().slice(0, 10);
+      patch.carta_entregue = u.carta_entregue ? null : hojeIsoBrasil();
     } else if (campo === 'desocupado') {
       patch.desocupado = !u.desocupado;
     } else {

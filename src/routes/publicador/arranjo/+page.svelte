@@ -88,8 +88,8 @@
 
 <div class="p-4 space-y-3">
   <div>
-    <h1 class="text-2xl font-bold">Arranjo</h1>
-    <p class="text-sm text-slate-500">Saídas em grupo — planeje com antecedência</p>
+    <h1 class="text-2xl font-bold">Agenda</h1>
+    <p class="text-sm text-slate-500">Saídas em grupo (arranjos) — planeje com antecedência</p>
   </div>
 
   <div class="flex items-center justify-between flex-wrap gap-2">
@@ -117,7 +117,7 @@
     <Card padding="md">
       <div class="text-center py-8">
         <div class="text-4xl mb-2 opacity-50"><Icon nome="calendar" size={40} class="mx-auto text-slate-300" /></div>
-        <div class="font-medium">Sem arranjos esta semana</div>
+        <div class="font-medium">Sem arranjos no período</div>
         <div class="text-sm text-slate-500">Quando uma saída for marcada, aparece aqui.</div>
       </div>
     </Card>

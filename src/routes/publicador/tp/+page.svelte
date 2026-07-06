@@ -7,6 +7,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { DIAS_SEMANA } from '$lib/arranjos';
+  import { hojeIsoLocal } from '$lib/utils/data';
   import { ocorrenciasAgendamentoEntre } from '$lib/tp-agendamentos';
   import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import type {
@@ -35,7 +36,7 @@
 
   // === Calendário mensal ===
   function isoDate(d: Date): string { return d.toISOString().substring(0, 10); }
-  const hojeIso = isoDate(new Date());
+  const hojeIso = hojeIsoLocal();
 
   let mesRef = $state(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   let diaSelecionado = $state<string | null>(null);

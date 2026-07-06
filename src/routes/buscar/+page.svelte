@@ -15,6 +15,10 @@
 
   let timer: any = null;
   $effect(() => {
+    // Lê as deps ANTES do setTimeout — dentro do callback o Svelte não
+    // rastreia e o effect nunca re-roda (busca ficava morta).
+    const _tick = q + '|' + lat + '|' + lng;
+    void _tick;
     clearTimeout(timer);
     timer = setTimeout(() => {
       const url = new URL(window.location.href);

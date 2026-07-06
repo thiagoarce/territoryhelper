@@ -1,10 +1,12 @@
 import { test, assertEq } from './harness';
 import { statusCampanha } from '../src/lib/campanhas';
+import { hojeIsoBrasil } from '../src/lib/utils/data';
 
+// Mesmo relógio da função sob teste (dia do Brasil, não UTC) — senão o
+// caso "início hoje" falha quando o teste roda entre 21h e 0h de Brasília
+// (ou num runner UTC de madrugada).
 function isoOffset(dias: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + dias);
-  return d.toISOString().slice(0, 10);
+  return hojeIsoBrasil(dias);
 }
 
 test('campanha inativa é sempre encerrada, mesmo com datas futuras', () => {

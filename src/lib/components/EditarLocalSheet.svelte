@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
@@ -46,19 +46,35 @@
     fd.append('foto', file);
     try {
       const res = await fetch('?/uploadFoto', { method: 'POST', body: fd });
-      const json = await res.json();
-      const parsed = json.data ? JSON.parse(json.data) : null;
-      if (json.status === 200 || parsed?.ok) {
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') {
         toast.success('Foto enviada');
         await invalidateAll();
       } else {
-        toast.error(parsed?.erro || 'Falhou enviar foto');
+        toast.error(String(parsed.data?.erro || 'Falhou enviar foto'));
       }
     } catch (e: any) {
       toast.error('Erro: ' + (e?.message || e));
     } finally {
       uploadingFoto = false;
       input.value = '';
+    }
+  }
+
+  let removendoFoto = $state(false);
+  async function removerFoto() {
+    if (!local) return;
+    removendoFoto = true;
+    const fd = new FormData();
+    fd.append('local_id', String(local.id));
+    const res = await fetch('?/removerFoto', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    removendoFoto = false;
+    if (parsed.type === 'success') {
+      toast.info('Foto removida');
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou remover foto'));
     }
   }
 </script>
@@ -95,19 +111,12 @@
       {#if local.foto_url}
         <div class="relative">
           <img src={local.foto_url} alt="Foto do local" class="w-full h-40 object-cover rounded-lg" />
-          <form
-            method="POST"
-            action="?/removerFoto"
-            use:enhance={() => async ({ update }) => {
-              await update();
-              toast.info('Foto removida');
-              await invalidateAll();
-            }}
-            class="absolute top-2 right-2"
-          >
-            <input type="hidden" name="local_id" value={local.id} />
-            <button class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">Remover</button>
-          </form>
+          <button
+            type="button"
+            disabled={removendoFoto}
+            onclick={removerFoto}
+            class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 disabled:opacity-40"
+          >{removendoFoto ? 'Removendo...' : 'Remover'}</button>
         </div>
       {:else}
         <label class="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">

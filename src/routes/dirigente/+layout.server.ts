@@ -6,6 +6,8 @@ import type { LayoutServerLoad } from './$types';
 // ficam em /publicador/*. Este layout redireciona tudo.
 export const load: LayoutServerLoad = async ({ url }) => {
   const rest = url.pathname.replace(/^\/dirigente/, '');
-  const destino = rest === '' || rest === '/' ? '/publicador/mapa' : `/publicador${rest}`;
+  // Home do dirigente é a carteira dele (/publicador) — o mapa geral virou
+  // read-only e mora atrás do ícone no header, não faz sentido como landing.
+  const destino = rest === '' || rest === '/' ? '/publicador' : `/publicador${rest}`;
   throw redirect(301, destino);
 };

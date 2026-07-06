@@ -1,4 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
+import { arranjoAindaVale } from '$lib/arranjos';
 import { fail } from '@sveltejs/kit';
 import {
   listarDesignacoes,
@@ -46,7 +48,7 @@ export interface ArranjoDestino {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const ontem = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+  const ontem = hojeIsoBrasil(-1);
 
   const [designacoes, publicadores, tceRes, dlRes, arrRes, dpRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
@@ -61,9 +63,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     // "designação" (herdada pelo dirigente)
     locals.supabase
       .from('arranjos')
-      .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tce_id')
+      .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tce_id, recorrente, data_fim')
       .eq('ativo', true)
-      .gte('data', ontem)
+      .or(`data.gte.${ontem},data.is.null,recorrente.eq.true`)
       .order('data'),
     // Multi-publicador: participantes por designação (líder primeiro)
     locals.supabase.from('designacao_publicadores').select('designacao_id, publicador_id, papel')
@@ -104,7 +106,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // Só entra no hub arranjo que tem TERRITÓRIO anexado (quadra/prédio/TCE) —
   // evento sem território é só agenda, mora em /admin/arranjos.
-  const arranjosBrutos: ArranjoHub[] = ((arrRes.data ?? []) as any[]).map((a) => ({
+  const arranjosBrutos: ArranjoHub[] = ((arrRes.data ?? []) as any[])
+    .filter((a) => arranjoAindaVale(a, ontem))
+    .map((a) => ({
     ...a,
     quadras_ids: a.quadras_ids ?? [],
     cartas_locais_ids: a.cartas_locais_ids ?? [],
@@ -298,7 +302,7 @@ export const actions: Actions = {
     if (!id) return fail(400, { erro: 'id obrigatório' });
     if (!['aberto', 'concluido', 'cancelado'].includes(status)) return fail(400, { erro: 'status inválido' });
     const patch: any = { status };
-    if (status === 'concluido') patch.data_conclusao = new Date().toISOString().substring(0, 10);
+    if (status === 'concluido') patch.data_conclusao = hojeIsoBrasil();
     if (status === 'aberto') patch.data_conclusao = null;
     const { error } = await locals.supabase.from('tces').update(patch).eq('id', id);
     if (error) return fail(400, { erro: error.message });

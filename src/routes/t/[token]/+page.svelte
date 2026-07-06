@@ -29,7 +29,7 @@
       lat: p.geo_geojson.coordinates[1],
       lng: p.geo_geojson.coordinates[0],
       nome: p.nome || `${p.logradouro ?? ''}, ${p.numero ?? ''}`,
-      emoji: '•'
+      icone: 'map-pin' as const
     }));
 
   let mapaRef: { exportarPng: () => Promise<string | null> } | null = $state(null);

@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { hojeIsoBrasil } from '$lib/utils/data';
 import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import {
@@ -355,7 +356,7 @@ export const actions: Actions = {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
-    const data = String(fd.get('data') ?? '').trim() || new Date().toISOString().substring(0, 10);
+    const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
     // modo: 'normal' (detecta conflito) | 'substituir' (troca a mais recente) | 'historico' (só adiciona)
     const modo = String(fd.get('modo') ?? 'normal');
     if (ids.length === 0) return fail(400, { erro: 'Selecione ao menos 1 quadra' });

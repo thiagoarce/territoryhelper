@@ -157,7 +157,7 @@
       onclick={alternarModo}
       class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100"
       title={modoSimples ? 'Voltar ao modo avançado' : 'Modo simples (botões grandes)'}
-    >{modoSimples ? 'Avançado' : 'ⓢ Simples'}</button>
+    >{modoSimples ? 'Avançado' : 'Simples'}</button>
   </div>
 </div>
 
@@ -166,7 +166,7 @@
   <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
     {#if data.quadra.data_conclusao}
       <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-sm text-green-700 flex-1"><Icon nome="check" size={14} /> Concluída em <strong>{data.quadra.data_conclusao}</strong></span>
+        <span class="text-sm text-green-700 flex-1"><Icon nome="check" size={14} /> Concluída em <strong>{new Date(data.quadra.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>
         <form
           method="POST"
           action="?/desfazerConclusao"
