@@ -1,13 +1,24 @@
 <script lang="ts">
+  import { deserialize } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import Icon from '$lib/ui/Icon.svelte';
   import Card from '$lib/ui/Card.svelte';
+  import Button from '$lib/ui/Button.svelte';
+  import { toast } from '$lib/ui/toast.svelte';
+  import MapaAdmin from '$lib/components/MapaAdmin.svelte';
   import type { Campanha } from '$lib/types';
-  import type { CampanhaResumo } from './+page.server';
+  import type { QuadraGeo } from '$lib/server/queries';
+  import type { CampanhaResumo, ConclusaoSemana, MetaPessoal, MinhaColaboracao } from './+page.server';
 
   let { data }: {
     data: {
       ativa: CampanhaResumo | null;
       objetivos: Campanha[];
+      quadras: QuadraGeo[];
+      quadrasConcluidasNoPeriodo: string[];
+      conclusoesSemana: ConclusaoSemana[];
+      metasPessoais: MetaPessoal[];
+      minhaColaboracao: MinhaColaboracao | null;
     };
   } = $props();
 
@@ -19,6 +30,11 @@
     { v: 'telefone', icone: 'phone', label: 'Telefone' },
     { v: 'publico', icone: 'megaphone', label: 'Testemunho público' }
   ];
+
+  const TIPO_LABEL: Record<string, string> = {
+    conversou: 'Conversou', semConversa: 'Sem palestra', naoAtendeu: 'Não atendeu',
+    carta: 'Cartas entregues', interfone: 'Interfone', manual: 'Registro manual', auto: 'Automático'
+  };
 
   const porModalidade = $derived.by(() => {
     const m = new Map<string, Campanha[]>();
@@ -39,6 +55,61 @@
       ? Math.round((data.ativa.concluidas_no_periodo / data.ativa.total_meta) * 100)
       : 0
   );
+
+  const maxSemana = $derived(Math.max(1, ...data.conclusoesSemana.map((s) => s.qtd)));
+
+  // Metas pessoais
+  let novaMeta = $state('');
+  let salvandoMeta = $state(false);
+  let ocupadoId = $state<number | null>(null);
+
+  async function criarMeta() {
+    if (!novaMeta.trim() || !data.ativa) return;
+    salvandoMeta = true;
+    const fd = new FormData();
+    fd.append('campanha_id', String(data.ativa.id));
+    fd.append('texto', novaMeta.trim());
+    const res = await fetch('?/criarMetaPessoal', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoMeta = false;
+    if (parsed.type === 'success') { novaMeta = ''; await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  async function alternarMeta(m: MetaPessoal) {
+    ocupadoId = m.id;
+    const fd = new FormData();
+    fd.append('id', String(m.id));
+    fd.append('feito', String(!m.feito));
+    const res = await fetch('?/marcarMetaPessoal', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    ocupadoId = null;
+    if (parsed.type === 'success') await invalidateAll();
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  async function apagarMeta(id: number) {
+    ocupadoId = id;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/apagarMetaPessoal', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    ocupadoId = null;
+    if (parsed.type === 'success') await invalidateAll();
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  function compartilharColaboracao() {
+    if (!data.ativa || !data.minhaColaboracao) return;
+    const c = data.minhaColaboracao;
+    const linhas = [`Minha colaboração — *${data.ativa.nome}*`];
+    for (const [tipo, qtd] of Object.entries(c.porTipo)) {
+      linhas.push(`${TIPO_LABEL[tipo] ?? tipo}: ${qtd}`);
+    }
+    if (c.cartasEscritas > 0) linhas.push(`Cartas escritas: ${c.cartasEscritas}`);
+    const msg = linhas.join('\n');
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+  }
 </script>
 
 <div class="p-4 space-y-3">
@@ -99,6 +170,26 @@
           </div>
         </div>
       {/if}
+
+      <Card padding="md">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">Mapa do período</h2>
+        <MapaAdmin quadras={data.quadras} altura={280} colorirPor="campanha" concluidasCampanha={data.quadrasConcluidasNoPeriodo} mostrarRotulos={false} />
+        <p class="text-xs text-slate-500 mt-1">Verde forte = concluída durante a campanha.</p>
+      </Card>
+
+      {#if data.conclusoesSemana.length > 0}
+        <Card padding="md">
+          <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">Conclusões por semana</h2>
+          <div class="flex items-end gap-1.5 h-24">
+            {#each data.conclusoesSemana as s (s.semana)}
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <div class="w-full bg-primary-500 rounded-t" style:height="{Math.max(4, (s.qtd / maxSemana) * 80)}px"></div>
+                <span class="text-[10px] text-slate-400">{s.qtd}</span>
+              </div>
+            {/each}
+          </div>
+        </Card>
+      {/if}
     {/if}
 
     {#if c.notasSuprimento}
@@ -109,6 +200,67 @@
           {c.notasSuprimento}
         </div>
       </div>
+    {/if}
+
+    {#if data.minhaColaboracao}
+      {@const col = data.minhaColaboracao}
+      {@const temAlgo = Object.keys(col.porTipo).length > 0 || col.cartasEscritas > 0}
+      <Card padding="md">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <h2 class="text-sm font-semibold text-slate-600 uppercase">Minha colaboração</h2>
+          {#if temAlgo}
+            <button onclick={compartilharColaboracao} class="text-xs text-primary-700 hover:underline"><Icon nome="share" size={12} /> Compartilhar</button>
+          {/if}
+        </div>
+        {#if !temAlgo}
+          <p class="text-xs text-slate-400">Nenhuma atividade registrada ainda neste período.</p>
+        {:else}
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            {#each Object.entries(col.porTipo) as [tipo, qtd]}
+              <div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+                <span class="text-slate-600">{TIPO_LABEL[tipo] ?? tipo}</span>
+                <span class="font-semibold">{qtd}</span>
+              </div>
+            {/each}
+            {#if col.cartasEscritas > 0}
+              <div class="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+                <span class="text-slate-600">Cartas escritas</span>
+                <span class="font-semibold">{col.cartasEscritas}</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </Card>
+
+      <Card padding="md">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2">Minhas metas</h2>
+        <div class="flex gap-1.5 mb-2">
+          <input
+            bind:value={novaMeta}
+            placeholder="Ex: fazer 3 turnos de TP essa semana"
+            class="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+            onkeydown={(e) => { if (e.key === 'Enter') criarMeta(); }}
+          />
+          <Button variant="primary" size="sm" loading={salvandoMeta} onclick={criarMeta}>+</Button>
+        </div>
+        {#if data.metasPessoais.length === 0}
+          <p class="text-xs text-slate-400">Nenhuma meta pessoal ainda.</p>
+        {:else}
+          <div class="space-y-1.5">
+            {#each data.metasPessoais as m (m.id)}
+              <div class="flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
+                <button onclick={() => alternarMeta(m)} disabled={ocupadoId === m.id} class="shrink-0 disabled:opacity-40">
+                  <Icon nome={m.feito ? 'square-check' : 'square'} size={16} class={m.feito ? 'text-green-600' : 'text-slate-400'} />
+                </button>
+                <span class="flex-1 min-w-0 {m.feito ? 'line-through text-slate-400' : ''}">{m.texto}</span>
+                <button onclick={() => apagarMeta(m.id)} disabled={ocupadoId === m.id} class="text-slate-400 hover:text-red-600 disabled:opacity-40 shrink-0">
+                  <Icon nome="x" size={14} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </Card>
     {/if}
 
     {#each MODALIDADES as mod}

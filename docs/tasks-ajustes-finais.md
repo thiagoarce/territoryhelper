@@ -121,7 +121,7 @@
 - [x] 🟢 **T19 (A17)** Suprimento de campanha lê estoque do catálogo
       (read-only + link), remove input duplicado.
 
-- [ ] 🟢 **T20 (A18)** Campanha do publicador: mapa do período + gráfico
+- [x] 🟢 **T20 (A18)** Campanha do publicador: mapa do período + gráfico
       semanal + metas pessoais (migration `campanha_metas_pessoais`) +
       card "Minha colaboração" calculado.
 
