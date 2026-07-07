@@ -113,12 +113,6 @@
         { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' },
         { href: '/admin/dev/backup', label: 'Backup', icon: 'inbox' }
       ]
-    },
-    {
-      titulo: 'Modo campo',
-      items: [
-        { href: '/publicador', label: 'Ir pro campo', icon: 'eye' }
-      ]
     }
   ];
 
@@ -194,6 +188,18 @@
     </div>
     <h1 class="text-lg font-bold flex-1 truncate">{tituloHeader}</h1>
 
+    {#if role === 'admin'}
+      <a
+        href={modoAtual === 'admin' ? '/publicador' : '/admin'}
+        aria-label={modoAtual === 'admin' ? 'Ir pro modo campo' : 'Voltar pro modo admin'}
+        title={modoAtual === 'admin' ? 'Ir pro modo campo' : 'Voltar pro modo admin'}
+        class="flex items-center gap-1.5 px-2.5 h-9 rounded-lg hover:bg-slate-100 text-slate-600 text-xs font-medium"
+      >
+        <Icon nome="swap" size={16} />
+        <span class="hidden sm:inline">{modoAtual === 'admin' ? 'Campo' : 'Admin'}</span>
+      </a>
+    {/if}
+
     {#if modoAtual === 'campo' && podeDirigir}
       <a href="/publicador/mapa" aria-label="Território da congregação" title="Território da congregação" class="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600">
         <Icon nome="map" size={18} />
@@ -254,15 +260,6 @@
         {/each}
 
         <div class="my-2 mx-3 border-t border-slate-100"></div>
-        <div class="px-3 py-1 text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Conta</div>
-        <a
-          href="/perfil"
-          onclick={() => (drawerAberto = false)}
-          class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          <span class="w-5 text-center text-slate-500"><Icon nome="user" size={14} /></span>
-          <span>Perfil</span>
-        </a>
         <form action="/logout" method="POST" class="px-4 py-1">
           <button type="submit" class="w-full text-left text-sm text-slate-500 hover:text-slate-900 py-2">Sair</button>
         </form>

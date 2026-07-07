@@ -29,7 +29,7 @@
       território pessoal → cartas → TCEs), com separadores. Só template.
       Arquivo: `src/routes/publicador/+page.svelte`.
 
-- [ ] 🟢 **T3 (A15)** Header: botão modo campo ↔ modo admin (só admin);
+- [x] 🟢 **T3 (A15)** Header: botão modo campo ↔ modo admin (só admin);
       remover "Modo campo" e "Perfil" do drawer.
       Arquivo: `src/routes/+layout.svelte`.
 
