@@ -113,7 +113,7 @@
       /publicacoes (necessidade agregada × estoque × quanto pedir),
       revistas fora do pedido especial.
 
-- [ ] 🟢 **T18 (A12c)** Reposição por carrinho: migration
+- [x] 🟢 **T18 (A12c)** Reposição por carrinho: migration
       `tp_carrinho_inventario`, seção Reposição reorganizada por
       carrinho (inventário item+qtd editável + pendências de relatório
       do carrinho).

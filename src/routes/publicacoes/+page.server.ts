@@ -27,9 +27,25 @@ export interface ReposicaoItem {
   estado: 'acabando' | 'zerado' | 'danificado';
   qtd_colocada: number | null;
   obs: string | null;
+  carrinho_id: number | null;
   carrinho_nome: string;
   ponto_nome: string;
   data: string;
+}
+
+// A12c: carrinho (equipamento) + o que ele tem em mãos (item + qtd).
+export interface CarrinhoLite {
+  id: number;
+  nome: string;
+  tipo_nome: string;
+}
+export interface InventarioItem {
+  id: number;
+  carrinho_id: number;
+  publicacao_id: number | null;
+  publicacao_nome: string | null;
+  descricao: string | null;
+  qtd: number;
 }
 
 export interface TendenciaMes {
@@ -101,7 +117,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (error) {
     return {
       pedidos: [] as PedidoLinha[], filtro, souAdmin: locals.profile?.role === 'admin',
-      reposicao: [] as ReposicaoItem[], tendencia: [] as TendenciaMes[], erro: error.message
+      reposicao: [] as ReposicaoItem[], tendencia: [] as TendenciaMes[], erro: error.message,
+      carrinhos: [] as CarrinhoLite[], inventario: [] as InventarioItem[]
     };
   }
 
@@ -124,7 +141,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     .select(`
       id, estado, qtd_colocada, obs,
       tp_pecas_catalogo!inner(nome, categoria),
-      tp_relatorios!inner(data, tp_agendamentos!inner(ponto_avulso, tp_carrinhos(nome), tp_pontos(nome)))
+      tp_relatorios!inner(data, tp_agendamentos!inner(ponto_avulso, tp_carrinhos(id, nome), tp_pontos(nome)))
     `)
     .is('resolvido_em', null)
     .neq('estado', 'ok')
@@ -137,9 +154,29 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     estado: r.estado,
     qtd_colocada: r.qtd_colocada,
     obs: r.obs,
+    carrinho_id: r.tp_relatorios?.tp_agendamentos?.tp_carrinhos?.id ?? null,
     carrinho_nome: r.tp_relatorios?.tp_agendamentos?.tp_carrinhos?.nome ?? '?',
     ponto_nome: r.tp_relatorios?.tp_agendamentos?.tp_pontos?.nome ?? r.tp_relatorios?.tp_agendamentos?.ponto_avulso ?? '?',
     data: r.tp_relatorios?.data ?? ''
+  }));
+
+  // A12c: carrinhos (equipamentos) + inventário atual de cada um —
+  // reposição agora é organizada por carrinho, não em lista plana.
+  const { data: carrinhosRows } = await locals.supabase
+    .from('tp_carrinhos')
+    .select('id, nome, tp_carrinho_tipos(nome)')
+    .order('nome');
+  const carrinhos: CarrinhoLite[] = ((carrinhosRows ?? []) as any[]).map((c) => ({
+    id: c.id, nome: c.nome, tipo_nome: c.tp_carrinho_tipos?.nome ?? '?'
+  }));
+
+  const { data: inventarioRows } = await locals.supabase
+    .from('tp_carrinho_inventario')
+    .select('id, carrinho_id, publicacao_id, descricao, qtd, publicacoes(nome)')
+    .order('id');
+  const inventario: InventarioItem[] = ((inventarioRows ?? []) as any[]).map((i) => ({
+    id: i.id, carrinho_id: i.carrinho_id, publicacao_id: i.publicacao_id,
+    publicacao_nome: i.publicacoes?.nome ?? null, descricao: i.descricao, qtd: i.qtd
   }));
 
   // Tendência simples: soma de qtd_colocada por publicação por mês (últimos 3 meses com dado)
@@ -231,7 +268,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   return {
     pedidos, filtro, souAdmin: locals.profile?.role === 'admin', reposicao, tendencia, catalogo,
-    publicadores, controlePublicacaoId, controle, revistasMes
+    publicadores, controlePublicacaoId, controle, revistasMes, carrinhos, inventario
   };
 };
 
@@ -356,6 +393,58 @@ export const actions: Actions = {
     );
     if (error) return fail(400, { erro: error.message });
     return { ok: true };
+  },
+
+  // A12c: novo item no inventário de um carrinho — publicação do catálogo
+  // ou descrição livre (peça física sem código).
+  criarInventarioItem: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const carrinhoId = Number(fd.get('carrinho_id') ?? 0);
+    const publicacaoId = Number(fd.get('publicacao_id') ?? 0) || null;
+    const descricao = String(fd.get('descricao') ?? '').trim() || null;
+    const qtd = Number(fd.get('qtd') ?? 0);
+    if (!carrinhoId) return fail(400, { erro: 'carrinho_id obrigatório' });
+    if (!publicacaoId && !descricao) return fail(400, { erro: 'Escolha uma publicação ou descreva o item' });
+    if (qtd < 0) return fail(400, { erro: 'Quantidade inválida' });
+    const { error } = await locals.supabase.from('tp_carrinho_inventario').insert({
+      carrinho_id: carrinhoId, publicacao_id: publicacaoId, descricao, qtd,
+      atualizado_por: locals.user.id
+    });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Item adicionado' };
+  },
+
+  // Ajusta a qtd de um item já existente (padrão +/- da Lista de controle
+  // — o client soma o delta e manda o valor absoluto).
+  ajustarInventario: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    const qtd = Number(fd.get('qtd') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    if (qtd < 0) return fail(400, { erro: 'Quantidade inválida' });
+    const { error } = await locals.supabase
+      .from('tp_carrinho_inventario')
+      .update({ qtd, atualizado_em: new Date().toISOString(), atualizado_por: locals.user.id })
+      .eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true };
+  },
+
+  excluirInventarioItem: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase.from('tp_carrinho_inventario').delete().eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Item removido' };
   },
 
   resolverReposicao: async ({ request, locals }) => {
