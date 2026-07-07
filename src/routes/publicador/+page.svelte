@@ -256,9 +256,13 @@
   let aba: 'abertas' | 'concluidas' = $state('abertas');
   const lista = $derived(aba === 'abertas' ? data.abertas : data.concluidas);
 
-  // Designações agora são só território pessoal (quadras) e cartas (prédios).
+  // Designações agora são só território pessoal (quadras/TCEs) e cartas (prédios).
   // Pregação em grupo vem de arranjo_partes, não de designações.
   const pessoais = $derived(lista.filter((d: any) => d.tipo !== 'cartas'));
+
+  // Nome do TCE por id — pros chips do card de designação pessoal (A21-f2:
+  // uma designação pessoal pode ser só de TCE, sem nenhuma quadra).
+  const nomePorTce = $derived(new Map(data.tces.map((t) => [t.id, t.nome])));
 
   // Quadras envolvidas nas designações abertas — pro mini-mapa
   const quadrasMapa = $derived.by(() => {
@@ -545,7 +549,9 @@
         <div class="text-sm text-slate-500">
           Designada em {new Date(d.criada_em).toLocaleDateString('pt-BR')}
         </div>
-        <div class="mt-2 text-sm font-semibold">{d.quadras_ids.length} quadra(s)</div>
+        <div class="mt-2 text-sm font-semibold">
+          {d.quadras_ids.length} quadra(s){#if d.tces_ids.length > 0} + {d.tces_ids.length} TCE(s){/if}
+        </div>
         {#if prog}
           <div class="mt-1.5">
             <div class="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
@@ -569,6 +575,9 @@
               <span>{qid}</span>
               {#if cov && cov.total > 0}<span class="text-[10px] text-slate-500">{cov.feitas}/{cov.total}</span>{/if}
             </a>
+          {/each}
+          {#each d.tces_ids as tid}
+            <a href="/publicador/tce/{tid}" class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200 hover:bg-orange-200"><Icon nome="store" size={14} /> {nomePorTce.get(tid) ?? tid}</a>
           {/each}
         </div>
         {#if d.notas}<div class="mt-2 text-sm text-slate-600 italic">{d.notas}</div>{/if}
