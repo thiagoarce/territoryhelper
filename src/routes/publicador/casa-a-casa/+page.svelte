@@ -48,6 +48,7 @@
   let { data }: {
     data: {
       arranjoQueDirijo: ArranjoQueDirijo | null;
+      coberturaPorQuadra: Record<string, { total: number; feitas: number; pct: number }>;
       outrosArranjosQueDirijo: ArranjoQueDirijo[];
       pendentesFinalizar: PendenteFinalizar[];
       minhasPartes: MinhaParte[];
@@ -62,6 +63,37 @@
 
   function abrirQuadra(q: QuadraGeo) {
     window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id);
+  }
+
+  // A2: "Seu grupo" — clique na quadra abre ação (concluir/compartilhar),
+  // não o detalhe (detalhe é pra quem trabalha — Sua parte/Território pessoal).
+  let sheetQuadraAcao = $state(false);
+  let quadraAcao = $state<QuadraGeo | null>(null);
+  let arranjoDaQuadraAcao = $state<ArranjoQueDirijo | null>(null);
+  let concluindoQuadraAcao = $state(false);
+
+  function abrirAcaoQuadra(q: QuadraGeo, a: ArranjoQueDirijo) {
+    quadraAcao = q;
+    arranjoDaQuadraAcao = a;
+    sheetQuadraAcao = true;
+  }
+
+  async function concluirQuadraAcao() {
+    if (!quadraAcao) return;
+    if (!confirm(`Marcar ${quadraAcao.id} como concluída hoje?`)) return;
+    concluindoQuadraAcao = true;
+    const fd = new FormData();
+    fd.append('quadra_id', quadraAcao.id);
+    const res = await fetch('?/concluirQuadraGrupo', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    concluindoQuadraAcao = false;
+    if (parsed.type === 'success') {
+      toast.success('Quadra concluída');
+      sheetQuadraAcao = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
   }
 
   function fmtDia(iso: string | null): string {
@@ -83,16 +115,37 @@
   );
 
   let finalizando = $state<number | null>(null);
-  async function finalizarDesignacao(a: PendenteFinalizar) {
-    if (!confirm(`Finalizar "${a.nome}"? Quadras não concluídas ficam livres pra outro arranjo e as partes dessa designação são encerradas.`)) return;
+
+  // A2: "Finalizar designação" com conferência — sheet lista as quadras da
+  // ocorrência com status (concluída neste ciclo ✓ / não) antes de confirmar.
+  let sheetFinalizar = $state(false);
+  let finalizarAlvo = $state<PendenteFinalizar | null>(null);
+
+  function abrirFinalizar(a: PendenteFinalizar) {
+    finalizarAlvo = a;
+    sheetFinalizar = true;
+  }
+
+  function quadraConcluidaNesteCiclo(q: QuadraGeo, a: PendenteFinalizar): boolean {
+    return !!q.data_conclusao && q.data_conclusao >= a.data;
+  }
+
+  async function confirmarFinalizar() {
+    if (!finalizarAlvo) return;
+    const a = finalizarAlvo;
     finalizando = a.id;
     const fd = new FormData();
     fd.append('arranjo_id', String(a.id));
     const res = await fetch('?/finalizarArranjo', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     finalizando = null;
-    if (parsed.type === 'success') { toast.success('Designação finalizada'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
+    if (parsed.type === 'success') {
+      toast.success('Designação finalizada');
+      sheetFinalizar = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
   }
 
   const partesPorArranjo = $derived.by(() => {
@@ -218,7 +271,7 @@
               <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
             {/each}
           </div>
-          <button type="button" disabled={finalizando === a.id} onclick={() => finalizarDesignacao(a)}
+          <button type="button" disabled={finalizando === a.id} onclick={() => abrirFinalizar(a)}
             class="mt-2 w-full rounded-lg bg-red-600 text-white text-sm font-medium py-2 hover:bg-red-700 disabled:opacity-40"
           >{finalizando === a.id ? 'Finalizando...' : 'Finalizar designação'}</button>
         </div>
@@ -239,7 +292,7 @@
       <div class="text-xs text-primary-700 font-medium mb-1.5">{fmtDia(a.data)}</div>
       {#if a.quadrasGeo.length > 0}
         <Card padding="sm">
-          <AdminMapa quadras={a.quadrasGeo} altura={300} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
+          <AdminMapa quadras={a.quadrasGeo} altura={300} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={(q) => abrirAcaoQuadra(q, a)} />
         </Card>
       {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
@@ -321,6 +374,59 @@
 </div>
 
 <!-- Modal "todas as designações" — detalhe completo, o card acima já mostra só o próximo -->
+<!-- A2: "Finalizar designação" com conferência por quadra -->
+<BottomSheet bind:open={sheetFinalizar} title={finalizarAlvo ? `Finalizar — ${finalizarAlvo.nome}` : ''}>
+  {#if finalizarAlvo}
+    <div class="space-y-1.5 mb-3">
+      {#each finalizarAlvo.quadrasGeo as q (q.id)}
+        {@const feita = quadraConcluidaNesteCiclo(q, finalizarAlvo)}
+        <div class="flex items-center justify-between gap-2 text-sm rounded-lg border border-slate-200 px-3 py-2">
+          <span class="font-mono">{q.id}</span>
+          {#if feita}
+            <span class="text-xs text-green-700 flex items-center gap-1"><Icon nome="check" size={14} /> concluída neste ciclo</span>
+          {:else}
+            <span class="text-xs text-amber-700 flex items-center gap-1"><Icon nome="alert" size={14} /> não concluída</span>
+          {/if}
+        </div>
+      {/each}
+    </div>
+    <p class="text-xs text-slate-500 mb-3">As não concluídas ficam livres pra outra designação.</p>
+    <div class="flex gap-2">
+      <Button variant="secondary" onclick={() => (sheetFinalizar = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" loading={finalizando === finalizarAlvo.id} onclick={confirmarFinalizar} class="flex-1">Finalizar</Button>
+    </div>
+  {/if}
+</BottomSheet>
+
+<!-- A2: sheet de ação da quadra em "Seu grupo" (concluir/compartilhar) -->
+<BottomSheet bind:open={sheetQuadraAcao} title={quadraAcao ? `Quadra ${quadraAcao.id}` : ''}>
+  {#if quadraAcao}
+    {@const cob = data.coberturaPorQuadra[quadraAcao.id]}
+    {#if cob}
+      <div class="text-sm text-slate-600 mb-3">
+        <strong>{cob.feitas}</strong> de <strong>{cob.total}</strong> endereço(s) feitos ({cob.pct}%)
+      </div>
+    {/if}
+    <div class="space-y-2">
+      <Button variant="primary" loading={concluindoQuadraAcao} onclick={concluirQuadraAcao} class="w-full">
+        <Icon nome="check" size={14} /> Marcar concluída
+      </Button>
+      {#if arranjoDaQuadraAcao}
+        <Button
+          variant="secondary"
+          loading={gerandoLink === arranjoDaQuadraAcao.id}
+          onclick={() => arranjoDaQuadraAcao && abrirLinkPublico(arranjoDaQuadraAcao.id)}
+          class="w-full"
+        ><Icon nome="share" size={14} /> Compartilhar (WhatsApp c/ mapa)</Button>
+      {/if}
+      <a
+        href="/publicador/quadra/{encodeURIComponent(quadraAcao.id)}"
+        class="block text-center text-xs text-slate-500 hover:underline pt-1"
+      >Ver detalhe completo</a>
+    </div>
+  {/if}
+</BottomSheet>
+
 <BottomSheet bind:open={sheetTodas} title="Suas designações de grupo">
   <div class="space-y-2">
     {#each todosArranjosQueDirijo as a (a.id)}
