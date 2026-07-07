@@ -81,7 +81,14 @@
   }
   interface NecessidadeRegularLinha {
     publicacao_id: number;
+    variante: 'publico' | 'estudo';
     qtd: number;
+    letras_grandes: boolean;
+  }
+  interface RevistaMensalLite {
+    id: number;
+    nome: string;
+    imagem_url: string | null;
   }
 
   let {
@@ -103,6 +110,7 @@
       meusPedidosPublicacao: MeuPedidoPublicacao[];
       catalogoPublicacoes: PublicacaoLite[];
       necessidadeRegular: NecessidadeRegularLinha[];
+      revistasMensais: RevistaMensalLite[];
       minhaRole: string | undefined;
       profile?: import('$lib/types').Profile | null;
     };
@@ -170,25 +178,47 @@
     }
   }
 
-  // Necessidade regular de revistas (Despertai/Sentinela) — preferência, sem status
-  let necessidadeEmEdicao: Record<number, number> = $state({});
-  let salvandoNecessidadeId = $state<number | null>(null);
-  function necessidadeAtual(publicacaoId: number): number {
-    if (publicacaoId in necessidadeEmEdicao) return necessidadeEmEdicao[publicacaoId];
-    return data.necessidadeRegular.find((n) => n.publicacao_id === publicacaoId)?.qtd ?? 0;
+  // A12b: necessidade regular de revistas mensais (Despertai/Sentinela) —
+  // preferência, sem status. Por variante (público × edição de estudo,
+  // essa com letras grandes opcional).
+  function chaveNecessidade(publicacaoId: number, variante: 'publico' | 'estudo'): string {
+    return `${publicacaoId}:${variante}`;
   }
-  async function salvarNecessidade(publicacaoId: number, delta: number) {
-    const novaQtd = Math.max(0, necessidadeAtual(publicacaoId) + delta);
-    necessidadeEmEdicao[publicacaoId] = novaQtd;
-    salvandoNecessidadeId = publicacaoId;
+  let necessidadeEmEdicao: Record<string, number> = $state({});
+  let salvandoNecessidadeId = $state<string | null>(null);
+  let expandidoEstudo = $state<Set<number>>(new Set());
+  function necessidadeAtual(publicacaoId: number, variante: 'publico' | 'estudo'): number {
+    const chave = chaveNecessidade(publicacaoId, variante);
+    if (chave in necessidadeEmEdicao) return necessidadeEmEdicao[chave];
+    return data.necessidadeRegular.find((n) => n.publicacao_id === publicacaoId && n.variante === variante)?.qtd ?? 0;
+  }
+  function letrasGrandesAtual(publicacaoId: number): boolean {
+    return data.necessidadeRegular.find((n) => n.publicacao_id === publicacaoId && n.variante === 'estudo')?.letras_grandes ?? false;
+  }
+  async function salvarNecessidade(publicacaoId: number, variante: 'publico' | 'estudo', delta: number, letrasGrandes?: boolean) {
+    const chave = chaveNecessidade(publicacaoId, variante);
+    const novaQtd = Math.max(0, necessidadeAtual(publicacaoId, variante) + delta);
+    necessidadeEmEdicao[chave] = novaQtd;
+    salvandoNecessidadeId = chave;
     const fd = new FormData();
     fd.append('publicacao_id', String(publicacaoId));
+    fd.append('variante', variante);
     fd.append('qtd', String(novaQtd));
+    fd.append('letras_grandes', String(letrasGrandes ?? letrasGrandesAtual(publicacaoId)));
     const res = await fetch('?/salvarNecessidadeRegular', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     salvandoNecessidadeId = null;
     if (parsed.type !== 'success') toast.error(String(parsed.data?.erro || 'Falhou'));
     await invalidateAll();
+  }
+  function toggleEstudo(publicacaoId: number) {
+    if (expandidoEstudo.has(publicacaoId)) expandidoEstudo.delete(publicacaoId);
+    else expandidoEstudo.add(publicacaoId);
+    expandidoEstudo = new Set(expandidoEstudo);
+  }
+  async function toggleLetrasGrandes(publicacaoId: number) {
+    const atual = letrasGrandesAtual(publicacaoId);
+    await salvarNecessidade(publicacaoId, 'estudo', 0, !atual);
   }
 
   async function cancelarPedido(id: number) {
@@ -671,7 +701,7 @@
         {mostrarHistoricoPedidos ? 'Esconder histórico' : `Histórico (${pedidosAntigos.length})`}
       </button>
     {/if}
-    {#if (catalogoAgrupado['revista'] ?? []).length > 0}
+    {#if data.revistasMensais.length > 0}
       <button type="button" onclick={() => (mostrarRevistas = !mostrarRevistas)} class="text-xs text-slate-500 hover:underline">
         {mostrarRevistas ? 'Esconder revistas' : 'Minhas revistas (qtd regular)'}
       </button>
@@ -689,19 +719,34 @@
     </div>
   {/if}
 
-  {#if mostrarRevistas && (catalogoAgrupado['revista'] ?? []).length > 0}
-    <div class="mt-2 pt-2 border-t border-slate-100">
-      <div class="text-xs text-slate-500 mb-1.5">Normalmente preciso de (Despertai/Sentinela chegam pela via normal):</div>
-      <div class="flex flex-wrap gap-2">
-        {#each catalogoAgrupado['revista'] as p (p.id)}
-          <div class="flex items-center gap-1.5 text-sm bg-slate-50 rounded-lg px-2 py-1">
-            <span class="truncate">{p.nome}</span>
-            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, -1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">−</button>
-            <span class="w-5 text-center font-medium">{necessidadeAtual(p.id)}</span>
-            <button type="button" disabled={salvandoNecessidadeId === p.id} onclick={() => salvarNecessidade(p.id, 1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">+</button>
+  {#if mostrarRevistas && data.revistasMensais.length > 0}
+    <div class="mt-2 pt-2 border-t border-slate-100 space-y-2">
+      <div class="text-xs text-slate-500">Quantidade que preciso pra público (Despertai/Sentinela chegam pela via normal):</div>
+      {#each data.revistasMensais as p (p.id)}
+        <div class="rounded-lg bg-slate-50 px-2.5 py-1.5">
+          <div class="flex items-center gap-1.5 text-sm">
+            <span class="flex-1 truncate">{p.nome}</span>
+            <button type="button" disabled={salvandoNecessidadeId === chaveNecessidade(p.id, 'publico')} onclick={() => salvarNecessidade(p.id, 'publico', -1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">−</button>
+            <span class="w-5 text-center font-medium">{necessidadeAtual(p.id, 'publico')}</span>
+            <button type="button" disabled={salvandoNecessidadeId === chaveNecessidade(p.id, 'publico')} onclick={() => salvarNecessidade(p.id, 'publico', 1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">+</button>
           </div>
-        {/each}
-      </div>
+          <button type="button" onclick={() => toggleEstudo(p.id)} class="text-[11px] text-primary-700 hover:underline mt-1">
+            {expandidoEstudo.has(p.id) ? 'Esconder edição de estudo' : '+ Também quero a edição de estudo'}
+          </button>
+          {#if expandidoEstudo.has(p.id)}
+            <div class="flex items-center gap-1.5 text-sm mt-1.5 pt-1.5 border-t border-slate-200">
+              <span class="flex-1 truncate text-xs text-slate-500">Edição de estudo</span>
+              <button type="button" disabled={salvandoNecessidadeId === chaveNecessidade(p.id, 'estudo')} onclick={() => salvarNecessidade(p.id, 'estudo', -1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">−</button>
+              <span class="w-5 text-center font-medium">{necessidadeAtual(p.id, 'estudo')}</span>
+              <button type="button" disabled={salvandoNecessidadeId === chaveNecessidade(p.id, 'estudo')} onclick={() => salvarNecessidade(p.id, 'estudo', 1)} class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-xs">+</button>
+            </div>
+            <label class="flex items-center gap-1.5 text-xs text-slate-500 mt-1 cursor-pointer">
+              <input type="checkbox" checked={letrasGrandesAtual(p.id)} onchange={() => toggleLetrasGrandes(p.id)} class="w-3.5 h-3.5 rounded" />
+              Letras grandes
+            </label>
+          {/if}
+        </div>
+      {/each}
     </div>
   {/if}
 </div>

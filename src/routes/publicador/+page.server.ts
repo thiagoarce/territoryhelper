@@ -45,9 +45,17 @@ export interface PublicacaoLite {
   imagem_url: string | null;
 }
 
+export interface RevistaMensalLite {
+  id: number;
+  nome: string;
+  imagem_url: string | null;
+}
+
 export interface NecessidadeRegularLinha {
   publicacao_id: number;
+  variante: 'publico' | 'estudo';
   qtd: number;
+  letras_grandes: boolean;
 }
 
 export interface ArranjoPendenteFinalizar {
@@ -64,7 +72,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const em7dias = hojeIsoBrasil(7);
   const ha60dias = hojeIsoBrasil(-60);
 
-  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes, necessidadeRes] = await Promise.all([
+  const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes, necessidadeRes, revistasRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
@@ -111,12 +119,15 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('publicador_id', locals.user!.id)
       .order('criado_em', { ascending: false })
       .limit(10),
-    locals.supabase.from('publicacoes').select('id, nome, categoria, qtd_estoque, imagem_url').eq('ativo', true).order('categoria').order('nome'),
+    // A12b: revistas mensais (periodicidade='mensal') saem do catálogo de
+    // pedido especial avulso — têm o fluxo próprio de necessidade regular.
+    locals.supabase.from('publicacoes').select('id, nome, categoria, qtd_estoque, imagem_url').eq('ativo', true).is('periodicidade', null).order('categoria').order('nome'),
     // Necessidade regular de revistas (Despertai/Sentinela) — preferência informativa, sem status
     locals.supabase
       .from('publicador_necessidade_regular')
-      .select('publicacao_id, qtd')
-      .eq('publicador_id', locals.user!.id)
+      .select('publicacao_id, variante, qtd, letras_grandes')
+      .eq('publicador_id', locals.user!.id),
+    locals.supabase.from('publicacoes').select('id, nome, imagem_url').eq('ativo', true).eq('periodicidade', 'mensal').order('nome')
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
   // no campo). A visão de todas as designações mora no mapa estratégico e
@@ -304,6 +315,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   }));
   const catalogoPublicacoes = (catalogoRes.data ?? []) as PublicacaoLite[];
   const necessidadeRegular = (necessidadeRes.data ?? []) as NecessidadeRegularLinha[];
+  const revistasMensais = (revistasRes.data ?? []) as RevistaMensalLite[];
 
   return {
     abertas,
@@ -321,6 +333,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     meusPedidosPublicacao,
     catalogoPublicacoes,
     necessidadeRegular,
+    revistasMensais,
     minhaRole: locals.profile?.role
   };
 };
@@ -386,12 +399,18 @@ export const actions: Actions = {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();
     const publicacaoId = Number(fd.get('publicacao_id') ?? 0);
+    const variante = String(fd.get('variante') ?? 'publico');
     const qtd = Number(fd.get('qtd') ?? 0);
+    const letrasGrandes = fd.get('letras_grandes') === 'true';
     if (!publicacaoId) return fail(400, { erro: 'publicacao_id obrigatório' });
+    if (!['publico', 'estudo'].includes(variante)) return fail(400, { erro: 'variante inválida' });
     if (qtd < 0) return fail(400, { erro: 'Quantidade inválida' });
     const { error } = await locals.supabase.from('publicador_necessidade_regular').upsert(
-      { publicador_id: locals.user.id, publicacao_id: publicacaoId, qtd, atualizado_em: new Date().toISOString() },
-      { onConflict: 'publicador_id,publicacao_id' }
+      {
+        publicador_id: locals.user.id, publicacao_id: publicacaoId, variante, qtd,
+        letras_grandes: letrasGrandes, atualizado_em: new Date().toISOString()
+      },
+      { onConflict: 'publicador_id,publicacao_id,variante' }
     );
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Salvo' };

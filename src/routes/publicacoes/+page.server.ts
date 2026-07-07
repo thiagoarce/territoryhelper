@@ -48,6 +48,7 @@ export interface PublicacaoCatalogo {
   qtd_estoque: number;
   imagem_url: string | null;
   ativo: boolean;
+  periodicidade: 'mensal' | null;
 }
 
 export interface PublicadorLinha {
@@ -59,6 +60,22 @@ export interface ControleLinha {
   publicador_id: string;
   qtd_pedida: number;
   qtd_entregue: number;
+}
+
+// A12b: agregado de necessidade regular de revistas mensais, por variante.
+export interface RevistaMesVariante {
+  variante: 'publico' | 'estudo';
+  letras_grandes: boolean;
+  necessidade: number;
+  publicadores: number; // quantos publicadores contribuíram pra essa soma
+}
+export interface RevistaMesLinha {
+  publicacao_id: number;
+  publicacao_nome: string;
+  qtd_estoque: number;
+  variantes: RevistaMesVariante[];
+  necessidadeTotal: number;
+  quantoPedir: number;
 }
 
 const CATEGORIAS_VALIDAS: CategoriaPublicacao[] = ['biblia', 'livro', 'brochura', 'folheto', 'cartao_visita', 'revista', 'formulario', 'outro'];
@@ -153,7 +170,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   // /publicacoes existir fora do namespace /admin).
   const { data: catalogoRows } = await locals.supabase
     .from('publicacoes')
-    .select('id, nome, codigo, categoria, qtd_estoque, imagem_url, ativo')
+    .select('id, nome, codigo, categoria, qtd_estoque, imagem_url, ativo, periodicidade')
     .order('categoria')
     .order('nome');
   const catalogo = (catalogoRows ?? []) as PublicacaoCatalogo[];
@@ -178,9 +195,43 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     controle = (controleRows ?? []) as ControleLinha[];
   }
 
+  // A12b: "Revistas do mês" — soma da necessidade regular de todos os
+  // publicadores, por revista mensal/variante/letras-grandes.
+  const revistasCatalogo = catalogo.filter((p: any) => p.periodicidade === 'mensal');
+  let revistasMes: RevistaMesLinha[] = [];
+  if (revistasCatalogo.length > 0) {
+    const { data: necessidadeRows } = await locals.supabase
+      .from('publicador_necessidade_regular')
+      .select('publicacao_id, variante, letras_grandes, qtd')
+      .in('publicacao_id', revistasCatalogo.map((r) => r.id))
+      .gt('qtd', 0);
+    const porPublicacao = new Map<number, Map<string, RevistaMesVariante>>();
+    for (const n of (necessidadeRows ?? []) as any[]) {
+      const grupos = porPublicacao.get(n.publicacao_id) ?? new Map<string, RevistaMesVariante>();
+      const chave = `${n.variante}:${n.letras_grandes}`;
+      const v = grupos.get(chave) ?? { variante: n.variante, letras_grandes: n.letras_grandes, necessidade: 0, publicadores: 0 };
+      v.necessidade += n.qtd;
+      v.publicadores += 1;
+      grupos.set(chave, v);
+      porPublicacao.set(n.publicacao_id, grupos);
+    }
+    revistasMes = revistasCatalogo.map((r) => {
+      const variantes = [...(porPublicacao.get(r.id)?.values() ?? [])];
+      const necessidadeTotal = variantes.reduce((s, v) => s + v.necessidade, 0);
+      return {
+        publicacao_id: r.id,
+        publicacao_nome: r.nome,
+        qtd_estoque: r.qtd_estoque,
+        variantes,
+        necessidadeTotal,
+        quantoPedir: Math.max(0, necessidadeTotal - r.qtd_estoque)
+      };
+    });
+  }
+
   return {
     pedidos, filtro, souAdmin: locals.profile?.role === 'admin', reposicao, tendencia, catalogo,
-    publicadores, controlePublicacaoId, controle
+    publicadores, controlePublicacaoId, controle, revistasMes
   };
 };
 
@@ -242,6 +293,22 @@ export const actions: Actions = {
       : await locals.supabase.from('publicacoes').insert(row);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Publicação salva' };
+  },
+
+  // A12b: atualiza SÓ o estoque (usado no atalho da seção "Revistas do
+  // mês" — não manda o formulário inteiro de novo pra não zerar
+  // codigo/categoria/ativo por engano).
+  atualizarEstoque: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    const qtdEstoque = Number(fd.get('qtd_estoque') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    if (qtdEstoque < 0) return fail(400, { erro: 'Estoque inválido' });
+    const { error } = await locals.supabase.from('publicacoes').update({ qtd_estoque: qtdEstoque }).eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Estoque atualizado' };
   },
 
   // Upload da imagem de capa — mesmo padrão de fotos-locais (foto de prédio).
