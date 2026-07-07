@@ -3,7 +3,7 @@
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
 
-  type ColorirPor = 'status' | 'territorio' | 'densidade' | 'idade' | 'campanha';
+  type ColorirPor = 'status' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'idade' | 'campanha';
   type Basemap = 'positron' | 'liberty' | 'bright';
 
   const BASEMAPS: Record<Basemap, string> = {
@@ -102,6 +102,7 @@
             concluida: !!q.data_conclusao,
             territorio_id: q.territorio_id,
             qtd_locais: q.qtd_locais,
+            qtd_unidades: q.qtd_unidades,
             data_conclusao: q.data_conclusao,
             dias_concluido: dias,
             concluida_na_campanha: concluidasCampanhaSet.has(q.id)
@@ -156,9 +157,14 @@
       ];
     } else if (modo === 'territorio') {
       defaultColor = ['get', 'color'];
-    } else if (modo === 'densidade') {
+    } else if (modo === 'densidade_enderecos') {
       defaultColor = [
         'interpolate', ['linear'], ['get', 'qtd_locais'],
+        0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
+      ];
+    } else if (modo === 'densidade_residencias') {
+      defaultColor = [
+        'interpolate', ['linear'], ['get', 'qtd_unidades'],
         0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
       ];
     } else if (modo === 'campanha') {

@@ -55,7 +55,7 @@
 
 ## Onda 2 — Mapas e Geral
 
-- [ ] 🟢 **T8 (A3)** `contarResidenciasPorQuadra` no queries.ts + modos
+- [x] 🟢 **T8 (A3)** `contarResidenciasPorQuadra` no queries.ts + modos
       `densidade_enderecos`/`densidade_residencias` no `MapaAdmin`
       (Geral) — substituindo o modo "densidade" único.
 

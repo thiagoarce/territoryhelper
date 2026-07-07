@@ -55,6 +55,26 @@ export async function contarLocaisPorQuadra(supabase: SupabaseClient): Promise<M
   return mapa;
 }
 
+// Conta unidades (residências/aptos) por quadra — um prédio de 40 aptos
+// pesa 40, não 1 (diferente de contarLocaisPorQuadra, que conta endereços).
+// unidades não tem quadra_id direto: junta via locais.quadra_id.
+export async function contarResidenciasPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
+  const locais = await selectAll<{ id: number; quadra_id: string | null }>(
+    supabase.from('locais').select('id, quadra_id')
+  );
+  const quadraPorLocal = new Map(locais.filter((l) => l.quadra_id).map((l) => [l.id, l.quadra_id as string]));
+  const unidades = await selectAll<{ local_id: number }>(
+    supabase.from('unidades').select('local_id')
+  );
+  const mapa = new Map<string, number>();
+  for (const u of unidades) {
+    const quadraId = quadraPorLocal.get(u.local_id);
+    if (!quadraId) continue;
+    mapa.set(quadraId, (mapa.get(quadraId) ?? 0) + 1);
+  }
+  return mapa;
+}
+
 export interface QuadraEnriquecida extends Quadra {
   territorio_nome: string | null;
   qtd_locais: number;
@@ -96,12 +116,13 @@ export interface QuadraGeo extends QuadraEnriquecida {
 export async function listarQuadrasComGeo(
   supabase: SupabaseClient
 ): Promise<QuadraGeo[]> {
-  const [qRes, locaisPorQuadra, terrRes] = await Promise.all([
+  const [qRes, locaisPorQuadra, residenciasPorQuadra, terrRes] = await Promise.all([
     supabase
       .from('quadras_geo')
       .select('id, color, territorio_id, status, ativa, data_conclusao, notas, reservada_campanha_id, poly_geojson')
       .order('id'),
     contarLocaisPorQuadra(supabase),
+    contarResidenciasPorQuadra(supabase),
     supabase.from('territorios').select('id, nome')
   ]);
   if (qRes.error) throw qRes.error;
@@ -113,7 +134,7 @@ export async function listarQuadrasComGeo(
     poly: null,
     territorio_nome: q.territorio_id ? territorioNomePorId.get(q.territorio_id) ?? null : null,
     qtd_locais: locaisPorQuadra.get(q.id) ?? 0,
-    qtd_unidades: 0
+    qtd_unidades: residenciasPorQuadra.get(q.id) ?? 0
   })) as QuadraGeo[];
 }
 
