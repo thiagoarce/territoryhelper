@@ -14,7 +14,6 @@
       predios: PredioAdmin[];
       arranjosCartas: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; cartas_locais_ids: number[] | null; hora_inicio: string | null }[];
       quadrasAtivas: string[];
-      cicloCartas: { iniciado_em: string; iniciado_por_nome: string | null } | null;
       publicadores: { id: string; nome: string; role: string }[];
       lat: number | null;
       lng: number | null;
@@ -212,21 +211,6 @@
     return total === 0 ? 0 : Math.round((parcial / total) * 100);
   }
 
-  // Ciclo de cartas — iniciar um novo "solta" todas as marcas de escrita
-  // antigas (histórico preservado, só o corte muda).
-  let iniciandoCiclo = $state(false);
-  async function iniciarNovoCiclo() {
-    const desde = data.cicloCartas
-      ? `O ciclo atual começou em ${new Date(data.cicloCartas.iniciado_em + 'T12:00:00').toLocaleDateString('pt-BR')}.`
-      : 'Nenhum ciclo foi iniciado ainda (toda marca antiga vale).';
-    if (!confirm(`Iniciar um NOVO ciclo de cartas?\n\n${desde}\n\nTodas as marcas de "carta escrita" anteriores a hoje voltam a aparecer como pendentes (nada é apagado — a data antiga fica esmaecida no prédio).`)) return;
-    iniciandoCiclo = true;
-    const res = await fetch('?/iniciarCicloCartas', { method: 'POST', body: new FormData() });
-    const parsed = deserialize(await res.text()) as any;
-    iniciandoCiclo = false;
-    if (parsed.type === 'success') { toast.success('Novo ciclo iniciado'); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
 </script>
 
 <div class="p-4 space-y-3">
@@ -235,22 +219,6 @@
     <p class="text-sm text-slate-500">
       {filtrados.length} de {data.predios.length} · <Icon nome="building" size={14} /> {stats.residencial} residenciais · <Icon nome="store" size={14} /> {stats.comercial} comerciais
     </p>
-  </div>
-
-  <div class="flex items-center justify-between gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2">
-    <div class="text-xs text-purple-900">
-      <span class="font-semibold"><Icon nome="mail" size={12} /> Ciclo de cartas</span>
-      {#if data.cicloCartas}
-        — desde {new Date(data.cicloCartas.iniciado_em + 'T12:00:00').toLocaleDateString('pt-BR')}
-        {#if data.cicloCartas.iniciado_por_nome}<span class="text-purple-500">· {data.cicloCartas.iniciado_por_nome}</span>{/if}
-      {:else}
-        — nenhum iniciado (toda marca de escrita vale)
-      {/if}
-    </div>
-    <button type="button" disabled={iniciandoCiclo} onclick={iniciarNovoCiclo}
-      class="shrink-0 text-xs font-medium text-purple-700 hover:underline disabled:opacity-40">
-      {iniciandoCiclo ? 'Iniciando...' : 'Iniciar novo ciclo'}
-    </button>
   </div>
 
   <input

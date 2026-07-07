@@ -1,7 +1,8 @@
 import type { Actions, PageServerLoad } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
-import { carregarPredioDetalhado, selectAll, cicloCartasAtual } from '$lib/server/queries';
+import { carregarPredioDetalhado, selectAll, cicloCartasPorLocal, cicloEfetivo } from '$lib/server/queries';
+import { exigirAdminAction } from '$lib/server/guards';
 import { desfechoNoCicloAtual, cartaEscritaNoCiclo } from '$lib/ciclos';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 
@@ -9,7 +10,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw error(401, 'Faça login');
   const id = Number(params.id);
   if (!Number.isFinite(id) || id <= 0) throw error(400, 'ID inválido');
-  const ciclo = await cicloCartasAtual(locals.supabase);
+  const ciclos = await cicloCartasPorLocal(locals.supabase, [id]);
+  const ciclo = cicloEfetivo(ciclos, id);
   const predio = await carregarPredioDetalhado(locals.supabase, id, ciclo?.iniciado_em);
   if (!predio) throw error(404, 'Prédio não encontrado');
 
@@ -63,7 +65,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   return {
     predio: { ...predio, unidades },
     minhaRole: locals.profile?.role,
-    cicloCartasInicio: ciclo?.iniciado_em ?? null
+    cicloCartasInicio: ciclo?.iniciado_em ?? null,
+    cicloCartas: ciclo
   };
 };
 
@@ -129,8 +132,9 @@ export const actions: Actions = {
       // Semântica: carta ESCRITA (a entrega é o desfecho casa-em-casa).
       // Marca de ciclo PASSADO conta como não-escrita: o toggle re-escreve
       // com a data de hoje em vez de desmarcar. Desmarcar limpa data+autor.
-      const ciclo = await cicloCartasAtual(locals.supabase);
-      const escrevendo = !cartaEscritaNoCiclo(u.carta_entregue, ciclo?.iniciado_em);
+      const ciclosU = await cicloCartasPorLocal(locals.supabase, [localId]);
+      const cicloU = cicloEfetivo(ciclosU, localId);
+      const escrevendo = !cartaEscritaNoCiclo(u.carta_entregue, cicloU?.iniciado_em);
       patch.carta_entregue = escrevendo ? hojeIsoBrasil() : null;
       patch.carta_escrita_por = escrevendo ? locals.user.id : null;
     } else if (campo === 'desocupado') {
@@ -202,5 +206,19 @@ export const actions: Actions = {
       .single();
     if (error) return fail(400, { erro: error.message });
     return { ok: true, token: data.token };
+  },
+
+  // A19: inicia um novo ciclo de cartas SÓ deste prédio (substitui o botão
+  // global que ficava em /admin/predios — cada prédio termina de escrever
+  // num momento diferente).
+  iniciarCicloCartasLocal: async ({ locals, params }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const localId = Number(params.id);
+    const { error } = await locals.supabase
+      .from('cartas_ciclos')
+      .insert({ local_id: localId, iniciado_por: locals.user!.id });
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Novo ciclo de cartas iniciado pra este prédio' };
   }
 };

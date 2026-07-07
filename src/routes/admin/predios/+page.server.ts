@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
-import { listarPredios, carregarPredioDetalhado, listarPublicadores, selectAll, cicloCartasAtual } from '$lib/server/queries';
+import { listarPredios, carregarPredioDetalhado, listarPublicadores, selectAll } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
 
@@ -20,15 +20,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const lng = parseFloat(url.searchParams.get('lng') || '');
   const temGeo = isFinite(lat) && isFinite(lng);
 
-  const [predios, geoRows, publicadores, cicloCartas] = await Promise.all([
+  const [predios, geoRows, publicadores] = await Promise.all([
     listarPredios(locals.supabase),
     temGeo
       ? selectAll<{ id: number; geo_geojson: any }>(
           locals.supabase.from('locais_geo').select('id, geo_geojson').in('tipo', ['predio', 'comercio'])
         )
       : Promise.resolve([] as { id: number; geo_geojson: any }[]),
-    listarPublicadores(locals.supabase),
-    cicloCartasAtual(locals.supabase)
+    listarPublicadores(locals.supabase)
   ]);
 
   // Ordena por proximidade se GPS ativo
@@ -75,24 +74,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       modalidade_cor: modById.get(a.modalidade_id)?.cor ?? '#3b82f6'
     }));
 
-  return { predios: prediosOrd, arranjosCartas, quadrasAtivas, publicadores, cicloCartas, lat: temGeo ? lat : null, lng: temGeo ? lng : null };
+  return { predios: prediosOrd, arranjosCartas, quadrasAtivas, publicadores, lat: temGeo ? lat : null, lng: temGeo ? lng : null };
 };
 
 export const actions: Actions = {
-  // Inicia um NOVO ciclo de cartas (append-only, ~mil prédios levam meses
-  // pra cobrir): toda marca de "carta escrita" anterior a hoje volta a
-  // aparecer solta/esmaecida — nada é apagado, o ciclo é só um corte.
-  iniciarCicloCartas: async ({ locals }) => {
-    const guard = exigirAdminAction(locals);
-    if (guard) return guard;
-    const { error } = await locals.supabase
-      .from('cartas_ciclos')
-      .insert({ iniciado_por: locals.user!.id });
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Novo ciclo de cartas iniciado' };
-  },
-
-
   // Carrega detalhes de UM prédio (pro modal inline)
   detalhe: async ({ request, locals }) => {
     const guard = exigirAdminAction(locals);

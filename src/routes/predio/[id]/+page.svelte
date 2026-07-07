@@ -41,6 +41,7 @@
       };
       minhaRole?: string;
       cicloCartasInicio?: string | null;
+      cicloCartas?: { iniciado_em: string; iniciado_por_nome: string | null } | null;
     };
   } = $props();
 
@@ -236,6 +237,22 @@
     }
   }
 
+  // A19: ciclo de cartas é por prédio — só admin inicia (some das listas
+  // globais de /admin/predios, botão migrou pra cá).
+  let iniciandoCiclo = $state(false);
+  async function iniciarNovoCiclo() {
+    const desde = data.cicloCartas
+      ? `O ciclo atual deste prédio começou em ${new Date(data.cicloCartas.iniciado_em + 'T12:00:00').toLocaleDateString('pt-BR')}.`
+      : 'Nenhum ciclo foi iniciado ainda pra este prédio (toda marca antiga vale).';
+    if (!confirm(`Iniciar um NOVO ciclo de cartas SÓ deste prédio?\n\n${desde}\n\nAs marcas de "carta escrita" anteriores voltam a aparecer como pendentes (nada é apagado).`)) return;
+    iniciandoCiclo = true;
+    const res = await fetch('?/iniciarCicloCartasLocal', { method: 'POST', body: new FormData() });
+    const parsed = deserialize(await res.text()) as any;
+    iniciandoCiclo = false;
+    if (parsed.type === 'success') { toast.success('Novo ciclo iniciado'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
   async function compartilharWhatsApp() {
     compartilhando = true;
     try {
@@ -280,6 +297,21 @@
       {#if data.predio.acesso_interfones}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="phone" size={14} /> Interfones</span>{/if}
       {#if data.predio.irmao_mora}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="user" size={14} /> Irmão{data.predio.nome_irmao ? `: ${data.predio.nome_irmao}` : ''}</span>{/if}
     </div>
+
+    {#if data.minhaRole === 'admin'}
+      <div class="mt-2 flex items-center gap-1.5 text-[11px] opacity-90">
+        <Icon nome="mail" size={12} />
+        {#if data.cicloCartas}
+          ciclo desde {new Date(data.cicloCartas.iniciado_em + 'T12:00:00').toLocaleDateString('pt-BR')}
+          {#if data.cicloCartas.iniciado_por_nome}· {data.cicloCartas.iniciado_por_nome}{/if}
+        {:else}
+          nenhum ciclo iniciado
+        {/if}
+        <button type="button" disabled={iniciandoCiclo} onclick={iniciarNovoCiclo} class="ml-1 underline disabled:opacity-40">
+          {iniciandoCiclo ? 'Iniciando...' : 'Iniciar novo ciclo'}
+        </button>
+      </div>
+    {/if}
 
     <!-- Progresso duplo (visitados + entregues) -->
     <div class="mt-4 grid grid-cols-2 gap-3">

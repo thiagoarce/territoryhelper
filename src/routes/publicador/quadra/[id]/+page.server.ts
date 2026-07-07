@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { error, fail } from '@sveltejs/kit';
-import { carregarQuadraComLocais, cicloCartasAtual } from '$lib/server/queries';
+import { carregarQuadraComLocais, cicloCartasPorLocal, cicloEfetivo } from '$lib/server/queries';
 import { exigirQuadraDesignada } from '$lib/server/guards';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 
@@ -25,12 +25,17 @@ async function localIdDaUnidade(locals: App.Locals, unidadeId: number): Promise<
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   await exigirQuadraDesignada(locals, params.id);
-  const [dados, ciclo] = await Promise.all([
-    carregarQuadraComLocais(locals.supabase, params.id),
-    cicloCartasAtual(locals.supabase)
-  ]);
+  const dados = await carregarQuadraComLocais(locals.supabase, params.id);
   if (!dados) throw error(404, 'Quadra não encontrada');
-  return { ...dados, minhaRole: locals.profile?.role, cicloCartasInicio: ciclo?.iniciado_em ?? null };
+  // A19: ciclo de cartas é POR PRÉDIO — cada local da quadra pode ter o
+  // próprio corte (além do global). Map por local_id pro client resolver
+  // cartaEscritaNoCiclo por endereço, não pra quadra inteira.
+  const ciclos = await cicloCartasPorLocal(locals.supabase, dados.locais.map((l) => l.id));
+  const cicloCartasPorLocalMap: Record<number, string | null> = {};
+  for (const l of dados.locais) {
+    cicloCartasPorLocalMap[l.id] = cicloEfetivo(ciclos, l.id)?.iniciado_em ?? null;
+  }
+  return { ...dados, minhaRole: locals.profile?.role, cicloCartasPorLocal: cicloCartasPorLocalMap };
 };
 
 export const actions: Actions = {

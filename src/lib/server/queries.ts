@@ -246,7 +246,7 @@ export interface PredioListado {
 export async function listarPredios(supabase: SupabaseClient): Promise<PredioListado[]> {
   // Paginação obrigatória pra unidades (19k+ no banco) e pra prédios
   // (potencialmente 2774 — passa do limite default).
-  const [predios, unidades, ciclo] = await Promise.all([
+  const [predios, unidades] = await Promise.all([
     selectAll<any>(
       supabase
         .from('locais')
@@ -258,16 +258,17 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
     ),
     selectAll<{ local_id: number; carta_entregue: string | null; desocupado: boolean; nao_escrever: boolean }>(
       supabase.from('unidades').select('local_id, carta_entregue, desocupado, nao_escrever')
-    ),
-    cicloCartasAtual(supabase)
+    )
   ]);
+  // A19: ciclo por prédio — cada um pode ter reiniciado em data diferente.
+  const ciclos = await cicloCartasPorLocal(supabase, predios.map((p: any) => p.id));
 
   type Counts = { qtd: number; carta: number; desoc: number; naoescr: number };
   const porLocal = new Map<number, Counts>();
   for (const u of unidades) {
     const c = porLocal.get(u.local_id) ?? { qtd: 0, carta: 0, desoc: 0, naoescr: 0 };
     c.qtd++;
-    if (cartaEscritaNoCiclo(u.carta_entregue, ciclo?.iniciado_em)) c.carta++;
+    if (cartaEscritaNoCiclo(u.carta_entregue, cicloEfetivo(ciclos, u.local_id)?.iniciado_em)) c.carta++;
     if (u.desocupado) c.desoc++;
     if (u.nao_escrever) c.naoescr++;
     porLocal.set(u.local_id, c);
@@ -284,21 +285,60 @@ export async function listarPredios(supabase: SupabaseClient): Promise<PredioLis
   });
 }
 
-// Ciclo ATUAL do trabalho de cartas (tabela cartas_ciclos, migration 056)
-// — null se nenhum ciclo foi iniciado ainda (toda marca vale).
+// Ciclo de cartas POR PRÉDIO (migration 062/A19) — cada prédio termina de
+// escrever em momento diferente, um corte único global não fazia sentido.
+// Linhas antigas (local_id null) continuam valendo como corte GLOBAL
+// mínimo: o ciclo EFETIVO de um prédio é o mais recente entre o global e
+// o dele (ver cicloEfetivo). null = nenhum ciclo, toda marca vale.
 export interface CicloCartas {
   iniciado_em: string;
   iniciado_por_nome: string | null;
 }
-export async function cicloCartasAtual(supabase: SupabaseClient): Promise<CicloCartas | null> {
-  const { data } = await supabase
-    .from('cartas_ciclos')
-    .select('iniciado_em, profiles(nome)')
-    .order('id', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  return { iniciado_em: (data as any).iniciado_em, iniciado_por_nome: (data as any).profiles?.nome ?? null };
+export interface CicloCartasResultado {
+  global: CicloCartas | null;
+  porLocal: Map<number, CicloCartas>;
+}
+export async function cicloCartasPorLocal(
+  supabase: SupabaseClient,
+  localIds?: number[]
+): Promise<CicloCartasResultado> {
+  const [globalRes, locaisRows] = await Promise.all([
+    supabase
+      .from('cartas_ciclos')
+      .select('iniciado_em, profiles(nome)')
+      .is('local_id', null)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    localIds && localIds.length > 0
+      ? selectAll<{ local_id: number; iniciado_em: string; profiles: { nome: string } | null }>(
+          supabase
+            .from('cartas_ciclos')
+            .select('local_id, iniciado_em, profiles(nome)')
+            .in('local_id', localIds)
+            .order('id', { ascending: false })
+        )
+      : Promise.resolve([])
+  ]);
+  const global = globalRes.data
+    ? { iniciado_em: (globalRes.data as any).iniciado_em, iniciado_por_nome: (globalRes.data as any).profiles?.nome ?? null }
+    : null;
+  const porLocal = new Map<number, CicloCartas>();
+  for (const row of locaisRows as any[]) {
+    if (porLocal.has(row.local_id)) continue; // já pegou o mais recente (order desc)
+    porLocal.set(row.local_id, { iniciado_em: row.iniciado_em, iniciado_por_nome: row.profiles?.nome ?? null });
+  }
+  return { global, porLocal };
+}
+
+// Resolve o ciclo EFETIVO de um prédio específico (o mais recente entre
+// o global e o dele).
+export function cicloEfetivo(resultado: CicloCartasResultado, localId: number): CicloCartas | null {
+  const local = resultado.porLocal.get(localId);
+  const global = resultado.global;
+  if (!local) return global;
+  if (!global) return local;
+  return local.iniciado_em >= global.iniciado_em ? local : global;
 }
 
 export interface PredioDetalhado extends PredioListado {
