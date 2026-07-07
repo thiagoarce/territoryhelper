@@ -42,39 +42,39 @@ export async function selectAll<T = unknown>(
   return out;
 }
 
-// Conta locais por quadra (paginado pra evitar bug do limite 1000).
-// Exclui marcado_nao_existe (A7): endereço sinalizado pelo publicador como
-// "não existe mais" sai das contagens de progresso até o admin resolver.
-export async function contarLocaisPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
-  const linhas = await selectAll<{ quadra_id: string | null }>(
-    supabase.from('locais').select('quadra_id').eq('marcado_nao_existe', false)
-  );
-  const mapa = new Map<string, number>();
-  for (const l of linhas) {
-    if (!l.quadra_id) continue;
-    mapa.set(l.quadra_id, (mapa.get(l.quadra_id) ?? 0) + 1);
+// Contagem de locais/unidades por quadra — a view `quadras_contagens`
+// (migration 071) já faz o GROUP BY em SQL. Antes isso trazia TODAS as
+// linhas de `locais` (2x — uma por função) e TODAS as linhas de
+// `unidades` do banco inteiro pro Worker via selectAll, e reduzia a Maps
+// com um `for` em JS — um bloco síncrono grande o bastante pra contribuir
+// com estouros de CPU do Cloudflare Workers, chamado em toda carga de
+// /admin e /publicador (via listarQuadrasComGeo). A view devolve só 1
+// linha por quadra, não por endereço/unidade.
+async function contarPorQuadra(supabase: SupabaseClient): Promise<{ locais: Map<string, number>; unidades: Map<string, number> }> {
+  const { data, error } = await supabase
+    .from('quadras_contagens')
+    .select('quadra_id, qtd_locais, qtd_unidades');
+  if (error) throw error;
+  const locais = new Map<string, number>();
+  const unidades = new Map<string, number>();
+  for (const r of (data ?? []) as any[]) {
+    locais.set(r.quadra_id, r.qtd_locais);
+    unidades.set(r.quadra_id, r.qtd_unidades);
   }
-  return mapa;
+  return { locais, unidades };
+}
+
+// Exclui marcado_nao_existe (A7): endereço sinalizado pelo publicador como
+// "não existe mais" sai das contagens de progresso até o admin resolver
+// (já filtrado dentro da view).
+export async function contarLocaisPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
+  return (await contarPorQuadra(supabase)).locais;
 }
 
 // Conta unidades (residências/aptos) por quadra — um prédio de 40 aptos
 // pesa 40, não 1 (diferente de contarLocaisPorQuadra, que conta endereços).
-// unidades não tem quadra_id direto: junta via locais.quadra_id.
 export async function contarResidenciasPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
-  const locais = await selectAll<{ id: number; quadra_id: string | null }>(
-    supabase.from('locais').select('id, quadra_id').eq('marcado_nao_existe', false)
-  );
-  const quadraPorLocal = new Map(locais.filter((l) => l.quadra_id).map((l) => [l.id, l.quadra_id as string]));
-  const unidades = await selectAll<{ local_id: number }>(
-    supabase.from('unidades').select('local_id')
-  );
-  const mapa = new Map<string, number>();
-  for (const u of unidades) {
-    const quadraId = quadraPorLocal.get(u.local_id);
-    if (!quadraId) continue;
-    mapa.set(quadraId, (mapa.get(quadraId) ?? 0) + 1);
-  }
-  return mapa;
+  return (await contarPorQuadra(supabase)).unidades;
 }
 
 export interface QuadraEnriquecida extends Quadra {
@@ -118,13 +118,12 @@ export interface QuadraGeo extends QuadraEnriquecida {
 export async function listarQuadrasComGeo(
   supabase: SupabaseClient
 ): Promise<QuadraGeo[]> {
-  const [qRes, locaisPorQuadra, residenciasPorQuadra, terrRes] = await Promise.all([
+  const [qRes, contagens, terrRes] = await Promise.all([
     supabase
       .from('quadras_geo')
       .select('id, color, territorio_id, status, ativa, data_conclusao, notas, reservada_campanha_id, poly_geojson')
       .order('id'),
-    contarLocaisPorQuadra(supabase),
-    contarResidenciasPorQuadra(supabase),
+    contarPorQuadra(supabase),
     supabase.from('territorios').select('id, nome')
   ]);
   if (qRes.error) throw qRes.error;
@@ -135,8 +134,8 @@ export async function listarQuadrasComGeo(
     ...q,
     poly: null,
     territorio_nome: q.territorio_id ? territorioNomePorId.get(q.territorio_id) ?? null : null,
-    qtd_locais: locaisPorQuadra.get(q.id) ?? 0,
-    qtd_unidades: residenciasPorQuadra.get(q.id) ?? 0
+    qtd_locais: contagens.locais.get(q.id) ?? 0,
+    qtd_unidades: contagens.unidades.get(q.id) ?? 0
   })) as QuadraGeo[];
 }
 
