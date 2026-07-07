@@ -35,6 +35,20 @@ interface QuadraEstatisticaIbge {
   qtd: number;
 }
 
+export interface CuradoriaLinha {
+  id: number;
+  local_id: number | null;
+  unidade_id: number | null;
+  publicador_id: string | null;
+  publicador_nome: string | null;
+  tipo: 'edicao' | 'criacao' | 'nao_existe';
+  antes: Record<string, unknown> | null;
+  depois: Record<string, unknown> | null;
+  criado_em: string;
+  // Endereço pra dar contexto (pode ser null se o local já foi excluído por fora)
+  local_endereco: string | null;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
   // TODOS os locais com geo (extrai lat/lng do geo_geojson da view)
   const linhas = await selectAll<LocalDaView>(
@@ -122,6 +136,36 @@ export const load: PageServerLoad = async ({ locals }) => {
     .filter((q) => q.ativa && !q.territorio_id)
     .map((q) => q.id);
 
+  // T12 (A6): curadoria — edições/criações de não-admin pendentes de revisão.
+  const { data: curadoriaRows } = await locals.supabase
+    .from('curadoria_edicoes')
+    .select('id, local_id, unidade_id, publicador_id, tipo, antes, depois, criado_em')
+    .eq('status', 'pendente')
+    .order('criado_em', { ascending: false });
+  const localIdsCuradoria = Array.from(new Set((curadoriaRows ?? []).map((c) => c.local_id).filter((v): v is number => v != null)));
+  const enderecoPorLocal = new Map<number, string>();
+  if (localIdsCuradoria.length > 0) {
+    const { data: locaisCurad } = await locals.supabase
+      .from('locais')
+      .select('id, logradouro, numero, nome')
+      .in('id', localIdsCuradoria);
+    for (const l of (locaisCurad ?? []) as any[]) {
+      enderecoPorLocal.set(l.id, l.nome || `${l.logradouro ?? ''}, ${l.numero ?? ''}`.trim());
+    }
+  }
+  const curadoria: CuradoriaLinha[] = (curadoriaRows ?? []).map((c: any) => ({
+    id: c.id,
+    local_id: c.local_id,
+    unidade_id: c.unidade_id,
+    publicador_id: c.publicador_id,
+    publicador_nome: c.publicador_id ? (nomePub.get(c.publicador_id) ?? null) : null,
+    tipo: c.tipo,
+    antes: c.antes,
+    depois: c.depois,
+    criado_em: c.criado_em,
+    local_endereco: c.local_id != null ? (enderecoPorLocal.get(c.local_id) ?? null) : null
+  }));
+
   return {
     locais,
     quadras,
@@ -131,7 +175,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     quadrasMultiCluster,
     quadrasVazias,
     quadrasOrfas,
-    quadrasParaRenomear
+    quadrasParaRenomear,
+    curadoria
   };
 };
 
@@ -459,5 +504,69 @@ export const actions: Actions = {
     if (e2) return fail(400, { erro: 'Erro removendo antiga: ' + e2.message });
 
     return { ok: true, msg: `Renomeada de ${idAntigo} → ${idNovo}` };
+  },
+
+  // ===== Curadoria (T12/A6) =====
+
+  // Confirma a edição/criação — vira definitiva, some da fila.
+  confirmarCuradoria: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error } = await locals.supabase
+      .from('curadoria_edicoes')
+      .update({ status: 'confirmado', resolvido_por: locals.user.id, resolvido_em: new Date().toISOString() })
+      .eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Confirmado' };
+  },
+
+  // Reverte: 'criacao' apaga o local criado; 'edicao'/'nao_existe' restaura
+  // o snapshot `antes` no registro (local ou unidade).
+  reverterCuradoria: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+
+    const { data: linha, error: errBusca } = await locals.supabase
+      .from('curadoria_edicoes')
+      .select('id, local_id, unidade_id, tipo, antes')
+      .eq('id', id)
+      .single();
+    if (errBusca || !linha) return fail(404, { erro: 'Registro de curadoria não encontrado' });
+
+    if (linha.tipo === 'criacao') {
+      if (!linha.local_id) return fail(400, { erro: 'Sem local_id pra reverter criação' });
+      // Cascata apaga unidades e a própria linha de curadoria (FK on delete cascade).
+      const { error } = await locals.supabase.from('locais').delete().eq('id', linha.local_id);
+      if (error) return fail(400, { erro: error.message });
+      return { ok: true, msg: 'Criação revertida (endereço excluído)' };
+    }
+
+    if (!linha.antes || Object.keys(linha.antes).length === 0) {
+      return fail(400, { erro: 'Sem snapshot "antes" pra restaurar' });
+    }
+    if (linha.unidade_id) {
+      const { error } = await locals.supabase.from('unidades').update(linha.antes).eq('id', linha.unidade_id);
+      if (error) return fail(400, { erro: error.message });
+    } else if (linha.local_id) {
+      const { error } = await locals.supabase.from('locais').update(linha.antes).eq('id', linha.local_id);
+      if (error) return fail(400, { erro: error.message });
+    } else {
+      return fail(400, { erro: 'Sem local_id/unidade_id pra reverter' });
+    }
+
+    const { error: errUpd } = await locals.supabase
+      .from('curadoria_edicoes')
+      .update({ status: 'revertido', resolvido_por: locals.user.id, resolvido_em: new Date().toISOString() })
+      .eq('id', id);
+    if (errUpd) return fail(400, { erro: errUpd.message });
+    return { ok: true, msg: 'Revertido' };
   }
 };
