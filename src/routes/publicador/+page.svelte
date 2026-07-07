@@ -346,8 +346,18 @@
   </a>
 {/if}
 
+<div>
+  <h1 class="text-2xl font-bold">Minhas designações</h1>
+  <p class="mt-1 text-sm text-slate-500">
+    Território pessoal · pregação em grupo · cartas.
+    {#if data.minhaRole === 'admin' || data.minhaRole === 'dirigente'}
+      <a href="/publicador/mapa" class="text-primary-700 hover:underline">Visão geral no mapa →</a>
+    {/if}
+  </p>
+</div>
+
 {#if data.arranjoQueDirijo}
-  <div class="mb-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
+  <div class="mt-4 rounded-xl border-2 border-primary-400 bg-primary-50 p-3">
     <div class="flex items-center justify-between gap-2 mb-2">
       <div class="text-xs uppercase tracking-wider font-bold text-primary-900 flex items-center gap-2"><Icon nome="tent" size={14} /> Você dirige</div>
       {#if data.outrosArranjosQueDirijo.length > 0}
@@ -421,7 +431,7 @@
 {/if}
 
 {#if partesSeparadas.length > 0}
-  <div class="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+  <div class="mt-4 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
     <div class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2"><Icon nome="walk" size={14} /> Pregação em grupo — sua parte</div>
     {#each partesSeparadas as p}
       {@const prog = progressoQuadras(p.quadras_ids)}
@@ -464,30 +474,6 @@
   </div>
 {/if}
 
-{#if data.meusAgendamentosTp.length > 0}
-  <div class="mb-4 rounded-xl border-2 border-teal-400 bg-teal-50 p-3">
-    <div class="text-xs uppercase tracking-wider font-bold text-teal-900 mb-2"><Icon nome="megaphone" size={14} /> Seus turnos de TP (próximos 7 dias)</div>
-    <div class="flex flex-wrap gap-1.5">
-      {#each data.meusAgendamentosTp as t}
-        <a href="/publicador/tp" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-teal-300 bg-white text-teal-900 hover:bg-teal-100">
-          <span class="font-medium">{t.ponto_nome}</span>
-          <span class="text-teal-700">{fmtDia(t.data)} · {t.hora_inicio.substring(0, 5)}</span>
-        </a>
-      {/each}
-    </div>
-  </div>
-{/if}
-
-<div>
-  <h1 class="text-2xl font-bold">Minhas designações</h1>
-  <p class="mt-1 text-sm text-slate-500">
-    Território pessoal · pregação em grupo · cartas.
-    {#if data.minhaRole === 'admin' || data.minhaRole === 'dirigente'}
-      <a href="/publicador/mapa" class="text-primary-700 hover:underline">Visão geral no mapa →</a>
-    {/if}
-  </p>
-</div>
-
 {#if !carteiraTemAlgo}
   <div class="mt-3 text-sm text-slate-400 italic bg-slate-50 rounded-lg p-3">
     Sem território pessoal, cartas ou território comercial designado no momento.
@@ -497,24 +483,6 @@
 {#if quadrasMapa.length > 0 && aba === 'abertas'}
   <div class="mt-4">
     <AdminMapa quadras={quadrasMapa} altura={220} onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))} />
-  </div>
-{/if}
-
-<!-- TCEs designados -->
-{#if data.tces && data.tces.length > 0}
-  <div class="mt-4">
-    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2"><Icon nome="store" size={14} /> Territórios comerciais</h2>
-    <div class="space-y-2">
-      {#each data.tces as t}
-        <a href="/publicador/tce/{t.id}" class="block rounded-lg border border-purple-200 bg-purple-50 p-3 hover:bg-purple-100 transition-colors">
-          <div class="font-medium flex items-center justify-between">
-            {t.nome}
-            {#if t.prazo}<span class="text-xs text-amber-700">prazo {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</span>{/if}
-          </div>
-          <div class="text-xs text-slate-500 mt-0.5">{t.tipo} · toque pra trabalhar</div>
-        </a>
-      {/each}
-    </div>
   </div>
 {/if}
 
@@ -626,8 +594,42 @@
       </div>
     </section>
   {/if}
+
+  {#if data.tces && data.tces.length > 0}
+    <section>
+      <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
+        <Icon nome="store" size={14} /> Territórios comerciais
+        <span class="text-xs text-slate-400 normal-case font-normal">({data.tces.length})</span>
+      </h2>
+      <div class="space-y-2">
+        {#each data.tces as t}
+          <a href="/publicador/tce/{t.id}" class="block rounded-lg border border-purple-200 bg-purple-50 p-3 hover:bg-purple-100 transition-colors">
+            <div class="font-medium flex items-center justify-between">
+              {t.nome}
+              {#if t.prazo}<span class="text-xs text-amber-700">prazo {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</span>{/if}
+            </div>
+            <div class="text-xs text-slate-500 mt-0.5">{t.tipo} · toque pra trabalhar</div>
+          </a>
+        {/each}
+      </div>
+    </section>
+  {/if}
 </div>
 
+{/if}
+
+{#if data.meusAgendamentosTp.length > 0}
+  <div class="mt-4 rounded-xl border-2 border-teal-400 bg-teal-50 p-3">
+    <div class="text-xs uppercase tracking-wider font-bold text-teal-900 mb-2"><Icon nome="megaphone" size={14} /> Seus turnos de TP (próximos 7 dias)</div>
+    <div class="flex flex-wrap gap-1.5">
+      {#each data.meusAgendamentosTp as t}
+        <a href="/publicador/tp" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs border border-teal-300 bg-white text-teal-900 hover:bg-teal-100">
+          <span class="font-medium">{t.ponto_nome}</span>
+          <span class="text-teal-700">{fmtDia(t.data)} · {t.hora_inicio.substring(0, 5)}</span>
+        </a>
+      {/each}
+    </div>
+  </div>
 {/if}
 
 {#if data.souServoPub}
