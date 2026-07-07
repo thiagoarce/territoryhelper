@@ -43,7 +43,7 @@
     local_endereco: string | null;
     quadras_ids: string[];
     cartas_locais_ids: number[];
-    tce_id: string | null;
+    tces_ids: string[];
   }
   interface ArranjoPendenteFinalizar {
     id: number;
@@ -426,9 +426,9 @@
           {#each a.cartas_locais_ids as lid}
             <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
           {/each}
-          {#if a.tce_id}
-            <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {a.tce_id}</span>
-          {/if}
+          {#each a.tces_ids as tid}
+            <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {tid}</span>
+          {/each}
         </div>
         {#if minhaParte}
           <div class="mt-2 pt-2 border-t border-slate-100">

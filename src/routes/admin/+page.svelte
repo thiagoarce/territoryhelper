@@ -7,6 +7,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
+  import type { TceComQuadras } from './+page.server';
   import { diasDesde } from '$lib/utils/data';
 
   let {
@@ -24,6 +25,7 @@
       campanhaPlanejada: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
       reservadasIds: string[];
       curadoriaPendente: { total: number; edicao: number; criacao: number; nao_existe: number };
+      tces: TceComQuadras[];
       profile?: import('$lib/types').Profile | null;
     };
     form: any;
@@ -34,6 +36,21 @@
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
+
+  // A21-f1: filtro "TCEs" — esconde o resto e mostra só as quadras que
+  // contêm unidades de algum TCE (representação por quadras-contêiner,
+  // sem convex hull cortando quadra). Clicar num TCE no painel restringe
+  // pra só as quadras dele.
+  let modoTce = $state(false);
+  let tceSelecionado = $state<string | null>(null);
+  const STATUS_TCE_LABEL: Record<string, string> = { aberto: 'Aberto', concluido: 'Concluído', cancelado: 'Cancelado' };
+  const quadrasTceFiltro = $derived.by(() => {
+    if (tceSelecionado) return new Set(data.tces.find((t) => t.id === tceSelecionado)?.quadras_ids ?? []);
+    const s = new Set<string>();
+    for (const t of data.tces) for (const q of t.quadras_ids) s.add(q);
+    return s;
+  });
+  const quadrasFiltradasTce = $derived(data.quadras.filter((q) => quadrasTceFiltro.has(q.id)));
   let salvando = $state(false);
 
   // Concluir quadra (fundido de /admin/registro)
@@ -197,12 +214,25 @@
 <div class="p-4 space-y-3">
   <!-- Toolbar topo -->
   <div class="flex flex-wrap items-center gap-2">
-    <select bind:value={colorirPor} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+    <select bind:value={colorirPor} disabled={modoTce} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:opacity-50">
       <option value="conclusao">Cor por conclusão</option>
       <option value="territorio">Cor por território</option>
       <option value="densidade_enderecos">Cor por densidade (endereços)</option>
       <option value="densidade_residencias">Cor por densidade (residências)</option>
     </select>
+
+    <button
+      type="button"
+      onclick={() => { modoTce = !modoTce; tceSelecionado = null; }}
+      class="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-lg border"
+      class:bg-orange-100={modoTce}
+      class:border-orange-300={modoTce}
+      class:text-orange-800={modoTce}
+      class:border-slate-300={!modoTce}
+    >
+      <Icon nome="store" size={14} /> TCEs
+      {#if data.tces.length > 0}<span class="text-[10px] px-1.5 rounded-full bg-orange-200 text-orange-800">{data.tces.length}</span>{/if}
+    </button>
 
     <label class="flex items-center gap-1.5 text-sm cursor-pointer ml-auto">
       <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
@@ -230,37 +260,89 @@
     </div>
   </div>
 
-  {#if colorirPor === 'conclusao'}
-    <div class="flex items-center gap-3 text-xs flex-wrap">
-      <span class="font-medium text-slate-600">Conclusão:</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span>a fazer</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span>&lt;15d</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-yellow-400/60"></span>&lt;30d</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-orange-500/60"></span>&lt;60d</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-600/60"></span>&gt;90d</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/30"></span>inativa</span>
+  {#if modoTce}
+    <div class="grid gap-3 md:grid-cols-[2fr_1fr]">
+      <div>
+        {#if quadrasFiltradasTce.length === 0}
+          <div class="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
+            <Icon nome="store" size={32} class="mx-auto mb-2 text-slate-300" />
+            {data.tces.length === 0 ? 'Nenhum TCE cadastrado ainda.' : 'Nenhuma quadra vinculada a esse TCE (unidades sem quadra).'}
+          </div>
+        {:else}
+          <MapaAdmin
+            quadras={quadrasFiltradasTce}
+            altura={520}
+            colorirPor="territorio"
+            mostrarRotulos={true}
+            bind:selecionadas
+            basemap={data.profile?.pref_basemap ?? 'bright'}
+            onClick={onClickQuadra}
+          />
+          <p class="text-xs text-slate-400 text-center mt-1">
+            Quadras que contêm ao menos 1 unidade do TCE {tceSelecionado ? `"${data.tces.find((t) => t.id === tceSelecionado)?.nome}"` : 'selecionado'}.
+          </p>
+        {/if}
+      </div>
+      <div class="space-y-1.5 max-h-[520px] overflow-y-auto">
+        <div class="text-xs font-semibold text-slate-500 uppercase mb-1">TCEs ({data.tces.length})</div>
+        {#if tceSelecionado}
+          <button onclick={() => (tceSelecionado = null)} class="text-xs text-primary-700 hover:underline mb-1">← Ver todos</button>
+        {/if}
+        {#each data.tces as t (t.id)}
+          <button
+            type="button"
+            onclick={() => (tceSelecionado = tceSelecionado === t.id ? null : t.id)}
+            class="w-full text-left rounded-lg border p-2 text-sm hover:bg-slate-50"
+            class:border-orange-400={tceSelecionado === t.id}
+            class:bg-orange-50={tceSelecionado === t.id}
+            class:border-slate-200={tceSelecionado !== t.id}
+          >
+            <div class="font-medium">{t.nome}</div>
+            <div class="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+              <span class="px-1.5 py-0.5 rounded-full bg-slate-100">{STATUS_TCE_LABEL[t.status] ?? t.status}</span>
+              {#if t.publicador_nome}<span><Icon nome="user" size={11} /> {t.publicador_nome}</span>{/if}
+              {#if t.prazo}<span><Icon nome="calendar" size={11} /> {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</span>{/if}
+              <span>{t.quadras_ids.length} quadra(s)</span>
+            </div>
+          </button>
+        {:else}
+          <p class="text-xs text-slate-400">Nenhum TCE cadastrado — crie em Polígonos → TCE.</p>
+        {/each}
+      </div>
     </div>
-  {/if}
+  {:else}
+    {#if colorirPor === 'conclusao'}
+      <div class="flex items-center gap-3 text-xs flex-wrap">
+        <span class="font-medium text-slate-600">Conclusão:</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span>a fazer</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span>&lt;15d</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-yellow-400/60"></span>&lt;30d</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-orange-500/60"></span>&lt;60d</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-600/60"></span>&gt;90d</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/30"></span>inativa</span>
+      </div>
+    {/if}
 
-  <!-- Mapa -->
-  <MapaAdmin
-    quadras={data.quadras}
-    altura={520}
-    {colorirPor}
-    {mostrarRotulos}
-    quadrasAlocadas={data.quadrasAlocadas}
-    reservadasIds={data.reservadasIds}
-    bind:selecionadas
-    basemap={data.profile?.pref_basemap ?? 'bright'}
-    onClick={onClickQuadra}
-    onLongPress={onLongPressQuadra}
-  />
-  {#if data.reservadasIds.length > 0}
-    <p class="text-xs text-purple-700 text-center -mt-2">
-      <Icon nome="hourglass" size={12} /> Contorno tracejado roxo = reservada pra "{data.campanhaAtiva?.nome}"
-    </p>
+    <!-- Mapa -->
+    <MapaAdmin
+      quadras={data.quadras}
+      altura={520}
+      {colorirPor}
+      {mostrarRotulos}
+      quadrasAlocadas={data.quadrasAlocadas}
+      reservadasIds={data.reservadasIds}
+      bind:selecionadas
+      basemap={data.profile?.pref_basemap ?? 'bright'}
+      onClick={onClickQuadra}
+      onLongPress={onLongPressQuadra}
+    />
+    {#if data.reservadasIds.length > 0}
+      <p class="text-xs text-purple-700 text-center -mt-2">
+        <Icon nome="hourglass" size={12} /> Contorno tracejado roxo = reservada pra "{data.campanhaAtiva?.nome}"
+      </p>
+    {/if}
+    <p class="text-xs text-slate-400 text-center">Long-press numa quadra abre histórico de conclusões.</p>
   {/if}
-  <p class="text-xs text-slate-400 text-center">Long-press numa quadra abre histórico de conclusões.</p>
 
   <p class="text-xs text-slate-500 text-center">
     {#if selecionadas.size === 0}

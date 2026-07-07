@@ -14,8 +14,18 @@ import {
 import { statusCampanha } from '$lib/campanhas';
 import { criarNotificacao } from '$lib/server/push';
 
+export interface TceComQuadras {
+  id: string;
+  nome: string;
+  tipo: string;
+  status: string;
+  prazo: string | null;
+  publicador_nome: string | null;
+  quadras_ids: string[];
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
-  const [quadras, designacoes, publicadores, campanhaRes, curadoriaPendenteRes] = await Promise.all([
+  const [quadras, designacoes, publicadores, campanhaRes, curadoriaPendenteRes, tcesRes] = await Promise.all([
     listarQuadrasComGeo(locals.supabase),
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
@@ -26,8 +36,26 @@ export const load: PageServerLoad = async ({ locals }) => {
       .maybeSingle(),
     // A24: "Feedback do campo" — resumo da fila de curadoria (T12 constrói a
     // tela de revisão; aqui é só o contador + link).
-    locals.supabase.from('curadoria_edicoes').select('tipo').eq('status', 'pendente')
+    locals.supabase.from('curadoria_edicoes').select('tipo').eq('status', 'pendente'),
+    // A21-f1: TCEs pro filtro "TCEs" — representação por quadras-contêiner
+    // (as quadras que têm ao menos 1 unidade do TCE), não mais convex hull.
+    locals.supabase
+      .from('tces')
+      .select('id, nome, tipo, status, prazo, profiles(nome), tce_unidades(unidades(locais(quadra_id)))')
+      .order('nome')
   ]);
+  const tces: TceComQuadras[] = ((tcesRes.data ?? []) as any[]).map((t) => {
+    const quadraIds = new Set<string>();
+    for (const tu of t.tce_unidades ?? []) {
+      const qid = tu.unidades?.locais?.quadra_id;
+      if (qid) quadraIds.add(qid);
+    }
+    return {
+      id: t.id, nome: t.nome, tipo: t.tipo, status: t.status, prazo: t.prazo,
+      publicador_nome: t.profiles?.nome ?? null,
+      quadras_ids: [...quadraIds]
+    };
+  });
   const curadoriaPendente = {
     total: curadoriaPendenteRes.data?.length ?? 0,
     edicao: (curadoriaPendenteRes.data ?? []).filter((c) => c.tipo === 'edicao').length,
@@ -97,7 +125,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     campanhaAtiva,
     campanhaPlanejada,
     reservadasIds,
-    curadoriaPendente
+    curadoriaPendente,
+    tces
   };
 };
 

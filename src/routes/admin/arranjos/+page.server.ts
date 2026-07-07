@@ -38,7 +38,7 @@ export interface Arranjo {
   data_inicio: string | null;
   data_fim: string | null;
   excecoes_datas: string[] | null;
-  tce_id: string | null;
+  tces_ids: string[];
 }
 
 export interface PredioLite {
@@ -212,7 +212,7 @@ function arranjoFromForm(fd: FormData) {
   const cartas_csv = String(fd.get('cartas_locais_ids') ?? '').trim();
   const arquivo_url = String(fd.get('arquivo_url') ?? '').trim() || null;
   const arquivo_nome = String(fd.get('arquivo_nome') ?? '').trim() || null;
-  const tce_id = String(fd.get('tce_id') ?? '').trim() || null;
+  const tces_csv = String(fd.get('tces_ids') ?? '').trim();
   const notas = String(fd.get('notas') ?? '').trim() || null;
   const data_inicio = String(fd.get('data_inicio') ?? '').trim() || null;
   const data_fim = String(fd.get('data_fim') ?? '').trim() || null;
@@ -234,7 +234,7 @@ function arranjoFromForm(fd: FormData) {
     cartas_locais_ids: cartas_csv ? parseIntArray(cartas_csv) : null,
     arquivo_url,
     arquivo_nome,
-    tce_id,
+    tces_ids: tces_csv ? parseStrArray(tces_csv) : [],
     notas,
     data_inicio: recorrente ? data_inicio : null,
     data_fim: recorrente ? data_fim : null,

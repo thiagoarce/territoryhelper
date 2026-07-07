@@ -331,7 +331,7 @@
             {/if}
             <div class="mt-1 flex gap-2 text-xs text-slate-500">
               {#if a.cartas_locais_ids.length > 0}<span><Icon nome="mail" size={14} /> {a.cartas_locais_ids.length} prédio(s)</span>{/if}
-              {#if a.tce_id}<span><Icon nome="store" size={14} /> TCE {a.tce_id}</span>{/if}
+              {#if a.tces_ids.length > 0}<span><Icon nome="store" size={14} /> {a.tces_ids.length} TCE(s)</span>{/if}
             </div>
           </div>
           <div class="flex flex-col gap-1 items-end shrink-0">

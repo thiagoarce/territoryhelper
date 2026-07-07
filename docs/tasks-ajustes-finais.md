@@ -141,7 +141,7 @@
 
 ## Onda 7 — TCE (2 fases)
 
-- [ ] 🟡 **T24 (A21-f1)** Representação por quadras-contêiner + filtro
+- [x] 🟡 **T24 (A21-f1)** Representação por quadras-contêiner + filtro
       "TCEs" na Geral + `arranjos.tces_ids[]` (migration) com anexar
       múltiplos TCEs a arranjo.
 
