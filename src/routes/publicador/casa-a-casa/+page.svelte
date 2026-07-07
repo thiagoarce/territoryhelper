@@ -16,6 +16,7 @@
     data: string;
     quadras_ids: string[];
     cartas_locais_ids: number[];
+    tces_ids: string[];
     interessados: string[];
     quadrasGeo: QuadraGeo[];
   }
@@ -25,6 +26,7 @@
     data: string;
     quadras_ids: string[];
     cartas_locais_ids: number[];
+    tces_ids: string[];
     quadrasGeo: QuadraGeo[];
   }
   interface MinhaParte {
@@ -33,6 +35,7 @@
     colegas: string[];
     quadras_ids: string[];
     locais_ids: number[];
+    tces_ids: string[];
     quadrasGeo: QuadraGeo[];
   }
   interface ParteLinha {
@@ -41,6 +44,7 @@
     arranjo_nome: string;
     quadras_ids: string[];
     locais_ids: number[];
+    tces_ids: string[];
     publicadores: string[];
     notas: string | null;
   }
@@ -55,7 +59,9 @@
       partesDosMeusArranjos: ParteLinha[];
       publicadoresParaRepartir: { id: string; nome: string; role: string }[];
       nomesPorId: Record<string, string>;
+      tcesMap: Record<string, string>;
       territorioPessoal: QuadraGeo[];
+      territorioPessoalTces: string[];
       minhaId: string;
       profile?: import('$lib/types').Profile | null;
     };
@@ -105,6 +111,7 @@
 
   const semNada = $derived(
     !data.arranjoQueDirijo && data.minhasPartes.length === 0 && data.territorioPessoal.length === 0
+      && data.territorioPessoalTces.length === 0
   );
 
   // Modal "todas as designações" — o featured (arranjoQueDirijo) + os outros,
@@ -163,14 +170,19 @@
   let pubsSel = $state<Set<string>>(new Set());
   let quadrasSel = $state<Set<string>>(new Set());
   let locaisSel = $state<Set<number>>(new Set());
+  let tcesSel = $state<Set<string>>(new Set());
   let notasParte = $state('');
   let repartindo = $state(false);
   let apagandoId = $state<number | null>(null);
 
   const jaRepartidas = $derived.by(() => {
-    if (!arranjoRep) return { q: new Set<string>(), l: new Set<number>() };
+    if (!arranjoRep) return { q: new Set<string>(), l: new Set<number>(), t: new Set<string>() };
     const partes = partesPorArranjo[arranjoRep.id] ?? [];
-    return { q: new Set(partes.flatMap((p) => p.quadras_ids)), l: new Set(partes.flatMap((p) => p.locais_ids)) };
+    return {
+      q: new Set(partes.flatMap((p) => p.quadras_ids)),
+      l: new Set(partes.flatMap((p) => p.locais_ids)),
+      t: new Set(partes.flatMap((p) => p.tces_ids))
+    };
   });
 
   const publicadoresParaRepartir = $derived.by(() => {
@@ -182,12 +194,12 @@
     });
   });
 
-  function donosDoItem(qid: string | null, lid: number | null): string[] {
+  function donosDoItem(qid: string | null, lid: number | null, tid: string | null = null): string[] {
     if (!arranjoRep) return [];
     const partes = partesPorArranjo[arranjoRep.id] ?? [];
     const nomes: string[] = [];
     for (const p of partes) {
-      const bate = (qid && p.quadras_ids.includes(qid)) || (lid != null && p.locais_ids.includes(lid));
+      const bate = (qid && p.quadras_ids.includes(qid)) || (lid != null && p.locais_ids.includes(lid)) || (tid && p.tces_ids.includes(tid));
       if (bate) nomes.push(nomeParte(p));
     }
     return nomes;
@@ -198,12 +210,14 @@
     pubsSel = new Set();
     quadrasSel = new Set();
     locaisSel = new Set();
+    tcesSel = new Set();
     notasParte = '';
     sheetRepartir = true;
   }
   function togglePub(id: string) { if (pubsSel.has(id)) pubsSel.delete(id); else pubsSel.add(id); pubsSel = new Set(pubsSel); }
   function toggleQuadra(id: string) { if (quadrasSel.has(id)) quadrasSel.delete(id); else quadrasSel.add(id); quadrasSel = new Set(quadrasSel); }
   function toggleLocal(id: number) { if (locaisSel.has(id)) locaisSel.delete(id); else locaisSel.add(id); locaisSel = new Set(locaisSel); }
+  function toggleTce(id: string) { if (tcesSel.has(id)) tcesSel.delete(id); else tcesSel.add(id); tcesSel = new Set(tcesSel); }
 
   async function apagarParte(id: number) {
     if (!confirm('Remover essa parte? O publicador perde o acesso.')) return;
@@ -270,6 +284,9 @@
             {#each a.cartas_locais_ids as lid}
               <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
             {/each}
+            {#each a.tces_ids as tid}
+              <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</span>
+            {/each}
           </div>
           <button type="button" disabled={finalizando === a.id} onclick={() => abrirFinalizar(a)}
             class="mt-2 w-full rounded-lg bg-red-600 text-white text-sm font-medium py-2 hover:bg-red-700 disabled:opacity-40"
@@ -302,6 +319,9 @@
         {#each a.cartas_locais_ids as lid}
           <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
         {/each}
+        {#each a.tces_ids as tid}
+          <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</span>
+        {/each}
       </div>
 
       <button type="button" disabled={gerandoLink === a.id} onclick={() => abrirLinkPublico(a.id)}
@@ -316,6 +336,7 @@
                 <strong>{nomeParte(pt)}</strong> —
                 <span class="font-mono">{pt.quadras_ids.join(', ')}</span>
                 {#if pt.locais_ids.length > 0}{pt.quadras_ids.length > 0 ? ' + ' : ''}{pt.locais_ids.length} prédio(s){/if}
+                {#if pt.tces_ids.length > 0}{(pt.quadras_ids.length > 0 || pt.locais_ids.length > 0) ? ' + ' : ''}{pt.tces_ids.length} TCE(s){/if}
               </span>
               <button type="button" disabled={apagandoId === pt.id} onclick={() => apagarParte(pt.id)} class="text-red-600 hover:underline shrink-0 disabled:opacity-40">
                 <Icon nome={apagandoId === pt.id ? 'loader' : 'trash'} size={14} spin={apagandoId === pt.id} />
@@ -325,7 +346,7 @@
         </div>
       {/if}
 
-      {#if a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0}
+      {#if a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0 || a.tces_ids.length > 0}
         <Button variant="primary" onclick={() => abrirRepartir(a)} class="w-full mt-2"><Icon nome="scissors" size={14} /> Repartir território</Button>
       {/if}
     </div>
@@ -346,20 +367,28 @@
         {#each p.locais_ids as lid}
           <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:bg-amber-200"><Icon nome="mail" size={14} /> #{lid}</a>
         {/each}
+        {#each p.tces_ids as tid}
+          <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</span>
+        {/each}
       </div>
       {#if p.colegas.length > 0}<p class="text-xs text-slate-500 mt-1.5">Com {p.colegas.join(', ')}</p>{/if}
     </div>
   {/each}
 
-  {#if data.territorioPessoal.length > 0}
+  {#if data.territorioPessoal.length > 0 || data.territorioPessoalTces.length > 0}
     <div>
       <h2 class="text-xs uppercase tracking-wider font-bold text-slate-600 mb-2 flex items-center gap-2"><Icon nome="target" size={14} /> Território pessoal</h2>
-      <Card padding="sm">
-        <AdminMapa quadras={data.territorioPessoal} altura={300} destacarIds={data.territorioPessoal.map((q) => q.id)} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
-      </Card>
+      {#if data.territorioPessoal.length > 0}
+        <Card padding="sm">
+          <AdminMapa quadras={data.territorioPessoal} altura={300} destacarIds={data.territorioPessoal.map((q) => q.id)} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
+        </Card>
+      {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
         {#each data.territorioPessoal as q (q.id)}
           <a href="/publicador/quadra/{encodeURIComponent(q.id)}" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-mono border border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100">{q.id}</a>
+        {/each}
+        {#each data.territorioPessoalTces as tid}
+          <a href="/publicador/tce/{tid}" class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200 hover:bg-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</a>
         {/each}
       </div>
     </div>
@@ -457,10 +486,12 @@
       use:enhance={({ cancel }) => {
         const confQ = [...quadrasSel].filter((q) => jaRepartidas.q.has(q));
         const confL = [...locaisSel].filter((l) => jaRepartidas.l.has(l));
-        if (confQ.length > 0 || confL.length > 0) {
+        const confT = [...tcesSel].filter((t) => jaRepartidas.t.has(t));
+        if (confQ.length > 0 || confL.length > 0 || confT.length > 0) {
           const detalhes = [
             ...confQ.map((q) => `${q} (com ${donosDoItem(q, null).join(' / ')})`),
-            ...confL.map((l) => `prédio #${l} (com ${donosDoItem(null, l).join(' / ')})`)
+            ...confL.map((l) => `prédio #${l} (com ${donosDoItem(null, l).join(' / ')})`),
+            ...confT.map((t) => `TCE ${data.tcesMap[t] ?? t} (com ${donosDoItem(null, null, t).join(' / ')})`)
           ].join(', ');
           if (!confirm(`Já repartido: ${detalhes}.\n\nRepartir de novo mesmo assim? Os dois vão trabalhar o mesmo lugar.`)) {
             cancel();
@@ -482,6 +513,7 @@
       {#each [...pubsSel] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
       {#each [...quadrasSel] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
       {#each [...locaisSel] as lid}<input type="hidden" name="locais_ids" value={lid} />{/each}
+      {#each [...tcesSel] as tid}<input type="hidden" name="tces_ids" value={tid} />{/each}
 
       <p class="text-xs text-slate-500">Toque nas quadras no mapa (ou nos chips) pra montar a parte. Itens acinzentados já estão em outra parte — repartir de novo pede confirmação.</p>
 
@@ -532,6 +564,20 @@
         </div>
       {/if}
 
+      {#if (arranjoRep.tces_ids?.length ?? 0) > 0}
+        <div>
+          <span class="block text-sm font-medium mb-1">TCEs (comercial)</span>
+          <div class="flex flex-wrap gap-1.5">
+            {#each arranjoRep.tces_ids ?? [] as tid}
+              {@const emParte = jaRepartidas.t.has(tid)}
+              <button type="button" onclick={() => toggleTce(tid)}
+                class="text-xs px-2 py-1 rounded border {tcesSel.has(tid) ? 'bg-orange-600 text-white border-orange-600' : emParte ? 'bg-slate-100 text-slate-400 border-slate-200' : 'border-slate-300 hover:bg-slate-50'}"
+              ><Icon nome="store" size={12} /> {data.tcesMap[tid] ?? tid}</button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       <div>
         <span class="block text-sm font-medium mb-1">Publicadores (dupla/trio)</span>
         <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
@@ -545,7 +591,7 @@
             </label>
           {/each}
         </div>
-        <p class="text-xs text-slate-500 mt-1">{pubsSel.size} publicador(es) · {quadrasSel.size} quadra(s) · {locaisSel.size} prédio(s)</p>
+        <p class="text-xs text-slate-500 mt-1">{pubsSel.size} publicador(es) · {quadrasSel.size} quadra(s) · {locaisSel.size} prédio(s) · {tcesSel.size} TCE(s)</p>
       </div>
 
       <div>

@@ -140,9 +140,10 @@ export const actions: Actions = {
     const fd = await request.formData();
     const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
     const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
+    const tcesIds = fd.getAll('tces_ids').map((v) => String(v)).filter(Boolean);
     const prazo = String(fd.get('prazo') ?? '').trim() || null;
     const notas = String(fd.get('notas') ?? '').trim() || null;
-    if (quadrasIds.length === 0) return fail(400, { erro: 'quadras obrigatórias' });
+    if (quadrasIds.length === 0 && tcesIds.length === 0) return fail(400, { erro: 'quadras ou TCEs obrigatórios' });
     if (publicadorIds.length === 0) return fail(400, { erro: 'pelo menos 1 publicador obrigatório' });
 
     // Bloqueia quadras já em arranjo futuro (defesa server-side; UI também avisa)
@@ -166,9 +167,16 @@ export const actions: Actions = {
       .single();
     if (errD) return fail(400, { erro: errD.message });
 
-    const linhas = quadrasIds.map((qid) => ({ designacao_id: des.id, quadra_id: qid }));
-    const { error: errJ } = await locals.supabase.from('designacao_quadras').insert(linhas);
-    if (errJ) return fail(400, { erro: 'Designação criada mas falhou ao vincular: ' + errJ.message });
+    if (quadrasIds.length > 0) {
+      const linhas = quadrasIds.map((qid) => ({ designacao_id: des.id, quadra_id: qid }));
+      const { error: errJ } = await locals.supabase.from('designacao_quadras').insert(linhas);
+      if (errJ) return fail(400, { erro: 'Designação criada mas falhou ao vincular quadras: ' + errJ.message });
+    }
+    if (tcesIds.length > 0) {
+      const linhasTce = tcesIds.map((tid) => ({ designacao_id: des.id, tce_id: tid }));
+      const { error: errT } = await locals.supabase.from('designacao_tces').insert(linhasTce);
+      if (errT) return fail(400, { erro: 'Designação criada mas falhou ao vincular TCE(s): ' + errT.message });
+    }
 
     const part = publicadorIds.map((pid, i) => ({
       designacao_id: des.id,
@@ -176,12 +184,16 @@ export const actions: Actions = {
       papel: i === 0 ? 'lider' : 'participante'
     }));
     await locals.supabase.from('designacao_publicadores').insert(part);
+    const partes = [
+      quadrasIds.length > 0 ? `${quadrasIds.length} quadra(s)` : null,
+      tcesIds.length > 0 ? `${tcesIds.length} TCE(s)` : null
+    ].filter(Boolean);
     await criarNotificacao(publicadorIds, {
       titulo: 'Nova designação de território',
-      corpo: `${quadrasIds.length} quadra(s)`,
+      corpo: partes.join(' + '),
       url: '/publicador'
     });
-    return { ok: true, msg: `Designada a ${publicadorIds.length} publicador(es) com ${quadrasIds.length} quadra(s)` };
+    return { ok: true, msg: `Designada a ${publicadorIds.length} publicador(es) com ${partes.join(' + ')}` };
   },
 
   // Anexa quadras selecionadas a um arranjo (tipo 'quadras'). Admin → arranjo
