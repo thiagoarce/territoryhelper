@@ -72,18 +72,7 @@
     }
   }
 
-  // Inscrição antecipada — sinal de interesse, dirigente decide a repartição
-  async function toggleInteresse(arranjoId: number) {
-    const key = `interesse:${arranjoId}`;
-    acaoEmCurso = key;
-    const fd = new FormData();
-    fd.append('arranjo_id', String(arranjoId));
-    const res = await fetch('?/toggleInteresse', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
-    acaoEmCurso = null;
-    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Feito')); await invalidateAll(); }
-    else toast.error(String(parsed.data?.erro || 'Falhou'));
-  }
+
 </script>
 
 <div class="p-4 space-y-3">
@@ -134,7 +123,6 @@
               {@const m = modById[a.modalidade_id]}
               {@const partesDoArranjo = partesPorArranjo[a.id] ?? []}
               {@const minhaParte = partesDoArranjo.find((p) => p.publicadores.includes(data.minhaId))}
-              {@const souInteressado = (a.interessados ?? []).includes(data.minhaId)}
               <Card padding="md">
                 <div class="flex items-start gap-3">
                   <span class="w-2 self-stretch rounded shrink-0" style="background:{m?.cor ?? '#3b82f6'}"></span>
@@ -175,23 +163,6 @@
                       <div class="mt-1"><a href={a.arquivo_url} target="_blank" rel="noopener" class="text-xs text-primary-700 hover:underline"><Icon nome="paperclip" size={14} /> {a.arquivo_nome || 'arquivo'}</a></div>
                     {/if}
                     {#if a.notas}<div class="mt-1 text-xs italic text-slate-500">{a.notas}</div>{/if}
-
-                    <!-- Inscrição antecipada: sinal de interesse, não cria parte -->
-                    <div class="mt-1.5 flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        disabled={isBusy(`interesse:${a.id}`)}
-                        onclick={() => toggleInteresse(a.id)}
-                        class="text-xs px-2 py-0.5 rounded border disabled:opacity-40 {souInteressado ? 'bg-primary-100 border-primary-400 text-primary-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}"
-                      >
-                        <Icon nome={isBusy(`interesse:${a.id}`) ? 'loader' : 'hand'} size={12} spin={isBusy(`interesse:${a.id}`)} /> {souInteressado ? 'Você quer participar' : 'Quero participar'}
-                      </button>
-                      {#if a.dirigente_id === data.minhaId && (a.interessados ?? []).length > 0}
-                        <span class="text-xs text-slate-500">
-                          Interessados: {(a.interessados ?? []).map((id) => data.nomesPorId[id] ?? '?').join(', ')}
-                        </span>
-                      {/if}
-                    </div>
 
                     {#if data.podeCoordenar}
                       <button type="button" disabled={isBusy(`link:${a.id}`)} onclick={() => abrirLinkPublico(a.id)}
