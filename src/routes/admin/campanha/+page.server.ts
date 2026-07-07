@@ -27,7 +27,7 @@ export interface Suprimento {
   publicacao_id: number;
   publicacao_nome: string;
   qtd_necessaria: number;
-  qtd_em_maos: number;
+  qtd_estoque: number; // A17: lido do catálogo (publicacoes.qtd_estoque), não mais digitado aqui
   pedido_feito: boolean;
   notas: string | null;
 }
@@ -159,7 +159,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   if (ativa) {
     const { data: suprRows } = await locals.supabase
       .from('campanha_suprimentos')
-      .select('id, campanha_id, publicacao_id, qtd_necessaria, qtd_em_maos, pedido_feito, notas, publicacoes!inner(nome)')
+      .select('id, campanha_id, publicacao_id, qtd_necessaria, pedido_feito, notas, publicacoes!inner(nome, qtd_estoque)')
       .eq('campanha_id', ativa.id);
     suprimentos = ((suprRows ?? []) as any[]).map((s) => ({
       id: s.id,
@@ -167,7 +167,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       publicacao_id: s.publicacao_id,
       publicacao_nome: s.publicacoes?.nome ?? '?',
       qtd_necessaria: s.qtd_necessaria,
-      qtd_em_maos: s.qtd_em_maos,
+      qtd_estoque: s.publicacoes?.qtd_estoque ?? 0,
       pedido_feito: s.pedido_feito,
       notas: s.notas
     }));
@@ -364,12 +364,11 @@ export const actions: Actions = {
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
     const qtdNecessaria = Number(fd.get('qtd_necessaria') ?? 0);
-    const qtdEmMaos = Number(fd.get('qtd_em_maos') ?? 0);
     const pedidoFeito = fd.get('pedido_feito') === 'on' || fd.get('pedido_feito') === 'true';
     const notas = String(fd.get('notas') ?? '').trim() || null;
     const { error } = await locals.supabase
       .from('campanha_suprimentos')
-      .update({ qtd_necessaria: qtdNecessaria, qtd_em_maos: qtdEmMaos, pedido_feito: pedidoFeito, notas })
+      .update({ qtd_necessaria: qtdNecessaria, pedido_feito: pedidoFeito, notas })
       .eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Suprimento atualizado' };

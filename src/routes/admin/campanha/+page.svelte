@@ -110,7 +110,6 @@
     await acaoRapida('atualizarSuprimento', {
       id: String(s.id),
       qtd_necessaria: String(merged.qtd_necessaria),
-      qtd_em_maos: String(merged.qtd_em_maos),
       pedido_feito: merged.pedido_feito ? 'on' : '',
       notas: merged.notas ?? ''
     }, `suprimento:${s.id}`);
@@ -124,7 +123,7 @@
   // Alerta visual: falta suprimento e a campanha começa em <30 dias
   function suprimentoEmRisco(s: Suprimento): boolean {
     if (!data.ativa) return false;
-    if (s.qtd_em_maos >= s.qtd_necessaria) return false;
+    if (s.qtd_estoque >= s.qtd_necessaria) return false;
     const diasParaComecar = Math.ceil((new Date(data.ativa.data_inicio + 'T12:00:00').getTime() - Date.now()) / 86400000);
     return diasParaComecar <= 30;
   }
@@ -325,9 +324,10 @@
                 <label class="flex items-center gap-1">Necessária
                   <input type="number" min="0" value={s.qtd_necessaria} disabled={isBusy(`suprimento:${s.id}`)} onchange={(e) => atualizarSuprimento(s, { qtd_necessaria: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-50" />
                 </label>
-                <label class="flex items-center gap-1">Em mãos
-                  <input type="number" min="0" value={s.qtd_em_maos} disabled={isBusy(`suprimento:${s.id}`)} onchange={(e) => atualizarSuprimento(s, { qtd_em_maos: Number((e.target as HTMLInputElement).value) })} class="w-16 rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-50" />
-                </label>
+                <span class="flex items-center gap-1">Em mãos
+                  <span class="font-medium">{s.qtd_estoque}</span>
+                  <a href="/publicacoes" class="text-primary-700 hover:underline">(ajustar no catálogo)</a>
+                </span>
                 <label class="flex items-center gap-1 cursor-pointer">
                   <input type="checkbox" checked={s.pedido_feito} disabled={isBusy(`suprimento:${s.id}`)} onchange={(e) => atualizarSuprimento(s, { pedido_feito: (e.target as HTMLInputElement).checked })} class="w-3.5 h-3.5 rounded disabled:opacity-50" />
                   Pedido feito
