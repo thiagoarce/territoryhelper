@@ -61,7 +61,7 @@ const profile: Handle = async ({ event, resolve }) => {
   if (user) {
     const { data, error } = await event.locals.supabase
       .from('profiles')
-      .select('id, nome, role, ativo, servo_publicacoes, criado_em, atualizado_em')
+      .select('id, nome, role, ativo, servo_publicacoes, pref_basemap, criado_em, atualizado_em')
       .eq('id', user.id)
       .single();
     if (error) {

@@ -13,6 +13,13 @@
     url?: string;
   }
 
+  type Basemap = 'positron' | 'liberty' | 'bright';
+  const BASEMAPS: Record<Basemap, string> = {
+    positron: 'https://tiles.openfreemap.org/styles/positron',
+    liberty: 'https://tiles.openfreemap.org/styles/liberty',
+    bright: 'https://tiles.openfreemap.org/styles/bright'
+  };
+
   let {
     quadras,
     altura = 600,
@@ -22,7 +29,8 @@
     destacarIds = [],
     selecionadasIds = [],
     pois = [],
-    legenda = true
+    legenda = true,
+    basemap = 'positron'
   }: {
     quadras: QuadraGeo[];
     altura?: number;
@@ -38,6 +46,8 @@
     pois?: POI[];
     // Legenda de cor no canto — desliga só se o chamador já explica as cores em outro lugar.
     legenda?: boolean;
+    // Preferência de estilo (profile.pref_basemap) — default 'positron' pra visitante anônimo (t/[token]).
+    basemap?: Basemap;
   } = $props();
 
   // Itens da legenda batendo com o fillColor calculado mais abaixo (densidade > recência > status).
@@ -67,6 +77,17 @@
   let watchId: number | null = null;
   let poiMarkers: any[] = [];
   let maplibreRef: any = null;
+  let basemapAtual: Basemap | null = null;
+
+  $effect(() => {
+    const b = basemap; // tracking explícito antes do guard
+    const ok = carregado;
+    if (!ok || !mapa) return;
+    if (basemapAtual === null) { basemapAtual = b; return; } // já nasceu com esse estilo
+    if (basemapAtual === b) return;
+    basemapAtual = b;
+    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+  });
 
   // Bucket de recência calculado em JS (MapLibre não faz date-diff)
   function bucketRecencia(q: QuadraGeo): string {
@@ -176,7 +197,7 @@
 
     mapa = new maplibre.Map({
       container,
-      style: 'https://tiles.openfreemap.org/styles/positron',
+      style: BASEMAPS[basemap] ?? BASEMAPS.positron,
       center: [-34.863, -7.115],
       zoom: 14,
       attributionControl: { compact: true } as any,

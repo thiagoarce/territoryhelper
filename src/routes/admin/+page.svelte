@@ -25,13 +25,13 @@
       campanhaAtiva: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
       campanhaPlanejada: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
       reservadasIds: string[];
+      profile?: import('$lib/types').Profile | null;
     };
     form: any;
   } = $props();
 
   // Estado
   let colorirPor = $state<'status' | 'territorio' | 'densidade' | 'idade'>('status');
-  let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
@@ -244,12 +244,6 @@
       <option value="idade">Cor por idade da conclusão</option>
     </select>
 
-    <select bind:value={basemap} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Mapa base">
-      <option value="positron">Cinza</option>
-      <option value="liberty">Colorido</option>
-      <option value="bright">Brilhante</option>
-    </select>
-
     <label class="flex items-center gap-1.5 text-sm cursor-pointer ml-auto">
       <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
       Rótulos
@@ -296,7 +290,7 @@
     quadrasAlocadas={data.quadrasAlocadas}
     reservadasIds={data.reservadasIds}
     bind:selecionadas
-    bind:basemap
+    basemap={data.profile?.pref_basemap ?? 'bright'}
     onClick={onClickQuadra}
     onLongPress={onLongPressQuadra}
   />

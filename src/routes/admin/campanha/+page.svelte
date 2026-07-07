@@ -32,6 +32,7 @@
       } | null;
       publicacoes: Publicacao[];
       suprimentos: Suprimento[];
+      profile?: import('$lib/types').Profile | null;
     };
     form: any;
   } = $props();
@@ -378,6 +379,7 @@
         concluidasCampanha={data.quadrasConcluidasNoPeriodo}
         mostrarRotulos={false}
         bind:selecionadas
+        basemap={data.profile?.pref_basemap ?? 'bright'}
       />
       {#if colorirMapa === 'campanha'}
         <p class="text-xs text-slate-500 mt-1">Verde forte = concluída durante a campanha · cinza = resto (ignora conclusões antigas)</p>

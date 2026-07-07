@@ -56,6 +56,7 @@
       nomesPorId: Record<string, string>;
       territorioPessoal: QuadraGeo[];
       minhaId: string;
+      profile?: import('$lib/types').Profile | null;
     };
   } = $props();
 
@@ -206,7 +207,7 @@
           </div>
           {#if a.quadrasGeo.length > 0}
             <Card padding="sm" class="mt-1.5">
-              <AdminMapa quadras={a.quadrasGeo} altura={220} destacarIds={a.quadras_ids} onQuadraClick={abrirQuadra} />
+              <AdminMapa quadras={a.quadrasGeo} altura={220} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
             </Card>
           {/if}
           <div class="flex flex-wrap gap-1.5 mt-1.5">
@@ -238,7 +239,7 @@
       <div class="text-xs text-primary-700 font-medium mb-1.5">{fmtDia(a.data)}</div>
       {#if a.quadrasGeo.length > 0}
         <Card padding="sm">
-          <AdminMapa quadras={a.quadrasGeo} altura={300} destacarIds={a.quadras_ids} onQuadraClick={abrirQuadra} />
+          <AdminMapa quadras={a.quadrasGeo} altura={300} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
         </Card>
       {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
@@ -282,7 +283,7 @@
       <h2 class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2 flex items-center gap-2"><Icon nome="walk" size={14} /> Sua parte — {p.arranjo_nome}</h2>
       {#if p.quadrasGeo.length > 0}
         <Card padding="sm">
-          <AdminMapa quadras={p.quadrasGeo} altura={300} destacarIds={p.quadras_ids} onQuadraClick={abrirQuadra} />
+          <AdminMapa quadras={p.quadrasGeo} altura={300} destacarIds={p.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
         </Card>
       {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
@@ -301,7 +302,7 @@
     <div>
       <h2 class="text-xs uppercase tracking-wider font-bold text-slate-600 mb-2 flex items-center gap-2"><Icon nome="target" size={14} /> Território pessoal</h2>
       <Card padding="sm">
-        <AdminMapa quadras={data.territorioPessoal} altura={300} destacarIds={data.territorioPessoal.map((q) => q.id)} onQuadraClick={abrirQuadra} />
+        <AdminMapa quadras={data.territorioPessoal} altura={300} destacarIds={data.territorioPessoal.map((q) => q.id)} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
       </Card>
       <div class="flex flex-wrap gap-1.5 mt-2">
         {#each data.territorioPessoal as q (q.id)}
@@ -383,6 +384,7 @@
           quadras={arranjoRep.quadrasGeo}
           selecionadasIds={[...quadrasSel]}
           altura={280}
+          basemap={data.profile?.pref_basemap ?? 'positron'}
           onQuadraClick={(q) => toggleQuadra(q.id)}
           legenda={false}
         />

@@ -105,6 +105,7 @@
       necessidadeRegular: NecessidadeRegularLinha[];
       souServoPub: boolean;
       minhaRole: string | undefined;
+      profile?: import('$lib/types').Profile | null;
     };
   } = $props();
 
@@ -482,7 +483,12 @@
 
 {#if quadrasMapa.length > 0 && aba === 'abertas'}
   <div class="mt-4">
-    <AdminMapa quadras={quadrasMapa} altura={220} onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))} />
+    <AdminMapa
+      quadras={quadrasMapa}
+      altura={220}
+      basemap={data.profile?.pref_basemap ?? 'positron'}
+      onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))}
+    />
   </div>
 {/if}
 

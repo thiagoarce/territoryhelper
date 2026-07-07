@@ -1,8 +1,8 @@
 <script lang="ts">
   import AdminMapa from '$lib/components/AdminMapa.svelte';
-  import type { QuadraGeo } from '$lib/server/queries';
+  import type { PageData } from './$types';
 
-  let { data }: { data: { quadras: QuadraGeo[] } } = $props();
+  let { data }: { data: PageData } = $props();
 </script>
 
 <div>
@@ -15,5 +15,5 @@
 </div>
 
 <div class="mt-4">
-  <AdminMapa quadras={data.quadras} altura={620} colorirPor="recencia" />
+  <AdminMapa quadras={data.quadras} altura={620} colorirPor="recencia" basemap={data.profile?.pref_basemap ?? 'positron'} />
 </div>

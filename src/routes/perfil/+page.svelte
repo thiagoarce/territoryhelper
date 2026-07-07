@@ -30,6 +30,22 @@
   } = $props();
   let salvandoNome = $state(false);
   let salvandoSenha = $state(false);
+  let salvandoBasemap = $state(false);
+
+  async function trocarBasemap(e: Event) {
+    const valor = (e.target as HTMLSelectElement).value;
+    salvandoBasemap = true;
+    try {
+      const fd = new FormData();
+      fd.append('basemap', valor);
+      const res = await fetch('?/atualizarBasemap', { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') { toast.success('Estilo do mapa atualizado'); await invalidateAll(); }
+      else toast.error(String(parsed.data?.erro || 'Falhou'));
+    } finally {
+      salvandoBasemap = false;
+    }
+  }
 
   // === Notificações (PUSH-A) ===
   type StatusPush = 'verificando' | 'nao_suportado' | 'nao_configurado' | 'inativo' | 'ativo';
@@ -229,6 +245,20 @@
       />
       <Button variant="primary" type="submit" loading={salvandoSenha} class="w-full">Trocar senha</Button>
     </form>
+  </Card>
+
+  <Card padding="md">
+    <h2 class="font-semibold mb-3">Estilo do mapa</h2>
+    <select
+      value={data.profile.pref_basemap ?? 'positron'}
+      onchange={trocarBasemap}
+      disabled={salvandoBasemap}
+      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+    >
+      <option value="positron">Cinza</option>
+      <option value="liberty">Colorido</option>
+      <option value="bright">Brilhante</option>
+    </select>
   </Card>
 
   <Card padding="md">

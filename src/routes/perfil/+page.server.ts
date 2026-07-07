@@ -32,6 +32,21 @@ export const actions: Actions = {
     return { ok: true, msg: 'Nome atualizado' };
   },
 
+  // T6 (A14): estilo de mapa é preferência global (todos os mapas de
+  // MapaAdmin/MapaPoligonos/AdminMapa leem `profiles.pref_basemap`).
+  atualizarBasemap: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const basemap = String(fd.get('basemap') ?? '');
+    if (!['positron', 'liberty', 'bright'].includes(basemap)) return fail(400, { erro: 'Estilo inválido' });
+    const { error } = await locals.supabase
+      .from('profiles')
+      .update({ pref_basemap: basemap })
+      .eq('id', locals.user.id);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Estilo do mapa atualizado' };
+  },
+
   // Troca senha — usa auth.updateUser direto
   trocarSenha: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
