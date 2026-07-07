@@ -109,6 +109,14 @@
 
   // Sheets
   let sheetDesignar = $state(false);
+  // A21-f2: designar um TCE como território pessoal (mesmo sheet de
+  // designar quadras, só troca o que vai no corpo do form).
+  let tceParaDesignar = $state<TceComQuadras | null>(null);
+  function abrirDesignarTce(t: TceComQuadras) {
+    tceParaDesignar = t;
+    limparSelecao();
+    sheetDesignar = true;
+  }
 
   // Estado do form de designar
   let publicadoresSel = $state<Set<string>>(new Set());
@@ -289,22 +297,29 @@
           <button onclick={() => (tceSelecionado = null)} class="text-xs text-primary-700 hover:underline mb-1">← Ver todos</button>
         {/if}
         {#each data.tces as t (t.id)}
-          <button
-            type="button"
+          <div
+            role="button"
+            tabindex="0"
             onclick={() => (tceSelecionado = tceSelecionado === t.id ? null : t.id)}
-            class="w-full text-left rounded-lg border p-2 text-sm hover:bg-slate-50"
+            onkeydown={(e) => { if (e.key === 'Enter') tceSelecionado = tceSelecionado === t.id ? null : t.id; }}
+            class="w-full text-left rounded-lg border p-2 text-sm hover:bg-slate-50 cursor-pointer"
             class:border-orange-400={tceSelecionado === t.id}
             class:bg-orange-50={tceSelecionado === t.id}
             class:border-slate-200={tceSelecionado !== t.id}
           >
-            <div class="font-medium">{t.nome}</div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium">{t.nome}</div>
+              <button type="button" onclick={(e) => { e.stopPropagation(); abrirDesignarTce(t); }} class="text-xs text-primary-700 hover:underline shrink-0">
+                <Icon nome="share" size={11} /> Designar
+              </button>
+            </div>
             <div class="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
               <span class="px-1.5 py-0.5 rounded-full bg-slate-100">{STATUS_TCE_LABEL[t.status] ?? t.status}</span>
               {#if t.publicador_nome}<span><Icon nome="user" size={11} /> {t.publicador_nome}</span>{/if}
               {#if t.prazo}<span><Icon nome="calendar" size={11} /> {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</span>{/if}
               <span>{t.quadras_ids.length} quadra(s)</span>
             </div>
-          </button>
+          </div>
         {:else}
           <p class="text-xs text-slate-400">Nenhum TCE cadastrado — crie em Polígonos → TCE.</p>
         {/each}
@@ -482,6 +497,7 @@
           toast.success((result.data as any)?.msg || 'Criada');
           sheetDesignar = false;
           limparSelecao();
+          tceParaDesignar = null;
           publicadoresSel = new Set();
           await invalidateAll();
         } else if (result.type === 'failure') {
@@ -492,15 +508,22 @@
     class="space-y-3"
   >
     {#each [...selecionadas] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
+    {#if tceParaDesignar}<input type="hidden" name="tces_ids" value={tceParaDesignar.id} />{/if}
 
-    <div class="rounded-lg bg-slate-50 p-3 text-sm">
-      <div class="font-medium mb-1">{selecionadas.size} quadra(s)</div>
-      <div class="text-xs text-slate-500 font-mono">{[...selecionadas].join(', ')}</div>
-    </div>
+    {#if tceParaDesignar}
+      <div class="rounded-lg bg-orange-50 p-3 text-sm">
+        <div class="font-medium mb-1"><Icon nome="store" size={14} /> TCE: {tceParaDesignar.nome}</div>
+      </div>
+    {:else}
+      <div class="rounded-lg bg-slate-50 p-3 text-sm">
+        <div class="font-medium mb-1">{selecionadas.size} quadra(s)</div>
+        <div class="text-xs text-slate-500 font-mono">{[...selecionadas].join(', ')}</div>
+      </div>
 
-    <p class="text-xs text-slate-500">
-      Pra saída em grupo com dirigente, crie um <a href="/admin/arranjos" class="text-primary-700 hover:underline">arranjo</a> e anexe as quadras lá.
-    </p>
+      <p class="text-xs text-slate-500">
+        Pra saída em grupo com dirigente, crie um <a href="/admin/arranjos" class="text-primary-700 hover:underline">arranjo</a> e anexe as quadras lá.
+      </p>
+    {/if}
 
     <div>
       <span class="block text-sm font-medium mb-1">Publicadores (≥1, primeiro é líder)</span>
@@ -528,7 +551,7 @@
     </div>
 
     <div class="flex gap-2 pt-2">
-      <Button variant="secondary" onclick={() => (sheetDesignar = false)} class="flex-1">Cancelar</Button>
+      <Button variant="secondary" onclick={() => { sheetDesignar = false; tceParaDesignar = null; }} class="flex-1">Cancelar</Button>
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Designar</Button>
     </div>
   </form>

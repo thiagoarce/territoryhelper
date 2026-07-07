@@ -11,6 +11,7 @@ export interface ArranjoQueDirijo {
   data: string;
   quadras_ids: string[];
   cartas_locais_ids: number[];
+  tces_ids: string[];
   interessados: string[];
 }
 
@@ -20,6 +21,7 @@ export interface ParteLinha {
   arranjo_nome: string;
   quadras_ids: string[];
   locais_ids: number[];
+  tces_ids: string[];
   publicadores: string[];
   notas: string | null;
 }
@@ -30,6 +32,7 @@ export interface MinhaParte {
   colegas: string[];
   quadras_ids: string[];
   locais_ids: number[];
+  tces_ids: string[];
 }
 
 // Navegação: aba dedicada de "casa em casa" — mapa com GPS pra identificar
@@ -51,14 +54,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     listarQuadrasComGeo(locals.supabase),
     locals.supabase
       .from('arranjo_partes')
-      .select('id, arranjo_id, quadras_ids, locais_ids, publicadores, arranjos!inner(nome, ativo)')
+      .select('id, arranjo_id, quadras_ids, locais_ids, tces_ids, publicadores, arranjos!inner(nome, ativo)')
       .contains('publicadores', [locals.user!.id])
       .eq('arranjos.ativo', true),
     // Sem filtro de data aqui — pego 60 dias pra trás pra achar pendências
     // de finalizar + futuros, e filtro os dois casos em JS abaixo.
     locals.supabase
       .from('arranjos')
-      .select('id, nome, quadras_ids, cartas_locais_ids, interessados, recorrente, data, data_fim')
+      .select('id, nome, quadras_ids, cartas_locais_ids, tces_ids, interessados, recorrente, data, data_fim')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
       .or(`data.gte.${ha60dias},data.is.null,recorrente.eq.true`)
@@ -81,6 +84,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       data: a.data as string,
       quadras_ids: (a.quadras_ids ?? []) as string[],
       cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
+      tces_ids: (a.tces_ids ?? []) as string[],
       interessados: (a.interessados ?? []) as string[]
     }));
   // Só o próximo aparece com mapa+repartir — o resto vira indicativo (evita
@@ -98,6 +102,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       data: a.data as string,
       quadras_ids: (a.quadras_ids ?? []) as string[],
       cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
+      tces_ids: (a.tces_ids ?? []) as string[],
       quadrasGeo: quadrasPorArranjo((a.quadras_ids ?? []) as string[])
     }));
 
@@ -106,7 +111,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     arranjo_nome: p.arranjos?.nome ?? 'Arranjo',
     colegas: (p.publicadores as string[]).filter((id) => id !== locals.user!.id).map((id) => nomesPorId.get(id) ?? '?'),
     quadras_ids: (p.quadras_ids ?? []) as string[],
-    locais_ids: (p.locais_ids ?? []) as number[]
+    locais_ids: (p.locais_ids ?? []) as number[],
+    tces_ids: (p.tces_ids ?? []) as string[]
   }));
 
   // Todas as partes JÁ CRIADAS dos arranjos que dirijo (válidos) — pra
@@ -118,7 +124,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     const [{ data: todasPartes }, pubs] = await Promise.all([
       locals.supabase
         .from('arranjo_partes')
-        .select('id, arranjo_id, quadras_ids, locais_ids, publicadores, notas')
+        .select('id, arranjo_id, quadras_ids, locais_ids, tces_ids, publicadores, notas')
         .in('arranjo_id', idsArranjos)
         .order('criada_em'),
       listarPublicadores(locals.supabase)
@@ -130,6 +136,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       arranjo_nome: nomePorArranjo.get(p.arranjo_id) ?? 'Arranjo',
       quadras_ids: (p.quadras_ids ?? []) as string[],
       locais_ids: (p.locais_ids ?? []) as number[],
+      tces_ids: (p.tces_ids ?? []) as string[],
       publicadores: (p.publicadores ?? []) as string[],
       notas: p.notas ?? null
     }));
@@ -140,6 +147,31 @@ export const load: PageServerLoad = async ({ locals }) => {
   const minhasComoLider = designacoes.filter((d: any) => d.publicador_id === locals.user!.id && d.status === 'aberta' && d.tipo !== 'cartas');
   const idsPessoais = [...new Set(minhasComoLider.flatMap((d) => d.quadras_ids))];
   const territorioPessoal = idsPessoais.map((id) => quadrasMap.get(id)).filter(Boolean) as QuadraGeo[];
+
+  // A21-f2: TCEs designados como território pessoal (via designacao_tces).
+  let territorioPessoalTces: string[] = [];
+  if (minhasComoLider.length > 0) {
+    const { data: dtRows } = await locals.supabase
+      .from('designacao_tces')
+      .select('tce_id')
+      .in('designacao_id', minhasComoLider.map((d: any) => d.id));
+    territorioPessoalTces = [...new Set((dtRows ?? []).map((r: any) => r.tce_id as string))];
+  }
+
+  // Nomes de TCEs referenciados (arranjo que dirijo, partes, pendências de
+  // finalizar, território pessoal)
+  const tceIdsRefs = [...new Set([
+    ...arranjosQueDirijoOrdenados.flatMap((a) => a.tces_ids),
+    ...pendentesFinalizar.flatMap((a) => a.tces_ids),
+    ...minhasPartes.flatMap((p) => p.tces_ids),
+    ...partesDosMeusArranjos.flatMap((p) => p.tces_ids),
+    ...territorioPessoalTces
+  ])];
+  const tcesMap: Record<string, string> = {};
+  if (tceIdsRefs.length > 0) {
+    const { data: tcesRows } = await locals.supabase.from('tces').select('id, nome').in('id', tceIdsRefs);
+    for (const t of (tcesRows ?? []) as any[]) tcesMap[t.id] = t.nome;
+  }
 
   // A2: cobertura por quadra do "Seu grupo" — pro sheet de ação (Concluir/
   // Compartilhar) mostrar X/Y endereços feitos.
@@ -157,7 +189,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     partesDosMeusArranjos,
     publicadoresParaRepartir,
     nomesPorId: Object.fromEntries(nomesPorId),
+    tcesMap,
     territorioPessoal,
+    territorioPessoalTces,
     minhaId: locals.user!.id
   };
 };
@@ -216,17 +250,18 @@ export const actions: Actions = {
     const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
     const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
     const locaisIds = fd.getAll('locais_ids').map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
+    const tcesIds = fd.getAll('tces_ids').map((v) => String(v)).filter(Boolean);
     const notas = String(fd.get('notas') ?? '').trim() || null;
     if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
     if (publicadorIds.length === 0) return fail(400, { erro: 'Selecione ao menos um publicador' });
-    if (quadrasIds.length === 0 && locaisIds.length === 0) {
-      return fail(400, { erro: 'Selecione ao menos uma quadra ou prédio' });
+    if (quadrasIds.length === 0 && locaisIds.length === 0 && tcesIds.length === 0) {
+      return fail(400, { erro: 'Selecione ao menos uma quadra, prédio ou TCE' });
     }
 
     const ehAdmin = locals.profile?.role === 'admin';
     const { data: arr, error: errA } = await locals.supabase
       .from('arranjos')
-      .select('id, nome, quadras_ids, cartas_locais_ids, dirigente_id')
+      .select('id, nome, quadras_ids, cartas_locais_ids, tces_ids, dirigente_id')
       .eq('id', arranjoId).single();
     if (errA || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
     if (!ehAdmin && arr.dirigente_id !== locals.user.id) {
@@ -235,16 +270,19 @@ export const actions: Actions = {
 
     const quadrasArr = new Set((arr.quadras_ids ?? []) as string[]);
     const locaisArr = new Set((arr.cartas_locais_ids ?? []) as number[]);
+    const tcesArr = new Set((arr.tces_ids ?? []) as string[]);
     const foraQ = quadrasIds.filter((q) => !quadrasArr.has(q));
     const foraL = locaisIds.filter((l) => !locaisArr.has(l));
-    if (foraQ.length > 0 || foraL.length > 0) {
-      return fail(400, { erro: 'Itens fora do território do arranjo: ' + [...foraQ, ...foraL].join(', ') });
+    const foraT = tcesIds.filter((t) => !tcesArr.has(t));
+    if (foraQ.length > 0 || foraL.length > 0 || foraT.length > 0) {
+      return fail(400, { erro: 'Itens fora do território do arranjo: ' + [...foraQ, ...foraL, ...foraT].join(', ') });
     }
 
     const { error } = await locals.supabase.from('arranjo_partes').insert({
       arranjo_id: arranjoId,
       quadras_ids: quadrasIds,
       locais_ids: locaisIds,
+      tces_ids: tcesIds,
       publicadores: publicadorIds,
       notas,
       criado_por: locals.user.id

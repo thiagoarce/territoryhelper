@@ -168,13 +168,24 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const quadrasMap = new Map(quadras.map((q) => [q.id, q]));
 
-  const { data: tceRows } = await locals.supabase
-    .from('tces')
-    .select('id, nome, tipo, prazo, status')
-    .eq('status', 'aberto')
-    .not('publicador_id', 'is', null)
-    .order('prazo', { nullsFirst: false });
-  const tces = (tceRows ?? []) as { id: string; nome: string; tipo: string; prazo: string | null; status: string }[];
+  // A21-f2: TCEs "meus" via publicador_id direto OU via designação
+  // pessoal (designacao_tces) — a home mescla os dois mecanismos.
+  const [{ data: tceDiretoRows }, { data: tceViaDesRows }] = await Promise.all([
+    locals.supabase
+      .from('tces')
+      .select('id, nome, tipo, prazo, status')
+      .eq('status', 'aberto')
+      .not('publicador_id', 'is', null),
+    locals.supabase
+      .from('designacao_tces')
+      .select('tces!inner(id, nome, tipo, prazo, status), designacoes!inner(status)')
+      .eq('tces.status', 'aberto')
+      .eq('designacoes.status', 'aberta')
+  ]);
+  const tcesPorId = new Map<string, { id: string; nome: string; tipo: string; prazo: string | null; status: string }>();
+  for (const t of (tceDiretoRows ?? []) as any[]) tcesPorId.set(t.id, t);
+  for (const r of (tceViaDesRows ?? []) as any[]) if (r.tces) tcesPorId.set(r.tces.id, r.tces);
+  const tces = [...tcesPorId.values()].sort((a, b) => (a.prazo ?? '9999-99-99').localeCompare(b.prazo ?? '9999-99-99'));
 
   // Campanha ativa: card destacado no topo (specs.md Fase 2)
   let campanhaAtiva: CampanhaAtiva | null = null;

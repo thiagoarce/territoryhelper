@@ -145,7 +145,7 @@
       "TCEs" na Geral + `arranjos.tces_ids[]` (migration) com anexar
       múltiplos TCEs a arranjo.
 
-- [ ] 🟡 **T25 (A21-f2)** `designacao_tces` + `arranjo_partes.tces_ids` —
+- [x] 🟡 **T25 (A21-f2)** `designacao_tces` + `arranjo_partes.tces_ids` —
       TCE como designação pessoal e repartível; home/casa-a-casa
       exibem via designação.
 
