@@ -602,7 +602,7 @@
       <div class="flex gap-2 pt-2">
         <Button variant="secondary" onclick={() => (sheetRepartir = false)} class="flex-1">Cancelar</Button>
         <Button variant="primary" type="submit" loading={repartindo} class="flex-1"
-          disabled={pubsSel.size === 0 || (quadrasSel.size === 0 && locaisSel.size === 0)}>Criar parte</Button>
+          disabled={pubsSel.size === 0 || (quadrasSel.size === 0 && locaisSel.size === 0 && tcesSel.size === 0)}>Criar parte</Button>
       </div>
     </form>
   {/if}
