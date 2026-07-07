@@ -6,7 +6,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha, RevistaMesLinha } from './$types';
+  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha, RevistaMesLinha, CarrinhoLite, InventarioItem } from './$types';
 
   let { data }: {
     data: {
@@ -20,6 +20,8 @@
       controlePublicacaoId: number | null;
       controle: ControleLinha[];
       revistasMes: RevistaMesLinha[];
+      carrinhos: CarrinhoLite[];
+      inventario: InventarioItem[];
       erro?: string;
     };
   } = $props();
@@ -72,11 +74,19 @@
     danificado: 'bg-red-100 text-red-700'
   };
 
-  const reposicaoAgrupada = $derived.by(() => {
-    const m: Record<string, ReposicaoItem[]> = {};
-    for (const r of data.reposicao) (m[r.carrinho_nome + ' · ' + r.ponto_nome] ??= []).push(r);
+  // A12c: reposição por carrinho — cada equipamento vira um card com seu
+  // inventário (item + qtd) e, abaixo, o que ainda está pendente de
+  // relatório de turno pra ele.
+  const reposicaoPorCarrinho = $derived.by(() => {
+    const m = new Map<number, { inventario: InventarioItem[]; pendentes: ReposicaoItem[] }>();
+    for (const c of data.carrinhos) m.set(c.id, { inventario: [], pendentes: [] });
+    for (const i of data.inventario) m.get(i.carrinho_id)?.inventario.push(i);
+    for (const r of data.reposicao) { if (r.carrinho_id != null) m.get(r.carrinho_id)?.pendentes.push(r); }
     return m;
   });
+  // Itens de relatório sem carrinho reconhecível (equipamento apagado) —
+  // mantidos numa lista à parte pra não se perder.
+  const reposicaoOrfa = $derived(data.reposicao.filter((r) => r.carrinho_id == null || !data.carrinhos.some((c) => c.id === r.carrinho_id)));
 
   let resolvendoId = $state<number | null>(null);
   async function resolverReposicao(id: number) {
@@ -87,6 +97,71 @@
     const parsed = deserialize(await res.text()) as any;
     resolvendoId = null;
     if (parsed.type === 'success') { toast.success('Resolvido'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  let inventarioEmEdicao: Record<number, number> = $state({});
+  function inventarioQtdAtual(item: InventarioItem): number {
+    return item.id in inventarioEmEdicao ? inventarioEmEdicao[item.id] : item.qtd;
+  }
+  let salvandoInventarioId = $state<number | null>(null);
+  async function ajustarInventario(item: InventarioItem, delta: number) {
+    const novoValor = Math.max(0, inventarioQtdAtual(item) + delta);
+    inventarioEmEdicao[item.id] = novoValor;
+    salvandoInventarioId = item.id;
+    const fd = new FormData();
+    fd.append('id', String(item.id));
+    fd.append('qtd', String(novoValor));
+    const res = await fetch('?/ajustarInventario', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoInventarioId = null;
+    if (parsed.type !== 'success') toast.error(String(parsed.data?.erro || 'Falhou'));
+    await invalidateAll();
+  }
+
+  async function excluirInventarioItem(id: number) {
+    if (!confirm('Remover este item do inventário?')) return;
+    salvandoInventarioId = id;
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch('?/excluirInventarioItem', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoInventarioId = null;
+    if (parsed.type === 'success') { toast.success('Item removido'); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  let sheetNovoItem = $state(false);
+  let novoItemCarrinhoId = $state<number | null>(null);
+  let novoItemPublicacaoId = $state<number | null>(null);
+  let novoItemDescricao = $state('');
+  let novoItemQtd = $state(0);
+  let criandoItem = $state(false);
+
+  function abrirNovoItem(carrinhoId: number) {
+    novoItemCarrinhoId = carrinhoId;
+    novoItemPublicacaoId = null;
+    novoItemDescricao = '';
+    novoItemQtd = 0;
+    sheetNovoItem = true;
+  }
+
+  async function criarInventarioItem() {
+    if (!novoItemCarrinhoId) return;
+    if (!novoItemPublicacaoId && !novoItemDescricao.trim()) {
+      toast.error('Escolha uma publicação ou descreva o item');
+      return;
+    }
+    criandoItem = true;
+    const fd = new FormData();
+    fd.append('carrinho_id', String(novoItemCarrinhoId));
+    if (novoItemPublicacaoId) fd.append('publicacao_id', String(novoItemPublicacaoId));
+    if (novoItemDescricao.trim()) fd.append('descricao', novoItemDescricao.trim());
+    fd.append('qtd', String(novoItemQtd));
+    const res = await fetch('?/criarInventarioItem', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    criandoItem = false;
+    if (parsed.type === 'success') { toast.success('Item adicionado'); sheetNovoItem = false; await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
 
@@ -306,36 +381,88 @@
 {#if secao === 'reposicao'}
   <div>
     <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
-      <Icon nome="alert" size={14} /> Reposição
-      <span class="text-xs text-slate-400 normal-case font-normal">({data.reposicao.length})</span>
+      <Icon nome="alert" size={14} /> Reposição por carrinho
+      {#if data.reposicao.length > 0}<span class="text-xs text-slate-400 normal-case font-normal">({data.reposicao.length} pendente{data.reposicao.length > 1 ? 's' : ''})</span>{/if}
     </h2>
-    {#if data.reposicao.length === 0}
-      <p class="text-sm text-slate-400 italic">Nada pendente de reposição.</p>
+    {#if data.carrinhos.length === 0}
+      <p class="text-sm text-slate-400 italic">Nenhum carrinho cadastrado — crie em Equipamentos (TP).</p>
     {:else}
       <div class="space-y-3">
-        {#each Object.entries(reposicaoAgrupada) as [grupo, itens]}
+        {#each data.carrinhos as c (c.id)}
+          {@const grupo = reposicaoPorCarrinho.get(c.id)}
           <Card padding="md">
-            <div class="text-sm font-semibold mb-1.5">{grupo}</div>
-            <div class="space-y-1.5">
-              {#each itens as item (item.id)}
-                <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
-                  <span class="flex-1 min-w-0 truncate">
-                    {item.peca_nome}
-                    <span class="text-[10px] px-1.5 py-0.5 rounded-full ml-1 {ESTADO_CLASSE[item.estado]}">{ESTADO_LABEL[item.estado]}</span>
-                    {#if item.obs}<span class="text-xs text-slate-500 italic"> — {item.obs}</span>{/if}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={resolvendoId === item.id}
-                    onclick={() => resolverReposicao(item.id)}
-                    class="text-xs text-primary-700 hover:underline shrink-0 disabled:opacity-40"
-                  ><Icon nome={resolvendoId === item.id ? 'loader' : 'check'} size={12} spin={resolvendoId === item.id} /> Resolvido</button>
-                </div>
-              {/each}
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="text-sm font-semibold">{c.nome} <span class="text-xs text-slate-400 font-normal">· {c.tipo_nome}</span></div>
+              <button type="button" onclick={() => abrirNovoItem(c.id)} class="text-xs text-primary-700 hover:underline shrink-0">
+                <Icon nome="plus" size={12} /> Item
+              </button>
             </div>
+
+            {#if !grupo || grupo.inventario.length === 0}
+              <p class="text-xs text-slate-400 italic mb-1.5">Sem itens no inventário.</p>
+            {:else}
+              <div class="space-y-1 mb-2">
+                {#each grupo.inventario as item (item.id)}
+                  <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1">
+                    <span class="flex-1 min-w-0 truncate">{item.publicacao_nome ?? item.descricao}</span>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <button type="button" disabled={salvandoInventarioId === item.id} onclick={() => ajustarInventario(item, -1)} class="w-6 h-6 flex items-center justify-center rounded bg-slate-200 disabled:opacity-40">−</button>
+                      <span class="w-6 text-center font-medium">{inventarioQtdAtual(item)}</span>
+                      <button type="button" disabled={salvandoInventarioId === item.id} onclick={() => ajustarInventario(item, 1)} class="w-6 h-6 flex items-center justify-center rounded bg-slate-200 disabled:opacity-40">+</button>
+                      <button type="button" disabled={salvandoInventarioId === item.id} onclick={() => excluirInventarioItem(item.id)} class="text-slate-400 hover:text-red-600"><Icon nome="x" size={13} /></button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            {#if grupo && grupo.pendentes.length > 0}
+              <div class="text-xs font-semibold text-amber-700 uppercase mb-1">Pendente de relatório</div>
+              <div class="space-y-1.5">
+                {#each grupo.pendentes as item (item.id)}
+                  <div class="flex items-center justify-between gap-2 text-sm bg-amber-50 rounded-lg px-2.5 py-1.5">
+                    <span class="flex-1 min-w-0 truncate">
+                      {item.peca_nome}
+                      <span class="text-[10px] px-1.5 py-0.5 rounded-full ml-1 {ESTADO_CLASSE[item.estado]}">{ESTADO_LABEL[item.estado]}</span>
+                      <span class="text-xs text-slate-500"> — {item.ponto_nome}</span>
+                      {#if item.obs}<span class="text-xs text-slate-500 italic"> — {item.obs}</span>{/if}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={resolvendoId === item.id}
+                      onclick={() => resolverReposicao(item.id)}
+                      class="text-xs text-primary-700 hover:underline shrink-0 disabled:opacity-40"
+                    ><Icon nome={resolvendoId === item.id ? 'loader' : 'check'} size={12} spin={resolvendoId === item.id} /> Resolvido</button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </Card>
         {/each}
       </div>
+    {/if}
+
+    {#if reposicaoOrfa.length > 0}
+      <Card padding="md" class="mt-3">
+        <div class="text-sm font-semibold mb-1.5 text-slate-500">Sem carrinho (equipamento removido)</div>
+        <div class="space-y-1.5">
+          {#each reposicaoOrfa as item (item.id)}
+            <div class="flex items-center justify-between gap-2 text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
+              <span class="flex-1 min-w-0 truncate">
+                {item.peca_nome}
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full ml-1 {ESTADO_CLASSE[item.estado]}">{ESTADO_LABEL[item.estado]}</span>
+                {#if item.obs}<span class="text-xs text-slate-500 italic"> — {item.obs}</span>{/if}
+              </span>
+              <button
+                type="button"
+                disabled={resolvendoId === item.id}
+                onclick={() => resolverReposicao(item.id)}
+                class="text-xs text-primary-700 hover:underline shrink-0 disabled:opacity-40"
+              ><Icon nome={resolvendoId === item.id ? 'loader' : 'check'} size={12} spin={resolvendoId === item.id} /> Resolvido</button>
+            </div>
+          {/each}
+        </div>
+      </Card>
     {/if}
   </div>
 
@@ -353,6 +480,30 @@
     </Card>
   {/if}
 {/if}
+
+<BottomSheet bind:open={sheetNovoItem} title="Novo item no inventário">
+  <div class="space-y-3">
+    <div>
+      <label class="text-xs font-medium text-slate-500" for="novo-item-pub">Publicação do catálogo</label>
+      <select id="novo-item-pub" bind:value={novoItemPublicacaoId} class="w-full mt-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+        <option value={null}>— nenhuma —</option>
+        {#each data.catalogo as p (p.id)}
+          <option value={p.id}>{p.nome}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="text-xs text-slate-400 text-center">ou</div>
+    <div>
+      <label class="text-xs font-medium text-slate-500" for="novo-item-desc">Descrição livre (peça física)</label>
+      <input id="novo-item-desc" bind:value={novoItemDescricao} placeholder="Ex: roda dianteira" class="w-full mt-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-500" for="novo-item-qtd">Quantidade inicial</label>
+      <input id="novo-item-qtd" type="number" min="0" bind:value={novoItemQtd} class="w-full mt-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+    </div>
+    <Button variant="primary" class="w-full" loading={criandoItem} onclick={criarInventarioItem}>Adicionar</Button>
+  </div>
+</BottomSheet>
 
 {#if secao === 'catalogo'}
   <Card padding="md">
