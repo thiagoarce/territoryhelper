@@ -6,10 +6,61 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
 
-  let { open = $bindable(false), latGps, lngGps }: { open?: boolean; latGps?: number | null; lngGps?: number | null } = $props();
+  interface LocalProximidade {
+    logradouro: string;
+    numero: string;
+    geo_geojson?: { coordinates: [number, number] } | null;
+  }
+
+  let {
+    open = $bindable(false),
+    latGps,
+    lngGps,
+    locaisProximidade = []
+  }: {
+    open?: boolean;
+    latGps?: number | null;
+    lngGps?: number | null;
+    // A7: endereço aproximado — locais já cadastrados na mesma quadra, pra
+    // sugerir logradouro/número do vizinho mais próximo após capturar GPS.
+    locaisProximidade?: LocalProximidade[];
+  } = $props();
 
   let tipo = $state<'casa' | 'predio' | 'comercio' | 'coletivo' | 'terreno'>('casa');
   let salvando = $state(false);
+  let logradouroSugerido = $state('');
+  let numeroSugerido = $state('');
+
+  // Mesma fórmula haversine usada no resto do app (server-side em
+  // publicador/predios, aqui client-side já que os locais da quadra já
+  // estão carregados na página).
+  function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function sugerirEnderecoProximo(lat: number, lng: number) {
+    let maisProximo: LocalProximidade | null = null;
+    let menorDist = Infinity;
+    for (const l of locaisProximidade) {
+      const c = l.geo_geojson?.coordinates;
+      if (!c) continue;
+      const d = haversine(lat, lng, c[1], c[0]);
+      if (d < menorDist) { menorDist = d; maisProximo = l; }
+    }
+    if (maisProximo) {
+      logradouroSugerido = maisProximo.logradouro;
+      numeroSugerido = maisProximo.numero;
+    }
+  }
+
+  // Zera a sugestão a cada abertura — senão fica presa do endereço anterior.
+  $effect(() => {
+    if (open) { logradouroSugerido = ''; numeroSugerido = ''; }
+  });
 
   function tentarUsarGps() {
     if (!navigator.geolocation) {
@@ -21,6 +72,7 @@
       const lngInput = document.getElementById('add-lng') as HTMLInputElement;
       if (latInput) latInput.value = String(pos.coords.latitude);
       if (lngInput) lngInput.value = String(pos.coords.longitude);
+      sugerirEnderecoProximo(pos.coords.latitude, pos.coords.longitude);
       toast.success('GPS capturado');
     }, () => toast.error('Falhou capturar GPS'));
   }
@@ -72,9 +124,11 @@
         id="add-logradouro"
         name="logradouro"
         required
+        bind:value={logradouroSugerido}
         placeholder="Ex: RUA DOS GIRASSÓIS"
         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
       />
+      {#if logradouroSugerido}<p class="text-xs text-slate-400 mt-1">Sugerido pelo endereço mais próximo — edite se estiver errado.</p>{/if}
     </div>
 
     <div class="grid grid-cols-2 gap-3">
@@ -83,6 +137,7 @@
         <input
           id="add-numero"
           name="numero"
+          bind:value={numeroSugerido}
           placeholder="123"
           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />

@@ -74,6 +74,11 @@ export interface Local {
   criado_em: string;
   atualizado_em: string;
   criado_por: string | null;
+  marcado_nao_existe: boolean;
+  marcado_por: string | null;
+  marcado_em: string | null;
+  ordem_na_quadra: number | null;
+  geo_geojson?: { type: 'Point'; coordinates: [number, number] } | null;
 }
 
 export interface Unidade {

@@ -516,6 +516,18 @@ export const actions: Actions = {
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
+
+    // A7: confirmar um "não existe mais" de verdade inativa o endereço
+    // (nao_visitar=true — some das listas de trabalho, reversível em
+    // Polígonos/Vincular, sem apagar histórico).
+    const { data: linha } = await locals.supabase
+      .from('curadoria_edicoes').select('tipo, local_id').eq('id', id).maybeSingle();
+    if (linha?.tipo === 'nao_existe' && linha.local_id) {
+      const { error: errNv } = await locals.supabase
+        .from('locais').update({ nao_visitar: true }).eq('id', linha.local_id);
+      if (errNv) return fail(400, { erro: errNv.message });
+    }
+
     const { error } = await locals.supabase
       .from('curadoria_edicoes')
       .update({ status: 'confirmado', resolvido_por: locals.user.id, resolvido_em: new Date().toISOString() })

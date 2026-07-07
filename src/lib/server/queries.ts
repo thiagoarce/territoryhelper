@@ -43,9 +43,11 @@ export async function selectAll<T = unknown>(
 }
 
 // Conta locais por quadra (paginado pra evitar bug do limite 1000).
+// Exclui marcado_nao_existe (A7): endereço sinalizado pelo publicador como
+// "não existe mais" sai das contagens de progresso até o admin resolver.
 export async function contarLocaisPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
   const linhas = await selectAll<{ quadra_id: string | null }>(
-    supabase.from('locais').select('quadra_id')
+    supabase.from('locais').select('quadra_id').eq('marcado_nao_existe', false)
   );
   const mapa = new Map<string, number>();
   for (const l of linhas) {
@@ -60,7 +62,7 @@ export async function contarLocaisPorQuadra(supabase: SupabaseClient): Promise<M
 // unidades não tem quadra_id direto: junta via locais.quadra_id.
 export async function contarResidenciasPorQuadra(supabase: SupabaseClient): Promise<Map<string, number>> {
   const locais = await selectAll<{ id: number; quadra_id: string | null }>(
-    supabase.from('locais').select('id, quadra_id')
+    supabase.from('locais').select('id, quadra_id').eq('marcado_nao_existe', false)
   );
   const quadraPorLocal = new Map(locais.filter((l) => l.quadra_id).map((l) => [l.id, l.quadra_id as string]));
   const unidades = await selectAll<{ local_id: number }>(
@@ -151,8 +153,9 @@ export async function calcularCoberturaPorQuadra(
   supabase: SupabaseClient,
   quadrasIds?: string[]
 ): Promise<Map<string, CoberturaQuadra>> {
-  // Locais → quadras (filtra se passado quadrasIds)
-  let qLocais = supabase.from('locais').select('id, quadra_id');
+  // Locais → quadras (filtra se passado quadrasIds; marcado_nao_existe sai da
+  // contagem de progresso — A7)
+  let qLocais = supabase.from('locais').select('id, quadra_id').eq('marcado_nao_existe', false);
   if (quadrasIds && quadrasIds.length > 0) qLocais = qLocais.in('quadra_id', quadrasIds);
   const locais = await selectAll<{ id: number; quadra_id: string | null }>(qLocais);
   const quadraPorLocal = new Map<number, string>();
@@ -303,6 +306,7 @@ export interface PredioDetalhado extends PredioListado {
   notas: string | null;
   geo_geojson: unknown | null;
   unidades: Unidade[];
+  marcado_nao_existe: boolean;
 }
 
 export async function carregarPredioDetalhado(
