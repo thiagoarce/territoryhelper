@@ -171,7 +171,7 @@
 
 ## Onda 8b — Aprovação TP (pode rodar antes da Onda 8)
 
-- [ ] 🟢 **T31 (A22-aprovação)** `profiles.tp_aprovado` (migration) +
+- [x] 🟢 **T31 (A22-aprovação)** `profiles.tp_aprovado` (migration) +
       toggle "Aprovado" em `/admin/tp/publicadores` + TODAS as listas
       de publicador do fluxo TP filtram aprovados (designar no
       Planner atual, montagem, reserva). Pode ser feita já na Onda 1 —
