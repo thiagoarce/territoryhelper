@@ -45,6 +45,9 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     read-only + compartilhar c/ imagem), `convite/[token]`, `c`, `login`
 - `src/lib/components/` — `MapaAdmin.svelte` (mapa de quadras reutilizável),
   `MapaPoligonos.svelte` (editor de polígonos + terra-draw), `AdminMapa.svelte`,
+  `QuadraMap.svelte` (pinos numerados por endereço + GPS; usado em
+  `/publicador/quadra/[id]` com polígono da quadra E em `/publicador/tce/[id]`
+  sem polígono — nesse caso ajusta o zoom pros pontos em vez do centro fixo),
   `EditarLocalSheet.svelte`, `InstallPrompt.svelte`, `TpGradeSemana.svelte`
   (grade semanal do Planner de TP), `NotificacoesBell.svelte` (sino no
   header global — fallback in-app de PUSH-A, funciona sem push)

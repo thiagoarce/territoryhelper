@@ -14,6 +14,7 @@ export interface TceEndereco {
   tipo: string;
   ultimoTipo: string | null;
   cartaEntregue: boolean;
+  geo_geojson: unknown | null;
 }
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -47,6 +48,15 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     }
   }
 
+  // Geometria dos endereços (mini-mapa) — via view locais_geo (geo_geojson
+  // pronto), não a tabela locais direto (traria WKB cru, não serve pro mapa).
+  const localIds = [...new Set((vinculos ?? []).map((v: any) => v.unidades?.locais?.id).filter(Boolean))];
+  const geoPorLocal = new Map<number, unknown>();
+  if (localIds.length > 0) {
+    const { data: geoRows } = await locals.supabase.from('locais_geo').select('id, geo_geojson').in('id', localIds);
+    for (const g of (geoRows ?? []) as any[]) geoPorLocal.set(g.id, g.geo_geojson);
+  }
+
   const enderecos: TceEndereco[] = (vinculos ?? []).map((v: any) => {
     const u = v.unidades;
     const l = u?.locais;
@@ -60,7 +70,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       complemento: u?.complemento ?? null,
       tipo: l?.tipo ?? 'comercio',
       ultimoTipo: ult === 'desfeito' || ult === 'carta_undo' ? null : ult,
-      cartaEntregue: ult === 'carta'
+      cartaEntregue: ult === 'carta',
+      geo_geojson: l?.id ? geoPorLocal.get(l.id) ?? null : null
     };
   }).sort((a, b) =>
     a.logradouro.localeCompare(b.logradouro) || a.numero.localeCompare(b.numero)

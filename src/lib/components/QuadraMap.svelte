@@ -99,6 +99,25 @@
         }
       }
 
+      // Sem polígono de quadra (ex: mini-mapa de endereços de um TCE) — ajusta
+      // o zoom pra caber todos os pinos em vez do centro fixo default.
+      if (!quadraGeo) {
+        const pontos = locais
+          .map((l) => (l as any).geo_geojson?.coordinates)
+          .filter((c): c is [number, number] => Array.isArray(c) && c.length === 2);
+        if (pontos.length > 0) {
+          try {
+            const bounds = pontos.reduce(
+              (b: any, c) => b.extend(c as any),
+              new maplibre.LngLatBounds(pontos[0], pontos[0])
+            );
+            mapa.fitBounds(bounds, { padding: 50, duration: 0, maxZoom: 17 });
+          } catch (e) {
+            console.warn('fit bounds (pontos):', e);
+          }
+        }
+      }
+
       // Espalha pinos quase coincidentes (ex: vários locais no mesmo prédio)
       // num pequeno círculo ao redor do ponto real — senão ficam empilhados
       // e impossíveis de tocar individualmente no mapa.
