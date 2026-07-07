@@ -94,7 +94,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `registros` | trilha append-only de eventos por unidade (conversou/carta/desfeito…) |
 | `designacoes` | **território pessoal** (tipo pessoal/cartas), sempre `publicador_id` — dirigente NÃO existe aqui (é atributo do arranjo) |
 | `designacao_quadras` / `designacao_publicadores` / `designacao_locais` | N:N (locais só p/ tipo='cartas') |
-| `arranjos` / `arranjo_modalidades` | saída agendada c/ dirigente + território **misto livre**: `quadras_ids[]` + `cartas_locais_ids[]` + `tce_id` + local/ponto + `interessados uuid[]` (inscrição antecipada, sinal pro dirigente repartir). Modalidade é só categoria (cor/defaults). **Recorrência não é um flag perpétuo**: `criarArranjo` expande "recorrente" em N linhas PONTUAIS independentes na hora da criação (`recorrente=false`, uma `data` cada) — cada ocorrência tem seu próprio `dirigente_id`/território, editável sem afetar as outras. Passado o dia (ou hoje após 20h) e `ativo` ainda `true`, a home só AVISA (link pra Casa a casa); é lá que mora a ação **"Finalize a designação"** — botão que marca `ativo=false` e apaga as `arranjo_partes` daquela ocorrência (encerra o acesso; liberar quadra pra outro arranjo já acontece sozinho pela data, via `quadrasEmArranjoFuturo`). Tanto a home ("Você dirige") quanto Casa a casa ("Seu grupo") mostram só o PRÓXIMO arranjo futuro que o dirigente dirige — os demais entram num indicativo "+N outras" com modal de detalhe |
+| `arranjos` / `arranjo_modalidades` | saída agendada c/ dirigente + território **misto livre**: `quadras_ids[]` + `cartas_locais_ids[]` + `tces_ids[]` (A21-f1: virou array — vários TCEs por arranjo; `tce_id` singular fica no schema como legado, não é mais lido/escrito) + local/ponto + `interessados uuid[]` (inscrição antecipada, sinal pro dirigente repartir). Modalidade é só categoria (cor/defaults). **Recorrência não é um flag perpétuo**: `criarArranjo` expande "recorrente" em N linhas PONTUAIS independentes na hora da criação (`recorrente=false`, uma `data` cada) — cada ocorrência tem seu próprio `dirigente_id`/território, editável sem afetar as outras. Passado o dia (ou hoje após 20h) e `ativo` ainda `true`, a home só AVISA (link pra Casa a casa); é lá que mora a ação **"Finalize a designação"** — botão que marca `ativo=false` e apaga as `arranjo_partes` daquela ocorrência (encerra o acesso; liberar quadra pra outro arranjo já acontece sozinho pela data, via `quadrasEmArranjoFuturo`). Tanto a home ("Você dirige") quanto Casa a casa ("Seu grupo") mostram só o PRÓXIMO arranjo futuro que o dirigente dirige — os demais entram num indicativo "+N outras" com modal de detalhe |
 | `arranjo_partes` | repartição do dirigente: subconjunto do território → `publicadores uuid[]` (dupla/trio = MESMA parte). Validade deriva da `data` do arranjo |
 | `territorio_tokens` | link público `/t/<token>` de arranjo OU designação (RPC `territorio_publico` monta o JSON; compartilha no WhatsApp com PNG do mapa) |
 | `campanha` / `campanhas` | objetivos + período (data_inicio/alvo/meta_semanal) |
@@ -170,11 +170,15 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 ## Telas principais (admin)
 
 - **Geral** (`/admin`) — mapa multi-seleção de quadras; **designar** (território
-  pessoal) + **anexar a arranjo** (saída em grupo) + **designar TCE**. Cor por
+  pessoal) + **anexar a arranjo** (saída em grupo). Cor por
   status (recência) / território / densidade / idade da conclusão.
   **Concluir quadra** fundido aqui (long-press abre histórico +
   reverter + limpar conclusão + conflito de data anterior — era a tela
-  `/admin/registro`, removida).
+  `/admin/registro`, removida). **Filtro "TCEs"** (A21-f1): esconde o
+  resto e mostra as quadras-contêiner de cada TCE (derivadas de
+  `tce_unidades → unidades → locais.quadra_id`, sem convex hull cortando
+  quadra) + painel lateral (status/prazo/publicador), clicar num TCE
+  restringe o mapa só a ele.
 - **Polígonos** (`/admin/poligonos`) — editor único, modos:
   - **Vincular**: pontos de endereço + filtros + cluster "por face" (IBGE);
     click vincula a quadra

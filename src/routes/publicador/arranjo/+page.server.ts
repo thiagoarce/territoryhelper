@@ -70,7 +70,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const partes = (partesRes.data ?? []) as ParteLinha[];
 
   // Nomes de TCEs referenciados (arranjo misto)
-  const tceIds = Array.from(new Set(arranjos.map((a: any) => a.tce_id).filter(Boolean)));
+  const tceIds = Array.from(new Set(arranjos.flatMap((a: any) => a.tces_ids ?? [])));
   const tcesMap: Record<string, string> = {};
   if (tceIds.length > 0) {
     const { data: tces } = await locals.supabase.from('tces').select('id, nome').in('id', tceIds);

@@ -94,7 +94,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     // finalizados — "Finalize a designação")
     locals.supabase
       .from('arranjos')
-      .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tce_id, recorrente, data_fim')
+      .select('id, nome, data, hora_inicio, local_endereco, quadras_ids, cartas_locais_ids, tces_ids, recorrente, data_fim')
       .eq('ativo', true)
       .eq('dirigente_id', locals.user!.id)
       .or(`data.gte.${ha60dias},data.is.null,recorrente.eq.true`)
@@ -243,7 +243,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       local_endereco: a.local_endereco as string | null,
       quadras_ids: (a.quadras_ids ?? []) as string[],
       cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
-      tce_id: a.tce_id as string | null
+      tces_ids: (a.tces_ids ?? []) as string[]
     }));
   const arranjoQueDirijo = arranjosQueDirijoOrdenados[0] ?? null;
   const outrosArranjosQueDirijo = arranjosQueDirijoOrdenados.slice(1);

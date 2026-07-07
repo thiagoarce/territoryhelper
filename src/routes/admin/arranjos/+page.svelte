@@ -133,7 +133,7 @@
       cartas_locais_ids: null,
       arquivo_url: null,
       arquivo_nome: null,
-      tce_id: null,
+      tces_ids: [],
       notas: null,
       data_inicio: null,
       data_fim: null,
@@ -691,11 +691,31 @@
         </div>
 
         <div>
-          <label for="tce_id" class="block text-sm font-medium mb-1"><Icon nome="store" size={14} /> TCE (comercial)</label>
-          <select id="tce_id" name="tce_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={(arrEditando as any).tce_id ?? ''}>
-            <option value="">— nenhum —</option>
-            {#each data.tces as t}<option value={t.id}>{t.nome}</option>{/each}
-          </select>
+          <span class="block text-sm font-medium mb-1"><Icon nome="store" size={14} /> TCEs (comercial) — {(arrEditando.tces_ids ?? []).length} selecionado(s)</span>
+          <input id="tces_ids" name="tces_ids" type="hidden" value={(arrEditando.tces_ids ?? []).join(',')} />
+          {#if data.tces.length === 0}
+            <p class="text-xs text-slate-400">Nenhum TCE aberto — crie em Polígonos → TCE.</p>
+          {:else}
+            <div class="max-h-40 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
+              {#each data.tces as t}
+                {@const sel = (arrEditando.tces_ids ?? []).includes(t.id)}
+                <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={sel}
+                    onchange={(e) => {
+                      const cur = new Set(arrEditando.tces_ids ?? []);
+                      if ((e.target as HTMLInputElement).checked) cur.add(t.id);
+                      else cur.delete(t.id);
+                      arrEditando = { ...arrEditando, tces_ids: [...cur] };
+                    }}
+                    class="w-4 h-4 rounded"
+                  />
+                  <span class="flex-1">{t.nome}</span>
+                </label>
+              {/each}
+            </div>
+          {/if}
         </div>
 
         <p class="text-xs text-slate-500"><Icon nome="map-pin" size={14} /> Ponto fixo (TP/carrinho/praça) usa o campo "Local" acima.</p>

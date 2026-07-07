@@ -38,7 +38,7 @@ export interface ArranjoHub {
   dirigente_nome: string | null;
   quadras_ids: string[];
   cartas_locais_ids: number[];
-  tce_id: string | null;
+  tces_ids: string[];
 }
 
 export interface ArranjoDestino {
@@ -63,7 +63,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     // "designação" (herdada pelo dirigente)
     locals.supabase
       .from('arranjos')
-      .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tce_id, recorrente, data_fim')
+      .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tces_ids, recorrente, data_fim')
       .eq('ativo', true)
       .or(`data.gte.${ontem},data.is.null,recorrente.eq.true`)
       .order('data'),
@@ -112,13 +112,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     ...a,
     quadras_ids: a.quadras_ids ?? [],
     cartas_locais_ids: a.cartas_locais_ids ?? [],
+    tces_ids: a.tces_ids ?? [],
     dirigente_nome: a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null
   }));
 
   // Só entra no hub arranjo que tem TERRITÓRIO anexado (quadra/prédio/TCE) —
   // evento sem território é só agenda, mora em /admin/arranjos.
   const arranjos = arranjosBrutos.filter(
-    (a) => a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0 || a.tce_id
+    (a) => a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0 || a.tces_ids.length > 0
   );
 
   // Destinos possíveis pra realocar quadras — QUALQUER arranjo futuro ativo,
@@ -205,7 +206,7 @@ export const actions: Actions = {
     if (!id) return fail(400, { erro: 'id obrigatório' });
     const { error } = await locals.supabase
       .from('arranjos')
-      .update({ quadras_ids: [], cartas_locais_ids: [], tce_id: null })
+      .update({ quadras_ids: [], cartas_locais_ids: [], tces_ids: [] })
       .eq('id', id);
     if (error) return fail(400, { erro: error.message });
     // Partes repartidas apontavam pro território que acabou de sumir

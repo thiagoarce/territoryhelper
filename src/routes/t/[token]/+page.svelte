@@ -138,9 +138,9 @@
       </div>
     {/if}
 
-    {#if t.tce}
+    {#if t.tces && t.tces.length > 0}
       <div class="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm">
-        <Icon nome="store" size={14} /> Território comercial: <strong>{t.tce.nome}</strong>
+        <Icon nome="store" size={14} /> Território comercial: <strong>{t.tces.map((tc: any) => tc.nome).join(', ')}</strong>
       </div>
     {/if}
 

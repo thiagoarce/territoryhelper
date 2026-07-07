@@ -154,9 +154,13 @@
                         {/each}
                       </div>
                     {/if}
-                    {#if (a as any).tce_id && data.tcesMap[(a as any).tce_id]}
-                      <div class="mt-1.5">
-                        <span class="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded"><Icon nome="store" size={14} /> TCE: {data.tcesMap[(a as any).tce_id]}</span>
+                    {#if ((a as any).tces_ids ?? []).length > 0}
+                      <div class="mt-1.5 flex flex-wrap gap-1">
+                        {#each (a as any).tces_ids as tid}
+                          {#if data.tcesMap[tid]}
+                            <span class="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded"><Icon nome="store" size={14} /> TCE: {data.tcesMap[tid]}</span>
+                          {/if}
+                        {/each}
                       </div>
                     {/if}
                     {#if a.arquivo_url}
