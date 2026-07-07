@@ -186,7 +186,13 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
     (terra-draw), **juntar** (ST_Union), **dividir** (ST_Split), **excluir**
   - **Territórios**: CRUD, agrupar quadras, deletar (orfaniza)
   - **TCE**: seleciona comércios/faces → convex hull → cria
-  - **Auditar**: multi-cluster IBGE, vazias, órfãs sem território
+  - **Auditar** (A20, acionável): endereços sem face IBGE (ação: pula
+    pro Vincular já selecionado), quadras sem endereço (ação: Juntar —
+    pula pro Quadras já selecionada — ou Excluir direto), múltiplos
+    clusters IBGE na mesma quadra (ação: Unificar — normaliza
+    setor/quadra_ibge pro cluster majoritário — + aponta quadras que já
+    têm esse mesmo cluster minoritário, candidatas a "dono de verdade"),
+    quadras órfãs sem território
 - **Prédios** (`/admin/predios`) — lista + filtros + modal inline + WhatsApp +
   **📍 Proximidade GPS** + ▶ trabalhar (→ `/predio/[id]`) +
   ⏳ **Validar pendente** + 🎯 **Designar cartas** + 📅 Anexar arranjo

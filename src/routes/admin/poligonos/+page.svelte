@@ -18,9 +18,10 @@
       territorios: { id: string; nome: string; cor: string | null; qtd: number }[];
       tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null; poly_geojson: unknown | null }[];
       publicadores: { id: string; nome: string; role: string }[];
-      quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number }[] }[];
+      quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number; quadrasVizinhas: string[] }[] }[];
       quadrasVazias: string[];
       quadrasOrfas: string[];
+      locaisSemFace: { id: number; endereco: string; quadra_id: string | null }[];
       quadrasParaRenomear: { id: string; color: string; status: string }[];
       curadoria: CuradoriaLinha[];
       profile?: import('$lib/types').Profile | null;
@@ -197,6 +198,42 @@
     quadraDestaque = quadraDestaque === id ? null : id;
   }
 
+  // A20: ações do painel Auditar — pulam pro modo certo já com o item
+  // pré-selecionado, reusando os fluxos existentes (Vincular/Quadras).
+  function focarNoVincular(localId: number) {
+    modo = 'vincular';
+    selecionadosLocais = new Set([localId]);
+  }
+  function focarJuntar(quadraId: string) {
+    modo = 'quadras';
+    juntarAtivo = true;
+    selecionadasQuadras = new Set([quadraId]);
+  }
+  let excluindoQuadraId = $state<string | null>(null);
+  async function excluirQuadraAuditoria(id: string) {
+    if (!confirm(`Excluir quadra ${id}? Os endereços dela ficam sem quadra (você pode reatribuir depois).`)) return;
+    excluindoQuadraId = id;
+    const fd = new FormData();
+    fd.append('id', id);
+    const res = await fetch('?/excluirQuadra', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    excluindoQuadraId = null;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Excluída')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+  let unificandoQuadraId = $state<string | null>(null);
+  async function unificarCluster(quadraId: string) {
+    if (!confirm(`Unificar os clusters de ${quadraId}? Os endereços minoritários têm setor/quadra IBGE ajustados pro valor majoritário.`)) return;
+    unificandoQuadraId = quadraId;
+    const fd = new FormData();
+    fd.append('quadra_id', quadraId);
+    const res = await fetch('?/unificarClusterQuadra', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    unificandoQuadraId = null;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Unificado')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
   // ---- Desenho ----
   function iniciarNova() {
     desenhoAtivo = 'nova';
@@ -296,7 +333,7 @@
   });
 
   const totalProblemas = $derived(
-    data.quadrasMultiCluster.length + data.quadrasVazias.length + data.quadrasOrfas.length
+    data.quadrasMultiCluster.length + data.quadrasVazias.length + data.quadrasOrfas.length + data.locaisSemFace.length
   );
 
   const MODOS: { k: Exclude<Modo, null>; label: string }[] = [
@@ -422,49 +459,85 @@
     {/if}
   {/if}
 
-  <!-- Painel Auditar -->
+  <!-- Painel Auditar (A20: 3 listas acionáveis) -->
   {#if modo === 'auditar'}
     {#if totalProblemas === 0}
       <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
         <Icon nome="check" size={14} /> Nada pra auditar — todas as quadras consistentes
       </div>
     {:else}
-      <div class="space-y-2 max-h-60 overflow-y-auto rounded-lg border border-slate-200 p-2">
-        {#if data.quadrasOrfas.length > 0}
-          <div class="text-xs font-semibold text-orange-700"><Icon nome="shapes" size={14} /> Quadras sem território ({data.quadrasOrfas.length})</div>
-          <div class="flex flex-wrap gap-1">
-            {#each data.quadrasOrfas as qid}
-              <button
-                onclick={() => destacarQuadra(qid)}
-                class="text-xs font-mono px-2 py-0.5 rounded bg-orange-50 text-orange-700 hover:bg-orange-100"
-                class:ring-2={quadraDestaque === qid}
-              >{qid}</button>
-            {/each}
+      <div class="space-y-3 max-h-96 overflow-y-auto rounded-lg border border-slate-200 p-2">
+        {#if data.locaisSemFace.length > 0}
+          <div>
+            <div class="text-xs font-semibold text-blue-700"><Icon nome="map-pin" size={14} /> Endereços sem face IBGE ({data.locaisSemFace.length})</div>
+            <div class="space-y-1 mt-1">
+              {#each data.locaisSemFace as l (l.id)}
+                <div class="flex items-center justify-between gap-2 text-xs bg-blue-50 rounded px-2 py-1">
+                  <span class="truncate">{l.endereco} {#if !l.quadra_id}<span class="text-slate-400">(sem quadra)</span>{/if}</span>
+                  <button onclick={() => focarNoVincular(l.id)} class="shrink-0 text-blue-700 hover:underline">Atribuir quadra</button>
+                </div>
+              {/each}
+            </div>
           </div>
         {/if}
-        {#if data.quadrasMultiCluster.length > 0}
-          <div class="text-xs font-semibold text-amber-700 mt-2"><Icon nome="alert" size={14} /> Múltiplos clusters IBGE ({data.quadrasMultiCluster.length})</div>
-          {#each data.quadrasMultiCluster as item}
-            <button
-              onclick={() => destacarQuadra(item.quadra_id)}
-              class="w-full text-left text-xs px-2 py-1 rounded hover:bg-amber-50"
-              class:bg-amber-100={quadraDestaque === item.quadra_id}
-            >
-              <span class="font-mono font-semibold">{item.quadra_id}</span>
-              <span class="text-slate-500">— {item.clusters.length} clusters</span>
-            </button>
-          {/each}
-        {/if}
+
         {#if data.quadrasVazias.length > 0}
-          <div class="text-xs font-semibold text-red-700 mt-2">∅ Quadras sem endereço ({data.quadrasVazias.length})</div>
-          <div class="flex flex-wrap gap-1">
-            {#each data.quadrasVazias as qid}
-              <button
-                onclick={() => destacarQuadra(qid)}
-                class="text-xs font-mono px-2 py-0.5 rounded bg-red-50 text-red-700 hover:bg-red-100"
-                class:ring-2={quadraDestaque === qid}
-              >{qid}</button>
-            {/each}
+          <div>
+            <div class="text-xs font-semibold text-red-700">∅ Quadras sem endereço ({data.quadrasVazias.length})</div>
+            <div class="space-y-1 mt-1">
+              {#each data.quadrasVazias as qid}
+                <div class="flex items-center justify-between gap-2 text-xs bg-red-50 rounded px-2 py-1">
+                  <button onclick={() => destacarQuadra(qid)} class="font-mono font-semibold text-left" class:underline={quadraDestaque === qid}>{qid}</button>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button onclick={() => focarJuntar(qid)} class="text-red-700 hover:underline">Juntar</button>
+                    <button disabled={excluindoQuadraId === qid} onclick={() => excluirQuadraAuditoria(qid)} class="text-red-700 hover:underline disabled:opacity-40">Excluir</button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if data.quadrasMultiCluster.length > 0}
+          <div>
+            <div class="text-xs font-semibold text-amber-700"><Icon nome="alert" size={14} /> Múltiplos clusters IBGE ({data.quadrasMultiCluster.length})</div>
+            <div class="space-y-1.5 mt-1">
+              {#each data.quadrasMultiCluster as item (item.quadra_id)}
+                {@const vizinhas = [...new Set(item.clusters.slice(1).flatMap((c) => c.quadrasVizinhas))]}
+                <div class="bg-amber-50 rounded px-2 py-1.5 text-xs">
+                  <div class="flex items-center justify-between gap-2">
+                    <button onclick={() => destacarQuadra(item.quadra_id)} class="font-mono font-semibold" class:underline={quadraDestaque === item.quadra_id}>{item.quadra_id}</button>
+                    <span class="text-slate-500">{item.clusters.length} clusters</span>
+                  </div>
+                  {#if vizinhas.length > 0}
+                    <div class="text-slate-500 mt-0.5">
+                      Cluster minoritário também aparece em:
+                      {#each vizinhas as vid}
+                        <button onclick={() => destacarQuadra(vid)} class="font-mono text-amber-800 hover:underline ml-1">{vid}</button>
+                      {/each}
+                    </div>
+                  {/if}
+                  <div class="flex gap-2 mt-1">
+                    <button disabled={unificandoQuadraId === item.quadra_id} onclick={() => unificarCluster(item.quadra_id)} class="text-amber-800 hover:underline disabled:opacity-40">Unificar clusters (aceitar como uma quadra só)</button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if data.quadrasOrfas.length > 0}
+          <div>
+            <div class="text-xs font-semibold text-orange-700"><Icon nome="shapes" size={14} /> Quadras sem território ({data.quadrasOrfas.length})</div>
+            <div class="flex flex-wrap gap-1 mt-1">
+              {#each data.quadrasOrfas as qid}
+                <button
+                  onclick={() => destacarQuadra(qid)}
+                  class="text-xs font-mono px-2 py-0.5 rounded bg-orange-50 text-orange-700 hover:bg-orange-100"
+                  class:ring-2={quadraDestaque === qid}
+                >{qid}</button>
+              {/each}
+            </div>
           </div>
         {/if}
       </div>
