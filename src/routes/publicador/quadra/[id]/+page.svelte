@@ -69,10 +69,16 @@
     }
   });
 
+  // Inverte a ordem de percurso (às vezes a quadra se faz no sentido
+  // anti-horário) — client-side, só muda a ordem de exibição/numeração
+  // dos pinos, não grava nada.
+  let ordemInvertida = $state(false);
+  const locaisOrdenados = $derived(ordemInvertida ? [...data.locais].reverse() : data.locais);
+
   // Agrupa locais por face IBGE pra mostrar separados (cada face é um trecho da quadra)
   const porFace = $derived.by(() => {
     const grupos = new Map<string, LocalComUnidades[]>();
-    for (const l of data.locais) {
+    for (const l of locaisOrdenados) {
       const f = l.face_ibge || '—';
       const arr = grupos.get(f) ?? [];
       arr.push(l);
@@ -129,7 +135,7 @@
 
   // Numera os locais na mesma ordem em que aparecem — correlaciona o pino
   // do mapa com o card da lista (ambos mostram o mesmo número).
-  const numeroPorLocal = $derived(new Map(data.locais.map((l, i) => [l.id, i + 1])));
+  const numeroPorLocal = $derived(new Map(locaisOrdenados.map((l, i) => [l.id, i + 1])));
 
   const totalUnidades = $derived(data.locais.reduce((acc, l) => acc + l.unidades.length, 0));
   const feitasUnidades = $derived(data.locais.reduce((acc, l) => acc + l.unidades.filter(unidadeFeita).length, 0));
@@ -154,6 +160,12 @@
       <div><strong>{feitasUnidades}</strong> de <strong>{totalUnidades}</strong></div>
       <div class="text-xs text-slate-400">{data.locais.length} local(is)</div>
     </div>
+    <button
+      onclick={() => (ordemInvertida = !ordemInvertida)}
+      class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 flex items-center gap-1"
+      title={ordemInvertida ? 'Voltar ao sentido original' : 'Inverter ordem (sentido anti-horário)'}
+      aria-label="Inverter ordem da lista"
+    ><Icon nome="swap" size={12} /> {ordemInvertida ? 'Ordem invertida' : 'Inverter ordem'}</button>
     <button
       onclick={alternarModo}
       class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100"
@@ -206,7 +218,7 @@
     <QuadraMap
       quadraGeo={data.quadra.poly_geojson}
       quadraColor={data.quadra.color}
-      locais={data.locais}
+      locais={locaisOrdenados}
       {numeroPorLocal}
       altura={240}
     />
@@ -241,18 +253,18 @@
         </div>
         <div class="space-y-2">
           {#each visiveis as l (l.id)}
-            {@const ehPredio = l.tipo === 'predio' && l.unidades.length >= 2}
+            {@const ehMultiUnidade = l.unidades.length >= 2}
             {@const visUnidades = l.unidades.filter(passaFiltro)}
             <div id="local-{l.id}" class="rounded-lg border border-slate-200 bg-white transition-all">
-              {#if ehPredio}
-                <!-- Header clicável do prédio -->
+              {#if ehMultiUnidade}
+                <!-- Header clicável — qualquer local com 2+ unidades (prédio, comércio, coletivo) -->
                 <div class="flex items-stretch">
                   <button
                     type="button"
                     onclick={() => togglePredio(l.id)}
                     class="flex-1 px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-50"
                   >
-                    <span class="text-xl"><Icon nome="building" size={14} /></span>
+                    <span class="text-xl"><Icon nome={l.tipo === 'predio' ? 'building' : 'store'} size={14} /></span>
                     <div class="flex-1 min-w-0">
                       <div class="font-semibold truncate flex items-center gap-1">
                         <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-white text-[10px] font-bold shrink-0">{numeroPorLocal.get(l.id)}</span>
@@ -271,7 +283,7 @@
                   <button
                     type="button"
                     onclick={() => abrirEditar(l)}
-                    aria-label="Editar prédio"
+                    aria-label="Editar"
                     class="px-3 text-slate-400 hover:text-primary-600 hover:bg-slate-50 border-l border-slate-100"
                   ><Icon nome="pencil" size={14} /></button>
                 </div>

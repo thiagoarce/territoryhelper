@@ -33,11 +33,11 @@
       remover "Modo campo" e "Perfil" do drawer.
       Arquivo: `src/routes/+layout.svelte`.
 
-- [ ] 🟢 **T4 (A8-parte)** Detalhe da quadra: botão inverter ordem da
+- [x] 🟢 **T4 (A8-parte)** Detalhe da quadra: botão inverter ordem da
       lista (client-side). Arquivo:
       `src/routes/publicador/quadra/[id]/+page.svelte`.
 
-- [ ] 🟢 **T5 (A8-parte)** Detalhe da quadra: agrupar comércios do mesmo
+- [x] 🟢 **T5 (A8-parte)** Detalhe da quadra: agrupar comércios do mesmo
       endereço num card (como a aba Prédios). Mesmo arquivo + comparar
       com `src/routes/publicador/predios/+page.svelte`.
 
