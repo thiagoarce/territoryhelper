@@ -6,7 +6,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha } from './$types';
+  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha, RevistaMesLinha } from './$types';
 
   let { data }: {
     data: {
@@ -19,6 +19,7 @@
       publicadores: PublicadorLinha[];
       controlePublicacaoId: number | null;
       controle: ControleLinha[];
+      revistasMes: RevistaMesLinha[];
       erro?: string;
     };
   } = $props();
@@ -114,13 +115,14 @@
 
   // A página tinha 6 blocos empilhados (rolagem infinita) — virou seções
   // navegáveis. Abrir com ?controle=X cai direto na Lista de controle.
-  type Secao = 'pedidos' | 'reposicao' | 'catalogo' | 'controle';
+  type Secao = 'pedidos' | 'reposicao' | 'catalogo' | 'controle' | 'revistas';
   let secao = $state<Secao>(data.controlePublicacaoId ? 'controle' : 'pedidos');
   const SECOES = [
     { v: 'pedidos', label: 'Pedidos', icone: 'inbox' },
     { v: 'reposicao', label: 'Reposição', icone: 'alert' },
     { v: 'catalogo', label: 'Catálogo', icone: 'clipboard' },
-    { v: 'controle', label: 'Controle', icone: 'square-check' }
+    { v: 'controle', label: 'Controle', icone: 'square-check' },
+    { v: 'revistas', label: 'Revistas do mês', icone: 'mail' }
   ] as const;
   const pedidosPendentesQtd = $derived(
     data.pedidos.filter((p) => p.status === 'aberto' || p.status === 'pedido').length
@@ -477,6 +479,66 @@
           {/each}
         </div>
       {/if}
+    {/if}
+  </div>
+{/if}
+
+{#if secao === 'revistas'}
+  <div>
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2 flex items-center gap-2">
+      <Icon nome="mail" size={14} /> Revistas do mês
+    </h2>
+    <p class="text-xs text-slate-500 mb-3">Soma da necessidade regular de todos os publicadores (Despertai/Sentinela).</p>
+    {#if data.revistasMes.length === 0}
+      <p class="text-sm text-slate-400 italic">Nenhuma revista mensal cadastrada no catálogo.</p>
+    {:else}
+      <div class="space-y-3">
+        {#each data.revistasMes as r (r.publicacao_id)}
+          <div class="rounded-lg border border-slate-200 p-3">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="font-medium">{r.publicacao_nome}</span>
+              <span class="text-xs text-slate-500">necessidade total: <strong>{r.necessidadeTotal}</strong></span>
+            </div>
+            {#if r.variantes.length === 0}
+              <p class="text-xs text-slate-400 italic mb-2">Ninguém informou necessidade ainda.</p>
+            {:else}
+              <div class="space-y-1 mb-2">
+                {#each r.variantes as v}
+                  <div class="flex items-center justify-between text-sm bg-slate-50 rounded px-2 py-1">
+                    <span>
+                      {v.variante === 'publico' ? 'Público' : 'Edição de estudo'}
+                      {#if v.letras_grandes}<span class="text-xs text-slate-500">· letras grandes</span>{/if}
+                      <span class="text-xs text-slate-400">({v.publicadores} publicador(es))</span>
+                    </span>
+                    <span class="font-medium">{v.necessidade}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <form
+              method="POST"
+              action="?/atualizarEstoque"
+              use:enhance={() => async ({ result, update }) => { await update(); if (result.type === 'success') await invalidateAll(); }}
+              class="flex items-center gap-2 text-sm pt-2 border-t border-slate-100"
+            >
+              <input type="hidden" name="id" value={r.publicacao_id} />
+              <label for="estoque-{r.publicacao_id}" class="text-xs text-slate-500">Estoque atual</label>
+              <input
+                id="estoque-{r.publicacao_id}"
+                name="qtd_estoque"
+                type="number"
+                min="0"
+                value={r.qtd_estoque}
+                class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
+              />
+              <Button variant="secondary" size="sm" type="submit">Salvar</Button>
+              <span class="ml-auto text-xs text-slate-600">
+                Quanto pedir: <strong class={r.quantoPedir > 0 ? 'text-amber-700' : 'text-green-700'}>{r.quantoPedir}</strong>
+              </span>
+            </form>
+          </div>
+        {/each}
+      </div>
     {/if}
   </div>
 {/if}

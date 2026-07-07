@@ -106,7 +106,7 @@
 
 ## Onda 5 — Publicações e campanha
 
-- [ ] 🟡 **T17 (A12b)** Revistas mensais: migration
+- [x] 🟡 **T17 (A12b)** Revistas mensais: migration
       (`publicacoes.periodicidade`, variante/letras_grandes em
       `publicador_necessidade_regular`), card da home reformulado
       (público × estudo × letras grandes), seção "Revistas do mês" em
