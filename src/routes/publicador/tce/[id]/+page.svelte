@@ -4,6 +4,7 @@
   import { invalidateAll } from '$app/navigation';
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
+  import QuadraMap from '$lib/components/QuadraMap.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { TceEndereco } from './$types';
 
@@ -38,9 +39,18 @@
     <Card padding="sm"><div class="text-sm text-slate-600 italic">{data.tce.notas}</div></Card>
   {/if}
 
+  {#if data.enderecos.some((e) => e.geo_geojson)}
+    <QuadraMap
+      quadraGeo={null}
+      quadraColor="#f97316"
+      locais={data.enderecos.map((e) => ({ ...e, id: e.local_id })) as any}
+      altura={220}
+    />
+  {/if}
+
   <div class="space-y-2">
     {#each data.enderecos as e (e.unidade_id)}
-      <div class="rounded-lg border border-slate-200 bg-white p-3">
+      <div id="local-{e.local_id}" class="rounded-lg border border-slate-200 bg-white p-3">
         <div class="font-medium truncate">
           {e.nome || `${e.logradouro}, ${e.numero}`}
           {#if e.complemento}<span class="text-slate-400 text-sm">· {e.complemento}</span>{/if}
