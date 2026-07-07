@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { exigirServoPub } from '$lib/server/guards';
+import { exigirRole, exigirAdminAction } from '$lib/server/guards';
 import { criarNotificacao } from '$lib/server/push';
 
 const STATUS_LABEL_NOTIF: Record<string, string> = {
@@ -67,7 +67,7 @@ const FILTROS_VALIDOS = ['pendentes', 'entregue', 'cancelado', 'todos'] as const
 type Filtro = (typeof FILTROS_VALIDOS)[number];
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-  exigirServoPub(locals);
+  exigirRole(locals, ['admin']);
 
   const filtroParam = url.searchParams.get('status') as Filtro | null;
   const filtro: Filtro = filtroParam && FILTROS_VALIDOS.includes(filtroParam) ? filtroParam : 'pendentes';
@@ -186,10 +186,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   atualizarPedido: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
-      return fail(403, { erro: 'Só o servo de publicações' });
-    }
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });
@@ -226,10 +224,8 @@ export const actions: Actions = {
 
   // Catálogo: criar/editar (nome/código/categoria/estoque). Servo ou admin.
   salvarPublicacao: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
-      return fail(403, { erro: 'Só o servo de publicações' });
-    }
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0) || null;
     const nome = String(fd.get('nome') ?? '').trim();
@@ -250,10 +246,8 @@ export const actions: Actions = {
 
   // Upload da imagem de capa — mesmo padrão de fotos-locais (foto de prédio).
   uploadImagemPublicacao: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
-      return fail(403, { erro: 'Só o servo de publicações' });
-    }
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     const file = fd.get('imagem') as File;
@@ -278,10 +272,8 @@ export const actions: Actions = {
   // localmente, mesmo padrão de salvarNecessidadeRegular) pra pedida ou
   // entregue de um publicador numa publicação.
   atualizarControle: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
-      return fail(403, { erro: 'Só o servo de publicações' });
-    }
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     const fd = await request.formData();
     const publicacaoId = Number(fd.get('publicacao_id') ?? 0);
     const publicadorId = String(fd.get('publicador_id') ?? '');
@@ -300,10 +292,9 @@ export const actions: Actions = {
   },
 
   resolverReposicao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (locals.profile?.role !== 'admin' && !locals.profile?.servo_publicacoes) {
-      return fail(403, { erro: 'Só o servo de publicações' });
-    }
     const fd = await request.formData();
     const id = Number(fd.get('id') ?? 0);
     if (!id) return fail(400, { erro: 'id obrigatório' });

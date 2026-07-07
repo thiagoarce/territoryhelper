@@ -103,7 +103,6 @@
       meusPedidosPublicacao: MeuPedidoPublicacao[];
       catalogoPublicacoes: PublicacaoLite[];
       necessidadeRegular: NecessidadeRegularLinha[];
-      souServoPub: boolean;
       minhaRole: string | undefined;
       profile?: import('$lib/types').Profile | null;
     };
@@ -636,13 +635,6 @@
       {/each}
     </div>
   </div>
-{/if}
-
-{#if data.souServoPub}
-  <a href="/publicacoes" class="mt-4 flex items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-50 p-3 hover:bg-amber-100 transition-colors">
-    <span class="text-sm font-bold text-amber-900"><Icon nome="inbox" size={14} /> Área do servo — pedidos de publicação</span>
-    <Icon nome="chevron-right" size={16} class="text-amber-700" />
-  </a>
 {/if}
 
 <div class="mt-4 rounded-xl border border-slate-200 bg-white p-3">

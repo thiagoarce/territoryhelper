@@ -304,8 +304,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   }));
   const catalogoPublicacoes = (catalogoRes.data ?? []) as PublicacaoLite[];
   const necessidadeRegular = (necessidadeRes.data ?? []) as NecessidadeRegularLinha[];
-  // Card "Área do servo" só pro servo NÃO-admin — admin já acessa pelo drawer.
-  const souServoPub = locals.profile?.role !== 'admin' && !!locals.profile?.servo_publicacoes;
 
   return {
     abertas,
@@ -323,7 +321,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     meusPedidosPublicacao,
     catalogoPublicacoes,
     necessidadeRegular,
-    souServoPub,
     minhaRole: locals.profile?.role
   };
 };

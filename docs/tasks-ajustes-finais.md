@@ -48,7 +48,7 @@
       Arquivos: `MapaAdmin/MapaPoligonos/AdminMapa.svelte`, `/perfil`,
       `/admin/+page.svelte`, `/admin/poligonos/+page.svelte`.
 
-- [ ] 🟡 **T7 (A12a)** Fim do servo_publicacoes: `/publicacoes` vira
+- [x] 🟡 **T7 (A12a)** Fim do servo_publicacoes: `/publicacoes` vira
       admin-only, some o checkbox de usuários, some o card da home,
       migration recriando policies que usam `is_servo_pub()` com
       `is_admin()`. Atualizar CLAUDE.md.
