@@ -90,7 +90,6 @@
             <td class="px-3 py-2 text-slate-600">{u.email}</td>
             <td class="px-3 py-2">
               <span class="rounded px-2 py-0.5 text-xs {roleClasses[u.role]}">{u.role}</span>
-              {#if u.servo_publicacoes}<span class="ml-1 rounded px-2 py-0.5 text-xs bg-amber-100 text-amber-700">servo</span>{/if}
             </td>
             <td class="px-3 py-2">
               {#if u.ativo}<span class="text-green-600">●</span>{:else}<span class="text-slate-400">○</span>{/if}
@@ -429,10 +428,6 @@ admin@cong.com,trocar123,Admin Cong,admin`}
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" name="ativo" checked={usuarioEditando.ativo} />
           Ativo (desmarque pra bloquear o login)
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="servo_publicacoes" checked={usuarioEditando.servo_publicacoes} />
-          Servo de publicações (acesso à Área do servo, mesmo não sendo admin)
         </label>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" onclick={() => (usuarioEditando = null)} class="rounded px-3 py-2 text-sm hover:bg-slate-100">Cancelar</button>

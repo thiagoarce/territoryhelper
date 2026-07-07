@@ -84,7 +84,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 
 | Tabela | O que guarda |
 |---|---|
-| `profiles` | usuário + `role` (publicador/dirigente/admin); capacidades independentes de role (`servo_publicacoes`, ver P-A) empilham por cima, não substituem role |
+| `profiles` | usuário + `role` (publicador/dirigente/admin). Coluna `servo_publicacoes` existe mas não tem mais uso (T7/A12a fundiu essa capacidade em "ser admin" — `is_servo_pub()` virou sinônimo de `is_admin()`, migration 060) |
 | `convites` | Link público `/convite/<token>` só pra DEFINIR senha — o publicador (`auth.users`+`profiles`) já é criado na hora do convite (senha descartável, `email_confirm=false`), via `convites.publicador_id`. Isso permite designar território pra alguém antes de ele abrir o link. Revogar convite não-usado apaga o usuário provisório junto. `/admin/usuarios` gera 1 ou em lote (cola `nome,email,role` por linha) |
 | `territorios` | id text, nome, cor, status |
 | `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao`, `reservada_campanha_id` (quarentena — some do pool geral enquanto reservada pra campanha) |
@@ -109,8 +109,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `tp_agendamentos` / `tp_agendamento_excecoes` / `tp_agendamento_participantes` | Agendamento = equipamento + ponto (fixo ou avulso) + data/hora + recorrência (nenhuma/diária/semanal/quinzenal/mensal); exceções tratam "só esta ocorrência"; participantes SEM capacidade fixa (`origem` inscrição/designação) — TP-F, `/admin/tp/*` + inscrição em `/publicador/arranjo` |
 | `tp_preferencias` / `tp_disponibilidade` | Transporte do equipamento + janelas de disponibilidade (dia_semana/hora) do publicador — TP-B, cadastro em `/publicador/tp` (migrou de `/perfil`), consulta read-only (roster) em `/admin/tp/publicadores` e badge "disponível" no Designar do Planner |
 | `tp_disponibilidade_confirmacoes` | Planner é mensal — a disponibilidade fixa precisa ser CONFIRMADA a cada mês novo (1 linha por publicador+mês, `mes_referencia` 'YYYY-MM'); banner em `/publicador/tp` cobra a confirmação |
-| `publicacoes` | Catálogo real (transcrito do S-14-T/S-28-T oficial, migration 052) — `categoria` (biblia/livro/brochura/folheto/cartao_visita/revista/formulario/outro), `qtd_estoque` (snapshot MANUAL, o servo atualiza batendo com o relatório do JW Hub — não é movimento entrada/saída), `imagem_url` (capa, bucket `fotos-publicacoes`). Gerenciado em `/publicacoes` |
-| `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A, `profiles.servo_publicacoes` + `is_servo_pub()` dão a capacidade (não é role); publicador pede em `/publicador` (card "Publicações", mostra estoque atual antes de pedir), servo atende em `/publicacoes` (fora do namespace `/admin/*`, que é 100% admin-only, pra um servo não-admin conseguir acessar) |
+| `publicacoes` | Catálogo real (transcrito do S-14-T/S-28-T oficial, migration 052) — `categoria` (biblia/livro/brochura/folheto/cartao_visita/revista/formulario/outro), `qtd_estoque` (snapshot MANUAL, o admin atualiza batendo com o relatório do JW Hub — não é movimento entrada/saída), `imagem_url` (capa, bucket `fotos-publicacoes`). Gerenciado em `/publicacoes` |
+| `pedidos_publicacao` | Fila de pedidos avulsos de publicação (catálogo ou descrição livre) — P-A; publicador pede em `/publicador` (card "Publicações", mostra estoque atual antes de pedir), admin atende em `/publicacoes` (T7/A12a: rota virou 100% admin-only — a capacidade "servo de publicações" não-admin foi removida, `is_servo_pub()` agora só passa pra admin) |
 | `publicador_necessidade_regular` | "Normalmente preciso de N" — só revistas (Despertai/Sentinela, que chegam pela via normal, não por pedido especial); preferência informativa sem status, publicador ajusta em `/publicador` |
 | `publicacao_controle` | Lista de controle por publicação — servo escolhe uma publicação em `/publicacoes` e confirma, publicador a publicador, `qtd_pedida`/`qtd_entregue` (contador +/-). Diferente de `pedidos_publicacao` (fila de pedido especial avulso com status): aqui é registro manual sem fluxo, 1 linha por (publicação, publicador). Gate por `is_servo_pub()`, mesma capacidade de sempre |
 | `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
@@ -209,17 +209,16 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 - **Publicações** (`/publicacoes`, P-A + TP-D) — 4 seções com chips no
   topo (Pedidos/Reposição/Catálogo/Controle): fila de `pedidos_publicacao`
   (filtro pendentes/entregue/cancelado/todos), avançar status + notas do
-  servo; **Reposição** (itens de relatório de TP != ok ainda não
+  admin; **Reposição** (itens de relatório de TP != ok ainda não
   resolvidos, agrupados por carrinho/ponto, botão Resolvido) + card
   simples de tendência (soma de qtd colocada por publicação/mês); **Lista
   de controle** (escolhe publicação → checklist de todo publicador ativo
   com contador +/- de pedido e de entrega, busca por nome e totais,
   `publicacao_controle`);
   suprimento de campanha é só um link pra `/admin/campanha`. Fica FORA de
-  `/admin/*` de propósito — a rota é guardada por `exigirServoPub` (admin
-  OU `profiles.servo_publicacoes`), não por role, pra um servo publicador
-  comum (não-admin) conseguir acessar. Entrada no drawer admin (ícone
-  `inbox`); pro servo não-admin, card "Área do servo" em `/publicador`.
+  `/admin/*` só por convenção de path — a rota é `exigirRole(['admin'])`,
+  100% admin-only (T7/A12a removeu a capacidade "servo de publicações"
+  não-admin que existia antes). Entrada no drawer admin (ícone `inbox`).
 
 ## Telas principais (modo campo — publicador + dirigente)
 

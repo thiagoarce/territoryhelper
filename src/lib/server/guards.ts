@@ -25,18 +25,6 @@ export function exigirAdminAction(locals: App.Locals) {
   return null;
 }
 
-// Servo de publicações NÃO é role — é uma capacidade (profiles.servo_publicacoes)
-// independente do role. Admin sempre passa. Rota /publicacoes fica FORA do
-// namespace /admin/* (que é 100% admin-only via +layout.server.ts) justamente
-// pra um servo publicador comum conseguir chegar nela.
-export function exigirServoPub(locals: App.Locals) {
-  if (!locals.session || !locals.profile) throw redirect(303, '/login');
-  if (!locals.profile.ativo) throw redirect(303, '/login?msg=desativado');
-  if (locals.profile.role !== 'admin' && !locals.profile.servo_publicacoes) {
-    throw error(403, 'Acesso restrito ao servo de publicações.');
-  }
-}
-
 // Confere se o usuário logado tem posse da quadra. Admin/dirigente passam.
 // Publicador passa se: designação aberta com a quadra (líder ou
 // participante), OU parte de arranjo cobrindo a quadra, OU tem parte em
