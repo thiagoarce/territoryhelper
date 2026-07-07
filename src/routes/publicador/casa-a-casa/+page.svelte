@@ -285,7 +285,7 @@
               <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
             {/each}
             {#each a.tces_ids as tid}
-              <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</span>
+              <a href="/publicador/tce/{tid}" class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200 hover:bg-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</a>
             {/each}
           </div>
           <button type="button" disabled={finalizando === a.id} onclick={() => abrirFinalizar(a)}
@@ -320,7 +320,7 @@
           <a href="/predio/{lid}" class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-lg border border-purple-200 hover:bg-purple-200"><Icon nome="mail" size={14} /> #{lid}</a>
         {/each}
         {#each a.tces_ids as tid}
-          <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</span>
+          <a href="/publicador/tce/{tid}" class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200 hover:bg-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</a>
         {/each}
       </div>
 
@@ -368,7 +368,7 @@
           <a href="/predio/{lid}" class="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:bg-amber-200"><Icon nome="mail" size={14} /> #{lid}</a>
         {/each}
         {#each p.tces_ids as tid}
-          <span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</span>
+          <a href="/publicador/tce/{tid}" class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-lg border border-orange-200 hover:bg-orange-200"><Icon nome="store" size={14} /> {data.tcesMap[tid] ?? tid}</a>
         {/each}
       </div>
       {#if p.colegas.length > 0}<p class="text-xs text-slate-500 mt-1.5">Com {p.colegas.join(', ')}</p>{/if}

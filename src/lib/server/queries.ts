@@ -410,24 +410,29 @@ export async function listarPublicadores(
 export interface DesignacaoEnriquecida extends Designacao {
   publicador_nome: string | null;
   quadras_ids: string[];
+  tces_ids: string[];
 }
 
 export async function listarDesignacoes(
   supabase: SupabaseClient
 ): Promise<DesignacaoEnriquecida[]> {
-  // 3 queries paralelas:
+  // 4 queries paralelas:
   // 1. designacoes (sem join — designacoes tem 2 FKs pra profiles
   //    [publicador_id + criado_por], que confunde o auto-detect do PostgREST)
   // 2. designacao_quadras (junção)
-  // 3. profiles ativos pra resolver nome (memo client-side)
-  const [desRes, dqRes, profRes] = await Promise.all([
+  // 3. designacao_tces (junção — A21-f2; sem isso uma designação só de TCE
+  //    aparecia como "0 quadra(s)" pra sempre, o TCE ficava invisível aqui)
+  // 4. profiles ativos pra resolver nome (memo client-side)
+  const [desRes, dqRes, dtRes, profRes] = await Promise.all([
     supabase.from('designacoes').select('*').order('criada_em', { ascending: false }),
     supabase.from('designacao_quadras').select('designacao_id, quadra_id'),
+    supabase.from('designacao_tces').select('designacao_id, tce_id'),
     supabase.from('profiles').select('id, nome')
   ]);
 
   if (desRes.error) throw desRes.error;
   if (dqRes.error) throw dqRes.error;
+  if (dtRes.error) throw dtRes.error;
   if (profRes.error) throw profRes.error;
 
   const quadrasPorDesignacao = new Map<number, string[]>();
@@ -437,12 +442,20 @@ export async function listarDesignacoes(
     quadrasPorDesignacao.set(dq.designacao_id, lista);
   }
 
+  const tcesPorDesignacao = new Map<number, string[]>();
+  for (const dt of (dtRes.data ?? []) as any[]) {
+    const lista = tcesPorDesignacao.get(dt.designacao_id) ?? [];
+    lista.push(dt.tce_id);
+    tcesPorDesignacao.set(dt.designacao_id, lista);
+  }
+
   const nomePorId = new Map((profRes.data ?? []).map((p) => [p.id, p.nome]));
 
   return (desRes.data ?? []).map((d: any) => ({
     ...d,
     publicador_nome: d.publicador_id ? nomePorId.get(d.publicador_id) ?? null : null,
-    quadras_ids: (quadrasPorDesignacao.get(d.id) ?? []).sort()
+    quadras_ids: (quadrasPorDesignacao.get(d.id) ?? []).sort(),
+    tces_ids: (tcesPorDesignacao.get(d.id) ?? []).sort()
   })) as DesignacaoEnriquecida[];
 }
 
