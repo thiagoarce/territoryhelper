@@ -49,7 +49,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       locals.supabase.from('tp_pontos_geo').select('id, nome, endereco').eq('ativo', true).order('nome'),
       locals.supabase.from('tp_agendamentos').select('*').eq('ativo', true),
       locals.supabase.from('tp_agendamento_excecoes').select('*'),
-      locals.supabase.from('profiles').select('id, nome').eq('ativo', true).order('nome'),
+      locals.supabase.from('profiles').select('id, nome').eq('ativo', true).eq('tp_aprovado', true).order('nome'),
       locals.supabase
         .from('tp_agendamento_participantes')
         .select('agendamento_id, data, publicador_id, origem')
@@ -355,6 +355,10 @@ export const actions: Actions = {
     const data = String(fd.get('data') ?? '').trim();
     const publicadorId = String(fd.get('publicador_id') ?? '').trim();
     if (!agendamentoId || !data || !publicadorId) return fail(400, { erro: 'Campos obrigatórios' });
+    // Defesa em profundidade: o picker do Planner já só lista aprovados,
+    // mas o form pode ser reenviado com qualquer id — confere de novo.
+    const { data: pub } = await locals.supabase.from('profiles').select('tp_aprovado').eq('id', publicadorId).maybeSingle();
+    if (!pub?.tp_aprovado) return fail(400, { erro: 'Publicador não aprovado pro testemunho público' });
     const { error } = await locals.supabase.from('tp_agendamento_participantes').insert({
       agendamento_id: agendamentoId, data, publicador_id: publicadorId,
       origem: 'designacao', designado_por: locals.user!.id
