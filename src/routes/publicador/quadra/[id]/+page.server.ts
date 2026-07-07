@@ -100,6 +100,31 @@ export const actions: Actions = {
     return { ok: true };
   },
 
+  // A8: reordenação manual — recebe os ids de um grupo (face) NA ORDEM
+  // desejada (o client já fez o swap ▲▼ em JS) e reatribui ordem_na_quadra
+  // sequencial (0,1,2...). Só gera curadoria pros locais cujo valor
+  // realmente mudou, senão um clique gera uma linha por local do grupo.
+  reordenarLocais: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const ids = fd.getAll('ids').map((v) => Number(v)).filter(Boolean);
+    if (ids.length === 0) return fail(400, { erro: 'ids obrigatório' });
+    const { data: atuais } = await locals.supabase
+      .from('locais').select('id, ordem_na_quadra').in('id', ids);
+    const ordemAtualPorId = new Map((atuais ?? []).map((l) => [l.id, l.ordem_na_quadra]));
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (ordemAtualPorId.get(id) === i) continue;
+      const { error: err } = await locals.supabase.from('locais').update({ ordem_na_quadra: i }).eq('id', id);
+      if (err) return fail(400, { erro: err.message });
+      await registrarCuradoria(locals, {
+        local_id: id, tipo: 'edicao',
+        antes: { ordem_na_quadra: ordemAtualPorId.get(id) ?? null }, depois: { ordem_na_quadra: i }
+      });
+    }
+    return { ok: true };
+  },
+
   // Atualiza overlay de um local (prédio/casa). Campos permitidos:
   // nome, irmao_mora, nome_irmao, notas, tipo_entrada, acesso_caixas,
   // acesso_interfones, nao_visitar. Bloqueia mudança em geo/logradouro/etc.

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
   import { cartaEscritaNoCiclo } from '$lib/ciclos';
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
@@ -69,11 +69,46 @@
     }
   });
 
+  // A8: ordem_na_quadra (ajuste fino manual) tem prioridade sobre a
+  // heurística padrão (ordem de id, vinda do server) quando presente.
+  const locaisBase = $derived(
+    [...data.locais].sort((a, b) => {
+      if (a.ordem_na_quadra != null && b.ordem_na_quadra != null) return a.ordem_na_quadra - b.ordem_na_quadra;
+      if (a.ordem_na_quadra != null) return -1;
+      if (b.ordem_na_quadra != null) return 1;
+      return 0; // mantém ordem original (id) — sort é estável
+    })
+  );
+
   // Inverte a ordem de percurso (às vezes a quadra se faz no sentido
   // anti-horário) — client-side, só muda a ordem de exibição/numeração
   // dos pinos, não grava nada.
   let ordemInvertida = $state(false);
-  const locaisOrdenados = $derived(ordemInvertida ? [...data.locais].reverse() : data.locais);
+  const locaisOrdenados = $derived(ordemInvertida ? [...locaisBase].reverse() : locaisBase);
+
+  // Modo reordenar: setinhas ▲▼ gravando ordem_na_quadra por grupo (face).
+  let modoReordenar = $state(false);
+  let reordenandoId = $state<number | null>(null);
+  async function moverLocal(face: string, localId: number, direcao: -1 | 1) {
+    const grupo = porFace.find(([f]) => f === face)?.[1];
+    if (!grupo) return;
+    const idx = grupo.findIndex((l) => l.id === localId);
+    const novoIdx = idx + direcao;
+    if (idx < 0 || novoIdx < 0 || novoIdx >= grupo.length) return;
+    const ids = grupo.map((l) => l.id);
+    [ids[idx], ids[novoIdx]] = [ids[novoIdx], ids[idx]];
+    reordenandoId = localId;
+    try {
+      const fd = new FormData();
+      for (const id of ids) fd.append('ids', String(id));
+      const res = await fetch('?/reordenarLocais', { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') await invalidateAll();
+      else toast.error(String(parsed.data?.erro || 'Falhou reordenar'));
+    } finally {
+      reordenandoId = null;
+    }
+  }
 
   // Agrupa locais por face IBGE pra mostrar separados (cada face é um trecho da quadra)
   const porFace = $derived.by(() => {
@@ -162,10 +197,24 @@
     </div>
     <button
       onclick={() => (ordemInvertida = !ordemInvertida)}
-      class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 flex items-center gap-1"
+      disabled={modoReordenar}
+      class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 flex items-center gap-1 disabled:opacity-40"
       title={ordemInvertida ? 'Voltar ao sentido original' : 'Inverter ordem (sentido anti-horário)'}
       aria-label="Inverter ordem da lista"
     ><Icon nome="swap" size={12} /> {ordemInvertida ? 'Ordem invertida' : 'Inverter ordem'}</button>
+    <button
+      onclick={() => {
+        modoReordenar = !modoReordenar;
+        if (modoReordenar) { ordemInvertida = false; filtro = 'todos'; }
+      }}
+      class="text-xs px-2 py-1 rounded border flex items-center gap-1"
+      class:border-primary-500={modoReordenar}
+      class:bg-primary-50={modoReordenar}
+      class:text-primary-700={modoReordenar}
+      class:border-slate-300={!modoReordenar}
+      class:hover:bg-slate-100={!modoReordenar}
+      title={modoReordenar ? 'Sair do modo reordenar' : 'Ajustar ordem manualmente'}
+    ><Icon nome="chevron-down" size={12} /> {modoReordenar ? 'Concluir' : 'Reordenar'}</button>
     <button
       onclick={alternarModo}
       class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100"
@@ -281,6 +330,7 @@
                     </div>
                     <span class="text-slate-400">{#if abertos.has(l.id)}<Icon nome="chevron-down" size={16} />{:else}<Icon nome="chevron-down" size={16} class="inline-block -rotate-90" />{/if}</span>
                   </button>
+                  {#if modoReordenar}{@render setinhas(face, l.id)}{/if}
                   <button
                     type="button"
                     onclick={() => abrirEditar(l)}
@@ -336,6 +386,7 @@
                         {:else if u.desfecho_anterior}
                           <span class="text-xs rounded px-2 py-0.5 bg-slate-100 text-slate-400">{rotulos[u.desfecho_anterior] ?? u.desfecho_anterior} · ciclo anterior</span>
                         {/if}
+                        {#if modoReordenar}{@render setinhas(face, l.id)}{/if}
                         <button
                           type="button"
                           onclick={() => abrirEditar(l)}
@@ -370,6 +421,25 @@
   aria-label="Adicionar endereço"
   class="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-30 bg-primary-600 text-white rounded-full w-14 h-14 shadow-lg flex items-center justify-center text-3xl hover:bg-primary-700 transition-colors"
 >+</button>
+
+{#snippet setinhas(face: string, localId: number)}
+  <div class="flex flex-col border-l border-slate-100">
+    <button
+      type="button"
+      disabled={reordenandoId !== null}
+      onclick={(e) => { e.stopPropagation(); moverLocal(face, localId, -1); }}
+      aria-label="Mover pra cima"
+      class="px-2 py-0.5 text-slate-400 hover:text-primary-600 disabled:opacity-40"
+    ><Icon nome="chevron-down" size={12} class="rotate-180" /></button>
+    <button
+      type="button"
+      disabled={reordenandoId !== null}
+      onclick={(e) => { e.stopPropagation(); moverLocal(face, localId, 1); }}
+      aria-label="Mover pra baixo"
+      class="px-2 py-0.5 text-slate-400 hover:text-primary-600 disabled:opacity-40"
+    ><Icon nome="chevron-down" size={12} /></button>
+  </div>
+{/snippet}
 
 {#snippet botoes(u: UnidadeEnriquecida)}
   {@const cartaMarcada = !!u.carta_entregue}

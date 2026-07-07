@@ -88,7 +88,7 @@
       esmaecer + tirar das contagens, entrada na curadoria. Endereço
       aproximado no criar local (prefill por vizinho mais próximo).
 
-- [ ] 🟢 **T14 (A8-parte)** Reordenação manual: setinhas ▲▼ gravando
+- [x] 🟢 **T14 (A8-parte)** Reordenação manual: setinhas ▲▼ gravando
       `ordem_na_quadra` (+ curadoria), lista ordena por ele quando
       presente.
 
