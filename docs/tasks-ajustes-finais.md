@@ -24,7 +24,7 @@
       Arquivos: `src/routes/publicador/arranjo/+page.svelte` (+server).
       DoD: botão e action fora; nada mais muda.
 
-- [ ] 🟢 **T2 (A4)** Home: mover "Você dirige", "Sua parte", Cartas e TCEs
+- [x] 🟢 **T2 (A4)** Home: mover "Você dirige", "Sua parte", Cartas e TCEs
       pra DENTRO da seção "Minhas designações" (ordem: dirige → parte →
       território pessoal → cartas → TCEs), com separadores. Só template.
       Arquivo: `src/routes/publicador/+page.svelte`.
