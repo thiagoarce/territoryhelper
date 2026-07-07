@@ -244,6 +244,55 @@ export const actions: Actions = {
     return { ok: true, msg: `${quadrasIds.length} quadra(s) anexada(s) ao arranjo` };
   },
 
+  // Anexa TCEs selecionados a um arranjo (mesma trava de conflito que
+  // adicionarQuadrasAoArranjo: bloqueia se o TCE já tiver designação
+  // pessoal aberta ou já estiver em OUTRO arranjo ativo).
+  adicionarTcesAoArranjo: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const arranjoId = Number(fd.get('arranjo_id') ?? 0);
+    const tcesIds = fd.getAll('tces_ids').map((v) => String(v)).filter(Boolean);
+    const substituir = fd.get('substituir') === 'on' || fd.get('substituir') === 'true';
+    if (!arranjoId) return fail(400, { erro: 'arranjo_id obrigatório' });
+    if (tcesIds.length === 0) return fail(400, { erro: 'Sem TCEs selecionados' });
+
+    const { data: arr, error: errR } = await locals.supabase
+      .from('arranjos').select('tces_ids').eq('id', arranjoId).single();
+    if (errR || !arr) return fail(400, { erro: 'Arranjo não encontrado' });
+
+    const { data: desigTceAbertas } = await locals.supabase
+      .from('designacao_tces')
+      .select('tce_id, designacoes!inner(status)')
+      .eq('designacoes.status', 'aberta')
+      .in('tce_id', tcesIds);
+    const ocupPorDesig = [...new Set((desigTceAbertas ?? []).map((r: any) => r.tce_id as string))];
+    if (ocupPorDesig.length > 0) {
+      return fail(409, { erro: `TCE(s) ${ocupPorDesig.join(', ')} já tem designação aberta. Encerre antes.` });
+    }
+
+    const { data: outrosArranjos } = await locals.supabase
+      .from('arranjos')
+      .select('id, tces_ids')
+      .eq('ativo', true)
+      .neq('id', arranjoId)
+      .overlaps('tces_ids', tcesIds);
+    const conflitantes = [...new Set(
+      (outrosArranjos ?? []).flatMap((a: any) => ((a.tces_ids ?? []) as string[]).filter((t) => tcesIds.includes(t)))
+    )];
+    if (conflitantes.length > 0) {
+      return fail(409, { erro: `TCE(s) ${conflitantes.join(', ')} já está(ão) em outro arranjo ativo.` });
+    }
+
+    const atuais = (arr.tces_ids ?? []) as string[];
+    const novas = substituir ? tcesIds : Array.from(new Set([...atuais, ...tcesIds]));
+    const { error } = await locals.supabase
+      .from('arranjos').update({ tces_ids: novas }).eq('id', arranjoId);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${tcesIds.length} TCE(s) anexado(s) ao arranjo` };
+  },
+
   // Remove quadras de QUALQUER arranjo onde estão (libera a trava).
   // Útil pra desfazer engano ou liberar quadra concluída.
   liberarQuadrasDeArranjos: async ({ request, locals }) => {

@@ -191,7 +191,13 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   `tce_unidades → unidades → locais.quadra_id`) — antes era um embed
   PostgREST triplo reduzido a `Set` em JS no load de `/admin`, um bloco
   síncrono grande o bastante pra contribuir com estouros do limite de CPU
-  do Worker nessa rota.
+  do Worker nessa rota. **TCE vira unidade selecionável igual quadra**:
+  cada card tem checkbox (multi-seleção independente das quadras do
+  mapa) + barra de ações em massa própria (**Designar** território
+  pessoal ou **Anexar a arranjo** — soma em `arranjos.tces_ids[]`,
+  mesma trava de conflito das quadras: bloqueia TCE com designação
+  aberta ou já em outro arranjo ativo); o dirigente reparte os TCEs do
+  arranjo entre publicadores depois em Casa a casa (T25, já existia).
 - **Polígonos** (`/admin/poligonos`) — editor único, modos:
   - **Vincular**: pontos de endereço + filtros + cluster "por face" (IBGE);
     click vincula a quadra

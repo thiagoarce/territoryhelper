@@ -109,14 +109,20 @@
 
   // Sheets
   let sheetDesignar = $state(false);
-  // A21-f2: designar um TCE como território pessoal (mesmo sheet de
-  // designar quadras, só troca o que vai no corpo do form).
-  let tceParaDesignar = $state<TceComQuadras | null>(null);
-  function abrirDesignarTce(t: TceComQuadras) {
-    tceParaDesignar = t;
-    limparSelecao();
-    sheetDesignar = true;
+
+  // TCE vira uma unidade selecionável igual quadra: checkbox por card,
+  // barra de ações em massa (Designar / Anexar a arranjo), sem precisar
+  // clicar nas quadras-contêiner no mapa.
+  let tcesSelecionados = $state<Set<string>>(new Set());
+  function toggleTceSelecionado(id: string) {
+    if (tcesSelecionados.has(id)) tcesSelecionados.delete(id);
+    else tcesSelecionados.add(id);
+    tcesSelecionados = new Set(tcesSelecionados);
   }
+  function limparSelecaoTce() { tcesSelecionados = new Set(); }
+  let sheetArranjoTce = $state(false);
+  let modoAnexarTce = $state<'somar' | 'substituir'>('somar');
+  let salvandoAnexarTce = $state(false);
 
   // Estado do form de designar
   let publicadoresSel = $state<Set<string>>(new Set());
@@ -231,7 +237,7 @@
 
     <button
       type="button"
-      onclick={() => { modoTce = !modoTce; tceSelecionado = null; }}
+      onclick={() => { modoTce = !modoTce; tceSelecionado = null; limparSelecaoTce(); }}
       class="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-lg border"
       class:bg-orange-100={modoTce}
       class:border-orange-300={modoTce}
@@ -307,11 +313,15 @@
             class:bg-orange-50={tceSelecionado === t.id}
             class:border-slate-200={tceSelecionado !== t.id}
           >
-            <div class="flex items-center justify-between gap-2">
-              <div class="font-medium">{t.nome}</div>
-              <button type="button" onclick={(e) => { e.stopPropagation(); abrirDesignarTce(t); }} class="text-xs text-primary-700 hover:underline shrink-0">
-                <Icon nome="share" size={11} /> Designar
-              </button>
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={tcesSelecionados.has(t.id)}
+                onclick={(e) => e.stopPropagation()}
+                onchange={() => toggleTceSelecionado(t.id)}
+                class="w-4 h-4 rounded shrink-0"
+              />
+              <div class="font-medium truncate flex-1 min-w-0">{t.nome}</div>
             </div>
             <div class="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
               <span class="px-1.5 py-0.5 rounded-full bg-slate-100">{STATUS_TCE_LABEL[t.status] ?? t.status}</span>
@@ -383,8 +393,30 @@
   {/if}
 </div>
 
+<!-- Barra inferior de ações em massa — TCEs selecionados (checkbox nos cards) -->
+{#if modoTce && tcesSelecionados.size > 0}
+  <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex flex-col gap-2">
+    <div class="flex items-center gap-1 overflow-x-auto pb-1">
+      <span class="text-xs font-medium text-slate-500 whitespace-nowrap mr-1">{tcesSelecionados.size}:</span>
+      {#each [...tcesSelecionados] as tid}
+        <span class="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded whitespace-nowrap">{data.tces.find((t) => t.id === tid)?.nome ?? tid}</span>
+      {/each}
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="text-sm font-medium">
+        <strong>{tcesSelecionados.size}</strong> TCE(s) selecionado(s)
+      </div>
+      <div class="flex gap-2 ml-auto flex-wrap justify-end">
+        <Button variant="primary" size="sm" onclick={() => (sheetDesignar = true)}><Icon nome="share" size={14} /> Designar</Button>
+        <Button variant="secondary" size="sm" onclick={() => (sheetArranjoTce = true)}><Icon nome="calendar" size={14} /> Anexar a arranjo</Button>
+        <Button variant="secondary" size="sm" onclick={limparSelecaoTce}>Limpar</Button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- Barra inferior de ações em massa -->
-{#if selecionadas.size > 0}
+{#if selecionadas.size > 0 && !modoTce}
   <div class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg p-3 flex flex-col gap-2">
     <!-- Linha 1: chips com IDs (scroll horizontal se muitas) -->
     <div class="flex items-center gap-1 overflow-x-auto pb-1">
@@ -497,7 +529,7 @@
           toast.success((result.data as any)?.msg || 'Criada');
           sheetDesignar = false;
           limparSelecao();
-          tceParaDesignar = null;
+          limparSelecaoTce();
           publicadoresSel = new Set();
           await invalidateAll();
         } else if (result.type === 'failure') {
@@ -508,13 +540,17 @@
     class="space-y-3"
   >
     {#each [...selecionadas] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
-    {#if tceParaDesignar}<input type="hidden" name="tces_ids" value={tceParaDesignar.id} />{/if}
+    {#each [...tcesSelecionados] as tid}<input type="hidden" name="tces_ids" value={tid} />{/each}
 
-    {#if tceParaDesignar}
+    {#if tcesSelecionados.size > 0}
       <div class="rounded-lg bg-orange-50 p-3 text-sm">
-        <div class="font-medium mb-1"><Icon nome="store" size={14} /> TCE: {tceParaDesignar.nome}</div>
+        <div class="font-medium mb-1"><Icon nome="store" size={14} /> {tcesSelecionados.size} TCE(s)</div>
+        <div class="text-xs text-slate-600">
+          {[...tcesSelecionados].map((tid) => data.tces.find((t) => t.id === tid)?.nome ?? tid).join(', ')}
+        </div>
       </div>
-    {:else}
+    {/if}
+    {#if selecionadas.size > 0}
       <div class="rounded-lg bg-slate-50 p-3 text-sm">
         <div class="font-medium mb-1">{selecionadas.size} quadra(s)</div>
         <div class="text-xs text-slate-500 font-mono">{[...selecionadas].join(', ')}</div>
@@ -551,7 +587,7 @@
     </div>
 
     <div class="flex gap-2 pt-2">
-      <Button variant="secondary" onclick={() => { sheetDesignar = false; tceParaDesignar = null; }} class="flex-1">Cancelar</Button>
+      <Button variant="secondary" onclick={() => (sheetDesignar = false)} class="flex-1">Cancelar</Button>
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Designar</Button>
     </div>
   </form>
@@ -634,6 +670,88 @@
       <div class="flex gap-2 pt-2">
         <Button variant="secondary" onclick={() => (sheetArranjo = false)} class="flex-1">Cancelar</Button>
         <Button variant="primary" type="submit" loading={salvandoAnexar} class="flex-1">Anexar</Button>
+      </div>
+    </form>
+  {/if}
+</BottomSheet>
+
+<!-- Sheet: anexar TCEs selecionados a um arranjo (dirigente reparte depois em Casa a casa) -->
+<BottomSheet bind:open={sheetArranjoTce} title="Anexar TCEs a um arranjo">
+  {#if data.arranjosQuadras.length === 0}
+    <div class="text-center py-8 text-slate-500">
+      <div class="text-4xl mb-2 opacity-50"><Icon nome="calendar" size={40} class="mx-auto text-slate-300" /></div>
+      <div class="font-medium">Nenhum arranjo disponível</div>
+      <div class="text-sm">Cria um arranjo em <a href="/admin/arranjos" class="text-primary-700 hover:underline">/admin/arranjos</a>.</div>
+    </div>
+  {:else}
+    <form
+      method="POST"
+      action="?/adicionarTcesAoArranjo"
+      use:enhance={() => {
+        salvandoAnexarTce = true;
+        return async ({ result, update }) => {
+          await update();
+          salvandoAnexarTce = false;
+          if (result.type === 'success') {
+            toast.success(String((result.data as any)?.msg || 'Anexado'));
+            sheetArranjoTce = false;
+            limparSelecaoTce();
+            await invalidateAll();
+          } else if (result.type === 'failure') {
+            toast.error(String((result.data as any)?.erro || 'Falhou'));
+          }
+        };
+      }}
+      class="space-y-3"
+    >
+      {#each [...tcesSelecionados] as tid}
+        <input type="hidden" name="tces_ids" value={tid} />
+      {/each}
+
+      <div class="text-sm bg-orange-50 rounded p-2">
+        <strong>{tcesSelecionados.size}</strong> TCE(s) selecionado(s):
+        {[...tcesSelecionados].map((tid) => data.tces.find((t) => t.id === tid)?.nome ?? tid).join(', ')}
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Modo</span>
+        <div class="flex gap-1 bg-slate-100 rounded-lg p-1 text-xs">
+          <button type="button" onclick={() => (modoAnexarTce = 'somar')}
+            class="flex-1 px-2 py-1 rounded font-medium"
+            class:bg-white={modoAnexarTce === 'somar'}
+            class:text-slate-900={modoAnexarTce === 'somar'}
+            class:text-slate-500={modoAnexarTce !== 'somar'}>Somar aos existentes</button>
+          <button type="button" onclick={() => (modoAnexarTce = 'substituir')}
+            class="flex-1 px-2 py-1 rounded font-medium"
+            class:bg-white={modoAnexarTce === 'substituir'}
+            class:text-slate-900={modoAnexarTce === 'substituir'}
+            class:text-slate-500={modoAnexarTce !== 'substituir'}>Substituir tudo</button>
+        </div>
+        <input type="hidden" name="substituir" value={modoAnexarTce === 'substituir' ? 'true' : 'false'} />
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Arranjo</span>
+        <div class="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.arranjosQuadras as a}
+            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="radio" name="arranjo_id" value={a.id} required class="w-4 h-4" />
+              <span class="w-2 h-8 rounded shrink-0" style="background:{a.modalidade_cor}"></span>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium truncate">{a.nome || a.modalidade_nome}</div>
+                <div class="text-xs text-slate-500">
+                  {a.data ? new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }) : '—'}
+                  {a.hora_inicio ? ` · ${a.hora_inicio.substring(0, 5)}` : ''}
+                </div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <Button variant="secondary" onclick={() => (sheetArranjoTce = false)} class="flex-1">Cancelar</Button>
+        <Button variant="primary" type="submit" loading={salvandoAnexarTce} class="flex-1">Anexar</Button>
       </div>
     </form>
   {/if}
