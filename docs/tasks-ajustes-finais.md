@@ -59,7 +59,7 @@
       `densidade_enderecos`/`densidade_residencias` no `MapaAdmin`
       (Geral) — substituindo o modo "densidade" único.
 
-- [ ] 🟡 **T9 (A13)** `AdminMapa.svelte`: prop `colorirPor` ampliada
+- [x] 🟡 **T9 (A13)** `AdminMapa.svelte`: prop `colorirPor` ampliada
       (conclusão/território/densidades) + popup de detalhe no clique;
       `/publicador/mapa` ganha o seletor de modos e o popup (sem ação).
 
