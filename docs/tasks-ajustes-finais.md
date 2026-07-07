@@ -179,7 +179,7 @@
 
 ## Onda 9 — Polígonos
 
-- [ ] 🟢 **T30 (A20)** Auditar acionável: 3 listas (sem face / quadra
+- [x] 🟢 **T30 (A20)** Auditar acionável: 3 listas (sem face / quadra
       vazia / multi-cluster) com ações de foco, unificar cluster e ver
       vizinhas.
 

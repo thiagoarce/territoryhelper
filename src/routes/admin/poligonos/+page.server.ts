@@ -108,20 +108,30 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // Distribuição setor|quadra_ibge por quadra (pra detectar inconsistências)
   const clusterPorQuadra = new Map<string, Map<string, number>>();
+  // A20: pra cada cluster (setor|quadra_ibge), quais quadra_id têm locais
+  // com esse cluster — usado pra sugerir "essa faixa parece ser da quadra
+  // X" quando um cluster minoritário aparece em outra quadra também.
+  const quadraIdsPorCluster = new Map<string, Set<string>>();
   for (const l of locais) {
     if (!l.quadra_id) continue;
     const cluster = `${l.setor || ''}|${l.quadra_ibge || ''}`;
     if (!clusterPorQuadra.has(l.quadra_id)) clusterPorQuadra.set(l.quadra_id, new Map());
     const m = clusterPorQuadra.get(l.quadra_id)!;
     m.set(cluster, (m.get(cluster) || 0) + 1);
+    if (!quadraIdsPorCluster.has(cluster)) quadraIdsPorCluster.set(cluster, new Set());
+    quadraIdsPorCluster.get(cluster)!.add(l.quadra_id);
   }
-  const quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number }[] }[] = [];
+  const quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number; quadrasVizinhas: string[] }[] }[] = [];
   for (const [qid, m] of clusterPorQuadra) {
     if (m.size > 1) {
-      quadrasMultiCluster.push({
-        quadra_id: qid,
-        clusters: [...m].map(([cluster, qtd]) => ({ cluster, qtd })).sort((a, b) => b.qtd - a.qtd)
-      });
+      const clusters = [...m]
+        .map(([cluster, qtd]) => ({
+          cluster,
+          qtd,
+          quadrasVizinhas: [...(quadraIdsPorCluster.get(cluster) ?? [])].filter((id) => id !== qid)
+        }))
+        .sort((a, b) => b.qtd - a.qtd);
+      quadrasMultiCluster.push({ quadra_id: qid, clusters });
     }
   }
   quadrasMultiCluster.sort((a, b) => a.quadra_id.localeCompare(b.quadra_id));
@@ -135,6 +145,12 @@ export const load: PageServerLoad = async ({ locals }) => {
   const quadrasOrfas = quadras
     .filter((q) => q.ativa && !q.territorio_id)
     .map((q) => q.id);
+
+  // A20: endereços sem face IBGE — auditoria acionável (foca + manda pro
+  // modo Vincular pra reatribuir a quadra).
+  const locaisSemFace = locais
+    .filter((l) => !l.face_ibge)
+    .map((l) => ({ id: l.id, endereco: `${l.logradouro}, ${l.numero}`.trim(), quadra_id: l.quadra_id }));
 
   // T12 (A6): curadoria — edições/criações de não-admin pendentes de revisão.
   const { data: curadoriaRows } = await locals.supabase
@@ -175,6 +191,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     quadrasMultiCluster,
     quadrasVazias,
     quadrasOrfas,
+    locaisSemFace,
     quadrasParaRenomear,
     curadoria
   };
@@ -452,6 +469,44 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('quadras').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: `Quadra ${id} excluída (endereços ficaram sem quadra)` };
+  },
+
+  // A20: "unificar clusters" — os locais de uma quadra com múltiplos
+  // clusters IBGE (setor|quadra_ibge divergentes) não têm geometria
+  // conflitante pra unir (é a MESMA quadra) — o problema é metadado
+  // divergente. Normaliza todos os locais da quadra pro cluster
+  // majoritário (mais locais), aceitando essa quadra como uma só.
+  unificarClusterQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const quadraId = String(fd.get('quadra_id') ?? '');
+    if (!quadraId) return fail(400, { erro: 'quadra_id obrigatório' });
+
+    const { data: locaisDaQuadra, error: errL } = await locals.supabase
+      .from('locais')
+      .select('id, setor, quadra_ibge')
+      .eq('quadra_id', quadraId);
+    if (errL) return fail(400, { erro: errL.message });
+    if (!locaisDaQuadra || locaisDaQuadra.length === 0) return fail(400, { erro: 'Quadra sem endereços' });
+
+    const contagem = new Map<string, { setor: string | null; quadra_ibge: string | null; qtd: number }>();
+    for (const l of locaisDaQuadra as any[]) {
+      const chave = `${l.setor || ''}|${l.quadra_ibge || ''}`;
+      const atual = contagem.get(chave) ?? { setor: l.setor, quadra_ibge: l.quadra_ibge, qtd: 0 };
+      atual.qtd++;
+      contagem.set(chave, atual);
+    }
+    const majoritario = [...contagem.values()].sort((a, b) => b.qtd - a.qtd)[0];
+    if (contagem.size <= 1) return { ok: true, msg: 'Já é um cluster só' };
+
+    const { error: errU } = await locals.supabase
+      .from('locais')
+      .update({ setor: majoritario.setor, quadra_ibge: majoritario.quadra_ibge })
+      .eq('quadra_id', quadraId);
+    if (errU) return fail(400, { erro: errU.message });
+    return { ok: true, msg: `Quadra ${quadraId} unificada (${locaisDaQuadra.length} endereço(s) normalizado(s))` };
   },
 
   // Vincula UMA quadra a um território (ou desvincula se territorio_id vazio)
