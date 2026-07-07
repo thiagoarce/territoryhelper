@@ -270,6 +270,59 @@ export const actions: Actions = {
     return { ok: true, msg: 'Notificação de teste enviada' };
   },
 
+  // A27: histórico read-only do publicador — carregado sob demanda (só
+  // quando o admin expande a linha), não no load() geral, pra não pagar
+  // o custo de 4 queries × N usuários toda vez que a lista abre.
+  historicoPublicador: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+
+    const desde = new Date();
+    desde.setMonth(desde.getMonth() - 6);
+    const desdeIso = desde.toISOString().slice(0, 10);
+
+    const [registrosRes, conclusoesRes, tpRes, cartasRes] = await Promise.all([
+      supabaseAdmin.from('registros').select('ts').eq('publicador_id', id).gte('ts', desdeIso),
+      supabaseAdmin.from('quadras_conclusoes').select('data_conclusao').eq('marcado_por', id).gte('data_conclusao', desdeIso),
+      supabaseAdmin.from('tp_agendamento_participantes').select('data').eq('publicador_id', id).gte('data', desdeIso),
+      supabaseAdmin.from('unidades').select('carta_entregue').eq('carta_escrita_por', id).gte('carta_entregue', desdeIso)
+    ]);
+
+    function contarPorMes(datas: string[]): { mes: string; qtd: number }[] {
+      const cont: Record<string, number> = {};
+      for (const d of datas) {
+        const mes = d.slice(0, 7);
+        cont[mes] = (cont[mes] ?? 0) + 1;
+      }
+      return Object.entries(cont)
+        .map(([mes, qtd]) => ({ mes, qtd }))
+        .sort((a, b) => b.mes.localeCompare(a.mes));
+    }
+
+    const registros = (registrosRes.data ?? []) as { ts: string }[];
+    const conclusoes = (conclusoesRes.data ?? []) as { data_conclusao: string }[];
+    const tp = (tpRes.data ?? []) as { data: string }[];
+    const cartas = (cartasRes.data ?? []) as { carta_entregue: string }[];
+
+    return {
+      ok: true,
+      historicoId: id,
+      historico: {
+        registrosPorMes: contarPorMes(registros.map((r) => r.ts.slice(0, 10))),
+        conclusoesPorMes: contarPorMes(conclusoes.map((r) => r.data_conclusao)),
+        tpPorMes: contarPorMes(tp.map((r) => r.data)),
+        cartasPorMes: contarPorMes(cartas.map((r) => r.carta_entregue)),
+        totalRegistros: registros.length,
+        totalConclusoes: conclusoes.length,
+        totalTp: tp.length,
+        totalCartas: cartas.length
+      }
+    };
+  },
+
   // Exclui usuário (auth + profile via CASCADE).
   excluir: async ({ request, locals }) => {
     const guard = exigirAdminAction(locals);

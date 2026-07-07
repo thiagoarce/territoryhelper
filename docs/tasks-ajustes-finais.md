@@ -188,7 +188,7 @@
 - [x] 🟡 **T32 (A26)** Transferir dirigência em série (/admin/arranjos):
       A→B num período, confirm com contagem, notificação.
 
-- [ ] 🟢 **T33 (A27)** Histórico do publicador em /admin/usuarios
+- [x] 🟢 **T33 (A27)** Histórico do publicador em /admin/usuarios
       (card read-only: registros/mês, conclusões, turnos TP, cartas).
 
 - [x] 🔴 **T34 (A25)** ✅ feita pelo Fable Backup: export JSON completo em

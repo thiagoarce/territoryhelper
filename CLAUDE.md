@@ -85,7 +85,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | Tabela | O que guarda |
 |---|---|
 | `profiles` | usuário + `role` (publicador/dirigente/admin). Coluna `servo_publicacoes` existe mas não tem mais uso (T7/A12a fundiu essa capacidade em "ser admin" — `is_servo_pub()` virou sinônimo de `is_admin()`, migration 060) |
-| `convites` | Link público `/convite/<token>` só pra DEFINIR senha — o publicador (`auth.users`+`profiles`) já é criado na hora do convite (senha descartável, `email_confirm=false`), via `convites.publicador_id`. Isso permite designar território pra alguém antes de ele abrir o link. Revogar convite não-usado apaga o usuário provisório junto. `/admin/usuarios` gera 1 ou em lote (cola `nome,email,role` por linha) |
+| `convites` | Link público `/convite/<token>` só pra DEFINIR senha — o publicador (`auth.users`+`profiles`) já é criado na hora do convite (senha descartável, `email_confirm=false`), via `convites.publicador_id`. Isso permite designar território pra alguém antes de ele abrir o link. Revogar convite não-usado apaga o usuário provisório junto. `/admin/usuarios` gera 1 ou em lote (cola `nome,email,role` por linha); botão **Histórico** por linha (A27) carrega sob demanda um resumo read-only (`registros`/`quadras_conclusoes`/`tp_agendamento_participantes`/`unidades.carta_escrita_por`, contagem por mês, últimos 6 meses) |
 | `territorios` | id text, nome, cor, status |
 | `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao`, `reservada_campanha_id` (quarentena — some do pool geral enquanto reservada pra campanha) |
 | `quadras_conclusoes` | histórico append-only de conclusões (data, autor) |
