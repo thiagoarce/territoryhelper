@@ -20,7 +20,7 @@
 
 ## Onda 1 — Quick wins (sem migration, exceto T6)
 
-- [ ] 🟢 **T1 (A1)** Remover "Quero participar" da Agenda.
+- [x] 🟢 **T1 (A1)** Remover "Quero participar" da Agenda.
       Arquivos: `src/routes/publicador/arranjo/+page.svelte` (+server).
       DoD: botão e action fora; nada mais muda.
 
