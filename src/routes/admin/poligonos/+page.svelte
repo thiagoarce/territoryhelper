@@ -1,13 +1,15 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaPoligonos from '$lib/components/MapaPoligonos.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { QuadraGeo } from '$lib/server/queries';
+  import { page } from '$app/stores';
   import type { LocalComGeo } from './$types';
+  import type { CuradoriaLinha } from './+page.server';
 
   let { data, form }: {
     data: {
@@ -20,14 +22,16 @@
       quadrasVazias: string[];
       quadrasOrfas: string[];
       quadrasParaRenomear: { id: string; color: string; status: string }[];
+      curadoria: CuradoriaLinha[];
       profile?: import('$lib/types').Profile | null;
     };
     form: any;
   } = $props();
 
   // null = mapa limpo (nenhum modo). Endereços só aparecem em 'vincular'/'tce'.
-  type Modo = 'vincular' | 'quadras' | 'territorios' | 'tce' | 'auditar' | null;
-  let modo = $state<Modo>(null);
+  type Modo = 'vincular' | 'quadras' | 'territorios' | 'tce' | 'auditar' | 'curadoria' | null;
+  let modo = $state<Modo>($page.url.searchParams.get('modo') === 'curadoria' ? 'curadoria' : null);
+  let resolvendoCuradoriaId = $state<number | null>(null);
 
   let filtroTipo = $state<'dom' | 'com' | 'ambos'>('ambos');
   let filtroVinculo = $state<'vinculados' | 'sem' | 'ambos'>('ambos');
@@ -300,8 +304,27 @@
     { k: 'quadras', label: 'Quadras' },
     { k: 'territorios', label: 'Territórios' },
     { k: 'tce', label: 'TCE' },
-    { k: 'auditar', label: 'Auditar' }
+    { k: 'auditar', label: 'Auditar' },
+    { k: 'curadoria', label: 'Curadoria' }
   ];
+
+  const TIPO_LABEL: Record<CuradoriaLinha['tipo'], string> = {
+    edicao: 'Edição', criacao: 'Novo endereço', nao_existe: 'Não existe mais'
+  };
+
+  async function resolverCuradoria(id: number, acao: 'confirmarCuradoria' | 'reverterCuradoria') {
+    resolvendoCuradoriaId = id;
+    try {
+      const fd = new FormData();
+      fd.append('id', String(id));
+      const res = await fetch(`?/${acao}`, { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'OK')); await invalidateAll(); }
+      else toast.error(String(parsed.data?.erro || 'Falhou'));
+    } finally {
+      resolvendoCuradoriaId = null;
+    }
+  }
 
   function nomeTerritorio(id: string | null): string {
     if (!id) return '—';
@@ -325,6 +348,9 @@
           {m.label}
           {#if m.k === 'auditar' && totalProblemas > 0}
             <span class="bg-red-600 text-white text-[10px] px-1.5 rounded-full">{totalProblemas}</span>
+          {/if}
+          {#if m.k === 'curadoria' && data.curadoria.length > 0}
+            <span class="bg-amber-500 text-white text-[10px] px-1.5 rounded-full">{data.curadoria.length}</span>
           {/if}
         </button>
       {/each}
@@ -441,6 +467,63 @@
             {/each}
           </div>
         {/if}
+      </div>
+    {/if}
+  {/if}
+
+  <!-- Painel Curadoria (T12/A6) -->
+  {#if modo === 'curadoria'}
+    {#if data.curadoria.length === 0}
+      <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
+        <Icon nome="check" size={14} /> Nada pendente — fila de curadoria vazia
+      </div>
+    {:else}
+      <div class="space-y-2 max-h-[28rem] overflow-y-auto">
+        {#each data.curadoria as c (c.id)}
+          <div class="rounded-lg border border-slate-200 p-3">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="min-w-0">
+                <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{TIPO_LABEL[c.tipo]}</span>
+                <span class="ml-1.5 font-medium truncate">{c.local_endereco ?? '(endereço excluído)'}</span>
+              </div>
+              <div class="text-xs text-slate-400 whitespace-nowrap">
+                {c.publicador_nome ?? '?'} · {new Date(c.criado_em).toLocaleDateString('pt-BR')}
+              </div>
+            </div>
+
+            {#if c.tipo === 'criacao'}
+              <div class="text-xs text-slate-500 mt-1.5">Novo endereço criado pelo publicador.</div>
+            {:else if c.antes}
+              <div class="mt-1.5 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <div class="text-slate-400 uppercase text-[10px] font-semibold mb-0.5">Antes</div>
+                  {#each Object.entries(c.antes) as [campo, valor]}
+                    <div><span class="text-slate-500">{campo}:</span> {valor ?? '—'}</div>
+                  {/each}
+                </div>
+                <div>
+                  <div class="text-slate-400 uppercase text-[10px] font-semibold mb-0.5">Depois</div>
+                  {#each Object.entries(c.antes) as [campo]}
+                    <div><span class="text-slate-500">{campo}:</span> {(c.depois as any)?.[campo] ?? '—'}</div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            <div class="flex gap-2 mt-2">
+              <Button
+                variant="secondary" size="sm"
+                loading={resolvendoCuradoriaId === c.id}
+                onclick={() => resolverCuradoria(c.id, 'reverterCuradoria')}
+              >Reverter</Button>
+              <Button
+                variant="primary" size="sm"
+                loading={resolvendoCuradoriaId === c.id}
+                onclick={() => resolverCuradoria(c.id, 'confirmarCuradoria')}
+              >Confirmar</Button>
+            </div>
+          </div>
+        {/each}
       </div>
     {/if}
   {/if}

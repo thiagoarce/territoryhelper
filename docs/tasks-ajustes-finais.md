@@ -79,7 +79,7 @@
       `/publicador/quadra/[id]`; gravar linha de curadoria em cada
       edição de publicador.
 
-- [ ] 🟡 **T12 (A6)** Tela de curadoria do admin (bloco em /admin/predios
+- [x] 🟡 **T12 (A6)** Tela de curadoria do admin (bloco em /admin/predios
       ou /admin — ver spec): pendentes com diff, Confirmar / Reverter
       (reverter aplica `antes`). + bloco "Feedback do campo" abaixo da
       Visão Geral (A24) linkando pra cá.
