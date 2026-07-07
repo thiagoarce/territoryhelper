@@ -19,6 +19,49 @@
   let enviandoTesteId: string | null = $state(null);
   let gerandoLinkId: string | null = $state(null);
 
+  interface HistoricoPublicador {
+    registrosPorMes: { mes: string; qtd: number }[];
+    conclusoesPorMes: { mes: string; qtd: number }[];
+    tpPorMes: { mes: string; qtd: number }[];
+    cartasPorMes: { mes: string; qtd: number }[];
+    totalRegistros: number;
+    totalConclusoes: number;
+    totalTp: number;
+    totalCartas: number;
+  }
+  let historicoAbertoId: string | null = $state(null);
+  let carregandoHistoricoId: string | null = $state(null);
+  let historicoCache: Record<string, HistoricoPublicador> = $state({});
+
+  async function toggleHistorico(u: UsuarioComEmail) {
+    if (historicoAbertoId === u.id) {
+      historicoAbertoId = null;
+      return;
+    }
+    historicoAbertoId = u.id;
+    if (historicoCache[u.id]) return;
+    carregandoHistoricoId = u.id;
+    try {
+      const fd = new FormData();
+      fd.append('id', u.id);
+      const res = await fetch('?/historicoPublicador', { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') {
+        historicoCache = { ...historicoCache, [u.id]: parsed.data.historico };
+      } else {
+        toast.error(String(parsed.data?.erro || 'Falhou ao carregar histórico'));
+        historicoAbertoId = null;
+      }
+    } finally {
+      carregandoHistoricoId = null;
+    }
+  }
+
+  function nomeMes(mes: string): string {
+    const [ano, m] = mes.split('-').map(Number);
+    return new Date(ano, m - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+  }
+
   async function gerarLinkRedefinicao(u: UsuarioComEmail) {
     gerandoLinkId = u.id;
     const fd = new FormData();
@@ -143,6 +186,12 @@
                 {gerandoLinkId === u.id ? 'Gerando...' : 'Link de redefinição'}
               </button>
               <button
+                onclick={() => toggleHistorico(u)}
+                class="text-sm text-slate-500 hover:underline mr-3"
+              >
+                {historicoAbertoId === u.id ? 'Ocultar histórico' : 'Histórico'}
+              </button>
+              <button
                 onclick={() => (usuarioEditando = u)}
                 class="text-sm text-primary-700 hover:underline"
               >
@@ -150,6 +199,55 @@
               </button>
             </td>
           </tr>
+          {#if historicoAbertoId === u.id}
+            <tr class="border-t border-slate-100 bg-slate-50">
+              <td colspan="5" class="px-3 py-3">
+                {#if carregandoHistoricoId === u.id}
+                  <div class="text-sm text-slate-400">Carregando histórico...</div>
+                {:else if historicoCache[u.id]}
+                  {@const h = historicoCache[u.id]}
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-4 text-sm">
+                    <div>
+                      <div class="font-medium text-slate-700">Quadras trabalhadas (registros)</div>
+                      <div class="text-xs text-slate-500 mb-1">{h.totalRegistros} nos últimos 6 meses</div>
+                      {#each h.registrosPorMes as m}
+                        <div class="flex justify-between text-xs text-slate-600"><span>{nomeMes(m.mes)}</span><span>{m.qtd}</span></div>
+                      {:else}
+                        <div class="text-xs text-slate-400">Nenhum registro</div>
+                      {/each}
+                    </div>
+                    <div>
+                      <div class="font-medium text-slate-700">Conclusões marcadas</div>
+                      <div class="text-xs text-slate-500 mb-1">{h.totalConclusoes} nos últimos 6 meses</div>
+                      {#each h.conclusoesPorMes as m}
+                        <div class="flex justify-between text-xs text-slate-600"><span>{nomeMes(m.mes)}</span><span>{m.qtd}</span></div>
+                      {:else}
+                        <div class="text-xs text-slate-400">Nenhuma conclusão</div>
+                      {/each}
+                    </div>
+                    <div>
+                      <div class="font-medium text-slate-700">Turnos de TP</div>
+                      <div class="text-xs text-slate-500 mb-1">{h.totalTp} nos últimos 6 meses</div>
+                      {#each h.tpPorMes as m}
+                        <div class="flex justify-between text-xs text-slate-600"><span>{nomeMes(m.mes)}</span><span>{m.qtd}</span></div>
+                      {:else}
+                        <div class="text-xs text-slate-400">Nenhum turno</div>
+                      {/each}
+                    </div>
+                    <div>
+                      <div class="font-medium text-slate-700">Cartas escritas</div>
+                      <div class="text-xs text-slate-500 mb-1">{h.totalCartas} nos últimos 6 meses</div>
+                      {#each h.cartasPorMes as m}
+                        <div class="flex justify-between text-xs text-slate-600"><span>{nomeMes(m.mes)}</span><span>{m.qtd}</span></div>
+                      {:else}
+                        <div class="text-xs text-slate-400">Nenhuma carta</div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </td>
+            </tr>
+          {/if}
         {:else}
           <tr><td colspan="5" class="px-3 py-8 text-center text-slate-400">Nenhum usuário</td></tr>
         {/each}
