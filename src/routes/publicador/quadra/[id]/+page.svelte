@@ -255,7 +255,7 @@
           {#each visiveis as l (l.id)}
             {@const ehMultiUnidade = l.unidades.length >= 2}
             {@const visUnidades = l.unidades.filter(passaFiltro)}
-            <div id="local-{l.id}" class="rounded-lg border border-slate-200 bg-white transition-all">
+            <div id="local-{l.id}" class="rounded-lg border border-slate-200 bg-white transition-all" class:opacity-50={l.marcado_nao_existe}>
               {#if ehMultiUnidade}
                 <!-- Header clicável — qualquer local com 2+ unidades (prédio, comércio, coletivo) -->
                 <div class="flex items-stretch">
@@ -268,11 +268,12 @@
                     <div class="flex-1 min-w-0">
                       <div class="font-semibold truncate flex items-center gap-1">
                         <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-white text-[10px] font-bold shrink-0">{numeroPorLocal.get(l.id)}</span>
-                        {l.nome || `${l.logradouro}, ${l.numero}`}
+                        <span class:line-through={l.marcado_nao_existe}>{l.nome || `${l.logradouro}, ${l.numero}`}</span>
                         {#if l.tipo_entrada === 'porteiro'}<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Porteiro</span>{/if}
                         {#if l.tipo_entrada === 'eletronica'}<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Eletrônica</span>{/if}
                         {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-xs"><Icon nome="user" size={14} /></span>{/if}
                         {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
+                        {#if l.marcado_nao_existe}<span class="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">Não existe mais</span>{/if}
                       </div>
                       <div class="text-xs text-slate-500">
                         {l.logradouro}, {l.numero} · {l.unidades.length} unidades · {l.unidades.filter(unidadeFeita).length} feitas
@@ -317,9 +318,10 @@
                       <div class="flex-1 min-w-0">
                         <div class="font-semibold truncate flex items-center gap-1">
                           <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-white text-[10px] font-bold shrink-0">{numeroPorLocal.get(l.id)}</span>
-                          {l.nome || `${l.logradouro}, ${l.numero}`}
+                          <span class:line-through={l.marcado_nao_existe}>{l.nome || `${l.logradouro}, ${l.numero}`}</span>
                           {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm"><Icon nome="user" size={14} /></span>{/if}
                           {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
+                          {#if l.marcado_nao_existe}<span class="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">Não existe mais</span>{/if}
                           {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio)}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
                         </div>
                         <div class="text-xs text-slate-500">
@@ -359,7 +361,7 @@
 </div>
 
 <EditarLocalSheet bind:open={sheetEditar} local={editandoLocal} />
-<AdicionarLocalSheet bind:open={sheetAdd} />
+<AdicionarLocalSheet bind:open={sheetAdd} locaisProximidade={data.locais} />
 
 <!-- FAB Adicionar -->
 <button

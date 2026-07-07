@@ -170,6 +170,27 @@ export const actions: Actions = {
     return { ok: true, msg: 'Atualizado' };
   },
 
+  // A7: feedback "este endereço não existe mais" (ver mesmo padrão em
+  // publicador/quadra/[id]).
+  marcarNaoExiste: async ({ request, locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const localId = Number(params.id);
+    const fd = await request.formData();
+    const marcar = fd.get('marcar') !== 'false';
+    const patch = marcar
+      ? { marcado_nao_existe: true, marcado_por: locals.user.id, marcado_em: new Date().toISOString() }
+      : { marcado_nao_existe: false, marcado_por: null, marcado_em: null };
+    const { error: err } = await locals.supabase.from('locais').update(patch).eq('id', localId);
+    if (err) return fail(400, { erro: err.message });
+    if (marcar) {
+      await registrarCuradoria(locals, {
+        local_id: localId, tipo: 'nao_existe',
+        antes: { marcado_nao_existe: false }, depois: { marcado_nao_existe: true }
+      });
+    }
+    return { ok: true, msg: marcar ? 'Marcado como "não existe mais"' : 'Desmarcado' };
+  },
+
   // WhatsApp share — gera token público de cartas
   gerarLink: async ({ locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });

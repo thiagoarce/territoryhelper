@@ -77,6 +77,27 @@
       toast.error(String(parsed.data?.erro || 'Falhou remover foto'));
     }
   }
+
+  // A7: "não existe mais" — some das contagens até o admin confirmar/reverter.
+  let marcandoNaoExiste = $state(false);
+  async function toggleNaoExiste(marcar: boolean) {
+    if (!local) return;
+    if (marcar && !confirm('Marcar este endereço como "não existe mais"? Ele some das contagens até o admin revisar.')) return;
+    marcandoNaoExiste = true;
+    const fd = new FormData();
+    fd.append('id', String(local.id));
+    fd.append('marcar', String(marcar));
+    const res = await fetch('?/marcarNaoExiste', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    marcandoNaoExiste = false;
+    if (parsed.type === 'success') {
+      toast.success(marcar ? 'Marcado como "não existe mais"' : 'Desmarcado');
+      open = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
 </script>
 
 <BottomSheet bind:open title={local ? `Editar ${local.tipo === 'predio' ? 'prédio' : 'endereço'}` : ''}>
@@ -224,5 +245,18 @@
         <Button variant="primary" type="submit" loading={salvando} class="flex-1">Salvar</Button>
       </div>
     </form>
+
+    <div class="pt-3 mt-3 border-t border-slate-100">
+      {#if local.marcado_nao_existe}
+        <div class="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
+          <Icon nome="alert" size={14} /> Marcado como "não existe mais" — aguardando revisão do admin.
+          <button type="button" class="ml-1 text-primary-700 hover:underline" disabled={marcandoNaoExiste} onclick={() => toggleNaoExiste(false)}>Desmarcar</button>
+        </div>
+      {:else}
+        <button type="button" class="text-xs text-red-600 hover:underline" disabled={marcandoNaoExiste} onclick={() => toggleNaoExiste(true)}>
+          <Icon nome="alert" size={14} /> Este endereço não existe mais
+        </button>
+      {/if}
+    </div>
   {/if}
 </BottomSheet>

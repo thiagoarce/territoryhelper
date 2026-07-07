@@ -84,7 +84,7 @@
       (reverter aplica `antes`). + bloco "Feedback do campo" abaixo da
       Visão Geral (A24) linkando pra cá.
 
-- [ ] 🟢 **T13 (A7)** "Não existe mais": ação nas telas de quadra/prédio,
+- [x] 🟢 **T13 (A7)** "Não existe mais": ação nas telas de quadra/prédio,
       esmaecer + tirar das contagens, entrada na curadoria. Endereço
       aproximado no criar local (prefill por vizinho mais próximo).
 

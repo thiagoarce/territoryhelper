@@ -61,7 +61,19 @@
   let sheetCriar = $state(false);
   let salvandoNovo = $state(false);
 
-  function abrirCriar() { sheetCriar = true; }
+  // A7: endereço aproximado — pré-preenche logradouro/número com o local
+  // mais próximo já cadastrado (data.locais já vem ordenado por proximidade
+  // quando há GPS ativo, via RPC buscar_locais_proximos). Só sugestão —
+  // continua editável, sem geocoding externo.
+  let logradouroPrefill = $state('');
+  let numeroPrefill = $state('');
+
+  function abrirCriar() {
+    const maisProximo = lat != null && lng != null ? data.locais[0] : null;
+    logradouroPrefill = maisProximo?.logradouro ?? '';
+    numeroPrefill = maisProximo?.numero ?? '';
+    sheetCriar = true;
+  }
 </script>
 
 <div class="p-4 max-w-4xl mx-auto">
@@ -177,11 +189,11 @@
     <div class="grid grid-cols-[1fr_100px] gap-2">
       <div>
         <label for="log-p" class="block text-sm font-medium mb-1">Logradouro *</label>
-        <input id="log-p" name="logradouro" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input id="log-p" name="logradouro" required value={logradouroPrefill} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       </div>
       <div>
         <label for="num-p" class="block text-sm font-medium mb-1">Número</label>
-        <input id="num-p" name="numero" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input id="num-p" name="numero" value={numeroPrefill} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       </div>
     </div>
 

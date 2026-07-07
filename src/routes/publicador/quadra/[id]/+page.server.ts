@@ -134,6 +134,29 @@ export const actions: Actions = {
     return { ok: true, msg: 'Local atualizado' };
   },
 
+  // A7: feedback "este endereço não existe mais" — esmaece na UI e sai das
+  // contagens de progresso; fica pendente até o admin confirmar (Polígonos
+  // → Curadoria, T12) ou reverter.
+  marcarNaoExiste: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    const marcar = fd.get('marcar') !== 'false';
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const patch = marcar
+      ? { marcado_nao_existe: true, marcado_por: locals.user.id, marcado_em: new Date().toISOString() }
+      : { marcado_nao_existe: false, marcado_por: null, marcado_em: null };
+    const { error: err } = await locals.supabase.from('locais').update(patch).eq('id', id);
+    if (err) return fail(400, { erro: err.message });
+    if (marcar) {
+      await registrarCuradoria(locals, {
+        local_id: id, tipo: 'nao_existe',
+        antes: { marcado_nao_existe: false }, depois: { marcado_nao_existe: true }
+      });
+    }
+    return { ok: true, msg: marcar ? 'Marcado como "não existe mais"' : 'Desmarcado' };
+  },
+
   // Atualiza overlay de uma unidade. Campos: complemento, nota,
   // desocupado, nao_escrever.
   atualizarUnidade: async ({ request, locals }) => {
