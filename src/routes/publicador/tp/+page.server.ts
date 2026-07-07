@@ -94,9 +94,18 @@ export const load: PageServerLoad = async ({ locals }) => {
     locals.supabase.from('tp_agendamento_excecoes').select('*'),
     locals.supabase.from('tp_carrinhos').select('id, nome, tipo_id, cor'),
     locals.supabase.from('tp_pontos').select('id, nome, endereco').eq('ativo', true),
+    // Coluna `status` só existe depois da migration 058 — se ainda não foi
+    // aplicada, cai pra buscar sem ela em vez de derrubar a página INTEIRA
+    // (selectAll lança em erro do Postgres, e um throw aqui dentro do
+    // Promise.all quebra o load() todo — TP inteiro para de responder).
     selectAll<TpParticipanteLinha>(
       locals.supabase.from('tp_agendamento_participantes').select('agendamento_id, data, publicador_id, status')
         .gte('data', escalaDesde).lte('data', escalaAte)
+    ).catch(() =>
+      selectAll<Omit<TpParticipanteLinha, 'status'>>(
+        locals.supabase.from('tp_agendamento_participantes').select('agendamento_id, data, publicador_id')
+          .gte('data', escalaDesde).lte('data', escalaAte)
+      ).then((linhas) => linhas.map((l) => ({ ...l, status: 'designado' as const })))
     ),
     locals.supabase
       .from('tp_pecas_catalogo')
