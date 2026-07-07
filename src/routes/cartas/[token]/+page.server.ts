@@ -26,16 +26,18 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
   const unidades = (data as any)?.unidades ?? [];
   if (!local) throw error(404, 'Prédio não encontrado');
 
-  // Início do ciclo atual de cartas — marca anterior a ele aparece solta
-  // (a policy de cartas_ciclos libera SELECT pra anon; é só uma data)
-  const { data: ciclo } = await supa
-    .from('cartas_ciclos')
-    .select('iniciado_em')
-    .order('id', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Início do ciclo EFETIVO de cartas deste prédio — o mais recente entre
+  // o global (local_id null) e o específico do prédio (A19/T16). A policy
+  // de cartas_ciclos libera SELECT pra anon; é só uma data.
+  const [{ data: cicloGlobal }, { data: cicloLocal }] = await Promise.all([
+    supa.from('cartas_ciclos').select('iniciado_em').is('local_id', null).order('id', { ascending: false }).limit(1).maybeSingle(),
+    supa.from('cartas_ciclos').select('iniciado_em').eq('local_id', local.id).order('id', { ascending: false }).limit(1).maybeSingle()
+  ]);
+  const dataGlobal = (cicloGlobal as any)?.iniciado_em ?? null;
+  const dataLocal = (cicloLocal as any)?.iniciado_em ?? null;
+  const cicloCartasInicio = dataLocal && (!dataGlobal || dataLocal >= dataGlobal) ? dataLocal : dataGlobal;
 
-  return { token: params.token, local, unidades, cicloCartasInicio: (ciclo as any)?.iniciado_em ?? null };
+  return { token: params.token, local, unidades, cicloCartasInicio };
 };
 
 export const actions: Actions = {

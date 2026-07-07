@@ -99,7 +99,7 @@
       `concluirQuadra` no casa-a-casa server; "Finalizar designação"
       vira sheet de conferência por quadra.
 
-- [ ] 🟡 **T16 (A19)** Ciclo de cartas POR PRÉDIO: migration
+- [x] 🟡 **T16 (A19)** Ciclo de cartas POR PRÉDIO: migration
       (`cartas_ciclos.local_id` + RPC novo), `cicloCartasPorLocal`,
       call-sites, botão por prédio, remover card global de
       /admin/predios. Testes de `$lib/ciclos.ts` continuam passando.

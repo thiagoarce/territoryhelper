@@ -14,7 +14,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
 
-  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string } } = $props();
+  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null> } } = $props();
   let editandoLocal: LocalComUnidades | null = $state(null);
   let sheetEditar = $state(false);
   let sheetAdd = $state(false);
@@ -345,7 +345,7 @@
                         <div class="flex items-center justify-between gap-2 mb-1">
                           <span class="font-mono text-sm">
                             {u.complemento || u.nota || `Apto ${indice + 1}`}
-                            {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio)}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
+                            {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasPorLocal[l.id])}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
                           </span>
                           {#if u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo'}
                             <span class="text-xs rounded px-2 py-0.5 {cores[u.ultimo_tipo] ?? 'bg-slate-100'}">
@@ -372,7 +372,7 @@
                           {#if l.irmao_mora}<span title="Irmão mora aqui" class="text-sm"><Icon nome="user" size={14} /></span>{/if}
                           {#if l.nao_visitar}<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Não visitar</span>{/if}
                           {#if l.marcado_nao_existe}<span class="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">Não existe mais</span>{/if}
-                          {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasInicio)}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
+                          {#if cartaEscritaNoCiclo(u.carta_entregue, data.cicloCartasPorLocal[l.id])}<span class="text-purple-600 ml-1" title="carta escrita"><Icon nome="mail" size={14} /></span>{/if}
                         </div>
                         <div class="text-xs text-slate-500">
                           {l.tipo} · {l.logradouro}, {l.numero}{u.complemento ? ' · ' + u.complemento : ''}
