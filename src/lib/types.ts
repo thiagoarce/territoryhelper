@@ -11,6 +11,7 @@ export interface Profile {
   ativo: boolean;
   servo_publicacoes: boolean;
   pref_basemap: 'positron' | 'liberty' | 'bright';
+  tp_aprovado: boolean;
   criado_em: string;
   atualizado_em: string;
 }

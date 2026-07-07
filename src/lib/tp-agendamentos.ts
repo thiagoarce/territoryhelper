@@ -17,6 +17,10 @@ export interface AgendamentoBase {
   recorrencia_fim: string | null;
   ativo: boolean;
   notas: string | null;
+  // T28: quem criou e como (admin monta a escala x publicador reserva
+  // sobra) — opcionais porque a expansão de ocorrências não usa isso.
+  origem?: 'admin' | 'reserva';
+  criado_por?: string | null;
 }
 
 export interface ExcecaoBase {

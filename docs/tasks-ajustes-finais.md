@@ -161,7 +161,7 @@
       retrato = por dia, paisagem/desktop = semana/mês) com turnos
       designados + Aceitar/Recusar + notificações.
 
-- [ ] 🟡 **T28 (A22-f3)** Reservas de sobra: célula vazia → sheet
+- [x] 🟡 **T28 (A22-f3)** Reservas de sobra: célula vazia → sheet
       (tipo com equipamento livre no horário + convidar publicadores)
       → cria agendamento origem='reserva'; admin vê/cancela.
 

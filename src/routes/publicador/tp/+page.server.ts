@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { selectAll } from '$lib/server/queries';
 import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
+import { ocorrenciaConflitante } from '$lib/tp-agendamentos';
 import { criarNotificacao } from '$lib/server/push';
 
 export interface TpPontoLite {
@@ -88,7 +89,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const [
     tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpParticipantesRes,
     tpPecasRes, campanhaAtivaRes, tpRelatoriosRes, nomesRes,
-    prefRes, dispRes, mesesRes, dispMesRes
+    prefRes, dispRes, mesesRes, dispMesRes, aprovadosRes
   ] = await Promise.all([
     locals.supabase.from('tp_agendamentos').select('*').eq('ativo', true),
     locals.supabase.from('tp_agendamento_excecoes').select('*'),
@@ -142,7 +143,9 @@ export const load: PageServerLoad = async ({ locals }) => {
       .eq('publicador_id', locals.user!.id)
       .in('mes', mesesAlvo())
       .order('dia')
-      .order('hora_inicio')
+      .order('hora_inicio'),
+    // T28: lista de convidáveis pra uma reserva — só aprovados pro TP.
+    locals.supabase.from('profiles').select('id, nome').eq('ativo', true).eq('tp_aprovado', true).order('nome')
   ]);
 
   const tpAgendamentos = (tpAgendamentosRes.data ?? []) as AgendamentoBase[];
@@ -176,7 +179,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     mesAtual: mes,
     tpMeses: ((mesesRes.data ?? []) as { mes: string; fase: string }[]),
     mesesAlvo: mesesAlvo(),
-    dispMes: ((dispMesRes.data ?? []) as { id: number; mes: string; dia: string; hora_inicio: string; hora_fim: string }[])
+    dispMes: ((dispMesRes.data ?? []) as { id: number; mes: string; dia: string; hora_inicio: string; hora_fim: string }[]),
+    meuTpAprovado: locals.profile?.tp_aprovado ?? false,
+    publicadoresAprovados: ((aprovadosRes.data ?? []) as { id: string; nome: string }[]).filter((p) => p.id !== locals.user!.id)
   };
 };
 
@@ -475,5 +480,79 @@ export const actions: Actions = {
     if (error) return fail(400, { erro: error.message });
     if (!count) return fail(404, { erro: 'Você não está designado nesse turno' });
     return { ok: true, msg: resposta === 'aceito' ? 'Designação aceita' : 'Designação recusada' };
+  },
+
+  // T28: reserva de sobra — publicador aprovado cria um turno pontual
+  // próprio numa célula vazia da grade, convidando outros aprovados.
+  criarReserva: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!locals.profile?.tp_aprovado) return fail(403, { erro: 'Você ainda não foi aprovado pro testemunho público — fale com o admin' });
+    const fd = await request.formData();
+    const dataOc = String(fd.get('data') ?? '').trim();
+    const horaInicio = String(fd.get('hora_inicio') ?? '').trim();
+    const horaFim = String(fd.get('hora_fim') ?? '').trim();
+    const carrinhoId = Number(fd.get('carrinho_id') ?? 0);
+    const pontoId = Number(fd.get('ponto_id') ?? 0) || null;
+    const pontoAvulso = String(fd.get('ponto_avulso') ?? '').trim() || null;
+    const convidadoIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
+    if (!dataOc || !horaInicio || !horaFim || !carrinhoId) return fail(400, { erro: 'Campos obrigatórios' });
+    if (!pontoId && !pontoAvulso) return fail(400, { erro: 'Escolha um ponto' });
+    if (horaFim <= horaInicio) return fail(400, { erro: 'Hora de fim precisa ser depois da de início' });
+
+    if (convidadoIds.length > 0) {
+      const { data: convidadosRows } = await locals.supabase.from('profiles').select('id, tp_aprovado').in('id', convidadoIds);
+      const naoAprovados = ((convidadosRows ?? []) as any[]).filter((p) => !p.tp_aprovado);
+      if (naoAprovados.length > 0) return fail(400, { erro: 'Algum convidado ainda não foi aprovado pro TP' });
+    }
+
+    // Equipamento livre nesse horário — mesma checagem usada no admin/tp.
+    const [{ data: agRows }, { data: excRows }] = await Promise.all([
+      locals.supabase.from('tp_agendamentos').select('*').eq('ativo', true),
+      locals.supabase.from('tp_agendamento_excecoes').select('*')
+    ]);
+    const conflito = ocorrenciaConflitante((agRows ?? []) as AgendamentoBase[], (excRows ?? []) as ExcecaoBase[], carrinhoId, dataOc, horaInicio, horaFim);
+    if (conflito) return fail(409, { erro: 'Esse equipamento já está reservado nesse horário' });
+
+    const { data: novo, error } = await locals.supabase
+      .from('tp_agendamentos')
+      .insert({
+        carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+        data: dataOc, hora_inicio: horaInicio, hora_fim: horaFim,
+        recorrencia: 'nenhuma', ativo: true, origem: 'reserva', criado_por: locals.user.id
+      })
+      .select('id')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+
+    const participantes = [
+      { agendamento_id: novo.id, data: dataOc, publicador_id: locals.user.id, origem: 'inscricao', status: 'designado' },
+      ...convidadoIds.map((pid) => ({ agendamento_id: novo.id, data: dataOc, publicador_id: pid, origem: 'designacao', status: 'designado' }))
+    ];
+    const { error: errP } = await locals.supabase.from('tp_agendamento_participantes').insert(participantes);
+    if (errP) return fail(400, { erro: 'Reserva criada mas falhou ao convidar: ' + errP.message });
+
+    if (convidadoIds.length > 0) {
+      await criarNotificacao(convidadoIds, {
+        titulo: 'Você foi convidado pra um turno de testemunho público',
+        corpo: new Date(dataOc + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }),
+        url: '/publicador/tp'
+      });
+    }
+    return { ok: true, msg: 'Reserva criada' };
+  },
+
+  cancelarReserva: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const agendamentoId = Number(fd.get('agendamento_id') ?? 0);
+    if (!agendamentoId) return fail(400, { erro: 'agendamento_id obrigatório' });
+    const { data: ag } = await locals.supabase.from('tp_agendamentos').select('criado_por, origem').eq('id', agendamentoId).maybeSingle();
+    if (!ag || ag.origem !== 'reserva') return fail(400, { erro: 'Não é uma reserva' });
+    if (ag.criado_por !== locals.user.id && locals.profile?.role !== 'admin') {
+      return fail(403, { erro: 'Só quem criou a reserva pode cancelar' });
+    }
+    const { error } = await locals.supabase.from('tp_agendamentos').update({ ativo: false }).eq('id', agendamentoId);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Reserva cancelada' };
   }
 };
