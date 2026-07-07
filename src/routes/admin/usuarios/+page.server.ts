@@ -31,6 +31,7 @@ export const load: PageServerLoad = async () => {
       ativo: p?.ativo ?? true,
       servo_publicacoes: (p as any)?.servo_publicacoes ?? false,
       pref_basemap: (p as any)?.pref_basemap ?? 'positron',
+      tp_aprovado: (p as any)?.tp_aprovado ?? false,
       criado_em: p?.criado_em ?? u.created_at,
       atualizado_em: (p as any)?.atualizado_em ?? p?.criado_em ?? u.created_at
     };

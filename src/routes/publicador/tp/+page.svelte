@@ -8,7 +8,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { DIAS_SEMANA } from '$lib/arranjos';
   import { hojeIsoLocal } from '$lib/utils/data';
-  import { ocorrenciasAgendamentoEntre } from '$lib/tp-agendamentos';
+  import { ocorrenciasAgendamentoEntre, ocorrenciaConflitante } from '$lib/tp-agendamentos';
   import TpGradeSemana from '$lib/components/TpGradeSemana.svelte';
   import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
   import type {
@@ -34,6 +34,8 @@
       tpMeses: { mes: string; fase: string }[];
       mesesAlvo: string[];
       dispMes: { id: number; mes: string; dia: string; hora_inicio: string; hora_fim: string }[];
+      meuTpAprovado: boolean;
+      publicadoresAprovados: { id: string; nome: string }[];
     };
   } = $props();
 
@@ -455,6 +457,86 @@
     aceito: { rotulo: 'aceito', cls: 'bg-green-100 text-green-700' },
     recusado: { rotulo: 'recusou', cls: 'bg-slate-200 text-slate-500' }
   };
+
+  // Agendamento por trás da ocorrência selecionada — pra saber se é uma
+  // reserva minha (mostra "Cancelar reserva" no sheet de detalhe).
+  const agendamentoDoTurnoSel = $derived(
+    turnoSel ? data.tpAgendamentos.find((a) => a.id === turnoSel!.agendamento_id) : null
+  );
+  let cancelandoReserva = $state(false);
+  async function cancelarReserva() {
+    if (!agendamentoDoTurnoSel) return;
+    if (!confirm('Cancelar essa reserva? Quem foi convidado perde o acesso.')) return;
+    cancelandoReserva = true;
+    const fd = new FormData();
+    fd.append('agendamento_id', String(agendamentoDoTurnoSel.id));
+    const res = await fetch('?/cancelarReserva', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    cancelandoReserva = false;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Cancelada')); sheetTurno = false; await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  // ── T28: reserva de sobra — tocar numa célula vazia da grade ─────────
+  let sheetReserva = $state(false);
+  let reservaData = $state('');
+  let reservaHoraInicio = $state('');
+  let reservaHoraFim = $state('');
+  let reservaCarrinhoId = $state<number | null>(null);
+  let reservaPontoId = $state<number | null>(null);
+  let reservaPontoAvulso = $state('');
+  let reservaConvidados = $state<Set<string>>(new Set());
+  let criandoReserva = $state(false);
+
+  function mesDaData(iso: string): string { return iso.substring(0, 7); }
+
+  function abrirReserva(dataIso: string, horaInicio: string, horaFim: string) {
+    if (!data.meuTpAprovado) {
+      toast.error('Você ainda não foi aprovado pro testemunho público — fale com o admin');
+      return;
+    }
+    if (fasePorMes.get(mesDaData(dataIso)) !== 'publicado') {
+      toast.error('Reservas só valem depois que o mês for publicado');
+      return;
+    }
+    reservaData = dataIso;
+    reservaHoraInicio = horaInicio;
+    reservaHoraFim = horaFim;
+    reservaCarrinhoId = null;
+    reservaPontoId = null;
+    reservaPontoAvulso = '';
+    reservaConvidados = new Set();
+    sheetReserva = true;
+  }
+  function toggleConvidado(id: string) {
+    if (reservaConvidados.has(id)) reservaConvidados.delete(id); else reservaConvidados.add(id);
+    reservaConvidados = new Set(reservaConvidados);
+  }
+  // Carrinhos livres nesse dia/horário — mesma lógica de conflito do admin.
+  const carrinhosLivres = $derived.by(() => {
+    if (!sheetReserva) return Object.values(data.tpCarrinhos);
+    return Object.values(data.tpCarrinhos).filter(
+      (c) => !ocorrenciaConflitante(data.tpAgendamentos, data.tpExcecoes, c.id, reservaData, reservaHoraInicio, reservaHoraFim)
+    );
+  });
+  async function confirmarReserva() {
+    if (!reservaCarrinhoId) { toast.error('Escolha um equipamento livre'); return; }
+    if (!reservaPontoId && !reservaPontoAvulso.trim()) { toast.error('Escolha ou digite um ponto'); return; }
+    criandoReserva = true;
+    const fd = new FormData();
+    fd.append('data', reservaData);
+    fd.append('hora_inicio', reservaHoraInicio);
+    fd.append('hora_fim', reservaHoraFim);
+    fd.append('carrinho_id', String(reservaCarrinhoId));
+    if (reservaPontoId) fd.append('ponto_id', String(reservaPontoId));
+    else fd.append('ponto_avulso', reservaPontoAvulso.trim());
+    for (const pid of reservaConvidados) fd.append('publicador_ids', pid);
+    const res = await fetch('?/criarReserva', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    criandoReserva = false;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Reserva criada')); sheetReserva = false; await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
 </script>
 
 <svelte:window bind:innerWidth={larguraTela} />
@@ -534,9 +616,10 @@
         pontos={data.tpPontos}
         participantesPorOcorrencia={participantesGrade}
         onEditar={abrirTurno}
+        onCriar={abrirReserva}
         readonly
       />
-      <p class="text-[11px] text-slate-400">Toque num turno pra ver detalhes e responder à designação.</p>
+      <p class="text-[11px] text-slate-400">Toque num turno pra ver detalhes e responder à designação. Toque num espaço vazio pra reservar um equipamento livre.</p>
     </div>
   {:else}
   <div class="rounded-xl border border-slate-200 bg-white p-3">
@@ -868,8 +951,74 @@
           <Icon nome="file-text" size={12} /> Relatório do turno
         </Button>
       {/if}
+
+      {#if agendamentoDoTurnoSel?.origem === 'reserva' && agendamentoDoTurnoSel.criado_por === data.minhaId && turnoSel.data >= hojeIso}
+        <Button variant="secondary" size="sm" loading={cancelandoReserva} onclick={cancelarReserva} class="w-full text-red-600">
+          <Icon nome="x" size={12} /> Cancelar reserva
+        </Button>
+      {/if}
     </div>
   {/if}
+</BottomSheet>
+
+<!-- T28: sheet de reserva (célula vazia da grade) -->
+<BottomSheet bind:open={sheetReserva} title="Reservar equipamento">
+  <div class="space-y-3">
+    <p class="text-xs text-slate-500">
+      {new Date(reservaData + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' })}
+      · {reservaHoraInicio}–{reservaHoraFim}
+    </p>
+
+    <div>
+      <span class="block text-sm font-medium mb-1">Equipamento livre nesse horário</span>
+      {#if carrinhosLivres.length === 0}
+        <p class="text-xs text-red-600">Nenhum equipamento livre nesse horário.</p>
+      {:else}
+        <div class="flex flex-wrap gap-1.5">
+          {#each carrinhosLivres as c (c.id)}
+            <button type="button" onclick={() => (reservaCarrinhoId = c.id)}
+              class="text-xs px-2 py-1 rounded border transition-colors"
+              class:bg-primary-600={reservaCarrinhoId === c.id} class:text-white={reservaCarrinhoId === c.id} class:border-primary-600={reservaCarrinhoId === c.id}
+              class:border-slate-300={reservaCarrinhoId !== c.id}
+            >{c.nome}</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <div>
+      <label for="reserva-ponto" class="block text-sm font-medium mb-1">Ponto</label>
+      <select id="reserva-ponto" bind:value={reservaPontoId} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value={null}>— escolher um ponto cadastrado —</option>
+        {#each Object.values(data.tpPontos) as p (p.id)}
+          <option value={p.id}>{p.nome}</option>
+        {/each}
+      </select>
+      <p class="text-xs text-slate-400 text-center my-1">ou</p>
+      <input bind:value={reservaPontoAvulso} placeholder="Ponto avulso (texto livre)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+
+    <div>
+      <span class="block text-sm font-medium mb-1">Convidar publicadores aprovados (opcional)</span>
+      {#if data.publicadoresAprovados.length === 0}
+        <p class="text-xs text-slate-400">Nenhum outro publicador aprovado ainda.</p>
+      {:else}
+        <div class="max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {#each data.publicadoresAprovados as p (p.id)}
+            <label class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="checkbox" checked={reservaConvidados.has(p.id)} onchange={() => toggleConvidado(p.id)} class="w-4 h-4 rounded" />
+              <span class="flex-1">{p.nome}</span>
+            </label>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetReserva = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" loading={criandoReserva} onclick={confirmarReserva} class="flex-1">Reservar</Button>
+    </div>
+  </div>
 </BottomSheet>
 
 <!-- Sheet relatório de fim de agendamento (TP-D) -->
