@@ -3,6 +3,7 @@
 
   let { form, data }: { form: any; data: { msg: string | null } } = $props();
   let submetendo = $state(false);
+  let mostrarEsqueci = $state(false);
 
   const msgsConhecidas: Record<string, string> = {
     desativado: 'Sua conta está desativada. Procure o admin da congregação.'
@@ -68,5 +69,19 @@
         {submetendo ? 'Entrando...' : 'Entrar'}
       </button>
     </form>
+
+    <button
+      type="button"
+      onclick={() => (mostrarEsqueci = !mostrarEsqueci)}
+      class="mt-4 w-full text-center text-sm text-primary-700 hover:underline"
+    >
+      Esqueci minha senha
+    </button>
+    {#if mostrarEsqueci}
+      <div class="mt-2 rounded bg-slate-50 p-3 text-sm text-slate-600">
+        Peça ao admin da congregação um link de redefinição de senha (em
+        Usuários → "Link de redefinição"). Ele vai te mandar por WhatsApp.
+      </div>
+    {/if}
   </div>
 </div>

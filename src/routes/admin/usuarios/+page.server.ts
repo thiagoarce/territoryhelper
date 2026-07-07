@@ -146,6 +146,41 @@ export const actions: Actions = {
     return { ok: true, msg: 'Convite criado', token: data.token };
   },
 
+  // A11: recuperação de senha — gera um convite pra um usuário JÁ
+  // existente (mesmo fluxo /convite/[token], que já sabe lidar com
+  // publicador_id existente: só troca a senha e marca email_confirm).
+  // Admin manda o link por WhatsApp; não depende de SMTP configurado.
+  gerarLinkRedefinicao: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+
+    const { data: userData, error: errU } = await supabaseAdmin.auth.admin.getUserById(id);
+    if (errU || !userData?.user?.email) return fail(400, { erro: 'Usuário não encontrado' });
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('nome, role')
+      .eq('id', id)
+      .maybeSingle();
+
+    const { data, error } = await supabaseAdmin
+      .from('convites')
+      .insert({
+        email: userData.user.email,
+        nome: profile?.nome ?? '',
+        role: (profile?.role ?? 'publicador') as Role,
+        publicador_id: id,
+        criado_por: locals.user?.id ?? null
+      })
+      .select('token')
+      .single();
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: 'Link de redefinição gerado', token: data.token };
+  },
+
   // Convites em lote — cola "nome,email,role" (role opcional) e gera todos
   // os links de uma vez, pra mandar por WhatsApp. Cada linha já cria o
   // publicador provisório (mesma lógica do criarConvite acima).
