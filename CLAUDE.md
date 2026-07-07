@@ -175,10 +175,14 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   **Concluir quadra** fundido aqui (long-press abre histórico +
   reverter + limpar conclusão + conflito de data anterior — era a tela
   `/admin/registro`, removida). **Filtro "TCEs"** (A21-f1): esconde o
-  resto e mostra as quadras-contêiner de cada TCE (derivadas de
-  `tce_unidades → unidades → locais.quadra_id`, sem convex hull cortando
-  quadra) + painel lateral (status/prazo/publicador), clicar num TCE
-  restringe o mapa só a ele.
+  resto e mostra as quadras-contêiner de cada TCE (sem convex hull
+  cortando quadra) + painel lateral (status/prazo/publicador), clicar num
+  TCE restringe o mapa só a ele. `quadras_ids` vem da view
+  `tces_com_quadras` (migration 070, `array_agg` em SQL de
+  `tce_unidades → unidades → locais.quadra_id`) — antes era um embed
+  PostgREST triplo reduzido a `Set` em JS no load de `/admin`, um bloco
+  síncrono grande o bastante pra contribuir com estouros do limite de CPU
+  do Worker nessa rota.
 - **Polígonos** (`/admin/poligonos`) — editor único, modos:
   - **Vincular**: pontos de endereço + filtros + cluster "por face" (IBGE);
     click vincula a quadra

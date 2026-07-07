@@ -39,23 +39,26 @@ export const load: PageServerLoad = async ({ locals }) => {
     locals.supabase.from('curadoria_edicoes').select('tipo').eq('status', 'pendente'),
     // A21-f1: TCEs pro filtro "TCEs" — representação por quadras-contêiner
     // (as quadras que têm ao menos 1 unidade do TCE), não mais convex hull.
+    // quadras_ids já vem pré-agregado pela view (migration 070) — antes era
+    // um embed triplo (tce_unidades→unidades→locais) reduzido a um Set em
+    // JS, bloco síncrono grande o bastante pra contribuir com estouros de
+    // CPU do Worker nesta rota.
     locals.supabase
-      .from('tces')
-      .select('id, nome, tipo, status, prazo, profiles(nome), tce_unidades(unidades(locais(quadra_id)))')
+      .from('tces_com_quadras')
+      .select('id, nome, tipo, status, prazo, publicador_id, quadras_ids')
       .order('nome')
   ]);
-  const tces: TceComQuadras[] = ((tcesRes.data ?? []) as any[]).map((t) => {
-    const quadraIds = new Set<string>();
-    for (const tu of t.tce_unidades ?? []) {
-      const qid = tu.unidades?.locais?.quadra_id;
-      if (qid) quadraIds.add(qid);
-    }
-    return {
-      id: t.id, nome: t.nome, tipo: t.tipo, status: t.status, prazo: t.prazo,
-      publicador_nome: t.profiles?.nome ?? null,
-      quadras_ids: [...quadraIds]
-    };
-  });
+  const publicadorIdsTce = [...new Set(((tcesRes.data ?? []) as any[]).map((t) => t.publicador_id).filter(Boolean))];
+  const nomesTce = new Map<string, string>();
+  if (publicadorIdsTce.length > 0) {
+    const { data: profRows } = await locals.supabase.from('profiles').select('id, nome').in('id', publicadorIdsTce);
+    for (const p of (profRows ?? []) as any[]) nomesTce.set(p.id, p.nome);
+  }
+  const tces: TceComQuadras[] = ((tcesRes.data ?? []) as any[]).map((t) => ({
+    id: t.id, nome: t.nome, tipo: t.tipo, status: t.status, prazo: t.prazo,
+    publicador_nome: t.publicador_id ? (nomesTce.get(t.publicador_id) ?? null) : null,
+    quadras_ids: t.quadras_ids ?? []
+  }));
   const curadoriaPendente = {
     total: curadoriaPendenteRes.data?.length ?? 0,
     edicao: (curadoriaPendenteRes.data ?? []).filter((c) => c.tipo === 'edicao').length,
