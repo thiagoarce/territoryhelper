@@ -165,7 +165,7 @@
       (tipo com equipamento livre no horário + convidar publicadores)
       → cria agendamento origem='reserva'; admin vê/cancela.
 
-- [ ] 🟡 **T29 (A22-f4)** Algoritmo de montagem (`$lib/tp-montagem.ts`
+- [x] 🟡 **T29 (A22-f4)** Algoritmo de montagem (`$lib/tp-montagem.ts`
       puro + testes) + painel de montagem no admin (proposta → revisar
       → publicar) + matriz de disponibilidades.
 
