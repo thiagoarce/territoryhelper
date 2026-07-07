@@ -105,8 +105,11 @@
   }
 
   type Arrasto =
-    // 'criar-pendente': ainda não sabemos se é um scroll horizontal (mobile)
-    // ou um drag vertical de criar — decide em `mover` pelo eixo dominante.
+    // 'criar-pendente': ainda não sabemos se é um scroll (mobile) ou um
+    // drag de criar — decide em `mover` pelo eixo dominante. No touch, a
+    // coluna não trava mais o touch-action (ver comentário no markup):
+    // um scroll de verdade dispara pointercancel e aborta limpo; só um
+    // tap parado (sem scroll) chega a criar-pendente no soltar().
     | { tipo: 'criar-pendente'; dia: string; colIndex: number; startX: number; startY: number; origem: number }
     | { tipo: 'criar'; dia: string; colIndex: number; origem: number; inicio: number; fim: number }
     | { tipo: 'ini' | 'fim'; dia: string; colIndex: number; oc: OcorrenciaAgendamento; inicio: number; fim: number };
@@ -238,7 +241,12 @@
        horas ficam sticky dentro dele. Antes eram 2 containers de scroll
        horizontal separados (cabeçalho vs. grade), que não se moviam juntos
        e no touch a coluna ficava travada (touch-action:none bloqueava o
-       swipe nativo). -->
+       swipe nativo). A coluna do dia (abaixo) TAMBÉM não fixa touch-action
+       — tinha "pan-x" (só permitia rolagem horizontal), o que travava a
+       rolagem VERTICAL do próprio grid em toda a área dos dias no iPhone
+       (só dava pra rolar puxando a faixa estreita das horas à esquerda).
+       Sem essa trava, um scroll de verdade cancela o gesto de criar via
+       pointercancel (ver `cancelarGesto`) — só um tap parado ainda cria. -->
   <div class="overflow-auto" style="max-height: 62vh">
     <div class="flex border-b border-slate-200 bg-slate-50 sticky top-0 z-20">
       <div class="w-9 shrink-0 sticky left-0 bg-slate-50 z-30"></div>
@@ -271,7 +279,7 @@
         <div
           bind:this={colEls[colIndex]}
           class="flex-1 min-w-[92px] relative border-l border-slate-100 select-none"
-          style="height: {alturaTotal}px; touch-action: pan-x;"
+          style="height: {alturaTotal}px;"
           onpointerdown={(e) => iniciarCriacao(e, dia, colIndex)}
           role="presentation"
         >
@@ -302,7 +310,7 @@
             class="absolute rounded-md text-[10px] overflow-hidden shadow-sm cursor-pointer select-none z-10"
             style="
               top: {Math.max(0, ((ev.ini - horaMin * 60) / 60) * ALTURA_HORA)}px;
-              height: {Math.max(20, ((ev.fim - ev.ini) / 60) * ALTURA_HORA)}px;
+              height: {Math.max(28, ((ev.fim - ev.ini) / 60) * ALTURA_HORA)}px;
               left: calc({ev.faixa * largura}% + 1px);
               width: calc({largura}% - 2px);
               background-color: {cor}22;
