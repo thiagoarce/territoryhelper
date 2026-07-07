@@ -41,7 +41,7 @@
       endereço num card (como a aba Prédios). Mesmo arquivo + comparar
       com `src/routes/publicador/predios/+page.svelte`.
 
-- [ ] 🟡 **T6 (A14)** Preferência global de mapa: migration 057a
+- [x] 🟡 **T6 (A14)** Preferência global de mapa: migration 059
       (`profiles.pref_basemap`), seletor em `/perfil`, componentes de
       mapa leem a pref, REMOVER seletores locais (Geral, Polígonos e
       onde mais houver `basemap` bindable na UI).

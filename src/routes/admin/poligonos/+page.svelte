@@ -20,6 +20,7 @@
       quadrasVazias: string[];
       quadrasOrfas: string[];
       quadrasParaRenomear: { id: string; color: string; status: string }[];
+      profile?: import('$lib/types').Profile | null;
     };
     form: any;
   } = $props();
@@ -32,7 +33,6 @@
   let filtroVinculo = $state<'vinculados' | 'sem' | 'ambos'>('ambos');
   let porFace = $state(false);
   let mostrarRotulos = $state(true);
-  let basemap = $state<'positron' | 'liberty' | 'bright'>('bright');
   let selecionadosLocais = $state<Set<number>>(new Set());
   let selecionadasQuadras = $state<Set<string>>(new Set());
   let quadraDestaque = $state<string | null>(null);
@@ -350,12 +350,6 @@
       </label>
     {/if}
 
-    <select bind:value={basemap} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Mapa base">
-      <option value="positron">Cinza</option>
-      <option value="liberty">Colorido</option>
-      <option value="bright">Brilhante</option>
-    </select>
-
     <label class="flex items-center gap-1.5 text-sm cursor-pointer ml-auto">
       <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
       Rótulos
@@ -579,7 +573,7 @@
     {colorirPorTerritorio}
     bind:selecionadosLocais
     bind:selecionadasQuadras
-    bind:basemap
+    basemap={data.profile?.pref_basemap ?? 'bright'}
     {onClickLocal}
     {onClickQuadra}
     {onClickFace}

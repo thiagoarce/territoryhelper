@@ -10,6 +10,7 @@ export interface Profile {
   role: Role;
   ativo: boolean;
   servo_publicacoes: boolean;
+  pref_basemap: 'positron' | 'liberty' | 'bright';
   criado_em: string;
   atualizado_em: string;
 }
