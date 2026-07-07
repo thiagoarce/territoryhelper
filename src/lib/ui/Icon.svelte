@@ -10,8 +10,8 @@
     Plus, Paperclip, TriangleAlert, Check, X, RotateCcw, RefreshCw, Eraser,
     SquareCheck, Pin, Clock, FileText, Shield, CircleDot, Plug, Sparkles,
     Smartphone, MailOpen, Megaphone, Wheat, Tag, Info, Zap, Play,
-    ChevronDown, ChevronRight, Shapes, Menu, History, Square, SquareParking, Search,
-    Circle, ArrowRightLeft, LoaderCircle, Bell
+    ChevronDown, ChevronUp, ChevronRight, Shapes, Menu, History, Square, SquareParking, Search,
+    Circle, ArrowRightLeft, LoaderCircle, Bell, Truck
   } from 'lucide-svelte';
 
   export const ICONES = {
@@ -80,7 +80,9 @@
     zap: Zap,
     play: Play,
     'chevron-down': ChevronDown,
+    'chevron-up': ChevronUp,
     'chevron-right': ChevronRight,
+    truck: Truck,
     shapes: Shapes,
     menu: Menu,
     history: History,

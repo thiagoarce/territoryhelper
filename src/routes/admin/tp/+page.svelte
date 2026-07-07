@@ -8,6 +8,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import TpGradeSemana from '$lib/components/TpGradeSemana.svelte';
   import type { OcorrenciaAgendamento, AgendamentoBase, Recorrencia } from '$lib/tp-agendamentos';
+  import { montarMes, type TurnoAlvo, type ResultadoMontagem } from '$lib/tp-montagem';
   import type {
     TpCarrinhoLite,
     TpPontoLite,
@@ -29,6 +30,11 @@
       participantesPorOcorrencia: Record<string, TpParticipanteLinha[]>;
       disponibilidade: TpDisponibilidadeLinha[];
       minhaId: string;
+      mesMontagem: string;
+      dispMesMontagem: { publicador_id: string; dia: string; hora_inicio: string; hora_fim: string }[];
+      transportaPorId: Record<string, boolean>;
+      participantesMesMontagem: { agendamento_id: number; data: string; publicador_id: string }[];
+      turnosAlvoMontagem: TurnoAlvo[];
     };
   } = $props();
 
@@ -310,6 +316,75 @@
   function fmtMesRotulo(mes: string): string {
     return new Date(mes + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }
+
+  // ── T29: painel de montagem automática (proposta → revisar → publicar) ──
+  const nomePorIdMontagem = $derived(new Map(data.publicadores.map((p) => [p.id, p.nome])));
+  function chaveProposta(agendamentoId: number, dataOc: string, publicadorId: string): string {
+    return agendamentoId + '|' + dataOc + '|' + publicadorId;
+  }
+  let mostrarMontagem = $state(false);
+  let propostaMontagem = $state<ResultadoMontagem | null>(null);
+  let propostasRejeitadas = $state<Set<string>>(new Set());
+  let publicandoMontagem = $state(false);
+
+  function gerarProposta() {
+    const disponibilidades = data.dispMesMontagem.map((d) => ({
+      publicador_id: d.publicador_id, dia: d.dia, hora_inicio: d.hora_inicio, hora_fim: d.hora_fim
+    }));
+    const publicadoresMontagem = data.publicadores.map((p) => ({
+      id: p.id, transporta_carrinho: data.transportaPorId[p.id] ?? false
+    }));
+    propostaMontagem = montarMes(data.turnosAlvoMontagem, disponibilidades, publicadoresMontagem, data.participantesMesMontagem);
+    propostasRejeitadas = new Set();
+  }
+  function toggleProposta(agendamentoId: number, dataOc: string, publicadorId: string) {
+    const k = chaveProposta(agendamentoId, dataOc, publicadorId);
+    if (propostasRejeitadas.has(k)) propostasRejeitadas.delete(k); else propostasRejeitadas.add(k);
+    propostasRejeitadas = new Set(propostasRejeitadas);
+  }
+  const propostasPorTurno = $derived.by(() => {
+    const m = new Map<string, ResultadoMontagem['propostas']>();
+    if (!propostaMontagem) return m;
+    for (const p of propostaMontagem.propostas) {
+      const k = p.agendamento_id + '|' + p.data;
+      const arr = m.get(k);
+      if (arr) arr.push(p); else m.set(k, [p]);
+    }
+    return m;
+  });
+  const qtdAceitas = $derived(
+    propostaMontagem ? propostaMontagem.propostas.filter((p) => !propostasRejeitadas.has(chaveProposta(p.agendamento_id, p.data, p.publicador_id))).length : 0
+  );
+  async function publicarProposta() {
+    if (!propostaMontagem) return;
+    const aceitas = propostaMontagem.propostas.filter(
+      (p) => !propostasRejeitadas.has(chaveProposta(p.agendamento_id, p.data, p.publicador_id))
+    );
+    if (aceitas.length === 0) { toast.error('Nenhuma designação selecionada'); return; }
+    publicandoMontagem = true;
+    const fd = new FormData();
+    fd.append('propostas_json', JSON.stringify(aceitas.map((p) => ({ agendamento_id: p.agendamento_id, data: p.data, publicador_id: p.publicador_id }))));
+    const res = await fetch('?/publicarPropostaMontagem', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    publicandoMontagem = false;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg || 'Publicado'));
+      propostaMontagem = null;
+      mostrarMontagem = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
+
+  // Matriz de disponibilidades: linhas = publicadores aprovados, colunas =
+  // só os dias do mês que têm alguma janela marcada (evita grade vazia de 31 col).
+  const diasComDisponibilidade = $derived(
+    [...new Set(data.dispMesMontagem.map((d) => d.dia))].sort()
+  );
+  function temDisponibilidade(publicadorId: string, dia: string): boolean {
+    return data.dispMesMontagem.some((d) => d.publicador_id === publicadorId && d.dia === dia);
+  }
 </script>
 
 <div class="p-4 space-y-3 pb-10">
@@ -337,6 +412,89 @@
       {/each}
     </div>
   </div>
+
+  <!-- T29: painel de montagem automática -->
+  <div class="rounded-xl border border-slate-200 bg-white p-3">
+    <button type="button" onclick={() => (mostrarMontagem = !mostrarMontagem)} class="w-full flex items-center justify-between gap-2 text-sm font-semibold">
+      <span><Icon nome="sparkles" size={14} /> Montagem automática — <span class="capitalize">{fmtMesRotulo(data.mesMontagem)}</span></span>
+      <Icon nome={mostrarMontagem ? 'chevron-up' : 'chevron-down'} size={14} class="text-slate-400" />
+    </button>
+    {#if mostrarMontagem}
+      <div class="mt-3 space-y-3">
+        <p class="text-xs text-slate-500">
+          Gera uma PROPOSTA de designação a partir da disponibilidade do mês — nada é gravado até você revisar e publicar.
+          {data.turnosAlvoMontagem.length} turno(s) no mês, {data.dispMesMontagem.length} janela(s) de disponibilidade marcadas.
+        </p>
+
+        {#if diasComDisponibilidade.length > 0}
+          <details class="text-xs">
+            <summary class="cursor-pointer text-slate-600 hover:underline">Matriz de disponibilidades ({diasComDisponibilidade.length} dia(s) marcados)</summary>
+            <div class="overflow-x-auto mt-2">
+              <table class="text-[10px] border-collapse">
+                <thead>
+                  <tr>
+                    <th class="sticky left-0 bg-white text-left pr-2 py-1">Publicador</th>
+                    {#each diasComDisponibilidade as dia}
+                      <th class="px-1 py-1 text-center font-normal">{dia.substring(8, 10)}</th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each data.publicadores as p (p.id)}
+                    <tr class="border-t border-slate-100">
+                      <td class="sticky left-0 bg-white pr-2 py-1 whitespace-nowrap">{p.nome}</td>
+                      {#each diasComDisponibilidade as dia}
+                        <td class="text-center py-1">{temDisponibilidade(p.id, dia) ? '●' : ''}</td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        {/if}
+
+        <Button variant="secondary" size="sm" onclick={gerarProposta}><Icon nome="sparkles" size={12} /> Gerar proposta</Button>
+
+        {#if propostaMontagem}
+          {#if propostaMontagem.propostas.length === 0}
+            <p class="text-xs text-amber-700">Nenhuma designação proposta — confira se há disponibilidade marcada e turnos no mês.</p>
+          {:else}
+            <div class="space-y-2 max-h-80 overflow-y-auto border border-slate-200 rounded-lg p-2">
+              {#each propostaMontagem.resumoPorTurno as r (r.agendamento_id + '|' + r.data)}
+                {@const propostasDoTurno = propostasPorTurno.get(r.agendamento_id + '|' + r.data) ?? []}
+                {#if propostasDoTurno.length > 0}
+                  {@const oc = data.turnosAlvoMontagem.find((t) => t.agendamento_id === r.agendamento_id && t.data === r.data)}
+                  <div class="text-xs bg-slate-50 rounded-lg p-2">
+                    <div class="font-medium flex items-center gap-1.5">
+                      {new Date(r.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+                      {#if oc}· {oc.hora_inicio.substring(0, 5)}–{oc.hora_fim.substring(0, 5)}{/if}
+                      {#if !r.temTransporte}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">sem transporte</span>{/if}
+                      {#if r.designados < r.alvoMin}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">abaixo do mínimo ({r.alvoMin})</span>{/if}
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 mt-1">
+                      {#each propostasDoTurno as p (p.publicador_id)}
+                        {@const rejeitada = propostasRejeitadas.has(chaveProposta(p.agendamento_id, p.data, p.publicador_id))}
+                        <label class="flex items-center gap-1 cursor-pointer px-1.5 py-0.5 rounded {rejeitada ? 'bg-slate-100 text-slate-400 line-through' : 'bg-white border border-slate-200'}">
+                          <input type="checkbox" checked={!rejeitada} onchange={() => toggleProposta(p.agendamento_id, p.data, p.publicador_id)} class="w-3 h-3" />
+                          {nomePorIdMontagem.get(p.publicador_id) ?? '?'}
+                          {#if p.motivo === 'transporte'}<Icon nome="truck" size={10} />{/if}
+                        </label>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+            <Button variant="primary" size="sm" loading={publicandoMontagem} onclick={publicarProposta} class="w-full">
+              Publicar {qtdAceitas} designação(ões)
+            </Button>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+  </div>
+
   <div class="flex items-center justify-between flex-wrap gap-2">
     <div class="flex gap-1 bg-slate-100 rounded-lg p-1">
       {#each [['semana', 'Semana'], ['mes', 'Mês']] as [p, label]}

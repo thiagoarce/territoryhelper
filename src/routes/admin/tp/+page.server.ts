@@ -6,6 +6,7 @@ import type { AgendamentoBase, ExcecaoBase, Recorrencia, OcorrenciaAgendamento }
 import { exigirAdmin, carregarAgendamentosEExcecoes, janelaChecagem } from './_shared';
 import { criarNotificacao } from '$lib/server/push';
 import { hojeIsoBrasil } from '$lib/utils/data';
+import { montarMes, type TurnoAlvo, type JanelaDisponibilidade, type PublicadorMontagem, type ParticipanteExistente, type ResultadoMontagem } from '$lib/tp-montagem';
 
 export interface TpCarrinhoLite {
   id: number;
@@ -126,6 +127,36 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   // popular o sheet de editar série (recorrência, data inicial, etc.).
   const agendamentosDoCarrinho = agendamentos.filter((a) => carrinhosSelecionados.includes(a.carrinho_id));
 
+  // T29: painel de montagem — mês alvo é o primeiro em fase 'montagem'
+  // entre os 3 carregados (senão o mês atual), ou o que vier em ?mesMontagem=.
+  const mesMontagemParam = url.searchParams.get('mesMontagem');
+  const mesMontagem =
+    (mesMontagemParam && mesesAlvo.includes(mesMontagemParam) && mesMontagemParam) ||
+    tpMeses.find((m) => m.fase === 'montagem')?.mes ||
+    mesAtual;
+  const [ym, mm] = mesMontagem.split('-').map(Number);
+  const fimMesMontagem = new Date(ym, mm, 0, 12);
+  const iniMontagem = `${mesMontagem}-01`;
+  const fimMontagem = `${mesMontagem}-${String(fimMesMontagem.getDate()).padStart(2, '0')}`;
+
+  const [dispMesRes, prefsRes, participantesMesRes] = await Promise.all([
+    locals.supabase
+      .from('tp_disponibilidade_mes')
+      .select('publicador_id, dia, hora_inicio, hora_fim')
+      .eq('mes', mesMontagem),
+    locals.supabase.from('tp_preferencias').select('publicador_id, transporta_carrinho'),
+    locals.supabase
+      .from('tp_agendamento_participantes')
+      .select('agendamento_id, data, publicador_id')
+      .gte('data', iniMontagem)
+      .lte('data', fimMontagem)
+  ]);
+  const turnosAlvoMontagem: TurnoAlvo[] = ocorrenciasAgendamentoEntre(agendamentos, excecoes, iniMontagem, fimMontagem)
+    .map((o) => ({
+      agendamento_id: o.agendamento_id, data: o.data, carrinho_id: o.carrinho_id,
+      ponto_id: o.ponto_id, ponto_avulso: o.ponto_avulso, hora_inicio: o.hora_inicio, hora_fim: o.hora_fim
+    }));
+
   return {
     tpMeses,
     periodo,
@@ -138,7 +169,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     agendamentosDoCarrinho,
     participantesPorOcorrencia,
     disponibilidade,
-    minhaId: locals.user!.id
+    minhaId: locals.user!.id,
+    mesMontagem,
+    dispMesMontagem: (dispMesRes.data ?? []) as { publicador_id: string; dia: string; hora_inicio: string; hora_fim: string }[],
+    transportaPorId: Object.fromEntries(((prefsRes.data ?? []) as any[]).map((p) => [p.publicador_id, p.transporta_carrinho])) as Record<string, boolean>,
+    participantesMesMontagem: (participantesMesRes.data ?? []) as ParticipanteExistente[],
+    turnosAlvoMontagem
   };
 };
 
@@ -193,6 +229,33 @@ export const actions: Actions = {
       }
     }
     return { ok: true, msg: `Mês ${mes} → ${fase}` };
+  },
+
+  // T29: publica a proposta de montagem revisada pelo admin — o cálculo
+  // (montarMes) roda no CLIENTE (função pura, dados já carregados); aqui
+  // só grava o que o admin aceitou. Notificação sai quando o admin avança
+  // a fase do mês pra 'publicado' (ação definirFaseMes acima), não aqui —
+  // evita notificar 2x quem já tinha sido designado manualmente também.
+  publicarPropostaMontagem: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    let linhas: { agendamento_id: number; data: string; publicador_id: string }[];
+    try {
+      linhas = JSON.parse(String(fd.get('propostas_json') ?? '[]'));
+    } catch {
+      return fail(400, { erro: 'Proposta inválida' });
+    }
+    if (!Array.isArray(linhas) || linhas.length === 0) return fail(400, { erro: 'Nenhuma designação selecionada' });
+    const { error } = await locals.supabase.from('tp_agendamento_participantes').upsert(
+      linhas.map((l) => ({
+        agendamento_id: l.agendamento_id, data: l.data, publicador_id: l.publicador_id,
+        origem: 'designacao', designado_por: locals.user!.id
+      })),
+      { onConflict: 'agendamento_id,data,publicador_id', ignoreDuplicates: true }
+    );
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `${linhas.length} designação(ões) publicada(s)` };
   },
 
   criarAgendamento: async ({ request, locals }) => {
