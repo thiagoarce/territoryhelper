@@ -31,7 +31,7 @@
   } = $props();
 
   // Estado
-  let colorirPor = $state<'status' | 'territorio' | 'densidade' | 'idade'>('status');
+  let colorirPor = $state<'status' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'idade'>('status');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
@@ -240,7 +240,8 @@
     <select bind:value={colorirPor} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
       <option value="status">Cor por status</option>
       <option value="territorio">Cor por território</option>
-      <option value="densidade">Cor por densidade</option>
+      <option value="densidade_enderecos">Cor por densidade (endereços)</option>
+      <option value="densidade_residencias">Cor por densidade (residências)</option>
       <option value="idade">Cor por idade da conclusão</option>
     </select>
 
