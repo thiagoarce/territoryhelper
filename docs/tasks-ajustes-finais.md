@@ -63,7 +63,7 @@
       (conclusão/território/densidades) + popup de detalhe no clique;
       `/publicador/mapa` ganha o seletor de modos e o popup (sem ação).
 
-- [ ] 🟡 **T10 (A24)** Geral: fundir cor "status"+"idade" em "conclusão";
+- [x] 🟡 **T10 (A24)** Geral: fundir cor "status"+"idade" em "conclusão";
       remover botão/lista "Designações" (manter ações espaciais);
       popup só em long-press OU painel de rodapé (escolher o mais
       simples); densidade por residências no seletor.

@@ -15,7 +15,7 @@ import { statusCampanha } from '$lib/campanhas';
 import { criarNotificacao } from '$lib/server/push';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const [quadras, designacoes, publicadores, campanhaRes] = await Promise.all([
+  const [quadras, designacoes, publicadores, campanhaRes, curadoriaPendenteRes] = await Promise.all([
     listarQuadrasComGeo(locals.supabase),
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
@@ -23,8 +23,17 @@ export const load: PageServerLoad = async ({ locals }) => {
       .from('campanhas')
       .select('id, nome, data_inicio, data_alvo, ativa')
       .eq('ativa', true)
-      .maybeSingle()
+      .maybeSingle(),
+    // A24: "Feedback do campo" — resumo da fila de curadoria (T12 constrói a
+    // tela de revisão; aqui é só o contador + link).
+    locals.supabase.from('curadoria_edicoes').select('tipo').eq('status', 'pendente')
   ]);
+  const curadoriaPendente = {
+    total: curadoriaPendenteRes.data?.length ?? 0,
+    edicao: (curadoriaPendenteRes.data ?? []).filter((c) => c.tipo === 'edicao').length,
+    criacao: (curadoriaPendenteRes.data ?? []).filter((c) => c.tipo === 'criacao').length,
+    nao_existe: (curadoriaPendenteRes.data ?? []).filter((c) => c.tipo === 'nao_existe').length
+  };
   const abertas = designacoes.filter((d) => d.status === 'aberta');
   const quadrasAlocadas = new Set<string>();
   for (const d of abertas) for (const q of d.quadras_ids) quadrasAlocadas.add(q);
@@ -40,35 +49,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     ? quadras.filter((q) => q.reservada_campanha_id === campanhaAtiva.id).map((q) => q.id)
     : [];
   if (campanhaPlanejada) for (const q of reservadasIds) quadrasAlocadas.add(q);
-
-  // Participantes por designação (multi-publicador)
-  const participantesPorDesignacao: Record<number, string[]> = {};
-  if (abertas.length > 0) {
-    const { data: parts } = await locals.supabase
-      .from('designacao_publicadores')
-      .select('designacao_id, publicador_id, papel')
-      .in('designacao_id', abertas.map((d) => d.id));
-    for (const p of parts ?? []) {
-      const arr = participantesPorDesignacao[p.designacao_id] ?? [];
-      // Líder primeiro
-      if (p.papel === 'lider') arr.unshift(p.publicador_id);
-      else arr.push(p.publicador_id);
-      participantesPorDesignacao[p.designacao_id] = arr;
-    }
-  }
-
-  // TCEs (criados em Polígonos; designados aqui no Visão Geral)
-  const { data: tceRows } = await locals.supabase
-    .from('tces')
-    .select('id, nome, tipo, status, prazo, publicador_id')
-    .in('status', ['aberto'])
-    .order('nome');
-  const nomePub = new Map(publicadores.map((p) => [p.id, p.nome]));
-  const tces = (tceRows ?? []).map((t: any) => ({
-    id: t.id, nome: t.nome, tipo: t.tipo, status: t.status, prazo: t.prazo,
-    publicador_id: t.publicador_id,
-    publicador_nome: t.publicador_id ? (nomePub.get(t.publicador_id) ?? null) : null
-  }));
 
   // Arranjos do tipo 'quadras' (pra anexar quadras selecionadas via Visão Geral)
   const { data: modsQ } = await locals.supabase
@@ -112,33 +92,16 @@ export const load: PageServerLoad = async ({ locals }) => {
     designacoesAbertas: abertas,
     publicadores,
     quadrasAlocadas: [...quadrasAlocadas],
-    participantesPorDesignacao,
-    tces,
     arranjosQuadras,
     arranjoPorQuadra,
     campanhaAtiva,
     campanhaPlanejada,
-    reservadasIds
+    reservadasIds,
+    curadoriaPendente
   };
 };
 
 export const actions: Actions = {
-  // Designa um TCE a um publicador/dirigente com prazo (mesmo lugar das designações)
-  atribuirTce: async ({ request, locals }) => {
-    const guard = exigirAdminAction(locals);
-    if (guard) return guard;
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    const fd = await request.formData();
-    const id = String(fd.get('id') ?? '');
-    const publicadorId = String(fd.get('publicador_id') ?? '').trim() || null;
-    const prazo = String(fd.get('prazo') ?? '').trim() || null;
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase
-      .from('tces').update({ publicador_id: publicadorId, prazo, status: 'aberto' }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: publicadorId ? 'TCE designado' : 'Designação removida' };
-  },
-
   // Admin designa TERRITÓRIO PESSOAL direto da Geral (sempre pessoal —
   // saída em grupo é arranjo, gerido em /admin/arranjos com dirigente).
   criarDesignacao: async ({ request, locals }) => {
@@ -190,55 +153,6 @@ export const actions: Actions = {
       url: '/publicador'
     });
     return { ok: true, msg: `Designada a ${publicadorIds.length} publicador(es) com ${quadrasIds.length} quadra(s)` };
-  },
-
-  encerrarDesignacao: async ({ request, locals }) => {
-    const guard = exigirAdminAction(locals);
-    if (guard) return guard;
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error } = await locals.supabase
-      .from('designacoes').update({ status: 'concluida' }).eq('id', id);
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: 'Encerrada' };
-  },
-
-  editarDesignacao: async ({ request, locals }) => {
-    const guard = exigirAdminAction(locals);
-    if (guard) return guard;
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-
-    const prazo = String(fd.get('prazo') ?? '').trim() || null;
-    const notas = String(fd.get('notas') ?? '').trim() || null;
-    const quadrasIds = fd.getAll('quadras_ids').map((v) => String(v)).filter(Boolean);
-    const publicadorIds = fd.getAll('publicador_ids').map((v) => String(v)).filter(Boolean);
-
-    const { error: errU } = await locals.supabase
-      .from('designacoes').update({ prazo, notas }).eq('id', id);
-    if (errU) return fail(400, { erro: errU.message });
-
-    if (quadrasIds.length > 0) {
-      await locals.supabase.from('designacao_quadras').delete().eq('designacao_id', id);
-      const linhas = quadrasIds.map((qid) => ({ designacao_id: id, quadra_id: qid }));
-      const { error: errQ } = await locals.supabase.from('designacao_quadras').insert(linhas);
-      if (errQ) return fail(400, { erro: 'Falhou ao trocar quadras: ' + errQ.message });
-    }
-
-    if (publicadorIds.length > 0) {
-      await locals.supabase.from('designacao_publicadores').delete().eq('designacao_id', id);
-      const part = publicadorIds.map((pid, i) => ({
-        designacao_id: id, publicador_id: pid, papel: i === 0 ? 'lider' : 'participante'
-      }));
-      await locals.supabase.from('designacao_publicadores').insert(part);
-      // Mantém o primeiro como publicador_id principal
-      await locals.supabase.from('designacoes').update({ publicador_id: publicadorIds[0] }).eq('id', id);
-    }
-    return { ok: true, msg: 'Designação atualizada' };
   },
 
   // Anexa quadras selecionadas a um arranjo (tipo 'quadras'). Admin → arranjo

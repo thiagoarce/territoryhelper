@@ -3,7 +3,7 @@
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
 
-  type ColorirPor = 'status' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'idade' | 'campanha';
+  type ColorirPor = 'conclusao' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'campanha';
   type Basemap = 'positron' | 'liberty' | 'bright';
 
   const BASEMAPS: Record<Basemap, string> = {
@@ -15,7 +15,7 @@
   let {
     quadras,
     altura = 600,
-    colorirPor = 'status',
+    colorirPor = 'conclusao',
     mostrarRotulos = true,
     mostrarTerritorios = false,
     quadrasAlocadas = [],
@@ -138,10 +138,12 @@
   function buildFillExpr(modo: ColorirPor, sel: Set<string>, alocadas: Set<string>): any {
     // Default por modo
     let defaultColor: any;
-    if (modo === 'status') {
-      // Status real = ativa/inativa. Pra "feita ou não", usa a RECÊNCIA da
-      // conclusão (igual ao Registro): nunca = âmbar (a fazer), feita há pouco
-      // = verde, há muito = vermelho. Inativa = cinza escuro distinto.
+    if (modo === 'conclusao') {
+      // Fundiu status+idade (A24) — só existia distinção artificial entre
+      // "status" (nunca=âmbar) e "idade" (nunca=cinza); manter uma só leitura.
+      // Ativa/inativa é real; "feita ou não" usa a RECÊNCIA da conclusão
+      // (igual ao Registro): nunca = âmbar (a fazer), feita há pouco = verde,
+      // há muito = vermelho. Inativa = cinza escuro distinto.
       defaultColor = [
         'case',
         ['!', ['get', 'ativa']], 'rgba(100,116,139,0.4)',
@@ -174,20 +176,6 @@
         'case',
         ['get', 'concluida_na_campanha'], 'rgba(21,128,61,0.75)',
         'rgba(148,163,184,0.35)'
-      ];
-    } else if (modo === 'idade') {
-      // -1 = nunca concluído (cinza), 0-15d verde, 30d amarelo, 60d laranja, 90+ vermelho
-      defaultColor = [
-        'case',
-        ['<', ['get', 'dias_concluido'], 0], 'rgba(148,163,184,0.25)',
-        [
-          'interpolate', ['linear'], ['get', 'dias_concluido'],
-          0, 'rgba(34,197,94,0.55)',
-          15, 'rgba(132,204,22,0.55)',
-          30, 'rgba(250,204,21,0.55)',
-          60, 'rgba(249,115,22,0.55)',
-          90, 'rgba(220,38,38,0.6)'
-        ]
       ];
     } else {
       defaultColor = 'rgba(148,163,184,0.3)';

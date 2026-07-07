@@ -37,7 +37,7 @@
     form: any;
   } = $props();
 
-  let colorirMapa = $state<'campanha' | 'status'>('campanha');
+  let colorirMapa = $state<'campanha' | 'conclusao'>('campanha');
 
   let sheetObj = $state(false);
   let editando: Campanha | null = $state(null);
@@ -363,12 +363,12 @@
           >Só a campanha</button>
           <button
             class="text-xs px-2 py-1 rounded border"
-            class:bg-primary-100={colorirMapa === 'status'}
-            class:border-primary-500={colorirMapa === 'status'}
-            class:text-primary-700={colorirMapa === 'status'}
-            class:border-slate-200={colorirMapa !== 'status'}
-            class:text-slate-600={colorirMapa !== 'status'}
-            onclick={() => (colorirMapa = 'status')}
+            class:bg-primary-100={colorirMapa === 'conclusao'}
+            class:border-primary-500={colorirMapa === 'conclusao'}
+            class:text-primary-700={colorirMapa === 'conclusao'}
+            class:border-slate-200={colorirMapa !== 'conclusao'}
+            class:text-slate-600={colorirMapa !== 'conclusao'}
+            onclick={() => (colorirMapa = 'conclusao')}
           >Histórico completo</button>
         </div>
       </div>

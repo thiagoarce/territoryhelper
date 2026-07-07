@@ -18,20 +18,19 @@
       designacoesAbertas: DesignacaoEnriquecida[];
       publicadores: { id: string; nome: string; role: string }[];
       quadrasAlocadas: string[];
-      participantesPorDesignacao: Record<number, string[]>;
-      tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null }[];
       arranjosQuadras: { id: number; nome: string | null; modalidade_nome: string; modalidade_cor: string; data: string | null; dia_semana: number | null; recorrente: boolean; quadras_ids: string[] | null; hora_inicio: string | null }[];
       arranjoPorQuadra: Record<string, { id: number; nome: string; modalidade_nome: string; modalidade_cor: string; data: string | null }>;
       campanhaAtiva: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
       campanhaPlanejada: { id: number; nome: string; data_inicio: string; data_alvo: string; ativa: boolean } | null;
       reservadasIds: string[];
+      curadoriaPendente: { total: number; edicao: number; criacao: number; nao_existe: number };
       profile?: import('$lib/types').Profile | null;
     };
     form: any;
   } = $props();
 
   // Estado
-  let colorirPor = $state<'status' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'idade'>('status');
+  let colorirPor = $state<'conclusao' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias'>('conclusao');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
@@ -92,19 +91,10 @@
   }
 
   // Sheets
-  let sheetDesignacoes = $state(false);
   let sheetDesignar = $state(false);
-  let sheetEditarDesignacao = $state(false);
-  let editandoDesignacao = $state<DesignacaoEnriquecida | null>(null);
-  let editPublicadoresSel = $state<Set<string>>(new Set());
-  let editQuadrasSel = $state<Set<string>>(new Set());
 
   // Estado do form de designar
   let publicadoresSel = $state<Set<string>>(new Set());
-
-  // TCE designar
-  let sheetAtribuirTce = $state(false);
-  let tceAtribuir = $state<{ id: string; nome: string; publicador_id: string | null; prazo: string | null } | null>(null);
 
   // Adicionar quadras a um arranjo
   let sheetArranjo = $state(false);
@@ -173,26 +163,6 @@
     }
   }
 
-  function abrirEditarDesignacao(d: DesignacaoEnriquecida) {
-    editandoDesignacao = d;
-    editQuadrasSel = new Set(d.quadras_ids);
-    editPublicadoresSel = new Set(data.participantesPorDesignacao[d.id] ?? (d.publicador_id ? [d.publicador_id] : []));
-    sheetDesignacoes = false;
-    sheetEditarDesignacao = true;
-  }
-
-  function toggleEditQuadra(id: string) {
-    if (editQuadrasSel.has(id)) editQuadrasSel.delete(id);
-    else editQuadrasSel.add(id);
-    editQuadrasSel = new Set(editQuadrasSel);
-  }
-  function toggleEditPub(id: string) {
-    if (editPublicadoresSel.has(id)) editPublicadoresSel.delete(id);
-    else editPublicadoresSel.add(id);
-    editPublicadoresSel = new Set(editPublicadoresSel);
-  }
-
-
   function onClickQuadra(q: QuadraGeo, multi: boolean) {
     if (!q.ativa) {
       toast.info(`Quadra ${q.id} está inativa — edita em Polígonos pra reativar`);
@@ -227,22 +197,11 @@
 <div class="p-4 space-y-3">
   <!-- Toolbar topo -->
   <div class="flex flex-wrap items-center gap-2">
-    <button
-      onclick={() => (sheetDesignacoes = true)}
-      class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium flex items-center gap-1.5"
-    >
-      <Icon nome="lock" size={14} /> Designações
-      {#if stats.abertas > 0}
-        <span class="bg-blue-700 text-white rounded-full text-[10px] px-1.5 min-w-[18px] text-center">{stats.abertas}</span>
-      {/if}
-    </button>
-
     <select bind:value={colorirPor} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
-      <option value="status">Cor por status</option>
+      <option value="conclusao">Cor por conclusão</option>
       <option value="territorio">Cor por território</option>
       <option value="densidade_enderecos">Cor por densidade (endereços)</option>
       <option value="densidade_residencias">Cor por densidade (residências)</option>
-      <option value="idade">Cor por idade da conclusão</option>
     </select>
 
     <label class="flex items-center gap-1.5 text-sm cursor-pointer ml-auto">
@@ -271,14 +230,15 @@
     </div>
   </div>
 
-  {#if colorirPor === 'idade'}
+  {#if colorirPor === 'conclusao'}
     <div class="flex items-center gap-3 text-xs flex-wrap">
-      <span class="font-medium text-slate-600">Idade:</span>
+      <span class="font-medium text-slate-600">Conclusão:</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-amber-500/60"></span>a fazer</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-green-500/60"></span>&lt;15d</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-yellow-400/60"></span>&lt;30d</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-orange-500/60"></span>&lt;60d</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-600/60"></span>&gt;90d</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/30"></span>nunca</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/30"></span>inativa</span>
     </div>
   {/if}
 
@@ -309,6 +269,21 @@
       <strong>{selecionadas.size}</strong> selecionada(s) — use a barra inferior pra agir
     {/if}
   </p>
+
+  {#if data.curadoriaPendente.total > 0}
+    <a
+      href="/admin/poligonos?modo=curadoria"
+      class="flex items-center justify-between gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-3 hover:bg-amber-100 transition-colors"
+    >
+      <span class="text-sm font-medium text-amber-900">
+        <Icon nome="alert" size={14} /> Feedback do campo — {data.curadoriaPendente.total} pendente(s)
+        <span class="text-xs text-amber-700 font-normal">
+          ({data.curadoriaPendente.edicao} edição(ões) · {data.curadoriaPendente.criacao} inserção(ões) · {data.curadoriaPendente.nao_existe} "não existe")
+        </span>
+      </span>
+      <Icon nome="chevron-right" size={16} class="text-amber-700" />
+    </a>
+  {/if}
 </div>
 
 <!-- Barra inferior de ações em massa -->
@@ -410,116 +385,6 @@
   </div>
 {/if}
 
-<!-- Sheet: lista designações ativas (com editar/encerrar) -->
-<BottomSheet bind:open={sheetDesignacoes} title="Designações ativas">
-  {#if data.designacoesAbertas.length === 0}
-    <div class="text-center py-10 text-slate-400">Nenhuma designação aberta.</div>
-  {:else}
-    <ul class="space-y-2">
-      {#each data.designacoesAbertas as d}
-        <li class="rounded-lg border border-slate-200 p-3">
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex-1 min-w-0">
-              <div class="font-medium flex items-center gap-2">
-                {d.publicador_nome ?? '(sem publicador)'}
-                {#if (d as any).tipo === 'arranjo'}<span class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">arranjo</span>{/if}
-              </div>
-              <div class="text-xs text-slate-500 mt-0.5">
-                {d.quadras_ids.length} quadra(s) · {d.quadras_ids.join(', ')}
-              </div>
-              {#if d.prazo}<div class="text-xs text-amber-700 mt-1">prazo: {new Date(d.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}</div>{/if}
-              {#if d.notas}<div class="text-xs text-slate-500 italic mt-1">{d.notas}</div>{/if}
-            </div>
-            <div class="flex flex-col gap-1">
-              <button onclick={() => abrirEditarDesignacao(d)} class="text-[11px] text-primary-700 hover:underline">Editar</button>
-              <form
-                method="POST"
-                action="?/encerrarDesignacao"
-                use:enhance={() => async ({ result, update }) => {
-                  await update();
-                  if (result.type === 'success') {
-                    toast.success('Encerrada');
-                    await invalidateAll();
-                  }
-                }}
-                onsubmit={(e) => { if (!confirm(`Encerrar designação de ${d.publicador_nome ?? '?'}?`)) e.preventDefault(); }}
-              >
-                <input type="hidden" name="id" value={d.id} />
-                <button type="submit" class="text-[11px] text-red-700 hover:underline">Encerrar</button>
-              </form>
-            </div>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-
-  <!-- TCEs: designar aqui também (designações num lugar só) -->
-  {#if data.tces.length > 0}
-    <div class="mt-4 pt-3 border-t border-slate-100">
-      <div class="text-xs font-semibold text-slate-500 uppercase mb-2"><Icon nome="store" size={14} /> TCEs</div>
-      <ul class="space-y-2">
-        {#each data.tces as t}
-          <li class="rounded-lg border border-purple-200 p-3 flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="font-medium truncate">{t.nome}</div>
-              <div class="text-xs text-slate-500">
-                {#if t.publicador_nome}<Icon nome="user" size={14} /> {t.publicador_nome}{:else}sem designação{/if}
-                {#if t.prazo}· prazo {new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}{/if}
-              </div>
-            </div>
-            <button onclick={() => { tceAtribuir = { id: t.id, nome: t.nome, publicador_id: t.publicador_id, prazo: t.prazo }; sheetDesignacoes = false; sheetAtribuirTce = true; }} class="text-[11px] text-primary-700 hover:underline whitespace-nowrap">Designar</button>
-          </li>
-        {/each}
-      </ul>
-      <p class="text-[11px] text-slate-400 mt-2">TCEs são criados no editor de Polígonos.</p>
-    </div>
-  {/if}
-</BottomSheet>
-
-<!-- Sheet: designar TCE -->
-<BottomSheet bind:open={sheetAtribuirTce} title={tceAtribuir ? `Designar — ${tceAtribuir.nome}` : ''}>
-  {#if tceAtribuir}
-    <form
-      method="POST"
-      action="?/atribuirTce"
-      use:enhance={() => {
-        salvando = true;
-        return async ({ result, update }) => {
-          await update();
-          salvando = false;
-          if (result.type === 'success') {
-            toast.success((result.data as any)?.msg || 'OK');
-            sheetAtribuirTce = false;
-            await invalidateAll();
-          } else if (result.type === 'failure') {
-            toast.error(String((result.data as any)?.erro || 'Falhou'));
-          }
-        };
-      }}
-      class="space-y-3"
-    >
-      <input type="hidden" name="id" value={tceAtribuir.id} />
-      <div>
-        <label for="tce_pub" class="block text-sm font-medium mb-1">Publicador / Dirigente</label>
-        <select id="tce_pub" name="publicador_id" value={tceAtribuir.publicador_id ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-          <option value="">— sem designação —</option>
-          {#each data.publicadores as p}
-            <option value={p.id}>{p.nome} ({p.role})</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <label for="tce_prazo" class="block text-sm font-medium mb-1">Prazo (opcional)</label>
-        <input id="tce_prazo" name="prazo" type="date" value={tceAtribuir.prazo ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-      </div>
-      <div class="flex gap-2 pt-2">
-        <Button variant="secondary" onclick={() => (sheetAtribuirTce = false)} class="flex-1">Cancelar</Button>
-        <Button variant="primary" type="submit" loading={salvando} class="flex-1">Designar</Button>
-      </div>
-    </form>
-  {/if}
-</BottomSheet>
 
 <!-- Sheet: criar designação (sempre território pessoal — saída em grupo é arranjo) -->
 <BottomSheet bind:open={sheetDesignar} title="Designar território pessoal">
@@ -585,81 +450,6 @@
       <Button variant="primary" type="submit" loading={salvando} class="flex-1">Designar</Button>
     </div>
   </form>
-</BottomSheet>
-
-<!-- Sheet: Editar designação existente -->
-<BottomSheet bind:open={sheetEditarDesignacao} title={editandoDesignacao ? `Editar — ${editandoDesignacao.publicador_nome ?? 'designação'}` : ''}>
-  {#if editandoDesignacao}
-    <form
-      method="POST"
-      action="?/editarDesignacao"
-      use:enhance={() => {
-        salvando = true;
-        return async ({ result, update }) => {
-          await update();
-          salvando = false;
-          if (result.type === 'success') {
-            toast.success('Atualizada');
-            sheetEditarDesignacao = false;
-            await invalidateAll();
-          } else if (result.type === 'failure') {
-            toast.error(String((result.data as any)?.erro || 'Falhou'));
-          }
-        };
-      }}
-      class="space-y-3"
-    >
-      <input type="hidden" name="id" value={editandoDesignacao.id} />
-
-      <div>
-        <span class="block text-sm font-medium mb-1">Quadras ({editQuadrasSel.size})</span>
-        <div class="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 flex flex-wrap gap-1">
-          {#each data.quadras as q}
-            <button type="button"
-              onclick={() => toggleEditQuadra(q.id)}
-              class="text-xs font-mono px-2 py-0.5 rounded border"
-              class:bg-primary-100={editQuadrasSel.has(q.id)}
-              class:border-primary-500={editQuadrasSel.has(q.id)}
-              class:text-primary-700={editQuadrasSel.has(q.id)}
-              class:border-slate-200={!editQuadrasSel.has(q.id)}
-              class:text-slate-500={!editQuadrasSel.has(q.id)}
-            >{q.id}</button>
-          {/each}
-        </div>
-        {#each [...editQuadrasSel] as qid}<input type="hidden" name="quadras_ids" value={qid} />{/each}
-      </div>
-
-      <div>
-        <span class="block text-sm font-medium mb-1">Publicadores</span>
-        <div class="max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-          {#each data.publicadores as p}
-            <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
-              <input type="checkbox" checked={editPublicadoresSel.has(p.id)} onchange={() => toggleEditPub(p.id)} class="w-4 h-4 rounded" />
-              <span class="flex-1">{p.nome}</span>
-              <span class="text-xs text-slate-400">{p.role}</span>
-            </label>
-          {/each}
-        </div>
-        {#each [...editPublicadoresSel] as pid}<input type="hidden" name="publicador_ids" value={pid} />{/each}
-        <p class="text-xs text-slate-500 mt-1">{editPublicadoresSel.size} selecionado(s) · primeiro vira líder</p>
-      </div>
-
-      <div>
-        <label for="edit_prazo" class="block text-sm font-medium mb-1">Prazo</label>
-        <input id="edit_prazo" name="prazo" type="date" value={editandoDesignacao.prazo ?? ''} class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-      </div>
-
-      <div>
-        <label for="edit_notas" class="block text-sm font-medium mb-1">Notas</label>
-        <textarea id="edit_notas" name="notas" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">{editandoDesignacao.notas ?? ''}</textarea>
-      </div>
-
-      <div class="flex gap-2 pt-2">
-        <Button variant="secondary" onclick={() => (sheetEditarDesignacao = false)} class="flex-1">Cancelar</Button>
-        <Button variant="primary" type="submit" loading={salvando} class="flex-1">Salvar</Button>
-      </div>
-    </form>
-  {/if}
 </BottomSheet>
 
 <!-- Sheet: anexar quadras selecionadas a um arranjo (admin → arranjo direto) -->
