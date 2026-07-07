@@ -127,7 +127,7 @@
 
 ## Onda 6 — Login/offline/push
 
-- [ ] 🟡 **T21 (A11)** Recuperação de senha via link do admin (reusar
+- [x] 🟡 **T21 (A11)** Recuperação de senha via link do admin (reusar
       convite pra usuário existente) + tela "esqueci minha senha"
       informativa no /login. (+ e-mail de reset só se SMTP existir.)
 

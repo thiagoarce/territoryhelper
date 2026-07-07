@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/ui/toast.svelte';
   import type { UsuarioComEmail, Role } from '$lib/types';
@@ -17,6 +17,24 @@
   let usuarioEditando: UsuarioComEmail | null = $state(null);
   let busca = $state('');
   let enviandoTesteId: string | null = $state(null);
+  let gerandoLinkId: string | null = $state(null);
+
+  async function gerarLinkRedefinicao(u: UsuarioComEmail) {
+    gerandoLinkId = u.id;
+    const fd = new FormData();
+    fd.append('id', u.id);
+    const res = await fetch('?/gerarLinkRedefinicao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    gerandoLinkId = null;
+    if (parsed.type === 'success') {
+      const url = `${window.location.origin}/convite/${parsed.data.token}`;
+      await invalidateAll();
+      try { await navigator.clipboard.writeText(url); toast.success(`Link de redefinição copiado — mande pra ${u.nome} pelo WhatsApp`); }
+      catch { toast.success('Link: ' + url); }
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
 
   const usuariosFiltrados = $derived(
     !busca.trim()
@@ -117,6 +135,13 @@
                   {enviandoTesteId === u.id ? 'Enviando...' : 'Testar notif.'}
                 </button>
               </form>
+              <button
+                disabled={gerandoLinkId === u.id}
+                onclick={() => gerarLinkRedefinicao(u)}
+                class="text-sm text-slate-500 hover:underline mr-3 disabled:opacity-40"
+              >
+                {gerandoLinkId === u.id ? 'Gerando...' : 'Link de redefinição'}
+              </button>
               <button
                 onclick={() => (usuarioEditando = u)}
                 class="text-sm text-primary-700 hover:underline"
