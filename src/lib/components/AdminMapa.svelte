@@ -24,21 +24,22 @@
     quadras,
     altura = 600,
     onQuadraClick,
-    densidade = false,
     colorirPor = 'status',
     destacarIds = [],
     selecionadasIds = [],
     pois = [],
     legenda = true,
-    basemap = 'positron'
+    basemap = 'positron',
+    popupDetalhe = false
   }: {
     quadras: QuadraGeo[];
     altura?: number;
     onQuadraClick?: (q: QuadraGeo) => void;
-    densidade?: boolean;
-    // 'status' (pendente/concluída/inativa) ou 'recencia' (vermelho <15d,
-    // laranja 15–45d, verde trabalhável, cinza inativa) — visão do dirigente
-    colorirPor?: 'status' | 'recencia';
+    // 'status' (pendente/concluída/inativa), 'recencia' (vermelho <15d,
+    // laranja 15–45d, verde trabalhável, cinza inativa — visão do dirigente),
+    // 'territorio' (cor própria de cada território), 'densidade_enderecos'
+    // (nº de locais) ou 'densidade_residencias' (nº de unidades, A3).
+    colorirPor?: 'status' | 'recencia' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias';
     // Quadras com borda grossa escura (ex.: designadas ao dirigente logado)
     destacarIds?: string[];
     // Quadras selecionadas no modo multi-seleção (borda azul grossa)
@@ -48,12 +49,22 @@
     legenda?: boolean;
     // Preferência de estilo (profile.pref_basemap) — default 'positron' pra visitante anônimo (t/[token]).
     basemap?: Basemap;
+    // A13: clique abre popup read-only de detalhe (nome/território/última
+    // conclusão/contagens) em vez de disparar onQuadraClick — visão geral
+    // do dirigente não tem ação nenhuma no mapa.
+    popupDetalhe?: boolean;
   } = $props();
 
-  // Itens da legenda batendo com o fillColor calculado mais abaixo (densidade > recência > status).
+  // Itens da legenda batendo com o fillColor calculado mais abaixo.
   const legendaItens = $derived.by(() => {
-    if (densidade) {
+    if (colorirPor === 'densidade_enderecos') {
       return [{ cor: 'linear-gradient(90deg, #fef3c7, #dc2626)', label: 'Poucos → muitos endereços' }];
+    }
+    if (colorirPor === 'densidade_residencias') {
+      return [{ cor: 'linear-gradient(90deg, #fef3c7, #dc2626)', label: 'Poucas → muitas residências' }];
+    }
+    if (colorirPor === 'territorio') {
+      return [{ cor: 'linear-gradient(90deg, #94a3b8, #64748b)', label: 'Cor própria de cada território' }];
     }
     if (colorirPor === 'recencia') {
       return [
@@ -183,6 +194,48 @@
     inativa: 'rgba(148, 163, 184, 0.3)'    // slate
   };
 
+  function buildFillExpr(modo: typeof colorirPor): any {
+    if (modo === 'densidade_enderecos') {
+      return [
+        'interpolate', ['linear'], ['get', 'qtd_locais'],
+        0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
+      ];
+    }
+    if (modo === 'densidade_residencias') {
+      return [
+        'interpolate', ['linear'], ['get', 'qtd_unidades'],
+        0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
+      ];
+    }
+    if (modo === 'territorio') return ['get', 'color'];
+    if (modo === 'recencia') {
+      return [
+        'match',
+        ['get', 'recencia'],
+        'recente', 'rgba(220, 38, 38, 0.55)',   // vermelho: concluída <15d — não trabalhar
+        'medio', 'rgba(245, 158, 11, 0.5)',      // laranja: 15–45d — evitar
+        'inativa', 'rgba(148, 163, 184, 0.3)',   // cinza: inativa
+        'rgba(34, 197, 94, 0.4)'                 // verde: livre pra trabalhar
+      ];
+    }
+    return [
+      'match',
+      ['get', 'status'],
+      'concluido', STATUS_COLORS.concluido,
+      'inativa', STATUS_COLORS.inativa,
+      STATUS_COLORS.pendente
+    ];
+  }
+
+  // Recolore ao trocar o seletor (A13) — sem isso o mapa só pintava certo
+  // no modo em que nasceu, já que o fill era calculado só dentro do 'load'.
+  $effect(() => {
+    const modo = colorirPor; // tracking explícito antes do guard
+    const ok = carregado;
+    if (!ok || !mapa || !mapa.getLayer('quadras-fill')) return;
+    try { mapa.setPaintProperty('quadras-fill', 'fill-color', buildFillExpr(modo)); } catch {}
+  });
+
   onMount(async () => {
     const maplibreModule = await import('maplibre-gl');
     const maplibre = maplibreModule.default ?? maplibreModule;
@@ -218,7 +271,10 @@
             color: q.color,
             status: q.status,
             territorio_id: q.territorio_id,
+            territorio_nome: q.territorio_nome,
             qtd_locais: q.qtd_locais,
+            qtd_unidades: q.qtd_unidades,
+            data_conclusao: q.data_conclusao,
             recencia: bucketRecencia(q)
           }
         }));
@@ -228,39 +284,11 @@
         data: { type: 'FeatureCollection', features } as any
       });
 
-      // Fill: densidade > recência > status (nessa ordem de prioridade)
-      const fillColor: any = densidade
-        ? [
-            'interpolate',
-            ['linear'],
-            ['get', 'qtd_locais'],
-            0, '#fef3c7',
-            5, '#fde68a',
-            15, '#fcd34d',
-            30, '#f59e0b',
-            60, '#dc2626'
-          ]
-        : colorirPor === 'recencia'
-        ? [
-            'match',
-            ['get', 'recencia'],
-            'recente', 'rgba(220, 38, 38, 0.55)',   // vermelho: concluída <15d — não trabalhar
-            'medio', 'rgba(245, 158, 11, 0.5)',      // laranja: 15–45d — evitar
-            'inativa', 'rgba(148, 163, 184, 0.3)',   // cinza: inativa
-            'rgba(34, 197, 94, 0.4)'                 // verde: livre pra trabalhar
-          ]
-        : [
-            'match',
-            ['get', 'status'],
-            'concluido', STATUS_COLORS.concluido,
-            'inativa', STATUS_COLORS.inativa,
-            STATUS_COLORS.pendente
-          ];
       mapa.addLayer({
         id: 'quadras-fill',
         type: 'fill',
         source: 'quadras',
-        paint: { 'fill-color': fillColor, 'fill-opacity': 0.45 }
+        paint: { 'fill-color': buildFillExpr(colorirPor), 'fill-opacity': 0.45 }
       });
 
       // Borda com cor própria da quadra
@@ -311,10 +339,29 @@
 
       carregado = true;
 
-      // Click handler
+      // Click handler — modo ação (onQuadraClick) OU modo popup read-only (A13)
       mapa.on('click', 'quadras-fill', (e: any) => {
         const props = e.features?.[0]?.properties;
-        if (!props || !onQuadraClick) return;
+        if (!props) return;
+        if (popupDetalhe) {
+          const dataFmt = props.data_conclusao
+            ? new Date(props.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')
+            : 'nunca concluída';
+          const html = `
+            <div style="font-size:13px;line-height:1.5;min-width:160px;">
+              <div style="font-weight:600;font-family:monospace;">${props.id}</div>
+              <div>Território: ${props.territorio_nome ?? '—'}</div>
+              <div>Última conclusão: ${dataFmt}</div>
+              <div>${props.qtd_locais ?? 0} endereço(s) · ${props.qtd_unidades ?? 0} residência(s)</div>
+            </div>
+          `;
+          new maplibreRef.Popup({ closeButton: true, maxWidth: '240px' })
+            .setLngLat(e.lngLat)
+            .setHTML(html)
+            .addTo(mapa);
+          return;
+        }
+        if (!onQuadraClick) return;
         const q = quadras.find((x) => x.id === props.id);
         if (q) onQuadraClick(q);
       });
