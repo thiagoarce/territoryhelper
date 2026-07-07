@@ -319,4 +319,8 @@
     <span class="text-sm font-medium"><Icon nome="megaphone" size={14} /> Sua disponibilidade pro testemunho público fica em Testemunho público →</span>
     <Icon nome="chevron-right" size={14} class="text-slate-400" />
   </a>
+
+  <form action="/logout" method="POST">
+    <Button variant="secondary" type="submit" class="w-full text-red-600">Sair</Button>
+  </form>
 </div>
