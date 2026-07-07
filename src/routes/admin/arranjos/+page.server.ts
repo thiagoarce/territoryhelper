@@ -3,6 +3,8 @@ import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import { selectAll, quadrasEmArranjoFuturo, msgConflitoArranjo } from '$lib/server/queries';
 import { statusCampanha } from '$lib/campanhas';
+import { hojeIsoBrasil } from '$lib/utils/data';
+import { criarNotificacao } from '$lib/server/push';
 
 export interface Modalidade {
   id: number;
@@ -418,5 +420,51 @@ export const actions: Actions = {
     if (errUp) return fail(400, { erro: errUp.message });
     const { data: pub } = locals.supabase.storage.from('arranjos').getPublicUrl(path);
     return { ok: true, url: pub.publicUrl, nome: file.name };
+  },
+
+  transferirDirigencia: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const deId = String(fd.get('de_id') ?? '').trim();
+    const paraId = String(fd.get('para_id') ?? '').trim();
+    const dataFim = String(fd.get('data_fim') ?? '').trim() || null;
+    const apenasContar = fd.get('apenas_contar') === 'true';
+    if (!deId || !paraId) return fail(400, { erro: 'Selecione os dois dirigentes' });
+    if (deId === paraId) return fail(400, { erro: 'Escolha dirigentes diferentes' });
+    const hoje = hojeIsoBrasil();
+
+    if (apenasContar) {
+      let q = locals.supabase
+        .from('arranjos')
+        .select('id', { count: 'exact', head: true })
+        .eq('dirigente_id', deId)
+        .eq('ativo', true)
+        .gte('data', hoje);
+      if (dataFim) q = q.lte('data', dataFim);
+      const { count, error } = await q;
+      if (error) return fail(400, { erro: error.message });
+      return { ok: true, contagem: count ?? 0 };
+    }
+
+    let upd = locals.supabase
+      .from('arranjos')
+      .update({ dirigente_id: paraId })
+      .eq('dirigente_id', deId)
+      .eq('ativo', true)
+      .gte('data', hoje);
+    if (dataFim) upd = upd.lte('data', dataFim);
+    const { data: atualizados, error } = await upd.select('id');
+    if (error) return fail(400, { erro: error.message });
+    const qtd = atualizados?.length ?? 0;
+    if (qtd > 0) {
+      await criarNotificacao([paraId], {
+        titulo: 'Você recebeu designações de dirigência',
+        corpo: `${qtd} arranjo(s) transferido(s) pra você`,
+        url: '/publicador/casa-a-casa'
+      });
+    }
+    return { ok: true, msg: `${qtd} designação(ões) transferida(s)` };
   }
 };

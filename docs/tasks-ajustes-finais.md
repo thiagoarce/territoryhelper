@@ -185,7 +185,7 @@
 
 ## Onda 10 — Operação e backup
 
-- [ ] 🟡 **T32 (A26)** Transferir dirigência em série (/admin/arranjos):
+- [x] 🟡 **T32 (A26)** Transferir dirigência em série (/admin/arranjos):
       A→B num período, confirm com contagem, notificação.
 
 - [ ] 🟢 **T33 (A27)** Histórico do publicador em /admin/usuarios

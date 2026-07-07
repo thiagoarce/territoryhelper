@@ -58,6 +58,63 @@
   let arquivoFile = $state<File | null>(null);
   let uploadando = $state(false);
 
+  // === Transferir dirigência (A26) ===
+  let sheetTransferir = $state(false);
+  let transfDeId = $state('');
+  let transfParaId = $state('');
+  let transfDataFim = $state('');
+  let transferindo = $state(false);
+
+  function abrirTransferir() {
+    transfDeId = '';
+    transfParaId = '';
+    transfDataFim = '';
+    sheetTransferir = true;
+  }
+
+  async function transferirDirigencia() {
+    if (!transfDeId || !transfParaId) { toast.error('Selecione os dois dirigentes'); return; }
+    if (transfDeId === transfParaId) { toast.error('Escolha dirigentes diferentes'); return; }
+    transferindo = true;
+    try {
+      const fdContar = new FormData();
+      fdContar.append('de_id', transfDeId);
+      fdContar.append('para_id', transfParaId);
+      if (transfDataFim) fdContar.append('data_fim', transfDataFim);
+      fdContar.append('apenas_contar', 'true');
+      const resContar = await fetch('?/transferirDirigencia', { method: 'POST', body: fdContar });
+      const parsedContar = deserialize(await resContar.text());
+      if (parsedContar.type !== 'success') {
+        toast.error(String((parsedContar as any)?.data?.erro || 'Falhou'));
+        return;
+      }
+      const contagem = (parsedContar.data as any)?.contagem ?? 0;
+      if (contagem === 0) {
+        toast.error('Nenhuma designação futura encontrada pra esse dirigente');
+        return;
+      }
+      const nomeDe = dirigenteNome(transfDeId);
+      const nomePara = dirigenteNome(transfParaId);
+      if (!confirm(`${contagem} designação(ões) de ${nomeDe} serão transferidas pra ${nomePara}. Confirma?`)) return;
+
+      const fdExec = new FormData();
+      fdExec.append('de_id', transfDeId);
+      fdExec.append('para_id', transfParaId);
+      if (transfDataFim) fdExec.append('data_fim', transfDataFim);
+      const res = await fetch('?/transferirDirigencia', { method: 'POST', body: fdExec });
+      const parsed = deserialize(await res.text());
+      if (parsed.type === 'success') {
+        toast.success(String((parsed.data as any)?.msg || 'Transferido'));
+        sheetTransferir = false;
+        await invalidateAll();
+      } else if (parsed.type === 'failure') {
+        toast.error(String((parsed.data as any)?.erro || 'Falhou'));
+      }
+    } finally {
+      transferindo = false;
+    }
+  }
+
   const DIAS = DIAS_SEMANA;
   const diasOrdenados = DIAS_ORDENADOS;
 
@@ -203,9 +260,16 @@
 </script>
 
 <div class="p-4 space-y-3 max-w-5xl mx-auto">
-  <div>
-    <h1 class="text-2xl font-bold">Arranjos</h1>
-    <p class="text-sm text-slate-500">Saídas semanais — cartas, pregação, TP. Admin coordena, dirigente distribui aos publicadores.</p>
+  <div class="flex justify-between items-start gap-2">
+    <div>
+      <h1 class="text-2xl font-bold">Arranjos</h1>
+      <p class="text-sm text-slate-500">Saídas semanais — cartas, pregação, TP. Admin coordena, dirigente distribui aos publicadores.</p>
+    </div>
+    {#if data.dirigentes.length >= 2}
+      <Button variant="secondary" onclick={abrirTransferir}>
+        <Icon nome="swap" size={16} /> Transferir dirigência
+      </Button>
+    {/if}
   </div>
 
   <div class="flex gap-1 border-b border-slate-200">
@@ -762,4 +826,36 @@
       </div>
     </form>
   {/if}
+</BottomSheet>
+
+<BottomSheet bind:open={sheetTransferir} title="Transferir dirigência">
+  <div class="space-y-3">
+    <p class="text-sm text-slate-500">
+      Transfere as designações futuras de um dirigente pra outro (ex: férias). Só afeta ocorrências ativas a partir de hoje.
+    </p>
+    <div>
+      <label for="transf_de" class="block text-xs font-medium mb-1">De (dirigente atual)</label>
+      <select id="transf_de" bind:value={transfDeId} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+        <option value="">Selecione…</option>
+        {#each data.dirigentes as d}<option value={d.id}>{d.nome}</option>{/each}
+      </select>
+    </div>
+    <div>
+      <label for="transf_para" class="block text-xs font-medium mb-1">Para (novo dirigente)</label>
+      <select id="transf_para" bind:value={transfParaId} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+        <option value="">Selecione…</option>
+        {#each data.dirigentes as d}<option value={d.id}>{d.nome}</option>{/each}
+      </select>
+    </div>
+    <div>
+      <label for="transf_data_fim" class="block text-xs font-medium mb-1">Até (opcional — default: tudo futuro)</label>
+      <input id="transf_data_fim" type="date" bind:value={transfDataFim} class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+    </div>
+    <div class="flex gap-2 pt-2">
+      <Button variant="secondary" onclick={() => (sheetTransferir = false)} class="flex-1">Cancelar</Button>
+      <Button variant="primary" onclick={transferirDirigencia} loading={transferindo} class="flex-1">
+        <Icon nome="swap" size={14} /> Transferir
+      </Button>
+    </div>
+  </div>
 </BottomSheet>

@@ -199,7 +199,10 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 - **Campanha** (`/admin/campanha`) — período + mapa do período + termômetro de
   ritmo + gráfico semanal + suprimento (publicações/quantidades)
 - **Arranjos** (`/admin/arranjos`) — modalidades + agenda semana/mês/3m/ano +
-  recorrência gera N pontuais editáveis + anexar prédios/quadras/TCE
+  recorrência gera N pontuais editáveis + anexar prédios/quadras/TCE +
+  **Transferir dirigência** (A→B num período, default tudo futuro; confirm
+  com contagem antes de executar; notifica B; só admin, nunca o próprio
+  dirigente)
 - **Designações** (`/admin/designacoes`) — hub central: lista todas as
   designações pessoais/cartas + arranjos + TCEs num só lugar (filtros por
   tipo/status, concluir/reabrir/cancelar/excluir, link público, realocar
