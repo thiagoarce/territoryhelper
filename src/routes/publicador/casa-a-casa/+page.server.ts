@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
-import { listarDesignacoes, listarQuadrasComGeo, listarPublicadores, type QuadraGeo } from '$lib/server/queries';
+import { listarDesignacoes, listarQuadrasComGeo, listarPublicadores, calcularCoberturaPorQuadra, type QuadraGeo, type CoberturaQuadra } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
 import { arranjoAindaVale, precisaFinalizar } from '$lib/arranjos';
 
@@ -141,8 +141,16 @@ export const load: PageServerLoad = async ({ locals }) => {
   const idsPessoais = [...new Set(minhasComoLider.flatMap((d) => d.quadras_ids))];
   const territorioPessoal = idsPessoais.map((id) => quadrasMap.get(id)).filter(Boolean) as QuadraGeo[];
 
+  // A2: cobertura por quadra do "Seu grupo" — pro sheet de ação (Concluir/
+  // Compartilhar) mostrar X/Y endereços feitos.
+  const coberturaPorQuadraMap = arranjoQueDirijo
+    ? await calcularCoberturaPorQuadra(locals.supabase, arranjoQueDirijo.quadras_ids)
+    : new Map<string, CoberturaQuadra>();
+  const coberturaPorQuadra = Object.fromEntries(coberturaPorQuadraMap);
+
   return {
     arranjoQueDirijo: arranjoQueDirijo ? { ...arranjoQueDirijo, quadrasGeo: quadrasPorArranjo(arranjoQueDirijo.quadras_ids) } : null,
+    coberturaPorQuadra,
     outrosArranjosQueDirijo,
     pendentesFinalizar,
     minhasPartes: minhasPartes.map((p) => ({ ...p, quadrasGeo: quadrasPorArranjo(p.quadras_ids) })),
@@ -155,6 +163,26 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  // A2: sheet de ação da quadra em "Seu grupo" — mesma lógica de
+  // publicador/quadra/[id]?/concluirQuadra, mas parametrizada por quadra_id
+  // (esta página não é escopada a uma quadra na URL).
+  concluirQuadraGrupo: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode marcar conclusão' });
+    }
+    const fd = await request.formData();
+    const quadraId = String(fd.get('quadra_id') ?? '');
+    if (!quadraId) return fail(400, { erro: 'quadra_id obrigatório' });
+    const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
+    const { error: err } = await locals.supabase
+      .from('quadras')
+      .update({ data_conclusao: data })
+      .eq('id', quadraId);
+    if (err) return fail(400, { erro: err.message });
+    return { ok: true, msg: 'Quadra concluída em ' + data };
+  },
+
   // Link público /t/<token> do arranjo (WhatsApp c/ mapa) — migrou de
   // /publicador/arranjo junto com o resto das ações de "seu grupo".
   gerarLinkTerritorio: async ({ request, locals }) => {

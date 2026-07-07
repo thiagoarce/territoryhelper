@@ -94,7 +94,7 @@
 
 ## Onda 4 — Casa a casa (dirigente) + ciclo por prédio
 
-- [ ] 🟢 **T15 (A2)** "Seu grupo": clique na quadra abre sheet de ação
+- [x] 🟢 **T15 (A2)** "Seu grupo": clique na quadra abre sheet de ação
       (Concluir + Compartilhar + cobertura), nova action
       `concluirQuadra` no casa-a-casa server; "Finalizar designação"
       vira sheet de conferência por quadra.
