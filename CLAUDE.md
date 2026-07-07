@@ -55,7 +55,13 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   que não roda em Cloudflare Workers). `/api/notificacoes` serve o sino
   E o service worker (que busca o conteúdo ao receber o push vazio).
 - `src/lib/server/queries.ts` — helpers de query. **`selectAll<T>()`** pagina
-  além do limite 1000 do PostgREST + dedup por id.
+  além do limite 1000 do PostgREST + dedup por id. `contarLocaisPorQuadra`/
+  `contarResidenciasPorQuadra` (usadas por `listarQuadrasComGeo`, chamada
+  em `/admin`, `/publicador` e `/publicador/casa-a-casa`) leem a view
+  `quadras_contagens` (migration 071, `GROUP BY` em SQL) — antes traziam
+  TODAS as linhas de `locais`/`unidades` do banco pro Worker via
+  `selectAll` e reduziam em JS, bloco síncrono que contribuía pros
+  estouros de CPU do Cloudflare Workers nessas rotas.
 - `src/lib/ui/` — primitives: `Button`, `Card`, `BottomSheet`, `toast.svelte.ts`
 - `src/lib/offline/` — fila de escrita offline (IndexedDB). `postComFila(url,
   formData)` tenta o POST normal; se a rede falhar de verdade (não um erro
