@@ -544,6 +544,19 @@ export const actions: Actions = {
         url: '/publicador/tp'
       });
     }
+
+    // Admin também é avisado — reserva de sobra é uma designação criada
+    // fora do fluxo normal (montagem/manual), vale ele saber que aconteceu.
+    const { data: admins } = await locals.supabase.from('profiles').select('id').eq('role', 'admin');
+    const adminIds = (admins ?? []).map((a: any) => a.id as string);
+    if (adminIds.length > 0) {
+      await criarNotificacao(adminIds, {
+        titulo: `${locals.profile?.nome ?? 'Um publicador'} criou uma reserva de TP`,
+        corpo: new Date(dataOc + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }) + ` · ${horaInicio}–${horaFim}`,
+        url: '/admin/tp'
+      });
+    }
+
     return { ok: true, msg: 'Reserva criada' };
   },
 

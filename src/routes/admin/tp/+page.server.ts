@@ -6,7 +6,7 @@ import type { AgendamentoBase, ExcecaoBase, Recorrencia, OcorrenciaAgendamento }
 import { exigirAdmin, carregarAgendamentosEExcecoes, janelaChecagem } from './_shared';
 import { criarNotificacao } from '$lib/server/push';
 import { hojeIsoBrasil } from '$lib/utils/data';
-import { montarMes, type TurnoAlvo, type JanelaDisponibilidade, type PublicadorMontagem, type ParticipanteExistente, type ResultadoMontagem } from '$lib/tp-montagem';
+import type { TurnoAlvo, ParticipanteExistente } from '$lib/tp-montagem';
 
 export interface TpCarrinhoLite {
   id: number;
@@ -246,31 +246,81 @@ export const actions: Actions = {
     return { ok: true, msg: `Mês ${mes} voltou ao estado inicial (não aberto)` };
   },
 
-  // T29: publica a proposta de montagem revisada pelo admin — o cálculo
-  // (montarMes) roda no CLIENTE (função pura, dados já carregados); aqui
-  // só grava o que o admin aceitou. Notificação sai quando o admin avança
-  // a fase do mês pra 'publicado' (ação definirFaseMes acima), não aqui —
-  // evita notificar 2x quem já tinha sido designado manualmente também.
-  publicarPropostaMontagem: async ({ request, locals }) => {
+  // Match de disponibilidade (substitui o antigo publicarPropostaMontagem/
+  // montarMes — o cálculo agora é o inverso: em vez de preencher turnos já
+  // criados, encontrarMatches (roda no CLIENTE, função pura, sobre a
+  // disponibilidade já carregada) já decide QUEM e QUANDO; aqui só falta
+  // o admin escolher carrinho+ponto pra virar um tp_agendamento de
+  // verdade, com os participantes de cada ocorrência já anexados.
+  // Recorrente = mesmo (dia da semana + horário) casou em 2+ semanas do
+  // mês — vira UMA série semanal limitada a essas semanas
+  // (recorrencia_fim = última ocorrência), não uma recorrência sem fim:
+  // a disponibilidade só foi analisada dentro do mês corrente, então não
+  // faz sentido presumir que o mesmo padrão vale pros meses seguintes.
+  // Notificação sai quando o admin avança a fase pra 'publicado' (mesmo
+  // motivo do fluxo antigo) — evita notificar 2x.
+  confirmarMatch: async ({ request, locals }) => {
     const guard = exigirAdmin(locals);
     if (guard) return guard;
     const fd = await request.formData();
-    let linhas: { agendamento_id: number; data: string; publicador_id: string }[];
+    const { carrinhoId, pontoId, pontoAvulso, horaInicio, horaFim } = validarCampos(fd);
+    let ocorrencias: { data: string; publicadores: string[] }[];
     try {
-      linhas = JSON.parse(String(fd.get('propostas_json') ?? '[]'));
+      ocorrencias = JSON.parse(String(fd.get('ocorrencias_json') ?? '[]'));
     } catch {
       return fail(400, { erro: 'Proposta inválida' });
     }
-    if (!Array.isArray(linhas) || linhas.length === 0) return fail(400, { erro: 'Nenhuma designação selecionada' });
-    const { error } = await locals.supabase.from('tp_agendamento_participantes').upsert(
-      linhas.map((l) => ({
-        agendamento_id: l.agendamento_id, data: l.data, publicador_id: l.publicador_id,
-        origem: 'designacao', designado_por: locals.user!.id
-      })),
-      { onConflict: 'agendamento_id,data,publicador_id', ignoreDuplicates: true }
-    );
+    if (!Array.isArray(ocorrencias) || ocorrencias.length === 0) return fail(400, { erro: 'Nenhuma ocorrência' });
+    if (!carrinhoId) return fail(400, { erro: 'Equipamento obrigatório' });
+    if (!pontoId && !pontoAvulso) return fail(400, { erro: 'Informe um ponto (fixo ou avulso)' });
+    if (!horaInicio || !horaFim) return fail(400, { erro: 'Horário obrigatório' });
+
+    const datasOrdenadas = [...ocorrencias].map((o) => o.data).sort();
+    const recorrente = datasOrdenadas.length > 1;
+    const dataInicial = datasOrdenadas[0];
+    const dataFinal = datasOrdenadas[datasOrdenadas.length - 1];
+    const recorrencia: Recorrencia = recorrente ? 'semanal' : 'nenhuma';
+    const recorrenciaFim = recorrente ? dataFinal : null;
+
+    const { agendamentos, excecoes } = await carregarAgendamentosEExcecoes(locals.supabase);
+    const candidato: AgendamentoBase = {
+      id: -1, carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+      data: dataInicial, hora_inicio: horaInicio, hora_fim: horaFim,
+      recorrencia, recorrencia_fim: recorrenciaFim, ativo: true, notas: null
+    };
+    const janelaFim = janelaChecagem(recorrenciaFim);
+    const minhasOcorrencias = ocorrenciasAgendamentoEntre([candidato], [], dataInicial, janelaFim);
+    for (const oc of minhasOcorrencias) {
+      const conflito = ocorrenciaConflitante(agendamentos, excecoes, carrinhoId, oc.data, oc.hora_inicio, oc.hora_fim);
+      if (conflito) {
+        return fail(409, {
+          erro: `Esse equipamento já tem agendamento em ${oc.data} (${conflito.hora_inicio.substring(0, 5)}–${conflito.hora_fim.substring(0, 5)})`
+        });
+      }
+    }
+
+    const { data: novo, error } = await locals.supabase
+      .from('tp_agendamentos')
+      .insert({
+        carrinho_id: carrinhoId, ponto_id: pontoId, ponto_avulso: pontoAvulso,
+        data: dataInicial, hora_inicio: horaInicio, hora_fim: horaFim,
+        recorrencia, recorrencia_fim: recorrenciaFim, origem: 'admin', criado_por: locals.user!.id
+      })
+      .select('id')
+      .single();
     if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: `${linhas.length} designação(ões) publicada(s)` };
+
+    const participantes = ocorrencias.flatMap((o) =>
+      o.publicadores.map((pid) => ({
+        agendamento_id: novo.id, data: o.data, publicador_id: pid,
+        origem: 'designacao', designado_por: locals.user!.id
+      }))
+    );
+    const { error: errP } = await locals.supabase.from('tp_agendamento_participantes').insert(participantes);
+    if (errP) return fail(400, { erro: 'Turno criado mas falhou designar: ' + errP.message });
+
+    const idsUnicos = [...new Set(participantes.map((p) => p.publicador_id))];
+    return { ok: true, msg: `Turno criado (${idsUnicos.length} publicador(es)${recorrente ? ', recorrente' : ''})` };
   },
 
   criarAgendamento: async ({ request, locals }) => {
