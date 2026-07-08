@@ -15,3 +15,14 @@ directory = ".svelte-kit/cloudflare"
 # Logs no painel Cloudflare pra debug em produção.
 [observability]
 enabled = true
+
+# Var pública do Web Push (PUSH-A) — NÃO é segredo (é a chave pública do
+# par VAPID, feita pra ser exposta). Precisa estar aqui, não só no
+# dashboard: o deploy automático (push na main) trata [vars] como fonte
+# de verdade e REPÕE só o que está declarado aqui a cada build — uma var
+# configurada só pelo dashboard (sem estar no wrangler.toml) é apagada no
+# próximo deploy. VAPID_PRIVATE_KEY continua só como secret (wrangler
+# secret put / dashboard "Secreto") — nunca commitar a chave privada
+# aqui, deploys não mexem em secrets.
+[vars]
+PUBLIC_VAPID_PUBLIC_KEY = "BDKm6ohO7DzOpADMqwoODfxRN2Dq6u26fG-044rRYhAFTnvKGjka8yx1DEMkbowgCD82bDHHjltx0_t0fHHh_CA"
