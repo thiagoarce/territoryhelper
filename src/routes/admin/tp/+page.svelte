@@ -8,7 +8,8 @@
   import { toast } from '$lib/ui/toast.svelte';
   import TpGradeSemana from '$lib/components/TpGradeSemana.svelte';
   import type { OcorrenciaAgendamento, AgendamentoBase, Recorrencia } from '$lib/tp-agendamentos';
-  import { montarMes, type TurnoAlvo, type ResultadoMontagem } from '$lib/tp-montagem';
+  import type { TurnoAlvo } from '$lib/tp-montagem';
+  import { encontrarMatches, type PropostaTurno } from '$lib/tp-matching';
   import type {
     TpCarrinhoLite,
     TpPontoLite,
@@ -339,60 +340,63 @@
     return new Date(mes + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }
 
-  // ── T29: painel de montagem automática (proposta → revisar → publicar) ──
+  // ── Montagem por MATCH de disponibilidade (substitui o antigo
+  // "gerar proposta → preencher turnos existentes"): em vez de exigir
+  // que o turno já exista, encontra QUEM tem horário sobreposto e deixa
+  // só o carrinho+ponto pro admin escolher por proposta.
   const nomePorIdMontagem = $derived(new Map(data.publicadores.map((p) => [p.id, p.nome])));
-  function chaveProposta(agendamentoId: number, dataOc: string, publicadorId: string): string {
-    return agendamentoId + '|' + dataOc + '|' + publicadorId;
-  }
-  let mostrarMontagem = $state(false);
-  let propostaMontagem = $state<ResultadoMontagem | null>(null);
-  let propostasRejeitadas = $state<Set<string>>(new Set());
-  let publicandoMontagem = $state(false);
+  const DIA_SEMANA_LABEL = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
-  function gerarProposta() {
+  let mostrarMontagem = $state(false);
+  let propostasMatch = $state<PropostaTurno[] | null>(null);
+  let confirmandoId = $state<string | null>(null);
+
+  interface ConfigProposta { carrinhoId: number | null; pontoId: number | null; pontoAvulso: string; usaAvulso: boolean }
+  let configPorProposta = $state<Record<string, ConfigProposta>>({});
+  function configDe(id: string): ConfigProposta {
+    return configPorProposta[id] ?? { carrinhoId: data.carrinhos[0]?.id ?? null, pontoId: null, pontoAvulso: '', usaAvulso: false };
+  }
+
+  function gerarMatches() {
     const disponibilidades = data.dispMesMontagem.map((d) => ({
       publicador_id: d.publicador_id, dia: d.dia, hora_inicio: d.hora_inicio, hora_fim: d.hora_fim
     }));
-    const publicadoresMontagem = data.publicadores.map((p) => ({
-      id: p.id, transporta_carrinho: data.transportaPorId[p.id] ?? false
-    }));
-    propostaMontagem = montarMes(data.turnosAlvoMontagem, disponibilidades, publicadoresMontagem, data.participantesMesMontagem);
-    propostasRejeitadas = new Set();
-  }
-  function toggleProposta(agendamentoId: number, dataOc: string, publicadorId: string) {
-    const k = chaveProposta(agendamentoId, dataOc, publicadorId);
-    if (propostasRejeitadas.has(k)) propostasRejeitadas.delete(k); else propostasRejeitadas.add(k);
-    propostasRejeitadas = new Set(propostasRejeitadas);
-  }
-  const propostasPorTurno = $derived.by(() => {
-    const m = new Map<string, ResultadoMontagem['propostas']>();
-    if (!propostaMontagem) return m;
-    for (const p of propostaMontagem.propostas) {
-      const k = p.agendamento_id + '|' + p.data;
-      const arr = m.get(k);
-      if (arr) arr.push(p); else m.set(k, [p]);
+    // Ocupação já comprometida em turnos existentes do mês — ninguém
+    // recebe match num horário que já está escalado em outro turno.
+    const turnoPorChave = new Map(data.turnosAlvoMontagem.map((t) => [t.agendamento_id + '|' + t.data, t]));
+    const ocupados = data.participantesMesMontagem
+      .map((p) => {
+        const t = turnoPorChave.get(p.agendamento_id + '|' + p.data);
+        return t ? { publicador_id: p.publicador_id, data: p.data, hora_inicio: t.hora_inicio, hora_fim: t.hora_fim } : null;
+      })
+      .filter((o): o is NonNullable<typeof o> => o !== null);
+    propostasMatch = encontrarMatches(disponibilidades, ocupados);
+    const novaConfig: Record<string, ConfigProposta> = {};
+    for (const p of propostasMatch) {
+      novaConfig[p.id] = { carrinhoId: data.carrinhos[0]?.id ?? null, pontoId: null, pontoAvulso: '', usaAvulso: false };
     }
-    return m;
-  });
-  const qtdAceitas = $derived(
-    propostaMontagem ? propostaMontagem.propostas.filter((p) => !propostasRejeitadas.has(chaveProposta(p.agendamento_id, p.data, p.publicador_id))).length : 0
-  );
-  async function publicarProposta() {
-    if (!propostaMontagem) return;
-    const aceitas = propostaMontagem.propostas.filter(
-      (p) => !propostasRejeitadas.has(chaveProposta(p.agendamento_id, p.data, p.publicador_id))
-    );
-    if (aceitas.length === 0) { toast.error('Nenhuma designação selecionada'); return; }
-    publicandoMontagem = true;
+    configPorProposta = novaConfig;
+  }
+
+  async function confirmarMatch(p: PropostaTurno) {
+    const cfg = configDe(p.id);
+    if (!cfg.carrinhoId) { toast.error('Escolha o equipamento'); return; }
+    if (!cfg.usaAvulso && !cfg.pontoId) { toast.error('Escolha o ponto'); return; }
+    if (cfg.usaAvulso && !cfg.pontoAvulso.trim()) { toast.error('Descreva o ponto avulso'); return; }
+    confirmandoId = p.id;
     const fd = new FormData();
-    fd.append('propostas_json', JSON.stringify(aceitas.map((p) => ({ agendamento_id: p.agendamento_id, data: p.data, publicador_id: p.publicador_id }))));
-    const res = await fetch('?/publicarPropostaMontagem', { method: 'POST', body: fd });
+    fd.append('carrinho_id', String(cfg.carrinhoId));
+    if (cfg.usaAvulso) fd.append('ponto_avulso', cfg.pontoAvulso.trim());
+    else fd.append('ponto_id', String(cfg.pontoId));
+    fd.append('hora_inicio', p.hora_inicio);
+    fd.append('hora_fim', p.hora_fim);
+    fd.append('ocorrencias_json', JSON.stringify(p.ocorrencias));
+    const res = await fetch('?/confirmarMatch', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
-    publicandoMontagem = false;
+    confirmandoId = null;
     if (parsed.type === 'success') {
-      toast.success(String(parsed.data?.msg || 'Publicado'));
-      propostaMontagem = null;
-      mostrarMontagem = false;
+      toast.success(String(parsed.data?.msg || 'Turno criado'));
+      propostasMatch = (propostasMatch ?? []).filter((x) => x.id !== p.id);
       await invalidateAll();
     } else {
       toast.error(String(parsed.data?.erro || 'Falhou'));
@@ -455,17 +459,18 @@
     </div>
   </div>
 
-  <!-- T29: painel de montagem automática -->
+  <!-- Montagem por match de disponibilidade -->
   <div class="rounded-xl border border-slate-200 bg-white p-3">
     <button type="button" onclick={() => (mostrarMontagem = !mostrarMontagem)} class="w-full flex items-center justify-between gap-2 text-sm font-semibold">
-      <span><Icon nome="sparkles" size={14} /> Montagem automática — <span class="capitalize">{fmtMesRotulo(data.mesMontagem)}</span></span>
+      <span><Icon nome="sparkles" size={14} /> Montagem por disponibilidade — <span class="capitalize">{fmtMesRotulo(data.mesMontagem)}</span></span>
       <Icon nome={mostrarMontagem ? 'chevron-up' : 'chevron-down'} size={14} class="text-slate-400" />
     </button>
     {#if mostrarMontagem}
       <div class="mt-3 space-y-3">
         <p class="text-xs text-slate-500">
-          Gera uma PROPOSTA de designação a partir da disponibilidade do mês — nada é gravado até você revisar e publicar.
-          {data.turnosAlvoMontagem.length} turno(s) no mês, {data.dispMesMontagem.length} janela(s) de disponibilidade marcadas.
+          Encontra quem tem horário sobreposto na disponibilidade do mês e sugere o turno — você só escolhe o
+          equipamento e o ponto de cada um. {data.dispMesMontagem.length} janela(s) de disponibilidade marcadas.
+          A criação manual continua disponível na grade abaixo, sem depender de match.
         </p>
 
         {#if diasComDisponibilidade.length > 0}
@@ -496,41 +501,71 @@
           </details>
         {/if}
 
-        <Button variant="secondary" size="sm" onclick={gerarProposta}><Icon nome="sparkles" size={12} /> Gerar proposta</Button>
+        <Button variant="secondary" size="sm" onclick={gerarMatches}><Icon nome="sparkles" size={12} /> Buscar matches</Button>
 
-        {#if propostaMontagem}
-          {#if propostaMontagem.propostas.length === 0}
-            <p class="text-xs text-amber-700">Nenhuma designação proposta — confira se há disponibilidade marcada e turnos no mês.</p>
+        {#if propostasMatch}
+          {#if propostasMatch.length === 0}
+            <p class="text-xs text-amber-700">Nenhum match encontrado — confira se há disponibilidade marcada pra 2+ pessoas no mesmo horário.</p>
           {:else}
-            <div class="space-y-2 max-h-80 overflow-y-auto border border-slate-200 rounded-lg p-2">
-              {#each propostaMontagem.resumoPorTurno as r (r.agendamento_id + '|' + r.data)}
-                {@const propostasDoTurno = propostasPorTurno.get(r.agendamento_id + '|' + r.data) ?? []}
-                {#if propostasDoTurno.length > 0}
-                  {@const oc = data.turnosAlvoMontagem.find((t) => t.agendamento_id === r.agendamento_id && t.data === r.data)}
-                  <div class="text-xs bg-slate-50 rounded-lg p-2">
-                    <div class="font-medium flex items-center gap-1.5">
-                      {new Date(r.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
-                      {#if oc}· {oc.hora_inicio.substring(0, 5)}–{oc.hora_fim.substring(0, 5)}{/if}
-                      {#if !r.temTransporte}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">sem transporte</span>{/if}
-                      {#if r.designados < r.alvoMin}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">abaixo do mínimo ({r.alvoMin})</span>{/if}
-                    </div>
-                    <div class="flex flex-wrap gap-1.5 mt-1">
-                      {#each propostasDoTurno as p (p.publicador_id)}
-                        {@const rejeitada = propostasRejeitadas.has(chaveProposta(p.agendamento_id, p.data, p.publicador_id))}
-                        <label class="flex items-center gap-1 cursor-pointer px-1.5 py-0.5 rounded {rejeitada ? 'bg-slate-100 text-slate-400 line-through' : 'bg-white border border-slate-200'}">
-                          <input type="checkbox" checked={!rejeitada} onchange={() => toggleProposta(p.agendamento_id, p.data, p.publicador_id)} class="w-3 h-3" />
-                          {nomePorIdMontagem.get(p.publicador_id) ?? '?'}
-                          {#if p.motivo === 'transporte'}<Icon nome="truck" size={10} />{/if}
-                        </label>
+            <div class="space-y-2 max-h-[28rem] overflow-y-auto border border-slate-200 rounded-lg p-2">
+              {#each propostasMatch as p (p.id)}
+                {@const cfg = configDe(p.id)}
+                <div class="text-xs bg-slate-50 rounded-lg p-2 space-y-1.5">
+                  <div class="font-medium flex items-center gap-1.5 flex-wrap">
+                    <span class="capitalize">{DIA_SEMANA_LABEL[p.dia_semana]}</span>
+                    {p.hora_inicio.substring(0, 5)}–{p.hora_fim.substring(0, 5)}
+                    {#if p.recorrente}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">recorrente ({p.ocorrencias.length}x)</span>{/if}
+                  </div>
+
+                  {#each p.ocorrencias as oc (oc.data)}
+                    <div class="flex items-center gap-1.5 flex-wrap pl-1">
+                      <span class="text-slate-400 shrink-0">{new Date(oc.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}:</span>
+                      {#each oc.publicadores as pubId}
+                        <span class="px-1.5 py-0.5 rounded bg-white border border-slate-200">{nomePorIdMontagem.get(pubId) ?? '?'}</span>
                       {/each}
                     </div>
+                  {/each}
+
+                  <div class="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-200">
+                    <select
+                      value={cfg.carrinhoId}
+                      onchange={(e) => (configPorProposta[p.id] = { ...cfg, carrinhoId: Number((e.target as HTMLSelectElement).value) })}
+                      class="rounded border border-slate-300 px-1.5 py-1 text-xs"
+                    >
+                      {#each data.carrinhos as c}<option value={c.id}>{c.nome}</option>{/each}
+                    </select>
+
+                    <label class="flex items-center gap-1 text-[10px]">
+                      <input type="checkbox" checked={cfg.usaAvulso}
+                        onchange={(e) => (configPorProposta[p.id] = { ...cfg, usaAvulso: (e.target as HTMLInputElement).checked })} />
+                      avulso
+                    </label>
+
+                    {#if cfg.usaAvulso}
+                      <input
+                        value={cfg.pontoAvulso}
+                        oninput={(e) => (configPorProposta[p.id] = { ...cfg, pontoAvulso: (e.target as HTMLInputElement).value })}
+                        placeholder="Ex: Feira da praça"
+                        class="flex-1 min-w-[8rem] rounded border border-slate-300 px-1.5 py-1 text-xs"
+                      />
+                    {:else}
+                      <select
+                        value={cfg.pontoId ?? ''}
+                        onchange={(e) => (configPorProposta[p.id] = { ...cfg, pontoId: Number((e.target as HTMLSelectElement).value) || null })}
+                        class="flex-1 min-w-[8rem] rounded border border-slate-300 px-1.5 py-1 text-xs"
+                      >
+                        <option value="">— ponto —</option>
+                        {#each Object.values(data.pontos) as pt}<option value={pt.id}>{pt.nome}</option>{/each}
+                      </select>
+                    {/if}
+
+                    <Button variant="primary" size="sm" loading={confirmandoId === p.id} onclick={() => confirmarMatch(p)}>
+                      Confirmar
+                    </Button>
                   </div>
-                {/if}
+                </div>
               {/each}
             </div>
-            <Button variant="primary" size="sm" loading={publicandoMontagem} onclick={publicarProposta} class="w-full">
-              Publicar {qtdAceitas} designação(ões)
-            </Button>
           {/if}
         {/if}
       </div>
