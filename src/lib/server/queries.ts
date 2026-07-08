@@ -58,8 +58,10 @@ async function contarPorQuadra(supabase: SupabaseClient): Promise<{ locais: Map<
   const locais = new Map<string, number>();
   const unidades = new Map<string, number>();
   for (const r of (data ?? []) as any[]) {
-    locais.set(r.quadra_id, r.qtd_locais);
-    unidades.set(r.quadra_id, r.qtd_unidades);
+    // Number(): PostgREST serializa bigint/numeric como string; migration
+    // 073 já faz ::int na view, mas mantemos a coerção como segurança.
+    locais.set(r.quadra_id, Number(r.qtd_locais));
+    unidades.set(r.quadra_id, Number(r.qtd_unidades));
   }
   return { locais, unidades };
 }
