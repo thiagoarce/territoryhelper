@@ -6,6 +6,17 @@ import { exigirAdminAction } from '$lib/server/guards';
 import { desfechoNoCicloAtual, cartaEscritaNoCiclo } from '$lib/ciclos';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 
+// U2: haversine simples pra sugerir quadras próximas (mesmo padrão já
+// usado em admin/predios e publicador/predios) — sem depender de RPC
+// PostGIS com raio (já bugou historicamente, ver CLAUDE.md).
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const φ1 = (lat1 * Math.PI) / 180, φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180, Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw error(401, 'Faça login');
   const id = Number(params.id);
@@ -14,6 +25,31 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const ciclo = cicloEfetivo(ciclos, id);
   const predio = await carregarPredioDetalhado(locals.supabase, id, ciclo?.iniciado_em);
   if (!predio) throw error(404, 'Prédio não encontrado');
+
+  // U2: quadras próximas (pra "não pertence a esta quadra" — publicador
+  // escolhe a certa entre as mais perto do prédio atual).
+  let quadrasProximas: { id: string; distancia_m: number }[] = [];
+  const coordsPredio = (predio.geo_geojson as any)?.coordinates;
+  if (coordsPredio) {
+    const { data: quadrasGeo } = await locals.supabase
+      .from('quadras_geo')
+      .select('id, poly_geojson, ativa')
+      .eq('ativa', true);
+    for (const q of (quadrasGeo ?? []) as any[]) {
+      if (q.id === predio.quadra_id) continue;
+      const anel = q.poly_geojson?.coordinates?.[0] as [number, number][] | undefined;
+      if (!anel || anel.length === 0) continue;
+      let somaLat = 0, somaLng = 0;
+      for (const [lng, lat] of anel) { somaLat += lat; somaLng += lng; }
+      const centroLat = somaLat / anel.length, centroLng = somaLng / anel.length;
+      quadrasProximas.push({
+        id: q.id,
+        distancia_m: haversine(coordsPredio[1], coordsPredio[0], centroLat, centroLng)
+      });
+    }
+    quadrasProximas.sort((a, b) => a.distancia_m - b.distancia_m);
+    quadrasProximas = quadrasProximas.slice(0, 8);
+  }
 
   // Ciclo do casa em casa = última conclusão da quadra do prédio
   let dataConclusaoQuadra: string | null = null;
@@ -66,7 +102,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     predio: { ...predio, unidades },
     minhaRole: locals.profile?.role,
     cicloCartasInicio: ciclo?.iniciado_em ?? null,
-    cicloCartas: ciclo
+    cicloCartas: ciclo,
+    quadrasProximas
   };
 };
 
@@ -193,6 +230,39 @@ export const actions: Actions = {
       });
     }
     return { ok: true, msg: marcar ? 'Marcado como "não existe mais"' : 'Desmarcado' };
+  },
+
+  // U2: publicador reporta posição errada — aplica na hora (via RPC
+  // security definer que checa posse e bypassa a trava de coluna
+  // estrutural só pra esta chamada) + registra curadoria pro admin
+  // revisar/reverter, mesmo padrão do overlay livre (T11).
+  reportarPosicao: async ({ request, locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const localId = Number(params.id);
+    const fd = await request.formData();
+    const lat = fd.get('lat') ? Number(fd.get('lat')) : null;
+    const lng = fd.get('lng') ? Number(fd.get('lng')) : null;
+    const novaQuadraId = fd.get('nova_quadra_id') ? String(fd.get('nova_quadra_id')) : null;
+    if (lat == null && !novaQuadraId) return fail(400, { erro: 'Nada pra atualizar' });
+
+    const { data: atual } = await locals.supabase
+      .from('locais').select('quadra_id, setor, quadra_ibge, face_ibge').eq('id', localId).maybeSingle();
+
+    const novoGeo = lat != null && lng != null ? { type: 'Point', coordinates: [lng, lat] } : null;
+    const { error: errRpc } = await locals.supabase.rpc('reportar_posicao_incorreta', {
+      p_local_id: localId,
+      p_novo_geo: novoGeo,
+      p_nova_quadra_id: novaQuadraId
+    });
+    if (errRpc) return fail(400, { erro: errRpc.message });
+
+    await registrarCuradoria(locals, {
+      local_id: localId,
+      tipo: 'edicao',
+      antes: atual ?? null,
+      depois: { quadra_id: novaQuadraId ?? atual?.quadra_id ?? null, geo: novoGeo ?? '(corrigido)' }
+    });
+    return { ok: true, msg: novaQuadraId ? `Movido pra quadra ${novaQuadraId}` : 'Posição corrigida' };
   },
 
   // WhatsApp share — gera token público de cartas
