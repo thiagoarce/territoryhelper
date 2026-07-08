@@ -321,6 +321,20 @@
     if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Fase atualizada')); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
+  // Volta pro estado "virgem" (sem linha em tp_meses — nem disponibilidade
+  // pedida ainda). Só faz sentido a partir de 'disponibilidade' (índice 0),
+  // já que dali faseAnterior() não tem mais pra onde voltar.
+  async function reabrirVirgem(mes: string) {
+    if (!confirm(`Voltar ${fmtMesRotulo(mes)} pro estado inicial? Nem a disponibilidade fica pedida — os publicadores não veem esse mês até você abrir de novo.`)) return;
+    definindoFase = mes;
+    const fd = new FormData();
+    fd.append('mes', mes);
+    const res = await fetch('?/reabrirMesVirgem', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    definindoFase = null;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Revertido')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
   function fmtMesRotulo(mes: string): string {
     return new Date(mes + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }
@@ -411,7 +425,15 @@
             </div>
           </div>
           <div class="shrink-0 flex items-center gap-2">
-            {#if ant}
+            {#if m.fase === 'disponibilidade'}
+              <button type="button" disabled={definindoFase === m.mes}
+                onclick={() => reabrirVirgem(m.mes)}
+                title="Voltar ao estado inicial (nem disponibilidade pedida)"
+                aria-label="Voltar ao estado inicial"
+                class="text-slate-400 hover:text-slate-600 disabled:opacity-40">
+                <Icon nome="chevron-down" size={14} class="inline-block rotate-90" />
+              </button>
+            {:else if ant}
               <button type="button" disabled={definindoFase === m.mes}
                 onclick={() => definirFase(m.mes, ant)}
                 title="Voltar fase"
