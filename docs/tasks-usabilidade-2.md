@@ -79,13 +79,16 @@
 
 ## Onda 6 — Reset de dados de teste (destrutivo, por último)
 
-- [ ] 🔴 **U7** Limpar rodada de testes: apagar histórico de trabalho de
-      campo (registros, conclusões, cartas, campanha, curadoria) e
-      designações/arranjos/agendamentos de TESTE, mantendo
+- [x] 🔴 **U7** `scripts/reset-rodada-testes.sql` — utilitário PERMANENTE
+      (não um script de uso único): apaga histórico de trabalho de
+      campo + designações/arranjos/TP/campanha de teste, mantendo
       território/quadras/endereços e todos os catálogos intactos.
-      **NUNCA rodar sem antes mostrar a lista literal de comandos SQL
-      pro usuário e receber confirmação explícita no chat, mesmo
-      depois deste spec estar aprovado** — é irreversível.
+      Validado localmente com fixture real (dados inseridos, script
+      rodado, resultado conferido linha a linha). **Decisão do
+      usuário**: deixar salvo no repo, NÃO rodar agora — ele aciona via
+      `/admin/dev/sql` quando quiser, e o script deve ser mantido
+      atualizado a cada tabela nova (documentado no cabeçalho do
+      arquivo e no CLAUDE.md).
 
 ## Regras pro agente executor
 
