@@ -231,6 +231,21 @@ export const actions: Actions = {
     return { ok: true, msg: `Mês ${mes} → ${fase}` };
   },
 
+  // Volta o mês pro estado "virgem" (sem linha em tp_meses — nem
+  // disponibilidade é pedida ainda). Diferente de definirFaseMes: não dá
+  // pra "voltar" de 'disponibilidade' (índice 0 de FASES) via upsert, já
+  // que fase é NOT NULL — o estado anterior é a AUSÊNCIA da linha.
+  reabrirMesVirgem: async ({ request, locals }) => {
+    const guard = exigirAdmin(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const mes = String(fd.get('mes') ?? '').trim();
+    if (!/^\d{4}-\d{2}$/.test(mes)) return fail(400, { erro: 'Mês inválido' });
+    const { error } = await locals.supabase.from('tp_meses').delete().eq('mes', mes);
+    if (error) return fail(400, { erro: error.message });
+    return { ok: true, msg: `Mês ${mes} voltou ao estado inicial (não aberto)` };
+  },
+
   // T29: publica a proposta de montagem revisada pelo admin — o cálculo
   // (montarMes) roda no CLIENTE (função pura, dados já carregados); aqui
   // só grava o que o admin aceitou. Notificação sai quando o admin avança
