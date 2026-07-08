@@ -1,7 +1,15 @@
-// U1: ordenação padrão dos endereços de uma quadra "dando a volta" a
-// partir do centro, quando não há `ordem_na_quadra` manual (T14) — antes
+// U1: ordenação padrão dos endereços de uma quadra seguindo um percurso
+// físico real, quando não há `ordem_na_quadra` manual (T14) — antes
 // disso a ordem padrão era só a de inserção (id)/face IBGE, sem relação
 // nenhuma com o percurso físico real.
+//
+// Tentativa anterior (ângulo em torno do centróide) só funciona bem em
+// quadras compactas/quadradas — em quadras finas e alongadas (comum:
+// uma fileira de casas ao longo de uma avenida, às vezes com um prédio
+// ou dois mais afastados) o centróide fica deslocado pro lado e o
+// ângulo gera zigue-zague (ex.: 8,7,6,5,4,3 depois pula pra 12,10,11)
+// em vez de um percurso limpo. Nearest-neighbor resolve isso pra
+// qualquer formato: nunca volta pra trás, sempre anda pro mais perto.
 
 export interface PontoComId {
   id: number;
@@ -23,27 +31,56 @@ export function centroidePoligono(polyGeoJson: unknown): { lat: number; lng: num
   return { lat: somaLat / anel.length, lng: somaLng / anel.length };
 }
 
-// Ordena por ângulo em torno do centro, sentido horário (lat pra cima,
-// lng pra direita — atan2 padrão dá anti-horário, por isso invertemos o
-// sinal do ângulo antes de comparar).
-export function ordenarPorAngulo<T extends PontoComId>(
-  centro: { lat: number; lng: number },
+function distancia2(a: [number, number], b: [number, number]): number {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy; // só compara — não precisa da raiz nem de haversine
+}
+
+// Caminho "nearest neighbor": começa no ponto mais distante do centro
+// (aproxima uma esquina/extremidade da quadra — "começamos a trabalhar
+// da esquina") e daí em diante sempre anda pro ponto restante mais
+// próximo. Greedy, O(n²), mas n é umas poucas dezenas de endereços por
+// quadra — sem custo real.
+export function ordenarPorCaminho<T extends PontoComId>(
+  centro: { lat: number; lng: number } | null,
   locais: T[]
 ): T[] {
-  const comAngulo = locais.map((l) => {
-    const coords = l.geo_geojson?.coordinates;
-    if (!coords) return { l, angulo: null as number | null };
-    const [lng, lat] = coords;
-    const angulo = -Math.atan2(lat - centro.lat, lng - centro.lng);
-    return { l, angulo };
-  });
-  // Sem coordenada fica no fim, ordem estável entre eles.
-  return comAngulo
-    .sort((a, b) => {
-      if (a.angulo === null && b.angulo === null) return 0;
-      if (a.angulo === null) return 1;
-      if (b.angulo === null) return -1;
-      return a.angulo - b.angulo;
-    })
-    .map((x) => x.l);
+  const comCoord: { l: T; c: [number, number] }[] = [];
+  const semCoord: T[] = [];
+  for (const l of locais) {
+    const c = l.geo_geojson?.coordinates;
+    if (c) comCoord.push({ l, c });
+    else semCoord.push(l);
+  }
+  if (comCoord.length === 0) return locais;
+
+  const centroPt: [number, number] = centro ? [centro.lng, centro.lat] : comCoord[0].c;
+
+  // Ponto de partida = mais distante do centro (extremidade/esquina).
+  let iInicial = 0;
+  let maiorDist = -1;
+  for (let i = 0; i < comCoord.length; i++) {
+    const d = distancia2(comCoord[i].c, centroPt);
+    if (d > maiorDist) { maiorDist = d; iInicial = i; }
+  }
+
+  const restantes = [...comCoord];
+  const [inicial] = restantes.splice(iInicial, 1);
+  const ordenado: T[] = [inicial.l];
+  let atual = inicial.c;
+
+  while (restantes.length > 0) {
+    let iMaisPerto = 0;
+    let menorDist = Infinity;
+    for (let i = 0; i < restantes.length; i++) {
+      const d = distancia2(restantes[i].c, atual);
+      if (d < menorDist) { menorDist = d; iMaisPerto = i; }
+    }
+    const [proximo] = restantes.splice(iMaisPerto, 1);
+    ordenado.push(proximo.l);
+    atual = proximo.c;
+  }
+
+  return [...ordenado, ...semCoord];
 }
