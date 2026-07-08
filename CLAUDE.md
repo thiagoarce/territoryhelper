@@ -84,10 +84,19 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 - `scripts/migrate-from-csv.ts` — importa CSVs do IBGE/GAS → Postgres
 - `scripts/fill-complementos.ts` — patch idempotente pra preencher
   `unidades.complemento` do CSV sem destruir dados
+- `scripts/reset-rodada-testes.sql` — utilitário PERMANENTE (U7), rodado
+  manualmente via `/admin/dev/sql` sempre que precisar zerar uma rodada
+  de testes: apaga histórico de trabalho + designações/arranjos/TP/
+  campanha, mantendo território/quadras/endereços e todos os catálogos
+  intactos (reseta `data_conclusao`/`carta_entregue`/status de TCE em
+  vez de apagar a linha). **Manutenção**: toda tabela nova entra nesse
+  arquivo (lado DELETE se for trabalho/instância, fora se for estrutura/
+  catálogo) — não deixar ele desatualizado.
 - `tests/` — `node tests/run.js`
 - `docs/specs-ajustes-finais.md` + `docs/tasks-ajustes-finais.md` —
-  rodada atual de ajustes (A1–A24 / T1–T30): specs prontos pra agente
-  executor implementar em incrementos
+  rodada de ajustes A1–A24/T1–T34 (concluída)
+- `docs/specs-usabilidade-2.md` + `docs/tasks-usabilidade-2.md` —
+  rodada de usabilidade U1–U13 (spec + progresso)
 
 ## Modelo de dados (Supabase / Postgres)
 
