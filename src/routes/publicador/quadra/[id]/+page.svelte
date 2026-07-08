@@ -13,6 +13,7 @@
   import AdicionarLocalSheet from '$lib/components/AdicionarLocalSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { centroidePoligono, ordenarPorAngulo } from '$lib/utils/geo';
 
   let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null> } } = $props();
   let editandoLocal: LocalComUnidades | null = $state(null);
@@ -69,15 +70,23 @@
     }
   });
 
-  // A8: ordem_na_quadra (ajuste fino manual) tem prioridade sobre a
-  // heurística padrão (ordem de id, vinda do server) quando presente.
+  // A8/U1: ordem_na_quadra (ajuste fino manual, T14) tem prioridade sobre
+  // a ordem automática. Sem NENHUM ajuste manual na quadra, o padrão
+  // agora é "dar a volta" a partir do centro do polígono (sentido
+  // horário) em vez da ordem de inserção/face IBGE que vinha do server.
+  const centroQuadra = $derived(centroidePoligono(data.quadra.poly_geojson));
+  const temOrdemManual = $derived(data.locais.some((l) => l.ordem_na_quadra != null));
   const locaisBase = $derived(
-    [...data.locais].sort((a, b) => {
-      if (a.ordem_na_quadra != null && b.ordem_na_quadra != null) return a.ordem_na_quadra - b.ordem_na_quadra;
-      if (a.ordem_na_quadra != null) return -1;
-      if (b.ordem_na_quadra != null) return 1;
-      return 0; // mantém ordem original (id) — sort é estável
-    })
+    temOrdemManual
+      ? [...data.locais].sort((a, b) => {
+          if (a.ordem_na_quadra != null && b.ordem_na_quadra != null) return a.ordem_na_quadra - b.ordem_na_quadra;
+          if (a.ordem_na_quadra != null) return -1;
+          if (b.ordem_na_quadra != null) return 1;
+          return 0; // mantém ordem original (id) — sort é estável
+        })
+      : centroQuadra
+        ? ordenarPorAngulo(centroQuadra, data.locais)
+        : data.locais
   );
 
   // Inverte a ordem de percurso (às vezes a quadra se faz no sentido
