@@ -81,11 +81,14 @@
   // casa, escopado ao território designado). TP (testemunho público) tem
   // agenda própria, separada de Arranjo (só pregação em grupo).
   const podeDirigir = $derived(['dirigente', 'admin'].includes(role ?? ''));
+  // TP só aparece pra quem tem profiles.tp_aprovado — admin vê mesmo sem
+  // aprovação (é quem aprova os outros).
+  const vePodeTp = $derived(role === 'admin' || !!data.profile?.tp_aprovado);
   const bottomNav = $derived<{ href: string; label: string; icon: NomeIcone }[]>([
     { href: '/publicador', label: 'Designações', icon: 'home' },
     { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
     { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
-    { href: '/publicador/tp', label: 'TP', icon: 'megaphone' },
+    ...(vePodeTp ? [{ href: '/publicador/tp', label: 'TP', icon: 'megaphone' as NomeIcone }] : []),
     { href: '/publicador/predios', label: 'Prédios', icon: 'building' }
   ]);
 

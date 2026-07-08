@@ -372,11 +372,11 @@
 <div class="p-4 space-y-3">
   <!-- Toolbar topo -->
   <div class="flex items-center gap-2 flex-wrap">
-    <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5">
+    <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5 max-w-full overflow-x-auto">
       {#each MODOS as m}
         <button
           onclick={() => setModo(m.k)}
-          class="px-3 py-1 text-sm rounded transition-colors flex items-center gap-1"
+          class="shrink-0 whitespace-nowrap px-3 py-1 text-sm rounded transition-colors flex items-center gap-1"
           class:bg-white={modo === m.k}
           class:font-medium={modo === m.k}
           class:shadow-sm={modo === m.k}
