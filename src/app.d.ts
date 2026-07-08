@@ -1,3 +1,4 @@
+/// <reference types="@sveltejs/adapter-cloudflare" />
 import type { SupabaseClient, Session } from '@supabase/supabase-js';
 import type { Profile } from '$lib/types';
 

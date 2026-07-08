@@ -195,41 +195,53 @@ export de backup).
 
 ---
 
-## U6 — Snapshot automático + restauração (versionamento de dados)
+## U6 — [FEITO] Snapshot automático + restauração (versionamento de dados)
 
 Decisão do usuário: sem plano pago do Supabase — versionamento via
-**snapshot JSON automático agendado**, não PITR de verdade. Depende de
-U5 (o cron reusa a lógica de export em streaming — sem isso, o cron
-corre o mesmo risco de estourar CPU).
+snapshot JSON, não PITR de verdade.
 
-- **Geração**: Cloudflare Cron Trigger (config em `wrangler.toml`, ex.
-  diário de madrugada) chamando uma rota interna equivalente ao export
-  de U5, mas gravando o resultado num bucket do Supabase Storage
-  (criar bucket `backups-auto`, privado) em vez de retornar como
-  download. Nome do arquivo com timestamp
-  (`backup-YYYY-MM-DD.json`).
-- **Rotação**: manter só os últimos N (ex.: 7) — o próprio cron apaga
-  o mais antigo antes de gravar o novo, ou uma rotina separada. N
-  configurável por constante no código, não precisa de UI pra isso.
-- **Restauração**: em `/admin/dev/backup`, nova seção "Snapshots
-  automáticos" listando os arquivos do bucket (nome + data), com botão
-  "Restaurar deste snapshot" reusando a MESMA lógica de restore-por-
-  upsert que já existe (T34) — baixar o JSON do Storage em vez de
-  upload manual, e seguir o fluxo de confirmação forte já existente.
-- **wrangler.toml**: adicionar o `[triggers]`/`crons` com cuidado — já
-  houve um incidente de deploy quebrado nesta sessão por trocar env var
-  de dynamic pra static; testar a config de cron não quebra o build
-  antes de fazer merge pra `main` (idealmente confirmar num preview
-  deploy, não só local).
-- Aceite: um snapshot aparece automaticamente no bucket após o cron
-  rodar (pode testar disparando a rota manualmente primeiro); a lista
-  aparece em `/admin/dev/backup`; restaurar de um snapshot antigo local
-  de teste funciona via o restore já existente.
-- 🔴 justificativa: mexe em `wrangler.toml` (já causou 1 incidente de
-  deploy nesta sessão), cria infraestrutura nova (Storage bucket +
-  Cron Trigger) e reusa um caminho destrutivo (restore) — pedir
-  revisão antes do merge final pra `main`, mesmo que a implementação
-  em si seja direta.
+**Descoberta durante a implementação**: o `@sveltejs/adapter-cloudflare`
+usado neste projeto gera um Worker que só exporta um handler de
+`fetch` — não há suporte nativo a Cron Trigger (`scheduled`) sem um
+hack frágil de pós-build reescrevendo o `_worker.js` gerado. Dado que
+mexer em config de deploy já causou 1 incidente nesta sessão, perguntei
+ao usuário e ele escolheu a alternativa sem risco de infra: **snapshot
+gerado sob demanda ao abrir `/admin/dev/backup`**, não por Cron
+Trigger de verdade.
+
+Implementado:
+- Migration 074: bucket `backups-auto` no Supabase Storage (privado,
+  só service role).
+- `src/routes/admin/dev/backup/_snapshot.ts`: `gerarSnapshotSeNecessario()`
+  — lista o bucket, se o snapshot mais recente tiver mais de ~20h (ou
+  não existir nenhum), gera um novo usando a MESMA técnica de U5
+  (busca+serializa tabela por tabela, um await de rede entre cada uma)
+  e sobe pro Storage; rotaciona mantendo só os últimos 7.
+  `listarSnapshots()` e `baixarSnapshot(nome)` completam o CRUD.
+- `+page.server.ts`: `load()` dispara `gerarSnapshotSeNecessario()` via
+  `platform.context.waitUntil(...)` (não bloqueia a resposta da
+  página) e devolve a lista de snapshots. A lógica de restore
+  (upsert em ordem de FK) foi extraída pra `aplicarRestore()`,
+  compartilhada entre a action `restaurar` (upload manual, já
+  existia) e a nova `restaurarSnapshot` (baixa do Storage pelo nome).
+- `src/app.d.ts`: precisou de `/// <reference types="@sveltejs/adapter-cloudflare" />`
+  pra `App.Platform.context` (com `waitUntil`) ser reconhecido pelo
+  TypeScript — sem isso o adapter injeta o campo em runtime mas o
+  typecheck não sabia que existia.
+- UI: nova seção "Snapshots automáticos" em `/admin/dev/backup/+page.svelte`
+  com lista de snapshots (data + nome do arquivo) e o mesmo fluxo de
+  confirmação forte ("digite RESTAURAR") do restore por upload.
+
+Não é PITR de verdade (não restaura pra QUALQUER momento, só pro
+snapshot mais recente antes do problema) e não é 100% garantido-diário
+(depende de alguém abrir a tela de Backup) — mas cobre o caso real
+("reverter pra uns dias atrás") sem custo e sem risco de deploy.
+
+Não testado: comportamento real do `waitUntil` em produção (só
+validado localmente que o build/typecheck aceitam a chamada); a
+primeira geração de snapshot em produção só pode ser confirmada depois
+do deploy, abrindo `/admin/dev/backup` e voltando depois pra ver se o
+arquivo apareceu no Storage.
 
 ---
 
