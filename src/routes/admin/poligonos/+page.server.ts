@@ -112,6 +112,10 @@ export const load: PageServerLoad = async ({ locals }) => {
   // com esse cluster — usado pra sugerir "essa faixa parece ser da quadra
   // X" quando um cluster minoritário aparece em outra quadra também.
   const quadraIdsPorCluster = new Map<string, Set<string>>();
+  // U11: endereços (id/endereco/lat/lng) de cada cluster dentro da
+  // quadra — sem isso o admin não consegue auditar visualmente (só via
+  // Street View) se um cluster minoritário realmente pertence aqui.
+  const locaisPorClusterPorQuadra = new Map<string, Map<string, LocalComGeo[]>>();
   for (const l of locais) {
     if (!l.quadra_id) continue;
     const cluster = `${l.setor || ''}|${l.quadra_ibge || ''}`;
@@ -120,15 +124,33 @@ export const load: PageServerLoad = async ({ locals }) => {
     m.set(cluster, (m.get(cluster) || 0) + 1);
     if (!quadraIdsPorCluster.has(cluster)) quadraIdsPorCluster.set(cluster, new Set());
     quadraIdsPorCluster.get(cluster)!.add(l.quadra_id);
+    if (!locaisPorClusterPorQuadra.has(l.quadra_id)) locaisPorClusterPorQuadra.set(l.quadra_id, new Map());
+    const mLocais = locaisPorClusterPorQuadra.get(l.quadra_id)!;
+    if (!mLocais.has(cluster)) mLocais.set(cluster, []);
+    mLocais.get(cluster)!.push(l);
   }
-  const quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number; quadrasVizinhas: string[] }[] }[] = [];
+  const quadrasMultiCluster: {
+    quadra_id: string;
+    clusters: {
+      cluster: string;
+      qtd: number;
+      quadrasVizinhas: string[];
+      enderecos: { id: number; endereco: string; lat: number | null; lng: number | null }[];
+    }[];
+  }[] = [];
   for (const [qid, m] of clusterPorQuadra) {
     if (m.size > 1) {
       const clusters = [...m]
         .map(([cluster, qtd]) => ({
           cluster,
           qtd,
-          quadrasVizinhas: [...(quadraIdsPorCluster.get(cluster) ?? [])].filter((id) => id !== qid)
+          quadrasVizinhas: [...(quadraIdsPorCluster.get(cluster) ?? [])].filter((id) => id !== qid),
+          enderecos: (locaisPorClusterPorQuadra.get(qid)?.get(cluster) ?? []).map((l) => ({
+            id: l.id,
+            endereco: `${l.logradouro}, ${l.numero}`,
+            lat: l.lat,
+            lng: l.lng
+          }))
         }))
         .sort((a, b) => b.qtd - a.qtd);
       quadrasMultiCluster.push({ quadra_id: qid, clusters });

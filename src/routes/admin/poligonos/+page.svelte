@@ -18,7 +18,15 @@
       territorios: { id: string; nome: string; cor: string | null; qtd: number }[];
       tces: { id: string; nome: string; tipo: string; status: string; prazo: string | null; publicador_id: string | null; publicador_nome: string | null; poly_geojson: unknown | null }[];
       publicadores: { id: string; nome: string; role: string }[];
-      quadrasMultiCluster: { quadra_id: string; clusters: { cluster: string; qtd: number; quadrasVizinhas: string[] }[] }[];
+      quadrasMultiCluster: {
+        quadra_id: string;
+        clusters: {
+          cluster: string;
+          qtd: number;
+          quadrasVizinhas: string[];
+          enderecos: { id: number; endereco: string; lat: number | null; lng: number | null }[];
+        }[];
+      }[];
       quadrasVazias: string[];
       quadrasOrfas: string[];
       locaisSemFace: { id: number; endereco: string; quadra_id: string | null }[];
@@ -231,6 +239,43 @@
     const parsed = deserialize(await res.text()) as any;
     unificandoQuadraId = null;
     if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Unificado')); await invalidateAll(); }
+    else toast.error(String(parsed.data?.erro || 'Falhou'));
+  }
+
+  // U11: seleção "pertence a esta quadra?" por endereço dentro de cada
+  // cluster (checkbox default = TRUE só no cluster majoritário — os
+  // minoritários vêm desmarcados, já que são o sinal do problema).
+  // Desmarcados ao salvar caem em "sem quadra" (reusa ?/desvincular).
+  let selecaoPertence = $state<Record<number, boolean>>({});
+  $effect(() => {
+    const itens = data.quadrasMultiCluster;
+    for (const item of itens) {
+      for (const [i, c] of item.clusters.entries()) {
+        for (const e of c.enderecos) {
+          if (!(e.id in selecaoPertence)) selecaoPertence[e.id] = i === 0;
+        }
+      }
+    }
+  });
+  function linkStreetView(lat: number | null, lng: number | null): string | null {
+    if (lat == null || lng == null) return null;
+    return `https://www.google.com/maps?layer=c&cbll=${lat},${lng}`;
+  }
+  let salvandoSelecaoId = $state<string | null>(null);
+  async function salvarSelecao(item: (typeof data.quadrasMultiCluster)[number]) {
+    const idsForaDaQuadra = item.clusters
+      .flatMap((c) => c.enderecos)
+      .filter((e) => selecaoPertence[e.id] === false)
+      .map((e) => e.id);
+    if (idsForaDaQuadra.length === 0) { toast.error('Nada desmarcado — nenhuma mudança'); return; }
+    if (!confirm(`Remover ${idsForaDaQuadra.length} endereço(s) de ${item.quadra_id}? Eles caem em "sem quadra".`)) return;
+    salvandoSelecaoId = item.quadra_id;
+    const fd = new FormData();
+    for (const id of idsForaDaQuadra) fd.append('local_ids', String(id));
+    const res = await fetch('?/desvincular', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoSelecaoId = null;
+    if (parsed.type === 'success') { toast.success(String(parsed.data?.msg || 'Atualizado')); await invalidateAll(); }
     else toast.error(String(parsed.data?.erro || 'Falhou'));
   }
 
@@ -517,8 +562,36 @@
                       {/each}
                     </div>
                   {/if}
-                  <div class="flex gap-2 mt-1">
+
+                  <!-- U11: endereços de cada cluster, com checkbox
+                       "pertence aqui?" + link de Street View pra
+                       conferir visualmente. -->
+                  <div class="mt-1.5 space-y-1.5">
+                    {#each item.clusters as c, i (c.cluster)}
+                      <div class="rounded bg-white/60 px-1.5 py-1">
+                        <div class="text-[10px] text-slate-500 uppercase tracking-wide">
+                          Cluster {i + 1} ({c.qtd} endereço(s){i === 0 ? ' — majoritário' : ''})
+                        </div>
+                        <div class="space-y-0.5 mt-0.5">
+                          {#each c.enderecos as e (e.id)}
+                            {@const sv = linkStreetView(e.lat, e.lng)}
+                            <label class="flex items-center gap-1.5">
+                              <input type="checkbox" checked={selecaoPertence[e.id] ?? i === 0}
+                                onchange={(ev) => { selecaoPertence[e.id] = (ev.target as HTMLInputElement).checked; selecaoPertence = { ...selecaoPertence }; }} />
+                              <span class="flex-1 truncate">{e.endereco}</span>
+                              {#if sv}
+                                <a href={sv} target="_blank" rel="noopener" class="text-blue-700 hover:underline shrink-0">Street View</a>
+                              {/if}
+                            </label>
+                          {/each}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+
+                  <div class="flex gap-2 mt-1.5">
                     <button disabled={unificandoQuadraId === item.quadra_id} onclick={() => unificarCluster(item.quadra_id)} class="text-amber-800 hover:underline disabled:opacity-40">Unificar clusters (aceitar como uma quadra só)</button>
+                    <button disabled={salvandoSelecaoId === item.quadra_id} onclick={() => salvarSelecao(item)} class="text-red-700 hover:underline disabled:opacity-40">Salvar seleção (desmarcados saem da quadra)</button>
                   </div>
                 </div>
               {/each}
