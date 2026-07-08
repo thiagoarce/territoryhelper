@@ -42,6 +42,7 @@
       minhaRole?: string;
       cicloCartasInicio?: string | null;
       cicloCartas?: { iniciado_em: string; iniciado_por_nome: string | null } | null;
+      quadrasProximas: { id: string; distancia_m: number }[];
     };
   } = $props();
 
@@ -237,6 +238,47 @@
     }
   }
 
+  // U2: reportar posição errada — 2 casos (pertence aqui mas pino errado
+  // / não pertence a esta quadra).
+  let sheetPosicao = $state(false);
+  let corrigindoPosicao = $state(false);
+  let capturandoGPS = $state(false);
+  let quadraEscolhida = $state<string | null>(null);
+  async function usarLocalizacaoAtual() {
+    if (!navigator.geolocation) { toast.warn('Geolocation não disponível'); return; }
+    capturandoGPS = true;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        capturandoGPS = false;
+        await enviarCorrecao(pos.coords.latitude, pos.coords.longitude, null);
+      },
+      (err) => { capturandoGPS = false; toast.error('Falhou GPS: ' + err.message); },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+  async function moverPraQuadra() {
+    if (!quadraEscolhida) return;
+    await enviarCorrecao(null, null, quadraEscolhida);
+  }
+  async function enviarCorrecao(lat: number | null, lng: number | null, novaQuadraId: string | null) {
+    corrigindoPosicao = true;
+    const fd = new FormData();
+    if (lat != null && lng != null) { fd.append('lat', String(lat)); fd.append('lng', String(lng)); }
+    if (novaQuadraId) fd.append('nova_quadra_id', novaQuadraId);
+    const res = await fetch('?/reportarPosicao', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    corrigindoPosicao = false;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg || 'Atualizado'));
+      sheetPosicao = false;
+      quadraEscolhida = null;
+      await invalidateAll();
+      if (novaQuadraId) voltar(); // saiu da quadra atual — não faz sentido continuar na tela
+    } else {
+      toast.error(String(parsed.data?.erro || 'Falhou'));
+    }
+  }
+
   // A19: ciclo de cartas é por prédio — só admin inicia (some das listas
   // globais de /admin/predios, botão migrou pra cá).
   let iniciandoCiclo = $state(false);
@@ -283,6 +325,8 @@
       <div class="ml-auto flex gap-1">
         <button type="button" onclick={() => (sheetEditar = true)} title="Editar prédio"
           class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="pencil" size={14} /></button>
+        <button type="button" onclick={() => (sheetPosicao = true)} title="Reportar posição errada"
+          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="map-pin" size={14} /></button>
         <button type="button" disabled={compartilhando} onclick={compartilharWhatsApp} title="Compartilhar cartas"
           class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center disabled:opacity-50"><Icon nome={compartilhando ? 'loader' : 'share'} size={14} spin={compartilhando} /></button>
       </div>
@@ -511,5 +555,39 @@
         <Icon nome="alert" size={14} /> Este endereço não existe mais
       </button>
     {/if}
+  </div>
+</BottomSheet>
+
+<!-- U2: reportar posição errada -->
+<BottomSheet bind:open={sheetPosicao} title="Posição errada?">
+  <div class="space-y-4">
+    <div>
+      <div class="font-medium text-sm mb-1">Pertence aqui, mas o pino está no lugar errado</div>
+      <p class="text-xs text-slate-500 mb-2">Corrige só a posição — o endereço continua na mesma quadra.</p>
+      <Button variant="secondary" class="w-full" loading={capturandoGPS || corrigindoPosicao} onclick={usarLocalizacaoAtual}>
+        <Icon nome="map-pin" size={14} /> Usar minha localização atual
+      </Button>
+    </div>
+
+    <div class="pt-3 border-t border-slate-100">
+      <div class="font-medium text-sm mb-1">Não pertence a esta quadra</div>
+      <p class="text-xs text-slate-500 mb-2">Escolha a quadra certa — o endereço sai daqui e vai pra ela.</p>
+      {#if data.quadrasProximas.length === 0}
+        <p class="text-xs text-slate-400">Nenhuma quadra próxima encontrada.</p>
+      {:else}
+        <div class="space-y-1">
+          {#each data.quadrasProximas as q (q.id)}
+            <label class="flex items-center gap-2 text-sm rounded-lg border border-slate-200 px-3 py-2 cursor-pointer" class:border-primary-400={quadraEscolhida === q.id} class:bg-primary-50={quadraEscolhida === q.id}>
+              <input type="radio" name="quadra_proxima" value={q.id} bind:group={quadraEscolhida} />
+              <span class="font-mono flex-1">{q.id}</span>
+              <span class="text-xs text-slate-400">{Math.round(q.distancia_m)}m</span>
+            </label>
+          {/each}
+        </div>
+        <Button variant="danger" class="w-full mt-2" disabled={!quadraEscolhida} loading={corrigindoPosicao} onclick={moverPraQuadra}>
+          Mover pra esta quadra
+        </Button>
+      {/if}
+    </div>
   </div>
 </BottomSheet>
