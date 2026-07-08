@@ -298,6 +298,14 @@
     const i = FASES.indexOf(atual as any);
     return i >= 0 && i < FASES.length - 1 ? FASES[i + 1] : null;
   }
+  // U8: backend (definirFaseMes) já aceita qualquer transição — só faltava
+  // a UI pra voltar (ex.: montagem → disponibilidade, ou reabrir um mês
+  // já publicado/fechado).
+  function faseAnterior(atual: string | null): string | null {
+    if (atual === null) return null;
+    const i = FASES.indexOf(atual as any);
+    return i > 0 ? FASES[i - 1] : null;
+  }
   async function definirFase(mes: string, fase: string) {
     const aviso = fase === 'publicado'
       ? `Publicar ${fmtMesRotulo(mes)}? Todos os designados do mês serão notificados pra aceitar/recusar.`
@@ -394,6 +402,7 @@
     <div class="grid gap-1.5 sm:grid-cols-3">
       {#each data.tpMeses as m (m.mes)}
         {@const prox = proximaFase(m.fase)}
+        {@const ant = faseAnterior(m.fase)}
         <div class="bg-white rounded-lg px-2.5 py-2 flex items-center justify-between gap-2 text-xs">
           <div>
             <div class="font-semibold capitalize">{fmtMesRotulo(m.mes)}</div>
@@ -401,13 +410,24 @@
               {m.fase ? FASE_LABEL[m.fase] : 'não aberto'}
             </div>
           </div>
-          {#if prox}
-            <button type="button" disabled={definindoFase === m.mes}
-              onclick={() => definirFase(m.mes, prox)}
-              class="shrink-0 text-teal-700 font-medium hover:underline disabled:opacity-40">
-              {definindoFase === m.mes ? '...' : m.fase === null ? 'Abrir' : `→ ${FASE_LABEL[prox]}`}
-            </button>
-          {/if}
+          <div class="shrink-0 flex items-center gap-2">
+            {#if ant}
+              <button type="button" disabled={definindoFase === m.mes}
+                onclick={() => definirFase(m.mes, ant)}
+                title="Voltar fase"
+                aria-label="Voltar fase"
+                class="text-slate-400 hover:text-slate-600 disabled:opacity-40">
+                <Icon nome="chevron-down" size={14} class="inline-block rotate-90" />
+              </button>
+            {/if}
+            {#if prox}
+              <button type="button" disabled={definindoFase === m.mes}
+                onclick={() => definirFase(m.mes, prox)}
+                class="text-teal-700 font-medium hover:underline disabled:opacity-40">
+                {definindoFase === m.mes ? '...' : m.fase === null ? 'Abrir' : `→ ${FASE_LABEL[prox]}`}
+              </button>
+            {/if}
+          </div>
         </div>
       {/each}
     </div>

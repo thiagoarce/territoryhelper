@@ -349,6 +349,13 @@
       {#if a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0 || a.tces_ids.length > 0}
         <Button variant="primary" onclick={() => abrirRepartir(a)} class="w-full mt-2"><Icon nome="scissors" size={14} /> Repartir território</Button>
       {/if}
+
+      <!-- U9: encerrar antes do prazo (voluntário) — sem esperar a
+           designação virar "Finalize a designação" (que só aparece
+           depois da data). Reusa a mesma sheet de conferência. -->
+      <button type="button" onclick={() => abrirFinalizar(a)} class="mt-2 w-full text-xs text-primary-600 hover:underline">
+        Encerrar designação agora (antes do prazo)
+      </button>
     </div>
   {/if}
 

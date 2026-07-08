@@ -1,5 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { selectAll } from '$lib/server/queries';
 import type { AgendamentoBase, ExcecaoBase } from '$lib/tp-agendamentos';
 import { ocorrenciaConflitante } from '$lib/tp-agendamentos';
@@ -82,6 +82,12 @@ function mesesAlvo(): string[] {
 // precisa ser CONFIRMADA a cada mês novo (migration 054) antes do admin
 // montar o Planner daquele mês.
 export const load: PageServerLoad = async ({ locals }) => {
+  // U3: só admin ou publicador aprovado (profiles.tp_aprovado) vê o TP —
+  // defesa em profundidade além de esconder o ícone na bottom nav.
+  if (locals.profile?.role !== 'admin' && !locals.profile?.tp_aprovado) {
+    throw redirect(303, '/publicador');
+  }
+
   const escalaAte = new Date(Date.now() + 370 * 86400000).toISOString().slice(0, 10);
   const escalaDesde = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const mes = mesAtual();
