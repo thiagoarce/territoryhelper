@@ -66,6 +66,33 @@
       invocação; `ssr=false` não tira `+page.server.ts` do Worker) +
       corrigir comentários de U5/U6 que assumem "rajada entre awaits".
 
+## Fase 2 — 100% offline do modo campo (depois da Fase 1 inteira)
+
+> Recorte: campo 100% (depois de logado); admin só leitura em cache.
+> Detalhes e justificativas no spec.
+
+- [ ] 🟡 **W9** Leitura offline total do campo: converter os loads de
+      campo restantes (home, agenda, TP, prédios, campanha,
+      /predio/[id]) pra universal+comCache; prefetch completo "Baixar
+      pra usar offline" com timestamp visível.
+
+- [ ] 🟡 **W10** Escrita offline total do campo + fila 2.0: todos os
+      POSTs de campo enfileiráveis via postComFila (concluir quadra/
+      TCE, não-existe, overlay, reordenar, criar prédio pendente,
+      relatório TP, pedidos); fila guarda descrição+status+erro por
+      item, falha não bloqueia os demais, sheet de pendências/falhas
+      com tentar de novo/descartar. Online-only (documentado): link
+      público, Overpass, PNG/WhatsApp, inscrição TP, foto.
+
+- [ ] 🟡 **W11** Mapa offline via PMTiles: extract do município
+      (script documentado), bucket público `mapa-offline` no Storage,
+      botão de download em /perfil, componentes de mapa usam style
+      local + pmtiles:// quando disponível/offline (glifos/sprites
+      locais via @protomaps/basemaps).
+
+- [ ] 🟢 **W12** UX de estado offline: "dados de HH:MM" por tela,
+      seção Offline em /perfil (última sync, baixar tudo, limpar).
+
 ## Regras pro executor
 
 1. Ordem: W2 → W3 → W4 → W5 → W8 → W6 → W7. Não pular W2 (W3/W4
