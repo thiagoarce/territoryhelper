@@ -6,8 +6,8 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/server/queries';
-  import type { TceComQuadras } from './+page.server';
+  import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/queries';
+  import type { TceComQuadras } from './+page';
   import { diasDesde } from '$lib/utils/data';
 
   let {
