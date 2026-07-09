@@ -70,28 +70,40 @@
 
 > Recorte: campo 100% (depois de logado); admin só leitura em cache.
 > Detalhes e justificativas no spec.
+>
+> **Executor (decisão do usuário)**: W9/W10/W12 = SONNET — seguem
+> receitas já implementadas várias vezes na Fase 1 (load universal +
+> comCache; postComFila + overlay otimista; UI sobre o `cacheInfo` que
+> os loads já devolvem — copiar os exemplos existentes, não inventar).
+> W11 = FABLE — único item sem padrão pré-existente (integração de
+> ferramenta nova). PRÉ-REQUISITO de toda a fase: a Fase 1 testada em
+> produção (migration 076 aplicada, salvar designação sem 1102, modo
+> avião, snapshot/restore) — não empilhar em cima de base não validada.
 
-- [ ] 🟡 **W9** Leitura offline total do campo: converter os loads de
-      campo restantes (home, agenda, TP, prédios, campanha,
+- [ ] 🟡 **W9** (Sonnet) Leitura offline total do campo: converter os
+      loads de campo restantes (agenda, TP, prédios, campanha,
       /predio/[id]) pra universal+comCache; prefetch completo "Baixar
       pra usar offline" com timestamp visível.
 
-- [ ] 🟡 **W10** Escrita offline total do campo + fila 2.0: todos os
-      POSTs de campo enfileiráveis via postComFila (concluir quadra/
-      TCE, não-existe, overlay, reordenar, criar prédio pendente,
-      relatório TP, pedidos); fila guarda descrição+status+erro por
-      item, falha não bloqueia os demais, sheet de pendências/falhas
-      com tentar de novo/descartar. Online-only (documentado): link
-      público, Overpass, PNG/WhatsApp, inscrição TP, foto.
+- [ ] 🟡 **W10** (Sonnet) Escrita offline total do campo + fila 2.0:
+      todos os POSTs de campo enfileiráveis via postComFila (concluir
+      quadra/TCE, não-existe, overlay, reordenar, criar prédio
+      pendente, relatório TP, pedidos); fila guarda descrição+status+
+      erro por item, falha não bloqueia os demais, sheet de pendências/
+      falhas com tentar de novo/descartar. Online-only (documentado):
+      link público, Overpass, PNG/WhatsApp, inscrição TP, foto.
+      ATENÇÃO: refatora queue.ts, que protege dado de campo — protocolo
+      reforçado + testar "item com falha não bloqueia os demais".
 
-- [ ] 🟡 **W11** Mapa offline via PMTiles: extract do município
+- [ ] 🔴 **W11** (Fable) Mapa offline via PMTiles: extract do município
       (script documentado), bucket público `mapa-offline` no Storage,
       botão de download em /perfil, componentes de mapa usam style
       local + pmtiles:// quando disponível/offline (glifos/sprites
-      locais via @protomaps/basemaps).
+      locais via @protomaps/basemaps). Sem padrão no código — não
+      delegar pro executor de receita.
 
-- [ ] 🟢 **W12** UX de estado offline: "dados de HH:MM" por tela,
-      seção Offline em /perfil (última sync, baixar tudo, limpar).
+- [ ] 🟢 **W12** (Sonnet) UX de estado offline: "dados de HH:MM" por
+      tela, seção Offline em /perfil (última sync, baixar tudo, limpar).
 
 ## Regras pro executor
 
