@@ -180,6 +180,62 @@ Redesenho (o browser faz o trabalho pesado; Worker só grava lotes):
   a base REAL antes de dar por pronto, porque foi exatamente onde o
   design anterior quebrou.
 
+## W8 — "Modo rua": carteira baixada + edição offline nas telas de campo
+
+O cenário-alvo, literal do usuário: *"com Wi-Fi no salão recebo as
+quadras, saio pra rua sem sinal, trabalho, volto pro salão e
+sincroniza"*. Hoje isso só funciona pela metade:
+
+- LER: o service worker cacheia rotas VISITADAS (network-first com
+  fallback) — quadra aberta no salão abre na rua; quadra não visitada,
+  não. Não existe "baixar a carteira inteira".
+- EDITAR: só `/predio/[id]` usa `postComFila` (fila offline + flush no
+  evento `online`). `/publicador/quadra/[id]` e `/publicador/tce/[id]`
+  usam POST normal — sem rede, o botão falha. E a tela de quadra é
+  justamente a mais usada na rua.
+
+Toda a infra já existe (fila IndexedDB, SW, flush ao reconectar) — W8 é
+estender, não inventar. Três partes:
+
+1. **Prefetch da carteira**: ao abrir `/publicador` ONLINE, depois do
+   render, buscar em background os dados de TODAS as quadras designadas
+   (as mesmas queries do load de `/publicador/quadra/[id]` —
+   `carregarQuadraComLocais` + ciclos) e dos TCEs abertos, gravando no
+   cache IndexedDB do W5 (chave `quadra:<id>` / `tce:<id>`). São a
+   carteira do publicador (poucas quadras), não o território inteiro —
+   volume pequeno. Também garantir que o SHELL das rotas
+   `/publicador/quadra/[id]` e `/publicador/tce/[id]` abre offline
+   (com `ssr=false` + load universal, o shell é o mesmo do app — o SW
+   já o pré-cacheia; conferir na prática).
+2. **Telas de quadra/TCE leem cache-first**: converter os loads de
+   `/publicador/quadra/[id]` e `/publicador/tce/[id]` pra `+page.ts`
+   universal (mesma receita W3/W4 — de quebra tira mais leitura do
+   Worker) usando `comCache` do W5: com rede, revalida; sem rede, abre
+   com o que o prefetch guardou. Obs.: o guard `exigirQuadraDesignada`
+   roda hoje no load server — a proteção real de dados é a RLS (o guard
+   é UX de 404); no load universal, tratar resultado vazio/RLS-negado
+   como "não designada" e redirecionar.
+3. **Escrita offline nas telas de campo**: trocar os POSTs de
+   `?/marcarDesfecho` e `?/toggleCarta` em `/publicador/quadra/[id]` e
+   `?/marcarDesfecho`/`?/toggle` em `/publicador/tce/[id]` por
+   `postComFila` (mesmo overlay otimista local que `/predio/[id]` já
+   faz — copiar o padrão `overrideDesfecho` de lá). O flush no evento
+   `online` já existe no root layout — nada a fazer na volta pro salão
+   além de abrir o app com sinal.
+
+Limites honestos (aceitos): registros são append-only, então dois
+publicadores offline na mesma quadra não conflitam de verdade (os dois
+desfechos entram); marca de carta é last-writer-wins; se o app for
+FECHADO à força antes de voltar o sinal, a fila persiste (IndexedDB) e
+sincroniza na próxima abertura com rede — mas notificação/badge de
+"tem coisa pendente" é o banner de fila que já existe (T22).
+
+- Aceite (o teste de verdade): abrir a home com Wi-Fi, esperar o
+  prefetch, ativar modo avião, abrir uma quadra NÃO visitada da
+  carteira, marcar desfechos e carta, fechar o sheet, desativar modo
+  avião — ver a fila esvaziar e os desfechos aparecerem pra outro
+  usuário/aba.
+
 ## W7 — Documentação do modelo de CPU
 
 - CLAUDE.md: corrigir/registrar em "Deploy" ou "Anti-padrões": CPU do
@@ -194,11 +250,11 @@ Redesenho (o browser faz o trabalho pesado; Worker só grava lotes):
 
 ## O que fica DELIBERADAMENTE de fora desta rodada
 
-- **Sync bidirecional/local-first completo** (escrita offline em tudo,
-  resolução de conflitos, delta sync por `atualizado_em`): custo alto,
-  benefício baixo enquanto o problema real é CPU de leitura. O W5 cobre
-  o caso de uso citado ("as coisas não mudam drasticamente") pra
-  LEITURA; escrita offline segue nos fluxos de campo que já têm fila.
+- **Sync bidirecional/local-first completo** (escrita offline em TODAS
+  as telas, resolução de conflitos, delta sync por `atualizado_em`):
+  custo alto, benefício baixo. O W5+W8 cobrem o caso de uso real
+  ("recebo no salão, trabalho na rua, sincronizo na volta") pros fluxos
+  de campo; telas admin continuam exigindo rede pra escrever.
 - **Atualização otimista nas telas admin** (remover invalidateAll):
   depois de W3/W4 o invalidateAll é grátis pro Worker — vira só
   polimento de UX, não urgência.
