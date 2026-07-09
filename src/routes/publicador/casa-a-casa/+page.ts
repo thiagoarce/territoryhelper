@@ -17,6 +17,7 @@ import {
   type CoberturaQuadra
 } from '$lib/queries';
 import { arranjoAindaVale, precisaFinalizar } from '$lib/arranjos';
+import { comCache } from '$lib/offline/cache-leitura';
 
 export const ssr = false;
 
@@ -61,13 +62,19 @@ export interface MinhaParte {
 export const load: PageLoad = async ({ parent }) => {
   const { profile } = await parent();
   if (!profile) throw redirect(303, '/login');
-  const minhaId = profile.id;
+  // W5: network-first com fallback pro cache — casa a casa abre offline
+  // com o último estado conhecido.
+  const r = await comCache(`campo:casa-a-casa:${profile.id}`, () => carregar(profile.id, profile.role ?? ''));
+  return { ...r.valor, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };
+};
+
+async function carregar(minhaId: string, role: string) {
   const supabase = supabaseBrowser();
 
   const hoje = hojeIsoBrasil();
   const ontem = hojeIsoBrasil(-1);
   const ha60dias = hojeIsoBrasil(-60);
-  const podeCoordenar = ['dirigente', 'admin'].includes(profile.role ?? '');
+  const podeCoordenar = ['dirigente', 'admin'].includes(role);
 
   const [designacoes, quadras, partesMinhasRes, dirijoRes, profRes] = await Promise.all([
     listarDesignacoes(supabase),
@@ -214,4 +221,4 @@ export const load: PageLoad = async ({ parent }) => {
     territorioPessoalTces,
     minhaId
   };
-};
+}

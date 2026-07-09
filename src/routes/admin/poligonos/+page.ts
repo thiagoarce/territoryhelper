@@ -8,6 +8,7 @@
 import type { PageLoad } from './$types';
 import { supabaseBrowser } from '$lib/supabase-browser';
 import { selectAll, listarQuadrasComGeo, listarPublicadores } from '$lib/queries';
+import { comCache } from '$lib/offline/cache-leitura';
 
 export const ssr = false;
 
@@ -50,7 +51,15 @@ export interface CuradoriaLinha {
   local_endereco: string | null;
 }
 
-export const load: PageLoad = async () => {
+export const load: PageLoad = async ({ parent }) => {
+  const { profile } = await parent();
+  // W5: network-first com fallback pro cache (offline abre com o último
+  // estado; edições continuam pedindo rede — são actions).
+  const r = await comCache(`admin:poligonos:${profile?.id ?? 'anon'}`, () => carregar());
+  return { ...r.valor, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };
+};
+
+async function carregar() {
   const supabase = supabaseBrowser();
   // TODOS os locais com geo (extrai lat/lng do geo_geojson da view)
   const linhas = await selectAll<LocalDaView>(
@@ -219,4 +228,4 @@ export const load: PageLoad = async () => {
     quadrasParaRenomear,
     curadoria
   };
-};
+}

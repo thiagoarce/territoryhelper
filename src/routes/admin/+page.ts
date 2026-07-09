@@ -13,6 +13,7 @@ import type { PageLoad } from './$types';
 import { supabaseBrowser } from '$lib/supabase-browser';
 import { listarQuadrasComGeo, listarDesignacoes, listarPublicadores } from '$lib/queries';
 import { statusCampanha } from '$lib/campanhas';
+import { comCache } from '$lib/offline/cache-leitura';
 
 export const ssr = false;
 
@@ -26,7 +27,15 @@ export interface TceComQuadras {
   quadras_ids: string[];
 }
 
-export const load: PageLoad = async () => {
+export const load: PageLoad = async ({ parent }) => {
+  const { profile } = await parent();
+  // W5: network-first com fallback pro cache — offline, a Geral abre
+  // com o último estado conhecido (leitura; ações continuam pedindo rede).
+  const r = await comCache(`admin:geral:${profile?.id ?? 'anon'}`, () => carregar());
+  return { ...r.valor, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };
+};
+
+async function carregar() {
   const supabase = supabaseBrowser();
   const [quadras, designacoes, publicadores, campanhaRes, curadoriaPendenteRes, tcesRes] = await Promise.all([
     listarQuadrasComGeo(supabase),
@@ -129,4 +138,4 @@ export const load: PageLoad = async () => {
     curadoriaPendente,
     tces
   };
-};
+}
