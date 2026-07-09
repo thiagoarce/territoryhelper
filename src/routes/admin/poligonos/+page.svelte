@@ -6,10 +6,10 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { QuadraGeo } from '$lib/server/queries';
+  import type { QuadraGeo } from '$lib/queries';
   import { page } from '$app/stores';
-  import type { LocalComGeo } from './$types';
-  import type { CuradoriaLinha } from './+page.server';
+  import type { LocalComGeo } from './+page';
+  import type { CuradoriaLinha } from './+page';
 
   let { data, form }: {
     data: {
