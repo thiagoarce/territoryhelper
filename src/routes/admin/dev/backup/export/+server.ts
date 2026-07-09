@@ -16,10 +16,15 @@ import { TABELAS_BACKUP, VERSAO_BACKUP } from '../_tabelas';
 //
 // Reescrito como streaming: cada tabela é buscada (await, I/O de rede)
 // e serializada (JSON.stringify SÓ dela) separadamente, uma de cada
-// vez, com um `await` entre elas. O modelo de CPU do Workers é por
-// RAJADA síncrona entre awaits, não cumulativo pro request inteiro —
-// quebrar em N rajadas pequenas (uma por tabela) em vez de 1 rajada
-// gigante reduz bastante o risco de estourar o limite por rajada.
+// vez, com um `await` entre elas.
+//
+// CORREÇÃO (W7): a justificativa original assumia CPU "por rajada
+// entre awaits" — ERRADO. O limite do Workers free (~10ms) é CUMULATIVO
+// por invocação; awaits não zeram o contador. O streaming ajuda memória
+// e latência, e este export funciona porque a soma dos stringify por
+// tabela CABE no teto com a base atual — não porque os awaits protejam.
+// Se a base crescer a ponto de estourar, a saída é gerar o backup no
+// BROWSER (mesma direção do snapshot/restore do W6), não fatiar mais.
 export const GET: RequestHandler = async ({ locals }) => {
   if (!locals.user || locals.profile?.role !== 'admin') throw error(403, 'Só admin');
 
