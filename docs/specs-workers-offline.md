@@ -248,13 +248,127 @@ sincroniza na próxima abertura com rede — mas notificação/badge de
 
 ---
 
-## O que fica DELIBERADAMENTE de fora desta rodada
+---
 
-- **Sync bidirecional/local-first completo** (escrita offline em TODAS
-  as telas, resolução de conflitos, delta sync por `atualizado_em`):
-  custo alto, benefício baixo. O W5+W8 cobrem o caso de uso real
-  ("recebo no salão, trabalho na rua, sincronizo na volta") pros fluxos
-  de campo; telas admin continuam exigindo rede pra escrever.
+# Fase 2 — 100% offline do MODO CAMPO (W9–W12)
+
+> Executar DEPOIS da Fase 1 (W2–W8) — cada task daqui assume que os
+> loads de campo já rodam no browser (W3/W4/W8), que o `comCache` (W5)
+> existe e que a fila offline já cobre quadra/TCE/prédio (W8).
+>
+> **Recorte deliberado**: 100% offline = o MODO CAMPO inteiro
+> (publicador + dirigente), depois de logado. Admin ganha leitura em
+> cache mas escrita admin continua exigindo rede — dividir/juntar
+> polígono roda PostGIS no servidor (`ST_Split`/`ST_Union`), a trava de
+> exclusividade de quadra precisa de visão global do banco, e IDs são
+> do Postgres; replicar isso offline é um projeto de sync bidirecional
+> pra beneficiar 1 pessoa que administra com Wi-Fi. Login/renovação de
+> sessão precisam de rede uma vez (JWT do Supabase renova sozinho no
+> primeiro contato com rede; leitura de cache não depende de JWT).
+
+## W9 — Leitura offline TOTAL do modo campo
+
+Estender o padrão W5/W8 (comCache por rota + prefetch) pra TODAS as
+telas de campo, não só quadra/TCE/casa-a-casa:
+
+- Converter os loads restantes do campo pra `+page.ts` universal com
+  `comCache` (mesma receita W3/W4): `/publicador` home (se não veio no
+  W4), `/publicador/arranjo` (agenda), `/publicador/tp`,
+  `/publicador/predios` (lista completa de prédios — sem o sort GPS,
+  que precisa de posição na hora), `/publicador/campanha`,
+  `/predio/[id]` (a tela de trabalhar prédio — hoje só a ESCRITA é
+  offline; a leitura precisa do cache pro prédio abrir sem rede).
+- **Prefetch "Baixar pra usar offline"**: expandir o prefetch do W8 pra
+  um aquecimento completo — ao abrir a home online (ou por botão em
+  /perfil), rodar em background os fetchers de: carteira (W8), lista de
+  prédios + detalhe dos prédios com cartas designadas pra mim, agenda
+  da semana, meus turnos de TP, campanha ativa. Gravar tudo no cache
+  com timestamp visível ("dados de HH:MM").
+- Não construir delta-sync por `atualizado_em`: o volume é pequeno
+  (a base inteira são poucos MB) e o modelo network-first já atualiza
+  tudo a cada abertura com rede. Refetch completo É o sync.
+- Aceite: modo avião → navegar por TODAS as abas do campo e abrir
+  qualquer quadra/prédio/TCE da carteira sem tela quebrada.
+
+## W10 — Escrita offline TOTAL do modo campo + fila 2.0
+
+Inventário de todos os POSTs do modo campo e classificação:
+
+- **Entram na fila** (trocar por `postComFila` + overlay otimista,
+  padrão do prédio): concluir quadra (dirigente, casa-a-casa e tela da
+  quadra), concluir TCE, `marcarNaoExiste`, edição de overlay
+  (`atualizarLocal`), reordenar endereços, criar prédio pendente,
+  relatório de turno de TP, pedido de publicação, ajuste de necessidade
+  de revistas.
+- **Ficam online-only** (precisam de resposta imediata do servidor):
+  gerar link público (token), Estacionar perto (Overpass), compartilhar
+  WhatsApp com PNG, inscrição/reserva de TP com checagem de conflito
+  (a checagem exige estado global fresco — enfileirar geraria conflito
+  silencioso), upload de foto (Storage; tentar e avisar se offline).
+- **Fila 2.0** (`$lib/offline`): a fila hoje é fire-and-forget. Passar
+  a guardar, por item: rota, descrição humana ("Desfecho em Rua X, 12"),
+  timestamp, status (pendente/erro) e a mensagem de erro se o replay
+  falhar (ex.: designação encerrada enquanto offline, unique violation
+  de relatório duplicado). Falha de UM item não bloqueia os demais.
+  UI: o banner de fila existente (T22) ganha um sheet com a lista de
+  pendências/falhas + ações "tentar de novo"/"descartar". Sem retry
+  automático além do flush no evento `online`/abertura do app.
+- Aceite: marcar de tudo em modo avião (desfecho, carta, concluir
+  quadra, criar prédio, relatório TP), reconectar, ver a fila esvaziar
+  e um item de erro proposital (ex.: relatório duplicado) aparecer no
+  relatório em vez de sumir.
+
+## W11 — Mapa offline (PMTiles)
+
+Sem isto, o "100%" é falso: os tiles vêm da OpenFreeMap e sem rede o
+mapa fica em branco (a lista funciona, o mapa não). O gancho já existe:
+`QuadraMap.svelte` registra o protocolo `pmtiles` desde o início ("caso
+queira self-host depois").
+
+- **Gerar o extract**: PMTiles da área do território (bbox do
+  município) a partir do build público da Protomaps (`pmtiles extract
+  https://build.protomaps.com/<data>.pmtiles recorte.pmtiles
+  --bbox=<oeste,sul,leste,norte>`) — documentar o comando num script
+  `scripts/gerar-mapa-offline.md` pro admin regenerar quando quiser.
+  Tamanho esperado: dezenas de MB.
+- **Hospedar**: bucket público no Supabase Storage (`mapa-offline`,
+  migration junto) — free tier aguenta; NÃO no repo (arquivo grande)
+  nem nos static assets do Workers (limite de 25MiB por asset).
+- **Baixar/usar**: botão "Baixar mapa offline" em `/perfil` → salva no
+  Cache Storage (SW) ou OPFS; os componentes de mapa (QuadraMap,
+  AdminMapa, MapaAdmin) passam a usar um style LOCAL apontando pro
+  `pmtiles://` local quando o arquivo existe (e SEMPRE que offline),
+  caindo pro OpenFreeMap remoto quando não. Style/glifos/sprites também
+  precisam ser locais — usar `@protomaps/basemaps` (style gerado em
+  runtime) + assets de fonte no `static/` (senão o style remoto quebra
+  offline do mesmo jeito).
+- Aceite: modo avião → abrir a quadra → o mapa RENDERIZA com polígono e
+  pinos.
+
+## W12 — UX de estado offline
+
+- Indicador por tela: "dados de HH:MM" quando o que está na tela veio
+  do cache (o `comCache` já sabe o timestamp — expor).
+- `/perfil`: seção "Offline" com: última sincronização, botão "Baixar
+  tudo agora" (dispara o prefetch do W9 + download do mapa do W11),
+  tamanho aproximado do que está guardado, e botão "Limpar dados
+  offline".
+- Aceite: usuário leigo consegue responder "posso sair pra pregar sem
+  internet?" olhando uma tela só.
+
+---
+
+## O que fica DELIBERADAMENTE de fora (mesmo na Fase 2)
+
+- **Escrita offline nas telas ADMIN** (designar, polígonos, montagem de
+  TP): motivos no preâmbulo da Fase 2 — PostGIS server-side, travas de
+  exclusividade globais, custo de sync bidirecional pra 1 usuário que
+  tem Wi-Fi. Admin offline = só leitura em cache.
+- **Delta-sync por `atualizado_em`/CRDT/resolução de conflito**: o
+  volume não justifica; network-first + refetch completo é o sync.
+  Conflitos de campo são estruturalmente raros (registros append-only,
+  toggles last-writer-wins) e os restantes viram itens de erro na fila
+  2.0 — visíveis, não silenciosos.
 - **Atualização otimista nas telas admin** (remover invalidateAll):
   depois de W3/W4 o invalidateAll é grátis pro Worker — vira só
   polimento de UX, não urgência.
