@@ -1,0 +1,71 @@
+# Tasks — Rodada Workers/Offline (ordem de execução)
+
+> Cada task = 1 incremento: (migration validada 2x no Postgres local se
+> houver) → `npm run build` verde → `npm test` verde → `npm run check`
+> sem subir o baseline de erros → commit descritivo com "Não testado:"
+> → push branch + merge `main`. Specs em `docs/specs-workers-offline.md`
+> (LER o diagnóstico de CPU no topo antes de qualquer task — ele muda
+> como se pensa toda a rodada). Migrations a partir de **076**.
+>
+> 🟢 = Sonnet sozinho; 🟡 = protocolo de verificação reforçado;
+> 🔴 = checar com o usuário antes de dar por pronto.
+
+## Onda 0 — já resolvido nesta sessão
+
+- [x] **W1** Reset de testes não apaga mais `quadras_conclusoes` nem
+      zera `quadras.data_conclusao` (registro de quadras feitas fica).
+
+## Onda 1 — Infra
+
+- [ ] 🟢 **W2** Mover `$lib/server/queries.ts` → `$lib/queries.ts` com
+      shim de re-export; criar `$lib/supabase-browser.ts` (singleton);
+      página da quadra passa a usar o singleton. Zero mudança de
+      comportamento.
+
+## Onda 2 — Leituras fora do Worker (o fix do 1102)
+
+- [ ] 🟡 **W3** `/admin` (Geral): load vira `+page.ts` universal com
+      client browser + `ssr = false`; `+page.server.ts` fica só com
+      actions. Aceite: salvar designação N vezes seguidas sem 1102 e
+      sem `__data.json` no Network.
+
+- [ ] 🟡 **W4** `/admin/poligonos` e `/publicador/casa-a-casa`: mesma
+      conversão (poligonos é o load mais pesado do app, ~19k locais).
+      `/publicador` home: converter se a receita estiver tranquila,
+      senão anotar como pendência.
+
+## Onda 3 — Cache local
+
+- [ ] 🟡 **W5** `$lib/offline/cache-leitura.ts` (stale-while-revalidate
+      em IndexedDB) aplicado aos loads convertidos + carteira. Leitura
+      offline do último estado; escrita offline NÃO muda nesta rodada.
+
+## Onda 4 — Backup funcionando de verdade
+
+- [ ] 🔴 **W6** Migration 076 (policies de Storage pra admin no bucket
+      `backups-auto`) + snapshot gerado no browser (fetch do export →
+      upload direto pro Storage) + restore em lotes (browser parseia,
+      manda ~400 linhas por action `restaurarLote`, `realinharSequences`
+      no final). Remover o caminho antigo (waitUntil/restore de arquivo
+      inteiro). 🔴 porque só conta como pronto depois de testado com a
+      base REAL (gerar snapshot → restaurar dele, fluxo completo).
+
+## Onda 5 — Docs
+
+- [ ] 🟢 **W7** CLAUDE.md: modelo real de CPU do Workers (cumulativo por
+      invocação; `ssr=false` não tira `+page.server.ts` do Worker) +
+      corrigir comentários de U5/U6 que assumem "rajada entre awaits".
+
+## Regras pro executor
+
+1. Ordem: W2 → W3 → W4 → W5 → W6 → W7. Não pular W2 (W3/W4 dependem).
+2. Ao converter um load: NUNCA importar `$lib/server/*` de um `+page.ts`
+   universal (o build quebra de propósito) — é o sinal de que falta
+   mover um helper pro shim.
+3. As actions NÃO se movem pro browser. Guards e defesa em profundidade
+   ficam exatamente onde estão.
+4. Depois de W3 e W4, conferir no preview local (`npm run preview`) que
+   as rotas convertidas funcionam logado — e listar no commit o que só
+   dá pra confirmar em produção.
+5. Atualizar CLAUDE.md quando a task mudar arquitetura descrita lá
+   (W2/W3/W4 mudam: "Backend (+page.server.ts)" e layout de arquivos).

@@ -17,6 +17,11 @@
 -- pontos de TP, necessidade de revistas, preferência/disponibilidade
 -- fixa dos publicadores).
 --
+-- MANTÉM TAMBÉM o registro de quadras feitas (decisão do usuário):
+-- `quadras_conclusoes` (histórico de conclusões) e
+-- `quadras.data_conclusao` NÃO são tocados — o ciclo do casa em casa
+-- (última conclusão da quadra) sobrevive ao reset.
+--
 -- APAGA histórico de trabalho de campo + designações/arranjos/TP de
 -- teste (cascata cuida das tabelas filhas — arranjo_partes,
 -- designacao_*, tp_agendamento_*, tp_relatorio_itens,
@@ -24,14 +29,14 @@
 -- assim, por transparência, mesmo que o DELETE do pai já baste).
 --
 -- RESETA (não apaga a linha, só os campos de estado/trabalho):
--- quadras.data_conclusao/reservada_campanha_id, unidades.carta_entregue/
+-- quadras.reservada_campanha_id, unidades.carta_entregue/
 -- carta_escrita_por, tces.status/publicador_id/prazo.
 
 begin;
 
 -- ── Histórico de trabalho de campo ──────────────────────────────────
+-- (quadras_conclusoes fica de fora de propósito — ver cabeçalho)
 delete from registros;
-delete from quadras_conclusoes;
 delete from curadoria_edicoes;
 delete from notificacoes;
 
@@ -68,8 +73,9 @@ delete from pedidos_publicacao;
 delete from publicacao_controle;
 
 -- ── Reset de estado (mantém a linha, limpa só o "trabalho feito") ───
-update quadras set data_conclusao = null, reservada_campanha_id = null
-where data_conclusao is not null or reservada_campanha_id is not null;
+-- data_conclusao NÃO é zerada — é o registro de quadras feitas.
+update quadras set reservada_campanha_id = null
+where reservada_campanha_id is not null;
 
 update unidades set carta_entregue = null, carta_escrita_por = null
 where carta_entregue is not null or carta_escrita_por is not null;
