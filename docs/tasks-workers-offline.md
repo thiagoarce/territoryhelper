@@ -17,32 +17,32 @@
 
 ## Onda 1 — Infra
 
-- [ ] 🟢 **W2** Mover `$lib/server/queries.ts` → `$lib/queries.ts` com
+- [x] 🟢 **W2** Mover `$lib/server/queries.ts` → `$lib/queries.ts` com
       shim de re-export; criar `$lib/supabase-browser.ts` (singleton);
       página da quadra passa a usar o singleton. Zero mudança de
       comportamento.
 
 ## Onda 2 — Leituras fora do Worker (o fix do 1102)
 
-- [ ] 🟡 **W3** `/admin` (Geral): load vira `+page.ts` universal com
+- [x] 🟡 **W3** `/admin` (Geral): load vira `+page.ts` universal com
       client browser + `ssr = false`; `+page.server.ts` fica só com
       actions. Aceite: salvar designação N vezes seguidas sem 1102 e
       sem `__data.json` no Network.
 
-- [ ] 🟡 **W4** `/admin/poligonos` e `/publicador/casa-a-casa`: mesma
+- [x] 🟡 **W4** `/admin/poligonos` e `/publicador/casa-a-casa`: mesma
       conversão (poligonos é o load mais pesado do app, ~19k locais).
       `/publicador` home: converter se a receita estiver tranquila,
       senão anotar como pendência.
 
 ## Onda 3 — Cache local
 
-- [ ] 🟡 **W5** `$lib/offline/cache-leitura.ts` (stale-while-revalidate
+- [x] 🟡 **W5** `$lib/offline/cache-leitura.ts` (stale-while-revalidate
       em IndexedDB) aplicado aos loads convertidos + carteira. Leitura
       offline do último estado; escrita offline NÃO muda nesta rodada.
 
 ## Onda 3b — Modo rua (o cenário "salão → rua → salão")
 
-- [ ] 🟡 **W8** (a) Prefetch da carteira ao abrir /publicador online
+- [x] 🟡 **W8** (a) Prefetch da carteira ao abrir /publicador online
       (dados de todas as quadras designadas + TCEs → cache W5);
       (b) `/publicador/quadra/[id]` e `/publicador/tce/[id]` viram
       `+page.ts` universal cache-first (mesma receita W3/W4);
@@ -52,7 +52,7 @@
 
 ## Onda 4 — Backup funcionando de verdade
 
-- [ ] 🔴 **W6** Migration 076 (policies de Storage pra admin no bucket
+- [x] 🔴 **W6** Migration 076 (policies de Storage pra admin no bucket
       `backups-auto`) + snapshot gerado no browser (fetch do export →
       upload direto pro Storage) + restore em lotes (browser parseia,
       manda ~400 linhas por action `restaurarLote`, `realinharSequences`
@@ -62,7 +62,7 @@
 
 ## Onda 5 — Docs
 
-- [ ] 🟢 **W7** CLAUDE.md: modelo real de CPU do Workers (cumulativo por
+- [x] 🟢 **W7** CLAUDE.md: modelo real de CPU do Workers (cumulativo por
       invocação; `ssr=false` não tira `+page.server.ts` do Worker) +
       corrigir comentários de U5/U6 que assumem "rajada entre awaits".
 

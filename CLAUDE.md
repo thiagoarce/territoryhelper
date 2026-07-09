@@ -156,10 +156,36 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
 
 ## Convenções
 
+### CPU do Cloudflare Workers (free) — LER antes de mexer em load
+
+O limite é **~10ms de CPU POR INVOCAÇÃO, CUMULATIVO** — awaits NÃO
+zeram o contador (a premissa "por rajada entre awaits" usada em
+U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
+- Leitura pesada NUNCA no Worker: rota que agrega muito dado usa
+  **load universal (`+page.ts`) + `ssr = false`** rodando no BROWSER
+  com `$lib/supabase-browser` (mesma sessão/RLS do `locals.supabase`).
+  Já convertidas (rodada W): `/admin`, `/admin/poligonos`,
+  `/publicador`, `/publicador/casa-a-casa`, `/publicador/quadra/[id]`,
+  `/publicador/tce/[id]`. `ssr=false` SOZINHO não resolve — um
+  `+page.server.ts` load continua rodando no Worker via `__data.json`.
+- Loads universais usam helpers de **`$lib/queries.ts`**
+  (`$lib/server/queries.ts` é só um shim de re-export) e identidade via
+  `await parent()` (root layout devolve session+profile). NUNCA
+  importar `$lib/server/*` de um `+page.ts`.
+- Actions ficam no server (pequenas: guards + inserts) — defesa em
+  profundidade não se move pro browser.
+- Cache offline: loads convertidos embrulham o fetch em
+  `comCache` (`$lib/offline/cache-leitura.ts`, network-first com
+  fallback IndexedDB; HttpError 403/404 nunca cai pro cache). Fetchers
+  de quadra/TCE compartilhados com o prefetch da carteira em
+  `$lib/campo-fetchers.ts` (modo rua, W8).
+
 ### Backend (`+page.server.ts`)
 - `locals.supabase` = client com sessão; **RLS** faz o controle de acesso.
   Guards em `$lib/server/guards.ts` — usar **`exigirQuadraDesignada`** em
-  qualquer rota que trabalhe conteúdo de quadra pelo publicador.
+  qualquer rota server que trabalhe conteúdo de quadra pelo publicador
+  (a rota da quadra em si virou load universal — a versão portável é
+  `verificarPosseQuadra` em `$lib/campo-fetchers.ts`, mesmas cláusulas).
 - **Defesa em profundidade**: além de RLS, checar `locals.profile?.role`
   no início das actions que precisam ser role-restritas (concluir quadra,
   repartir/assumir arranjo, designar cartas).
@@ -342,6 +368,13 @@ completo das decisões de cada incremento em **`docs/specs-tp-completo.md`**.
   rejeita com `cannot change name of view column "X" to "Y"`. Sempre
   que alterar `quadras_geo`/`locais_geo`/`tces_geo`/etc. numa migration,
   coloque a coluna nova DEPOIS da(s) coluna(s) de geometria existente(s).
+- Achar que "espalhar awaits" salva do 1102: o CPU do Workers free é
+  CUMULATIVO por invocação (~10ms) — não existe "quebrar em rajadas".
+  Trabalho pesado sai do Worker (browser via load universal, ou
+  Postgres via view/RPC) — ver a seção "CPU do Cloudflare Workers" em
+  Convenções. Idem `JSON.parse`/`JSON.stringify` de payload grande numa
+  action: parse no BROWSER e mande lotes pequenos (padrão do restore de
+  backup, W6).
 
 ## Rodando testes
 
