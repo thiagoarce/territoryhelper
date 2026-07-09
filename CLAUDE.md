@@ -88,15 +88,25 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   manualmente via `/admin/dev/sql` sempre que precisar zerar uma rodada
   de testes: apaga histórico de trabalho + designações/arranjos/TP/
   campanha, mantendo território/quadras/endereços e todos os catálogos
-  intactos (reseta `data_conclusao`/`carta_entregue`/status de TCE em
-  vez de apagar a linha). **Manutenção**: toda tabela nova entra nesse
-  arquivo (lado DELETE se for trabalho/instância, fora se for estrutura/
-  catálogo) — não deixar ele desatualizado.
+  intactos (reseta `carta_entregue`/status de TCE em vez de apagar a
+  linha). O **registro de quadras feitas fica**: `quadras_conclusoes` e
+  `quadras.data_conclusao` NÃO são tocados (decisão W1). **Manutenção**:
+  toda tabela nova entra nesse arquivo (lado DELETE se for trabalho/
+  instância, fora se for estrutura/catálogo) — não deixar ele
+  desatualizado.
 - `tests/` — `node tests/run.js`
 - `docs/specs-ajustes-finais.md` + `docs/tasks-ajustes-finais.md` —
   rodada de ajustes A1–A24/T1–T34 (concluída)
 - `docs/specs-usabilidade-2.md` + `docs/tasks-usabilidade-2.md` —
-  rodada de usabilidade U1–U13 (spec + progresso)
+  rodada de usabilidade U1–U13 (concluída)
+- `docs/specs-workers-offline.md` + `docs/tasks-workers-offline.md` —
+  rodada Workers/Offline W1–W7 (spec + progresso): fim do 1102 no plano
+  free (leituras saem do Worker pro browser via `+page.ts` universal +
+  `ssr=false`), cache local stale-while-revalidate, e redesenho do
+  snapshot/restore de backup. **LER o diagnóstico de CPU no topo do
+  spec antes de mexer em qualquer load** — o modelo mental correto é
+  CPU CUMULATIVA por invocação (~10ms no free), não "por rajada entre
+  awaits"
 
 ## Modelo de dados (Supabase / Postgres)
 
