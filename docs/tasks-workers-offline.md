@@ -40,6 +40,16 @@
       em IndexedDB) aplicado aos loads convertidos + carteira. Leitura
       offline do último estado; escrita offline NÃO muda nesta rodada.
 
+## Onda 3b — Modo rua (o cenário "salão → rua → salão")
+
+- [ ] 🟡 **W8** (a) Prefetch da carteira ao abrir /publicador online
+      (dados de todas as quadras designadas + TCEs → cache W5);
+      (b) `/publicador/quadra/[id]` e `/publicador/tce/[id]` viram
+      `+page.ts` universal cache-first (mesma receita W3/W4);
+      (c) desfechos/cartas dessas duas telas trocam POST direto por
+      `postComFila` (padrão de `/predio/[id]`, com overlay otimista).
+      Aceite = teste em modo avião descrito no spec.
+
 ## Onda 4 — Backup funcionando de verdade
 
 - [ ] 🔴 **W6** Migration 076 (policies de Storage pra admin no bucket
@@ -58,7 +68,8 @@
 
 ## Regras pro executor
 
-1. Ordem: W2 → W3 → W4 → W5 → W6 → W7. Não pular W2 (W3/W4 dependem).
+1. Ordem: W2 → W3 → W4 → W5 → W8 → W6 → W7. Não pular W2 (W3/W4
+   dependem); W8 depende de W5 (cache) e da receita de W3/W4.
 2. Ao converter um load: NUNCA importar `$lib/server/*` de um `+page.ts`
    universal (o build quebra de propósito) — é o sinal de que falta
    mover um helper pro shim.
