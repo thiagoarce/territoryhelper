@@ -115,6 +115,11 @@ export async function comCache<T>(chave: string, fetcher: () => Promise<T>): Pro
     void gravarCache(chave, valor);
     return { valor, deCache: false, gravadoEm: Date.now() };
   } catch (e) {
+    // HttpError do SvelteKit (error(403)/error(404) do fetcher) = o
+    // SERVIDOR/regra disse não — não é problema de rede, NUNCA cai pro
+    // cache (senão um publicador que perdeu a designação continuaria
+    // abrindo a quadra do cache pra sempre).
+    if (e && typeof e === 'object' && 'status' in e) throw e;
     const cached = await lerCache<T>(chave);
     if (cached) return { valor: cached.valor as T, deCache: true, gravadoEm: cached.gravadoEm };
     throw e;

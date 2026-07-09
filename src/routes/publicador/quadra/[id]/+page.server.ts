@@ -1,17 +1,18 @@
-import type { Actions, PageServerLoad } from './$types';
+// W8: o LOAD desta rota mora em +page.ts (universal, browser, com
+// cache offline — modo rua). Este arquivo fica só com as ACTIONS, que
+// continuam server-side com o guard de posse próprio (pode_editar_local
+// via RPC — defesa em profundidade, o load do layout não protege POST).
+import type { Actions } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
-import { error, fail } from '@sveltejs/kit';
-import { carregarQuadraComLocais, cicloCartasPorLocal, cicloEfetivo } from '$lib/server/queries';
-import { exigirQuadraDesignada } from '$lib/server/guards';
+import { fail } from '@sveltejs/kit';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
-// Defesa em profundidade: o guard exigirQuadraDesignada só roda no `load`,
-// NÃO nas actions (um POST direto pra ?/marcarDesfecho não passa por ele).
-// Sem isso, um UPDATE bloqueado pela RLS retorna sucesso "silencioso" (0
-// linhas afetadas, sem erro) — o publicador via toast de sucesso sem nada
-// ter sido salvo. Usa a mesma RPC que a RLS usa (pode_editar_local).
+// Defesa em profundidade: o guard de posse roda por ACTION (um POST
+// direto não passa pelo load). Sem isso, um UPDATE bloqueado pela RLS
+// retorna sucesso "silencioso" (0 linhas afetadas, sem erro). Usa a
+// mesma RPC que a RLS usa (pode_editar_local).
 async function podeEditarLocal(locals: App.Locals, localId: number): Promise<boolean> {
   const { data, error: err } = await locals.supabase.rpc('pode_editar_local', { p_local_id: localId });
   if (err) return false;
@@ -22,21 +23,6 @@ async function localIdDaUnidade(locals: App.Locals, unidadeId: number): Promise<
   const { data } = await locals.supabase.from('unidades').select('local_id').eq('id', unidadeId).maybeSingle();
   return data?.local_id ?? null;
 }
-
-export const load: PageServerLoad = async ({ locals, params }) => {
-  await exigirQuadraDesignada(locals, params.id);
-  const dados = await carregarQuadraComLocais(locals.supabase, params.id);
-  if (!dados) throw error(404, 'Quadra não encontrada');
-  // A19: ciclo de cartas é POR PRÉDIO — cada local da quadra pode ter o
-  // próprio corte (além do global). Map por local_id pro client resolver
-  // cartaEscritaNoCiclo por endereço, não pra quadra inteira.
-  const ciclos = await cicloCartasPorLocal(locals.supabase, dados.locais.map((l) => l.id));
-  const cicloCartasPorLocalMap: Record<number, string | null> = {};
-  for (const l of dados.locais) {
-    cicloCartasPorLocalMap[l.id] = cicloEfetivo(ciclos, l.id)?.iniciado_em ?? null;
-  }
-  return { ...dados, minhaRole: locals.profile?.role, cicloCartasPorLocal: cicloCartasPorLocalMap };
-};
 
 export const actions: Actions = {
   // Marca desfecho mutex (naoAtendeu | semConversa | conversou) numa unidade.

@@ -13,8 +13,49 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
+  import { postComFila } from '$lib/offline';
 
   let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null> } } = $props();
+
+  // W8 ("modo rua"): desfechos/carta resilientes a sinal ruim — mesmo
+  // padrão de /predio/[id]: overlay otimista local + postComFila (sem
+  // rede, enfileira no IndexedDB e sincroniza no evento `online`).
+  let overrideDesfecho = $state<Record<number, string | null>>({});
+  let overrideCarta = $state<Record<number, boolean>>({});
+
+  async function marcarDesfechoFila(u: UnidadeEnriquecida, tipo: string) {
+    overrideDesfecho[u.id] = tipo === '' ? null : tipo;
+    const fd = new FormData();
+    fd.append('unidade_id', String(u.id));
+    fd.append('tipo', tipo);
+    const r = await postComFila('?/marcarDesfecho', fd);
+    if (r.ok) {
+      await invalidateAll();
+      delete overrideDesfecho[u.id];
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    } else {
+      delete overrideDesfecho[u.id];
+      toast.error(r.erro);
+    }
+  }
+
+  async function toggleCartaFila(u: UnidadeEnriquecida, marcar: boolean) {
+    overrideCarta[u.id] = marcar;
+    const fd = new FormData();
+    fd.append('unidade_id', String(u.id));
+    fd.append('marcar', String(marcar));
+    const r = await postComFila('?/toggleCarta', fd);
+    if (r.ok) {
+      await invalidateAll();
+      delete overrideCarta[u.id];
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    } else {
+      delete overrideCarta[u.id];
+      toast.error(r.erro);
+    }
+  }
   let editandoLocal: LocalComUnidades | null = $state(null);
   let sheetEditar = $state(false);
   let sheetAdd = $state(false);
@@ -449,46 +490,33 @@
 {/snippet}
 
 {#snippet botoes(u: UnidadeEnriquecida)}
-  {@const cartaMarcada = !!u.carta_entregue}
+  {@const tipoEfetivo = u.id in overrideDesfecho ? overrideDesfecho[u.id] : u.ultimo_tipo}
+  {@const cartaMarcada = u.id in overrideCarta ? overrideCarta[u.id] : !!u.carta_entregue}
   <div class="flex gap-1 flex-wrap" class:grid={modoSimples} class:grid-cols-2={modoSimples} class:gap-2={modoSimples}>
     {#each [
       { tipo: 'naoAtendeu', icone: 'door-closed', label: 'Não atendeu' },
       { tipo: 'semConversa', icone: 'door', label: 'Sem palestra' },
       { tipo: 'conversou', icone: 'chat', label: 'Conversou' }
     ] as opt}
-      {@const ativo = u.ultimo_tipo === opt.tipo}
-      <form
-        method="POST"
-        action="?/marcarDesfecho"
-        use:enhance={() => async ({ update }) => { await update(); await invalidateAll(); }}
-      >
-        <input type="hidden" name="unidade_id" value={u.id} />
-        <input type="hidden" name="tipo" value={ativo ? '' : opt.tipo} />
-        <button
-          type="submit"
-          title={opt.label}
-          aria-label={opt.label}
-          class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {ativo ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-100'}"
-        >
-          <Icon nome={opt.icone} size={16} /> <span>{opt.label}</span>
-        </button>
-      </form>
-    {/each}
-    <form
-      method="POST"
-      action="?/toggleCarta"
-      use:enhance={() => async ({ update }) => { await update(); await invalidateAll(); }}
-    >
-      <input type="hidden" name="unidade_id" value={u.id} />
-      <input type="hidden" name="marcar" value={cartaMarcada ? 'false' : 'true'} />
+      {@const ativo = tipoEfetivo === opt.tipo}
       <button
-        type="submit"
-        title="Carta entregue"
-        aria-label="Carta entregue"
-        class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {cartaMarcada ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-300 hover:bg-slate-100'}"
+        type="button"
+        onclick={() => marcarDesfechoFila(u, ativo ? '' : opt.tipo)}
+        title={opt.label}
+        aria-label={opt.label}
+        class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {ativo ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-100'}"
       >
-        <Icon nome="mail" size={14} /> <span>Carta</span>
+        <Icon nome={opt.icone} size={16} /> <span>{opt.label}</span>
       </button>
-    </form>
+    {/each}
+    <button
+      type="button"
+      onclick={() => toggleCartaFila(u, !cartaMarcada)}
+      title="Carta entregue"
+      aria-label="Carta entregue"
+      class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {cartaMarcada ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-300 hover:bg-slate-100'}"
+    >
+      <Icon nome="mail" size={14} /> <span>Carta</span>
+    </button>
   </div>
 {/snippet}

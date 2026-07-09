@@ -2,11 +2,12 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { postComFila } from '$lib/offline';
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { TceEndereco } from './$types';
+  import type { TceEndereco } from './+page';
 
   let { data }: {
     data: {
@@ -46,6 +47,46 @@
     abertos = new Set(abertos);
   }
 
+  // W8 ("modo rua"): desfechos/carta com fila offline + overlay otimista
+  // (mesmo padrão de /predio/[id] e da tela de quadra).
+  let overrideDesfecho = $state<Record<number, string | null>>({});
+  let overrideCarta = $state<Record<number, boolean>>({});
+
+  async function marcarDesfechoFila(e: TceEndereco, tipo: string) {
+    overrideDesfecho[e.unidade_id] = tipo === '' ? null : tipo;
+    const fd = new FormData();
+    fd.append('unidade_id', String(e.unidade_id));
+    fd.append('tipo', tipo);
+    const r = await postComFila('?/marcarDesfecho', fd);
+    if (r.ok) {
+      await invalidateAll();
+      delete overrideDesfecho[e.unidade_id];
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    } else {
+      delete overrideDesfecho[e.unidade_id];
+      toast.error(r.erro);
+    }
+  }
+
+  async function toggleCartaFila(e: TceEndereco) {
+    const atual = e.unidade_id in overrideCarta ? overrideCarta[e.unidade_id] : e.cartaEntregue;
+    overrideCarta[e.unidade_id] = !atual;
+    const fd = new FormData();
+    fd.append('unidade_id', String(e.unidade_id));
+    fd.append('undo', String(atual));
+    const r = await postComFila('?/toggleCarta', fd);
+    if (r.ok) {
+      await invalidateAll();
+      delete overrideCarta[e.unidade_id];
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    } else {
+      delete overrideCarta[e.unidade_id];
+      toast.error(r.erro);
+    }
+  }
+
   function rotuloDesfecho(t: string | null): string {
     if (t === 'conversou') return 'conversou';
     if (t === 'semConversa') return 'sem palestra';
@@ -55,52 +96,34 @@
 </script>
 
 {#snippet botoesUnidade(e: TceEndereco)}
+  {@const tipoEfetivo = e.unidade_id in overrideDesfecho ? overrideDesfecho[e.unidade_id] : e.ultimoTipo}
+  {@const cartaEfetiva = e.unidade_id in overrideCarta ? overrideCarta[e.unidade_id] : e.cartaEntregue}
   <div class="mt-2 flex gap-1.5 flex-wrap">
     {#each [
       { tipo: 'naoAtendeu', icone: 'door-closed', rotulo: 'Não atendeu' },
       { tipo: 'semConversa', icone: 'door', rotulo: 'Sem conversa' },
       { tipo: 'conversou', icone: 'chat', rotulo: 'Conversou' }
     ] as opt}
-      <form
-        method="POST"
-        action="?/marcarDesfecho"
-        use:enhance={() => async ({ result, update }) => {
-          await update();
-          if (result.type === 'success') await invalidateAll();
-          else if (result.type === 'failure') toast.error('Falhou');
-        }}
-      >
-        <input type="hidden" name="unidade_id" value={e.unidade_id} />
-        <input type="hidden" name="tipo" value={e.ultimoTipo === opt.tipo ? '' : opt.tipo} />
-        <button type="submit"
-          class="w-10 h-10 rounded-lg border flex items-center justify-center"
-          class:bg-green-100={e.ultimoTipo === opt.tipo}
-          class:border-green-500={e.ultimoTipo === opt.tipo}
-          class:border-slate-200={e.ultimoTipo !== opt.tipo}
-          title={opt.rotulo}
-          aria-label={opt.rotulo}
-        ><Icon nome={opt.icone} size={16} /></button>
-      </form>
+      <button type="button"
+        onclick={() => marcarDesfechoFila(e, tipoEfetivo === opt.tipo ? '' : opt.tipo)}
+        class="w-10 h-10 rounded-lg border flex items-center justify-center"
+        class:bg-green-100={tipoEfetivo === opt.tipo}
+        class:border-green-500={tipoEfetivo === opt.tipo}
+        class:border-slate-200={tipoEfetivo !== opt.tipo}
+        title={opt.rotulo}
+        aria-label={opt.rotulo}
+      ><Icon nome={opt.icone} size={16} /></button>
     {/each}
 
-    <form
-      method="POST"
-      action="?/toggleCarta"
-      use:enhance={() => async ({ result, update }) => {
-        await update();
-        if (result.type === 'success') await invalidateAll();
-      }}
-    >
-      <input type="hidden" name="unidade_id" value={e.unidade_id} />
-      <input type="hidden" name="undo" value={String(e.cartaEntregue)} />
-      <button type="submit"
-        class="w-10 h-10 rounded-lg border flex items-center justify-center text-lg"
-        class:bg-purple-100={e.cartaEntregue}
-        class:border-purple-500={e.cartaEntregue}
-        class:border-slate-200={!e.cartaEntregue}
-        title="Carta entregue"
-      ><Icon nome="mail" size={14} /></button>
-    </form>
+    <button type="button"
+      onclick={() => toggleCartaFila(e)}
+      class="w-10 h-10 rounded-lg border flex items-center justify-center text-lg"
+      class:bg-purple-100={cartaEfetiva}
+      class:border-purple-500={cartaEfetiva}
+      class:border-slate-200={!cartaEfetiva}
+      title="Carta entregue"
+      aria-label="Carta entregue"
+    ><Icon nome="mail" size={14} /></button>
   </div>
 {/snippet}
 
