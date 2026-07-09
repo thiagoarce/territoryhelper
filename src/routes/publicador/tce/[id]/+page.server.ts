@@ -1,84 +1,10 @@
-import type { Actions, PageServerLoad } from './$types';
+// W8: o LOAD desta rota mora em +page.ts (universal, browser, com
+// cache offline — modo rua). Este arquivo fica só com as ACTIONS.
+import type { Actions } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
-import { error, fail } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
-
-export interface TceEndereco {
-  unidade_id: number;
-  local_id: number;
-  logradouro: string;
-  numero: string;
-  nome: string | null;
-  complemento: string | null;
-  tipo: string;
-  ultimoTipo: string | null;
-  cartaEntregue: boolean;
-  geo_geojson: unknown | null;
-}
-
-export const load: PageServerLoad = async ({ locals, params }) => {
-  // RLS garante que só vê TCE designado a ele (ou admin)
-  const { data: tce, error: errT } = await locals.supabase
-    .from('tces')
-    .select('id, nome, tipo, prazo, status, notas')
-    .eq('id', params.id)
-    .maybeSingle();
-  if (errT) throw errT;
-  if (!tce) throw error(404, 'TCE não encontrado');
-
-  // Unidades do TCE → join com locais
-  const { data: vinculos } = await locals.supabase
-    .from('tce_unidades')
-    .select('unidade_id, unidades(id, complemento, local_id, locais(id, logradouro, numero, nome, tipo))')
-    .eq('tce_id', params.id);
-
-  const unidadeIds = (vinculos ?? []).map((v: any) => v.unidade_id);
-
-  // Último desfecho por unidade (Registros)
-  const ultimoPorUnidade = new Map<number, string>();
-  if (unidadeIds.length > 0) {
-    const { data: regs } = await locals.supabase
-      .from('registros')
-      .select('unidade_id, tipo, ts')
-      .in('unidade_id', unidadeIds)
-      .order('ts', { ascending: false });
-    for (const r of regs ?? []) {
-      if (!ultimoPorUnidade.has(r.unidade_id)) ultimoPorUnidade.set(r.unidade_id, r.tipo);
-    }
-  }
-
-  // Geometria dos endereços (mini-mapa) — via view locais_geo (geo_geojson
-  // pronto), não a tabela locais direto (traria WKB cru, não serve pro mapa).
-  const localIds = [...new Set((vinculos ?? []).map((v: any) => v.unidades?.locais?.id).filter(Boolean))];
-  const geoPorLocal = new Map<number, unknown>();
-  if (localIds.length > 0) {
-    const { data: geoRows } = await locals.supabase.from('locais_geo').select('id, geo_geojson').in('id', localIds);
-    for (const g of (geoRows ?? []) as any[]) geoPorLocal.set(g.id, g.geo_geojson);
-  }
-
-  const enderecos: TceEndereco[] = (vinculos ?? []).map((v: any) => {
-    const u = v.unidades;
-    const l = u?.locais;
-    const ult = ultimoPorUnidade.get(v.unidade_id) ?? null;
-    return {
-      unidade_id: v.unidade_id,
-      local_id: l?.id ?? 0,
-      logradouro: l?.logradouro ?? '(sem)',
-      numero: l?.numero ?? 's/n',
-      nome: l?.nome ?? null,
-      complemento: u?.complemento ?? null,
-      tipo: l?.tipo ?? 'comercio',
-      ultimoTipo: ult === 'desfeito' || ult === 'carta_undo' ? null : ult,
-      cartaEntregue: ult === 'carta',
-      geo_geojson: l?.id ? geoPorLocal.get(l.id) ?? null : null
-    };
-  }).sort((a, b) =>
-    a.logradouro.localeCompare(b.logradouro) || a.numero.localeCompare(b.numero)
-  );
-
-  return { tce, enderecos };
-};
 
 // Defesa em profundidade: valida que o TCE é visível pro usuário (RLS só
 // mostra TCE designado a ele, ou tudo pra admin/dirigente) e que a unidade

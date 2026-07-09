@@ -7,7 +7,9 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { hojeIsoLocal } from '$lib/utils/data';
-  import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/server/queries';
+  import { onMount } from 'svelte';
+  import { prefetchCarteira } from '$lib/campo-fetchers';
+  import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/queries';
 
   interface CampanhaAtiva {
     id: number;
@@ -115,6 +117,30 @@
       profile?: import('$lib/types').Profile | null;
     };
   } = $props();
+
+  // W8 ("modo rua"): ao abrir a home COM rede, aquece o cache offline de
+  // todas as quadras/TCEs da carteira em background — na rua sem sinal,
+  // qualquer quadra designada abre do cache mesmo sem ter sido visitada.
+  onMount(() => {
+    const uid = data.profile?.id;
+    if (!uid) return;
+    const quadraIds = [...new Set([
+      ...data.abertas.flatMap((d) => d.quadras_ids),
+      ...data.minhasPartes.flatMap((p) => p.quadras_ids),
+      ...(data.arranjoQueDirijo?.quadras_ids ?? []),
+      ...data.outrosArranjosQueDirijo.flatMap((a) => a.quadras_ids),
+      ...data.pendentesFinalizar.flatMap((a) => a.quadras_ids)
+    ])];
+    const tceIds = [...new Set([
+      ...data.tces.map((t) => t.id),
+      ...(data.arranjoQueDirijo?.tces_ids ?? []),
+      ...data.outrosArranjosQueDirijo.flatMap((a) => a.tces_ids)
+    ])];
+    if (quadraIds.length === 0 && tceIds.length === 0) return;
+    // Espera a tela assentar antes de gastar rede/CPU com o prefetch.
+    const t = setTimeout(() => { void prefetchCarteira(uid, quadraIds, tceIds); }, 2500);
+    return () => clearTimeout(t);
+  });
 
   function fmtDia(iso: string | null): string {
     if (!iso) return '';
