@@ -130,6 +130,7 @@
       titulo: 'Administrar',
       items: [
         { href: '/admin', label: 'Geral', icon: 'map' },
+        { href: '/admin/dashboard', label: 'Dashboard', icon: 'zap' },
         { href: '/admin/designacoes', label: 'Designações', icon: 'clipboard' },
         { href: '/admin/poligonos', label: 'Polígonos', icon: 'shapes' },
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
