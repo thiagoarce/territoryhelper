@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { estiloDoMapa } from '$lib/mapa-offline';
   import { onMount, onDestroy, mount } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
@@ -250,7 +251,7 @@
 
     mapa = new maplibre.Map({
       container,
-      style: BASEMAPS[basemap] ?? BASEMAPS.positron,
+      style: await estiloDoMapa(BASEMAPS[basemap] ?? BASEMAPS.positron),
       center: [-34.863, -7.115],
       zoom: 14,
       attributionControl: { compact: true } as any,

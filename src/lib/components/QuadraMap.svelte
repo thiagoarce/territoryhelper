@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, mount } from 'svelte';
+  import { estiloDoMapa } from '$lib/mapa-offline';
   import type { LocalComUnidades } from '$lib/server/queries';
   import Icon, { type NomeIcone } from '$lib/ui/Icon.svelte';
 
@@ -140,7 +141,6 @@
     const maplibreModule = await import('maplibre-gl');
     const maplibre = maplibreModule.default ?? maplibreModule;
     maplibreRef = maplibre;
-    const { Protocol } = await import('pmtiles');
 
     // CSS via CDN — economiza ~80KB no bundle
     if (!document.querySelector('link[data-maplibre-css]')) {
@@ -151,14 +151,13 @@
       document.head.appendChild(link);
     }
 
-    // Registra protocolo pmtiles (caso queira self-host depois)
-    const protocol = new Protocol();
-    maplibre.addProtocol('pmtiles', protocol.tile.bind(protocol) as any);
-
     // OpenFreeMap — vector tiles 100% free, sem API key, sem limites.
     // Estilos disponíveis: liberty (colorido), bright, positron (cinza claro).
-    // Pra mudar: troca 'positron' por 'liberty' ou 'bright'.
-    const style = 'https://tiles.openfreemap.org/styles/positron';
+    // E4: offline com o mapa do município baixado, estiloDoMapa troca
+    // pro estilo pmtiles local (online devolve a URL intocada). O
+    // protocolo pmtiles é registrado SÓ em $lib/mapa-offline — não
+    // registrar outro aqui (addProtocol é global, o último ganha).
+    const style = await estiloDoMapa('https://tiles.openfreemap.org/styles/positron');
 
     mapa = new maplibre.Map({
       container,

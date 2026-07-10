@@ -11,6 +11,7 @@
   import { lerUltimoPrefetch } from '$lib/offline/status';
   import { limparCacheLeitura } from '$lib/offline/cache-leitura';
   import { baixarTudoParaOffline } from '$lib/campo-fetchers';
+  import { metaMapaOffline, baixarMapaOffline, removerMapaOffline, type MetaMapaOffline } from '$lib/mapa-offline';
 
   // PUSH-A: base64url (mesmo formato do endpoint) → Uint8Array, formato
   // que pushManager.subscribe espera em applicationServerKey.
@@ -87,6 +88,41 @@
     await atualizarEstimativaEspaco();
     limpandoOffline = false;
     toast.info('Dados offline limpos');
+  }
+
+  // === E4: mapa de fundo offline (PMTiles do município) ===
+  let metaMapa = $state<MetaMapaOffline | null>(null);
+  let baixandoMapa = $state(false);
+  let progressoMapa = $state<number | null>(null);
+  let removendoMapa = $state(false);
+  onMount(() => {
+    metaMapa = metaMapaOffline();
+  });
+
+  async function baixarMapa() {
+    baixandoMapa = true;
+    progressoMapa = 0;
+    try {
+      await baixarMapaOffline((f) => (progressoMapa = f));
+      metaMapa = metaMapaOffline();
+      await atualizarEstimativaEspaco();
+      toast.success('Mapa do município baixado — o fundo dos mapas agora funciona sem internet');
+    } catch (e: any) {
+      toast.error(String(e?.message || 'Falhou baixar o mapa'));
+    } finally {
+      baixandoMapa = false;
+      progressoMapa = null;
+    }
+  }
+
+  async function removerMapa() {
+    if (!confirm('Remover o mapa offline do aparelho?')) return;
+    removendoMapa = true;
+    await removerMapaOffline();
+    metaMapa = null;
+    await atualizarEstimativaEspaco();
+    removendoMapa = false;
+    toast.info('Mapa offline removido');
   }
 
   async function trocarBasemap(e: Event) {
@@ -396,6 +432,31 @@
       <Button variant="secondary" size="sm" loading={limpandoOffline} onclick={limparDadosOffline} class="flex-1">
         Limpar dados offline
       </Button>
+    </div>
+
+    <!-- E4: mapa de fundo offline -->
+    <div class="mt-4 pt-3 border-t border-slate-100">
+      <div class="text-sm font-medium mb-1"><Icon nome="map" size={14} /> Mapa do município (fundo dos mapas)</div>
+      {#if metaMapa}
+        <p class="text-xs text-slate-500 mb-2">
+          Baixado — {(metaMapa.bytes / (1024 * 1024)).toFixed(1)} MB em
+          {new Date(metaMapa.baixadoEm).toLocaleDateString('pt-BR')}. Sem internet,
+          o desenho das ruas vem desse arquivo.
+        </p>
+        <div class="flex gap-2">
+          <Button variant="secondary" size="sm" loading={baixandoMapa} onclick={baixarMapa} class="flex-1">Baixar de novo</Button>
+          <Button variant="secondary" size="sm" loading={removendoMapa} onclick={removerMapa} class="flex-1 text-red-600">Remover</Button>
+        </div>
+      {:else}
+        <p class="text-xs text-slate-500 mb-2">
+          Sem esse download, os mapas funcionam offline mas o fundo (ruas)
+          fica vazio. Baixa uma vez e pronto.
+        </p>
+        <Button variant="primary" size="sm" loading={baixandoMapa} onclick={baixarMapa} class="w-full">
+          <Icon nome="map" size={14} />
+          {baixandoMapa && progressoMapa !== null ? `Baixando… ${Math.round(progressoMapa * 100)}%` : 'Baixar mapa do município'}
+        </Button>
+      {/if}
     </div>
   </Card>
 
