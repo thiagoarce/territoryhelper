@@ -8,7 +8,7 @@
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
   import type { Campanha } from '$lib/types';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { CampanhaResumo, ConclusaoSemana, MetaPessoal, MinhaColaboracao } from './+page.server';
+  import type { CampanhaResumo, ConclusaoSemana, MetaPessoal, MinhaColaboracao } from './+page';
 
   let { data }: {
     data: {

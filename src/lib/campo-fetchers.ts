@@ -208,3 +208,45 @@ export async function prefetchCarteira(userId: string, quadraIds: string[], tceI
     await Promise.all(tarefas.slice(i, i + LOTE).map((t) => t().catch(() => {})));
   }
 }
+
+// W9: prefetch das TELAS de campo restantes (agenda de grupo, TP, prédios,
+// campanha) — completa o "baixar pra usar offline" iniciado no W8 (que só
+// cobria quadra/TCE). Usa as MESMAS funções de carregamento + MESMAS
+// chaves de cache que cada +page.ts usa no load, senão o prefetch não
+// serve pra nada (o load abriria com uma chave diferente e cairia de
+// novo na rede). Best-effort, mesmo padrão de prefetchCarteira.
+export async function prefetchTelasDeCampo(
+  userId: string,
+  opts: { podeCoordenar: boolean; podeVerTp: boolean; predioIds: number[] }
+): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const [
+    { chaveArranjoCampo, carregarArranjoCampo },
+    { chavePrediosCampo, carregarPrediosCampo },
+    { chaveCampanhaCampo, carregarCampanhaCampo },
+    { chavePredioCampo, carregarPredioCampo }
+  ] = await Promise.all([
+    import('../routes/publicador/arranjo/+page'),
+    import('../routes/publicador/predios/+page'),
+    import('../routes/publicador/campanha/+page'),
+    import('../routes/predio/[id]/+page')
+  ]);
+
+  const tarefas: (() => Promise<void>)[] = [
+    async () => gravarCache(chaveArranjoCampo(userId), await carregarArranjoCampo()),
+    async () => gravarCache(chavePrediosCampo(userId), await carregarPrediosCampo(opts.podeCoordenar)),
+    async () => gravarCache(chaveCampanhaCampo(userId), await carregarCampanhaCampo(userId)),
+    ...opts.predioIds.map((id) => async () => gravarCache(chavePredioCampo(id), await carregarPredioCampo(id)))
+  ];
+  if (opts.podeVerTp) {
+    tarefas.push(async () => {
+      const { chaveTpCampo, carregarTpCampo } = await import('../routes/publicador/tp/+page');
+      await gravarCache(chaveTpCampo(userId), await carregarTpCampo(userId));
+    });
+  }
+
+  const LOTE = 2;
+  for (let i = 0; i < tarefas.length; i += LOTE) {
+    await Promise.all(tarefas.slice(i, i + LOTE).map((t) => t().catch(() => {})));
+  }
+}

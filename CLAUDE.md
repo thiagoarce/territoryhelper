@@ -166,8 +166,11 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   com `$lib/supabase-browser` (mesma sessão/RLS do `locals.supabase`).
   Já convertidas (rodada W): `/admin`, `/admin/poligonos`,
   `/publicador`, `/publicador/casa-a-casa`, `/publicador/quadra/[id]`,
-  `/publicador/tce/[id]`. `ssr=false` SOZINHO não resolve — um
-  `+page.server.ts` load continua rodando no Worker via `__data.json`.
+  `/publicador/tce/[id]` (W3/W4/W5/W8), `/publicador/arranjo`,
+  `/publicador/tp`, `/publicador/predios`, `/publicador/campanha`,
+  `/predio/[id]` (W9 — fecha 100% das telas de campo). `ssr=false`
+  SOZINHO não resolve — um `+page.server.ts` load continua rodando no
+  Worker via `__data.json`.
 - Loads universais usam helpers de **`$lib/queries.ts`**
   (`$lib/server/queries.ts` é só um shim de re-export) e identidade via
   `await parent()` (root layout devolve session+profile). NUNCA
@@ -177,8 +180,18 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
 - Cache offline: loads convertidos embrulham o fetch em
   `comCache` (`$lib/offline/cache-leitura.ts`, network-first com
   fallback IndexedDB; HttpError 403/404 nunca cai pro cache). Fetchers
-  de quadra/TCE compartilhados com o prefetch da carteira em
-  `$lib/campo-fetchers.ts` (modo rua, W8).
+  compartilhados entre o load da própria tela e o prefetch da carteira
+  em `$lib/campo-fetchers.ts` (modo rua): `prefetchCarteira` aquece
+  quadra/TCE (W8); `prefetchTelasDeCampo` aquece agenda de grupo, TP,
+  prédios, campanha e os prédios de cartas designadas (W9) — cada
+  `+page.ts` EXPORTA sua função de carregamento + chave de cache
+  (`carregarArranjoCampo`/`chaveArranjoCampo` etc.) especificamente pra
+  isso, e o prefetch importa de volta do módulo da rota (`$lib` → rota,
+  direção invertida do normal, mas evita duplicar ~500 linhas de query
+  — único jeito de garantir MESMA chave/MESMO shape sem reescrever a
+  lógica em dois lugares). Timestamp do último prefetch completo fica
+  em `$lib/offline/status.ts` (localStorage, 1 valor global) e aparece
+  na home (`/publicador`).
 
 ### Backend (`+page.server.ts`)
 - `locals.supabase` = client com sessão; **RLS** faz o controle de acesso.

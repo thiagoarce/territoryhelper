@@ -8,7 +8,8 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { hojeIsoLocal } from '$lib/utils/data';
   import { onMount } from 'svelte';
-  import { prefetchCarteira } from '$lib/campo-fetchers';
+  import { prefetchCarteira, prefetchTelasDeCampo } from '$lib/campo-fetchers';
+  import { gravarUltimoPrefetch, lerUltimoPrefetch } from '$lib/offline/status';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/queries';
 
   interface CampanhaAtiva {
@@ -118,10 +119,14 @@
     };
   } = $props();
 
-  // W8 ("modo rua"): ao abrir a home COM rede, aquece o cache offline de
-  // todas as quadras/TCEs da carteira em background — na rua sem sinal,
-  // qualquer quadra designada abre do cache mesmo sem ter sido visitada.
+  let ultimoPrefetch = $state<number | null>(null);
+
+  // W8/W9 ("modo rua"): ao abrir a home COM rede, aquece o cache offline
+  // de TUDO que o publicador usa em campo — quadras/TCEs (W8) + agenda de
+  // grupo, TP, prédios e campanha (W9) — na rua sem sinal, qualquer tela
+  // dessas abre do cache mesmo sem ter sido visitada antes.
   onMount(() => {
+    ultimoPrefetch = lerUltimoPrefetch();
     const uid = data.profile?.id;
     if (!uid) return;
     const quadraIds = [...new Set([
@@ -136,11 +141,26 @@
       ...(data.arranjoQueDirijo?.tces_ids ?? []),
       ...data.outrosArranjosQueDirijo.flatMap((a) => a.tces_ids)
     ])];
-    if (quadraIds.length === 0 && tceIds.length === 0) return;
+    const predioIds = [...new Set(data.cartasDesignadas.flatMap((c) => c.predios.map((p) => p.id)))];
+    const podeCoordenar = data.minhaRole === 'dirigente' || data.minhaRole === 'admin';
+    const podeVerTp = data.minhaRole === 'admin' || !!data.profile?.tp_aprovado;
     // Espera a tela assentar antes de gastar rede/CPU com o prefetch.
-    const t = setTimeout(() => { void prefetchCarteira(uid, quadraIds, tceIds); }, 2500);
+    const t = setTimeout(() => {
+      void Promise.all([
+        prefetchCarteira(uid, quadraIds, tceIds),
+        prefetchTelasDeCampo(uid, { podeCoordenar, podeVerTp, predioIds })
+      ]).then(() => {
+        const agora = Date.now();
+        gravarUltimoPrefetch(agora);
+        ultimoPrefetch = agora;
+      });
+    }, 2500);
     return () => clearTimeout(t);
   });
+
+  function fmtHoraPrefetch(ts: number): string {
+    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
 
   function fmtDia(iso: string | null): string {
     if (!iso) return '';
@@ -351,6 +371,12 @@
 </script>
 
 <div class="p-4">
+{#if ultimoPrefetch}
+  <div class="mb-3 flex items-center gap-1.5 text-[11px] text-slate-400">
+    <Icon nome="clock" size={12} />
+    Dados offline atualizados às {fmtHoraPrefetch(ultimoPrefetch)}
+  </div>
+{/if}
 {#if data.pendentesFinalizar.length > 0}
   <a href="/publicador/casa-a-casa" class="mb-4 block rounded-xl border-2 border-red-400 bg-red-50 p-3 hover:bg-red-100 transition-colors">
     <div class="text-xs uppercase tracking-wider font-bold text-red-900 mb-1 flex items-center gap-2"><Icon nome="alert" size={14} /> Finalize a designação</div>
