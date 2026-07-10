@@ -209,6 +209,44 @@ export async function prefetchCarteira(userId: string, quadraIds: string[], tceI
   }
 }
 
+// W12: "Baixar tudo agora" em /perfil — dispara o mesmo prefetch que a
+// home dispara sozinha ao abrir com rede (W8/W9), mas sob demanda (ex:
+// publicador quer garantir que baixou tudo ANTES de sair de casa, sem
+// esperar a home carregar). Reusa carregarHomeCampo (mesma função do
+// load da home) pra descobrir quadras/TCEs/prédios sem duplicar a
+// lógica de "quais são as minhas designações/partes/arranjos".
+export async function baixarTudoParaOffline(
+  userId: string,
+  role: string,
+  tpAprovado: boolean
+): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const { carregarHomeCampo, chaveHomeCampo } = await import('../routes/publicador/+page');
+  const home = await carregarHomeCampo(userId, role);
+  await gravarCache(chaveHomeCampo(userId), home);
+
+  const quadraIds = [...new Set([
+    ...home.abertas.flatMap((d: any) => d.quadras_ids),
+    ...home.minhasPartes.flatMap((p: any) => p.quadras_ids),
+    ...(home.arranjoQueDirijo?.quadras_ids ?? []),
+    ...home.outrosArranjosQueDirijo.flatMap((a: any) => a.quadras_ids),
+    ...home.pendentesFinalizar.flatMap((a: any) => a.quadras_ids)
+  ])] as string[];
+  const tceIds = [...new Set([
+    ...home.tces.map((t: any) => t.id),
+    ...(home.arranjoQueDirijo?.tces_ids ?? []),
+    ...home.outrosArranjosQueDirijo.flatMap((a: any) => a.tces_ids)
+  ])] as string[];
+  const predioIds = [...new Set(home.cartasDesignadas.flatMap((c: any) => c.predios.map((p: any) => p.id)))] as number[];
+  const podeCoordenar = role === 'dirigente' || role === 'admin';
+  const podeVerTp = role === 'admin' || tpAprovado;
+
+  await Promise.all([
+    prefetchCarteira(userId, quadraIds, tceIds),
+    prefetchTelasDeCampo(userId, { podeCoordenar, podeVerTp, predioIds })
+  ]);
+}
+
 // W9: prefetch das TELAS de campo restantes (agenda de grupo, TP, prédios,
 // campanha) — completa o "baixar pra usar offline" iniciado no W8 (que só
 // cobria quadra/TCE). Usa as MESMAS funções de carregamento + MESMAS

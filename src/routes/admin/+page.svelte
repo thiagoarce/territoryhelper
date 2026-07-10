@@ -3,6 +3,7 @@
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
@@ -27,6 +28,7 @@
       curadoriaPendente: { total: number; edicao: number; criacao: number; nao_existe: number };
       tces: TceComQuadras[];
       profile?: import('$lib/types').Profile | null;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
     form: any;
   } = $props();
@@ -226,6 +228,7 @@
 </script>
 
 <div class="p-4 space-y-3">
+  <CacheInfoBadge cacheInfo={data.cacheInfo} />
   <!-- Toolbar topo -->
   <div class="flex flex-wrap items-center gap-2">
     <select bind:value={colorirPor} disabled={modoTce} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:opacity-50">

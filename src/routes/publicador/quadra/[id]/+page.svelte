@@ -7,6 +7,7 @@
   import { supabaseBrowser } from '$lib/supabase-browser';
   import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/queries';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import EditarLocalSheet from '$lib/components/EditarLocalSheet.svelte';
   import AdicionarLocalSheet from '$lib/components/AdicionarLocalSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
@@ -14,7 +15,7 @@
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
   import { postComFila } from '$lib/offline';
 
-  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null> } } = $props();
+  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null>; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
 
   // W8 ("modo rua"): desfechos/carta resilientes a sinal ruim — mesmo
   // padrão de /predio/[id]: overlay otimista local + postComFila (sem
@@ -261,6 +262,7 @@
     {#if data.quadra.territorio_nome}
       <div class="text-sm text-slate-500">Território {data.quadra.territorio_nome}</div>
     {/if}
+    <CacheInfoBadge cacheInfo={data.cacheInfo} />
   </div>
   <div class="flex items-center gap-3">
     <div class="text-sm text-slate-600 text-right">

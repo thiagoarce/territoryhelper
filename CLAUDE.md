@@ -203,9 +203,18 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   isso, e o prefetch importa de volta do módulo da rota (`$lib` → rota,
   direção invertida do normal, mas evita duplicar ~500 linhas de query
   — único jeito de garantir MESMA chave/MESMO shape sem reescrever a
-  lógica em dois lugares). Timestamp do último prefetch completo fica
-  em `$lib/offline/status.ts` (localStorage, 1 valor global) e aparece
-  na home (`/publicador`).
+  lógica em dois lugares); `baixarTudoParaOffline` (W12, reusa
+  `carregarHomeCampo`) é a versão sob-demanda, chamada pelo botão
+  "Baixar tudo agora" em `/perfil`. Timestamp do último prefetch
+  completo fica em `$lib/offline/status.ts` (localStorage, 1 valor
+  global). **`CacheInfoBadge.svelte`** (W12) é o componente padrão
+  "dados de HH:MM" — todo `+page.ts` convertido devolve `cacheInfo`
+  no load; o badge só torna isso visível (aviso âmbar quando
+  `deCache=true`), usado em toda tela convertida (campo E admin) e na
+  seção **Offline** de `/perfil` (última sincronização completa,
+  estimativa de espaço via `navigator.storage.estimate`, "baixar tudo
+  agora"/"limpar dados offline" — só mexe no cache de LEITURA,
+  NUNCA na fila de escrita).
 
 ### Backend (`+page.server.ts`)
 - `locals.supabase` = client com sessão; **RLS** faz o controle de acesso.

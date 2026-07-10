@@ -3,6 +3,7 @@
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import MapaPoligonos from '$lib/components/MapaPoligonos.svelte';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
@@ -33,6 +34,7 @@
       quadrasParaRenomear: { id: string; color: string; status: string }[];
       curadoria: CuradoriaLinha[];
       profile?: import('$lib/types').Profile | null;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
     form: any;
   } = $props();
@@ -415,6 +417,7 @@
 </script>
 
 <div class="p-4 space-y-3">
+  <CacheInfoBadge cacheInfo={data.cacheInfo} />
   <!-- Toolbar topo -->
   <div class="flex items-center gap-2 flex-wrap">
     <div class="flex gap-1 rounded-lg bg-slate-100 p-0.5 max-w-full overflow-x-auto">

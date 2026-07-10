@@ -3,6 +3,7 @@
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { postComFila } from '$lib/offline';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -37,6 +38,7 @@
       dispMes: { id: number; mes: string; dia: string; hora_inicio: string; hora_fim: string }[];
       meuTpAprovado: boolean;
       publicadoresAprovados: { id: string; nome: string }[];
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -548,6 +550,7 @@
   <div>
     <h1 class="text-2xl font-bold">Testemunho público</h1>
     <p class="text-sm text-slate-500">Agenda mensal — turnos, ponto e sua disponibilidade</p>
+    <CacheInfoBadge cacheInfo={data.cacheInfo} />
   </div>
 
   {#if mesesEmDisponibilidade.length > 0}

@@ -7,6 +7,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
   import { page } from '$app/stores';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './$types';
 
   interface PredioChip {
@@ -29,6 +30,7 @@
       tcesMap: Record<string, string>;
       minhaId: string;
       podeCoordenar: boolean;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -79,6 +81,7 @@
   <div>
     <h1 class="text-2xl font-bold">Agenda</h1>
     <p class="text-sm text-slate-500">Saídas em grupo (arranjos) — planeje com antecedência</p>
+    <CacheInfoBadge cacheInfo={data.cacheInfo} />
   </div>
 
   <div class="flex items-center justify-between flex-wrap gap-2">

@@ -9,7 +9,8 @@
   import { hojeIsoLocal } from '$lib/utils/data';
   import { onMount } from 'svelte';
   import { prefetchCarteira, prefetchTelasDeCampo } from '$lib/campo-fetchers';
-  import { gravarUltimoPrefetch, lerUltimoPrefetch } from '$lib/offline/status';
+  import { gravarUltimoPrefetch } from '$lib/offline/status';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import { postComFila } from '$lib/offline';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/queries';
 
@@ -117,17 +118,17 @@
       revistasMensais: RevistaMensalLite[];
       minhaRole: string | undefined;
       profile?: import('$lib/types').Profile | null;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
-
-  let ultimoPrefetch = $state<number | null>(null);
 
   // W8/W9 ("modo rua"): ao abrir a home COM rede, aquece o cache offline
   // de TUDO que o publicador usa em campo — quadras/TCEs (W8) + agenda de
   // grupo, TP, prédios e campanha (W9) — na rua sem sinal, qualquer tela
-  // dessas abre do cache mesmo sem ter sido visitada antes.
+  // dessas abre do cache mesmo sem ter sido visitada antes. Timestamp
+  // desse download completo é lido em /perfil (seção Offline, W12) — a
+  // home só mostra o badge padrão de frescor do PRÓPRIO load (cacheInfo).
   onMount(() => {
-    ultimoPrefetch = lerUltimoPrefetch();
     const uid = data.profile?.id;
     if (!uid) return;
     const quadraIds = [...new Set([
@@ -151,17 +152,11 @@
         prefetchCarteira(uid, quadraIds, tceIds),
         prefetchTelasDeCampo(uid, { podeCoordenar, podeVerTp, predioIds })
       ]).then(() => {
-        const agora = Date.now();
-        gravarUltimoPrefetch(agora);
-        ultimoPrefetch = agora;
+        gravarUltimoPrefetch(Date.now());
       });
     }, 2500);
     return () => clearTimeout(t);
   });
-
-  function fmtHoraPrefetch(ts: number): string {
-    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  }
 
   function fmtDia(iso: string | null): string {
     if (!iso) return '';
@@ -376,12 +371,7 @@
 </script>
 
 <div class="p-4">
-{#if ultimoPrefetch}
-  <div class="mb-3 flex items-center gap-1.5 text-[11px] text-slate-400">
-    <Icon nome="clock" size={12} />
-    Dados offline atualizados às {fmtHoraPrefetch(ultimoPrefetch)}
-  </div>
-{/if}
+<div class="mb-3"><CacheInfoBadge cacheInfo={data.cacheInfo} /></div>
 {#if data.pendentesFinalizar.length > 0}
   <a href="/publicador/casa-a-casa" class="mb-4 block rounded-xl border-2 border-red-400 bg-red-50 p-3 hover:bg-red-100 transition-colors">
     <div class="text-xs uppercase tracking-wider font-bold text-red-900 mb-1 flex items-center gap-2"><Icon nome="alert" size={14} /> Finalize a designação</div>

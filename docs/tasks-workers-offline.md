@@ -102,7 +102,7 @@
       locais via @protomaps/basemaps). Sem padrão no código — não
       delegar pro executor de receita.
 
-- [ ] 🟢 **W12** (Sonnet) UX de estado offline: "dados de HH:MM" por
+- [x] 🟢 **W12** (Sonnet) UX de estado offline: "dados de HH:MM" por
       tela, seção Offline em /perfil (última sync, baixar tudo, limpar).
 
 ## Regras pro executor

@@ -6,6 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import MapaAdmin from '$lib/components/MapaAdmin.svelte';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import type { Campanha } from '$lib/types';
   import type { QuadraGeo } from '$lib/server/queries';
   import type { CampanhaResumo, ConclusaoSemana, MetaPessoal, MinhaColaboracao } from './+page';
@@ -19,6 +20,7 @@
       conclusoesSemana: ConclusaoSemana[];
       metasPessoais: MetaPessoal[];
       minhaColaboracao: MinhaColaboracao | null;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -118,6 +120,7 @@
     {#if data.ativa}
       <p class="text-sm text-slate-500">{fmtData(data.ativa.data_inicio)} → {fmtData(data.ativa.data_alvo)}</p>
     {/if}
+    <CacheInfoBadge cacheInfo={data.cacheInfo} />
   </div>
 
   {#if !data.ativa}

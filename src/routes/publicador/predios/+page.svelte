@@ -6,6 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { postComFila } from '$lib/offline';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import type { PredioCampo } from './$types';
 
   let { data }: {
@@ -16,6 +17,7 @@
       lng: number | null;
       publicadores: { id: string; nome: string; role: string }[];
       podeCoordenar: boolean;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -207,6 +209,7 @@
       <p class="text-sm text-slate-500">
         {filtrados.length} de {data.predios.length} · <Icon nome="building" size={14} /> {stats.residencial} residenciais · <Icon nome="store" size={14} /> {stats.comercial} comerciais
       </p>
+      <CacheInfoBadge cacheInfo={data.cacheInfo} />
     </div>
     <Button variant="primary" size="sm" onclick={() => (sheetCriar = true)}><Icon nome="plus" size={14} /> Novo</Button>
   </div>

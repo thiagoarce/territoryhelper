@@ -76,14 +76,21 @@ export interface ArranjoPendenteFinalizar {
 }
 
 
+export function chaveHomeCampo(userId: string): string {
+  return `campo:home:${userId}`;
+}
+
 export const load: PageLoad = async ({ parent }) => {
   const { profile } = await parent();
   if (!profile) throw redirect(303, '/login');
-  const r = await comCache(`campo:home:${profile.id}`, () => carregar(profile.id, profile.role ?? ''));
+  const r = await comCache(chaveHomeCampo(profile.id), () => carregarHomeCampo(profile.id, profile.role ?? ''));
   return { ...r.valor, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };
 };
 
-async function carregar(minhaId: string, role: string) {
+// Exportada pra ser reusada pelo "Baixar tudo agora" em /perfil (W12) —
+// MESMA função que o load usa, garante os mesmos ids de quadras/TCEs/
+// prédios que a home calcularia.
+export async function carregarHomeCampo(minhaId: string, role: string) {
   const supabase = supabaseBrowser();
   const hoje = hojeIsoBrasil();
   const ontem = hojeIsoBrasil(-1);

@@ -8,6 +8,9 @@
   import { toast } from '$lib/ui/toast.svelte';
   // dynamic, não static: a chave é opcional até configurar (ver $lib/server/push.ts)
   import { env as publicEnv } from '$env/dynamic/public';
+  import { lerUltimoPrefetch } from '$lib/offline/status';
+  import { limparCacheLeitura } from '$lib/offline/cache-leitura';
+  import { baixarTudoParaOffline } from '$lib/campo-fetchers';
 
   // PUSH-A: base64url (mesmo formato do endpoint) → Uint8Array, formato
   // que pushManager.subscribe espera em applicationServerKey.
@@ -31,6 +34,60 @@
   let salvandoNome = $state(false);
   let salvandoSenha = $state(false);
   let salvandoBasemap = $state(false);
+
+  // W12: seção Offline — última sincronização completa (W9's "baixar pra
+  // usar offline"), estimativa de espaço usado e ações manuais (baixar
+  // agora / limpar). Só mexe no cache de LEITURA — a fila de escrita
+  // (dado de campo ainda não sincronizado) NUNCA é tocada aqui.
+  let ultimaSincronizacao = $state<number | null>(null);
+  let espacoUsadoMb = $state<number | null>(null);
+  let baixandoTudo = $state(false);
+  let limpandoOffline = $state(false);
+
+  async function atualizarEstimativaEspaco() {
+    try {
+      if (navigator.storage?.estimate) {
+        const { usage } = await navigator.storage.estimate();
+        espacoUsadoMb = usage != null ? Math.round((usage / (1024 * 1024)) * 10) / 10 : null;
+      }
+    } catch {
+      espacoUsadoMb = null;
+    }
+  }
+
+  onMount(() => {
+    ultimaSincronizacao = lerUltimoPrefetch();
+    void atualizarEstimativaEspaco();
+  });
+
+  function fmtUltimaSincronizacao(ts: number): string {
+    return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  async function baixarTudoAgora() {
+    if (!data.profile?.id) return;
+    baixandoTudo = true;
+    try {
+      await baixarTudoParaOffline(data.profile.id, data.profile.role, !!data.profile.tp_aprovado);
+      ultimaSincronizacao = Date.now();
+      await atualizarEstimativaEspaco();
+      toast.success('Dados baixados pra uso offline');
+    } catch {
+      toast.error('Falhou baixar — confira sua conexão');
+    } finally {
+      baixandoTudo = false;
+    }
+  }
+
+  async function limparDadosOffline() {
+    if (!confirm('Limpar os dados salvos offline? A fila de ações pendentes de sincronizar NÃO é afetada — só o que já foi sincronizado e ficou salvo pra consulta sem sinal.')) return;
+    limpandoOffline = true;
+    await limparCacheLeitura();
+    ultimaSincronizacao = null;
+    await atualizarEstimativaEspaco();
+    limpandoOffline = false;
+    toast.info('Dados offline limpos');
+  }
 
   async function trocarBasemap(e: Event) {
     const valor = (e.target as HTMLSelectElement).value;
@@ -313,6 +370,33 @@
         {/if}
       </div>
     {/if}
+  </Card>
+
+  <Card padding="md">
+    <h2 class="font-semibold mb-1">Offline</h2>
+    <p class="text-xs text-slate-500 mb-3">
+      As telas de campo (designações, agenda, TP, prédios) salvam o último
+      dado visto pra abrir sem sinal. "Baixar tudo agora" adianta esse
+      download antes de sair de casa.
+    </p>
+    <div class="text-sm text-slate-600 mb-3">
+      {#if ultimaSincronizacao}
+        <div><Icon nome="clock" size={14} /> Última sincronização completa: {fmtUltimaSincronizacao(ultimaSincronizacao)}</div>
+      {:else}
+        <div class="text-slate-400">Ainda não baixou os dados completos pra offline.</div>
+      {/if}
+      {#if espacoUsadoMb != null}
+        <div class="text-xs text-slate-400 mt-0.5">~{espacoUsadoMb} MB usados neste aparelho</div>
+      {/if}
+    </div>
+    <div class="flex gap-2">
+      <Button variant="primary" size="sm" loading={baixandoTudo} onclick={baixarTudoAgora} class="flex-1">
+        <Icon nome="refresh" size={14} /> Baixar tudo agora
+      </Button>
+      <Button variant="secondary" size="sm" loading={limpandoOffline} onclick={limparDadosOffline} class="flex-1">
+        Limpar dados offline
+      </Button>
+    </div>
   </Card>
 
   <a href="/publicador/tp" class="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-4 hover:bg-slate-50 transition-colors">

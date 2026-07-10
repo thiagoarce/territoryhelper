@@ -4,6 +4,7 @@
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/ui/toast.svelte';
@@ -64,6 +65,7 @@
       territorioPessoalTces: string[];
       minhaId: string;
       profile?: import('$lib/types').Profile | null;
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -250,6 +252,7 @@
 <div class="p-4 space-y-4">
   <div>
     <h1 class="text-2xl font-bold">Casa a casa</h1>
+    <CacheInfoBadge cacheInfo={data.cacheInfo} />
     <p class="text-sm text-slate-500">Seu território agora — use o ponto azul (sua posição) pra saber em qual quadra você está.</p>
   </div>
 

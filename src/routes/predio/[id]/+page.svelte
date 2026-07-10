@@ -7,6 +7,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { cartaEscritaNoCiclo } from '$lib/ciclos';
   import { postComFila } from '$lib/offline';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
 
   interface UnidadeEnriched {
     id: number;
@@ -43,6 +44,7 @@
       cicloCartasInicio?: string | null;
       cicloCartas?: { iniciado_em: string; iniciado_por_nome: string | null } | null;
       quadrasProximas: { id: string; distancia_m: number }[];
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -334,6 +336,7 @@
     </div>
     <h1 class="text-xl font-bold">{data.predio.nome || `${data.predio.logradouro}, ${data.predio.numero}`}</h1>
     <div class="text-sm opacity-90 mt-0.5">{data.predio.logradouro}, {data.predio.numero}</div>
+    <CacheInfoBadge cacheInfo={data.cacheInfo} onDark />
 
     <div class="mt-3 flex flex-wrap gap-1.5 text-xs">
       {#if data.predio.tipo_entrada === 'porteiro'}<span class="bg-white/20 px-2 py-1 rounded"><Icon nome="door" size={14} /> Porteiro</span>{/if}

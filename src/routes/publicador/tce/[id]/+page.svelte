@@ -5,6 +5,7 @@
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { TceEndereco } from './+page';
 
@@ -12,6 +13,7 @@
     data: {
       tce: { id: string; nome: string; tipo: string; prazo: string | null; status: string; notas: string | null };
       enderecos: TceEndereco[];
+      cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
   } = $props();
 
@@ -150,6 +152,7 @@
       {data.enderecos.length} endereço(s) · {feitos} trabalhado(s)
       {#if data.tce.prazo}· prazo {new Date(data.tce.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}{/if}
     </p>
+    <CacheInfoBadge cacheInfo={data.cacheInfo} />
   </div>
 
   {#if data.tce.notas}
