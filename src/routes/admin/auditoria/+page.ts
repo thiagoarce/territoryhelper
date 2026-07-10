@@ -25,9 +25,12 @@ export const load: PageLoad = async ({ parent, url }) => {
 async function carregar(tabela: string) {
   const supabase = supabaseBrowser();
 
+  // SEM antes/depois na lista: são jsonb pesados (quadras carregam a
+  // geometria `poly` inteira ×2) — 100 deles = megabytes no celular.
+  // A tela busca o detalhe por id só quando a linha é expandida.
   let query = supabase
     .from('audit_log')
-    .select('id, tabela, registro_id, acao, antes, depois, autor_id, ts')
+    .select('id, tabela, registro_id, acao, autor_id, ts')
     .order('ts', { ascending: false })
     .limit(100);
   if (tabela) query = query.eq('tabela', tabela);

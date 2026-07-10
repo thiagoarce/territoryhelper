@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
+  import { supabaseBrowser } from '$lib/supabase-browser';
 
   let { data }: { data: any } = $props();
 
@@ -19,9 +20,27 @@
   };
 
   let expandido = $state<Set<number>>(new Set());
+
+  // antes/depois são pesados (pra quadras incluem a geometria `poly`) —
+  // a lista não os baixa; busca por id só quando a linha é expandida.
+  let detalhes = $state<Record<number, { antes: unknown; depois: unknown } | 'carregando' | 'erro'>>({});
+  async function carregarDetalhe(id: number) {
+    if (detalhes[id] && detalhes[id] !== 'erro') return;
+    detalhes[id] = 'carregando';
+    const { data: linha, error } = await supabaseBrowser()
+      .from('audit_log')
+      .select('antes, depois')
+      .eq('id', id)
+      .maybeSingle();
+    detalhes[id] = error || !linha ? 'erro' : { antes: linha.antes, depois: linha.depois };
+  }
+
   function toggle(id: number) {
     if (expandido.has(id)) expandido.delete(id);
-    else expandido.add(id);
+    else {
+      expandido.add(id);
+      void carregarDetalhe(id);
+    }
     expandido = new Set(expandido);
   }
 </script>
@@ -56,20 +75,30 @@
         <span class="ml-auto text-xs text-slate-400">{new Date(l.ts).toLocaleString('pt-BR')}</span>
       </div>
       {#if expandido.has(l.id)}
-        <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-          {#if l.antes}
-            <div>
-              <div class="text-slate-500 mb-1">ANTES</div>
-              <pre class="rounded bg-slate-50 p-2 overflow-x-auto text-xs">{JSON.stringify(l.antes, null, 2)}</pre>
-            </div>
-          {/if}
-          {#if l.depois}
-            <div>
-              <div class="text-slate-500 mb-1">DEPOIS</div>
-              <pre class="rounded bg-slate-50 p-2 overflow-x-auto text-xs">{JSON.stringify(l.depois, null, 2)}</pre>
-            </div>
-          {/if}
-        </div>
+        {@const d = detalhes[l.id]}
+        {#if d === 'carregando' || d === undefined}
+          <div class="mt-2 text-xs text-slate-400">Carregando detalhe…</div>
+        {:else if d === 'erro'}
+          <div class="mt-2 text-xs text-red-600">Falhou carregar o detalhe — toque de novo pra tentar.</div>
+        {:else}
+          <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+            {#if d.antes}
+              <div>
+                <div class="text-slate-500 mb-1">ANTES</div>
+                <pre class="rounded bg-slate-50 p-2 overflow-x-auto text-xs">{JSON.stringify(d.antes, null, 2)}</pre>
+              </div>
+            {/if}
+            {#if d.depois}
+              <div>
+                <div class="text-slate-500 mb-1">DEPOIS</div>
+                <pre class="rounded bg-slate-50 p-2 overflow-x-auto text-xs">{JSON.stringify(d.depois, null, 2)}</pre>
+              </div>
+            {/if}
+            {#if !d.antes && !d.depois}
+              <div class="text-slate-400">Sem snapshot registrado.</div>
+            {/if}
+          </div>
+        {/if}
       {/if}
     </button>
   {:else}
