@@ -1,14 +1,27 @@
 // Fila de escrita offline — IndexedDB puro (sem lib), pra sobreviver a
 // reload/fechar app enquanto sem sinal. Guarda o suficiente pra repetir o
 // POST exato quando a conexão voltar: URL da action + entries do FormData.
+//
+// W10 ("fila 2.0"): cada item também guarda uma DESCRIÇÃO legível (pro
+// publicador entender o que está pendente numa tela de revisão) e um
+// STATUS. `pendente` = ainda não tentou (ou só falhou por falta de rede,
+// tenta de novo sozinho). `erro` = chegou ao servidor e foi recusado
+// (RLS/validação) — fica na fila pro publicador decidir (tentar de novo
+// ou descartar) em vez de sumir silenciosamente, que escondia perda de
+// dado de campo.
 const DB_NAME = 'territoryhelper-offline';
 const STORE = 'fila_escrita';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+export type StatusItemFila = 'pendente' | 'erro';
 
 export interface ItemFila {
   id: number;
   url: string;
   entries: [string, string][];
+  descricao: string;
+  status: StatusItemFila;
+  erro: string | null;
   criadoEm: number;
 }
 
@@ -20,6 +33,8 @@ function abrirDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
       }
+      // v1→v2: itens antigos (sem descricao/status) continuam lidos —
+      // as funções abaixo tratam `undefined` como pendente/sem descrição.
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -28,28 +43,52 @@ function abrirDb(): Promise<IDBDatabase> {
 
 // FormData só serializa como string aqui — não cobre upload de arquivo
 // (uso de campo, os fluxos offline são todos texto: ids, tipos, datas).
-export async function enfileirar(url: string, formData: FormData): Promise<void> {
+export async function enfileirar(url: string, formData: FormData, descricao: string): Promise<void> {
   const entries: [string, string][] = [...formData.entries()].map(([k, v]) => [k, String(v)]);
   const db = await abrirDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).add({ url, entries, criadoEm: Date.now() });
+    tx.objectStore(STORE).add({ url, entries, descricao, status: 'pendente', erro: null, criadoEm: Date.now() });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
   db.close();
 }
 
+function normalizar(item: any): ItemFila {
+  return {
+    id: item.id,
+    url: item.url,
+    entries: item.entries,
+    descricao: item.descricao ?? item.url,
+    status: item.status ?? 'pendente',
+    erro: item.erro ?? null,
+    criadoEm: item.criadoEm
+  };
+}
+
 export async function listarFila(): Promise<ItemFila[]> {
   const db = await abrirDb();
-  const itens = await new Promise<ItemFila[]>((resolve, reject) => {
+  const itens = await new Promise<any[]>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly');
     const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve(req.result as ItemFila[]);
+    req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
   db.close();
-  return itens.sort((a, b) => a.criadoEm - b.criadoEm);
+  return itens.map(normalizar).sort((a, b) => a.criadoEm - b.criadoEm);
+}
+
+export async function obterItem(id: number): Promise<ItemFila | null> {
+  const db = await abrirDb();
+  const item = await new Promise<any>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+  db.close();
+  return item ? normalizar(item) : null;
 }
 
 export async function removerDaFila(id: number): Promise<void> {
@@ -57,6 +96,43 @@ export async function removerDaFila(id: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+// Marca um item como recusado pelo servidor — fica na fila (não perde o
+// dado), pro publicador ver na tela de revisão e decidir.
+export async function marcarErro(id: number, mensagem: string): Promise<void> {
+  const db = await abrirDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const atual = getReq.result;
+      if (atual) store.put({ ...atual, status: 'erro', erro: mensagem });
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+// "Tentar de novo" na tela de revisão: volta pra pendente antes de
+// reenviar, pra sumir o estado de erro mesmo se a nova tentativa também
+// cair sem rede (não deve continuar mostrando o erro ANTIGO).
+export async function marcarPendente(id: number): Promise<void> {
+  const db = await abrirDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const atual = getReq.result;
+      if (atual) store.put({ ...atual, status: 'pendente', erro: null });
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

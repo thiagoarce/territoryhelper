@@ -66,14 +66,28 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   `selectAll` e reduziam em JS, bloco síncrono que contribuía pros
   estouros de CPU do Cloudflare Workers nessas rotas.
 - `src/lib/ui/` — primitives: `Button`, `Card`, `BottomSheet`, `toast.svelte.ts`
-- `src/lib/offline/` — fila de escrita offline (IndexedDB). `postComFila(url,
-  formData)` tenta o POST normal; se a rede falhar de verdade (não um erro
-  do servidor), enfileira e devolve `{offline:true}` em vez de derrubar a
-  UI. `flushFila()` reenvia tudo quando a conexão volta (chamado no root
-  layout, on mount + evento `online`). Usado em `/predio/[id]` (registrar
-  desfecho + toggle cartas — os fluxos de maior frequência com sinal
-  ruim); estenda pra outros fluxos com o mesmo `postComFila` quando
-  precisar.
+- `src/lib/offline/` — fila de escrita offline (IndexedDB), "fila 2.0"
+  (W10). `postComFila(url, formData, descricao)` tenta o POST normal; se
+  a rede falhar de verdade (não um erro do servidor), enfileira com a
+  `descricao` (texto legível pro publicador) e devolve `{offline:true}`
+  em vez de derrubar a UI. Item recusado pelo SERVIDOR (RLS/validação)
+  NÃO some da fila — fica `status:'erro'` + a mensagem, pro publicador
+  decidir (tentar de novo/descartar) em `FilaOfflineSheet.svelte`, aberta
+  pelo banner do root layout. `flushFila()` reenvia os PENDENTES quando a
+  conexão volta (root layout, on mount + evento `online`) — a lógica de
+  "erro de servidor não bloqueia os seguintes, erro de rede para o lote"
+  mora em `fila-logica.ts::processarLote` (puro, sem IndexedDB/fetch,
+  testado em `tests/fila-logica.test.ts` — é o único jeito de testar essa
+  regra sem simular IndexedDB, que Node não tem). Usado nos fluxos de
+  campo de maior frequência/sinal ruim: `/predio/[id]`, `/publicador/
+  quadra/[id]`, `/publicador/tce/[id]` (desfecho/carta/concluir),
+  `EditarLocalSheet.svelte` (overlay/não-existe), reordenar lista da
+  quadra, criar prédio pendente, relatório de TP, pedido de publicação.
+  Online-only por decisão (não enfileiram): link público, Overpass
+  ("Estacionar perto"), PNG/WhatsApp, inscrição/reserva de TP (precisa
+  checar conflito de horário na hora), foto (upload de arquivo — a fila
+  só serializa campos de texto). Estenda pra outros fluxos com o mesmo
+  `postComFila` quando precisar.
 - `src/lib/server/posse.ts` — helper único e puro de "esse publicador pode
   trabalhar essa quadra?", espelhando as mesmas cláusulas de
   `pode_editar_local` (RLS). `guards.ts::exigirQuadraDesignada` só busca

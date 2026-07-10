@@ -481,7 +481,7 @@ export interface LocalComUnidades extends Local {
 }
 
 export interface DadosQuadraTrabalho {
-  quadra: Pick<Quadra, 'id' | 'color' | 'territorio_id' | 'status'> & {
+  quadra: Pick<Quadra, 'id' | 'color' | 'territorio_id' | 'status' | 'data_conclusao'> & {
     territorio_nome: string | null;
     poly_geojson: unknown | null;
   };

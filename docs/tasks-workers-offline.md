@@ -85,7 +85,7 @@
       /predio/[id]) pra universal+comCache; prefetch completo "Baixar
       pra usar offline" com timestamp visível.
 
-- [ ] 🟡 **W10** (Sonnet) Escrita offline total do campo + fila 2.0:
+- [x] 🟡 **W10** (Sonnet) Escrita offline total do campo + fila 2.0:
       todos os POSTs de campo enfileiráveis via postComFila (concluir
       quadra/TCE, não-existe, overlay, reordenar, criar prédio
       pendente, relatório TP, pedidos); fila guarda descrição+status+

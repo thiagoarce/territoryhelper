@@ -2,6 +2,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { postComFila } from '$lib/offline';
   import Card from '$lib/ui/Card.svelte';
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
@@ -202,15 +203,17 @@
     fd.append('data', relatorioOcAtual.data);
     fd.append('notas', notasRelatorio);
     fd.append('itens_json', JSON.stringify(itensPayload));
-    const res = await fetch('?/salvarRelatorio', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
+    const r = await postComFila('?/salvarRelatorio', fd, `Relatório do turno de ${new Date(relatorioOcAtual.data + 'T12:00:00').toLocaleDateString('pt-BR')}`);
     enviandoRelatorio = false;
-    if (parsed.type === 'success') {
+    if (r.ok) {
       toast.success('Relatório enviado');
       sheetRelatorio = false;
       await invalidateAll();
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza quando o sinal voltar');
+      sheetRelatorio = false;
     } else {
-      toast.error(String(parsed.data?.erro || 'Falhou'));
+      toast.error(r.erro);
     }
   }
 

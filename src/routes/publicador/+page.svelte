@@ -10,6 +10,7 @@
   import { onMount } from 'svelte';
   import { prefetchCarteira, prefetchTelasDeCampo } from '$lib/campo-fetchers';
   import { gravarUltimoPrefetch, lerUltimoPrefetch } from '$lib/offline/status';
+  import { postComFila } from '$lib/offline';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/queries';
 
   interface CampanhaAtiva {
@@ -211,16 +212,20 @@
     e.preventDefault();
     enviandoPedido = true;
     const fd = new FormData(e.target as HTMLFormElement);
-    const res = await fetch('?/pedirPublicacao', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
+    const descricao = publicacaoSelecionada ? `Pedido: ${publicacaoSelecionada.nome}` : 'Pedido de publicação avulsa';
+    const r = await postComFila('?/pedirPublicacao', fd, descricao);
     enviandoPedido = false;
-    if (parsed.type === 'success') {
+    if (r.ok) {
       toast.success('Pedido enviado');
       sheetPedido = false;
       publicacaoSelecionadaId = null;
       await invalidateAll();
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza quando o sinal voltar');
+      sheetPedido = false;
+      publicacaoSelecionadaId = null;
     } else {
-      toast.error(String(parsed.data?.erro || 'Falhou'));
+      toast.error(r.erro);
     }
   }
 

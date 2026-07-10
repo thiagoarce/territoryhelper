@@ -1,6 +1,5 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
-  import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { postComFila } from '$lib/offline';
   import Card from '$lib/ui/Card.svelte';
@@ -57,7 +56,7 @@
     const fd = new FormData();
     fd.append('unidade_id', String(e.unidade_id));
     fd.append('tipo', tipo);
-    const r = await postComFila('?/marcarDesfecho', fd);
+    const r = await postComFila('?/marcarDesfecho', fd, `Desfecho em ${e.logradouro}, ${e.numero}${e.complemento ? ' - ' + e.complemento : ''}`);
     if (r.ok) {
       await invalidateAll();
       delete overrideDesfecho[e.unidade_id];
@@ -69,13 +68,29 @@
     }
   }
 
+  // W10: concluir TCE também via postComFila.
+  let concluindo = $state(false);
+  let concluindoOtimista = $state(false);
+  async function concluirTceFila() {
+    if (!confirm('Concluir este TCE?')) return;
+    concluindo = true;
+    concluindoOtimista = true;
+    const fd = new FormData();
+    fd.append('id', data.tce.id);
+    const r = await postComFila('?/concluir', fd, `Concluir TCE ${data.tce.nome}`);
+    concluindo = false;
+    if (r.ok) { toast.success('TCE concluído'); await invalidateAll(); }
+    else if (r.offline) toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    else { concluindoOtimista = false; toast.error(r.erro); }
+  }
+
   async function toggleCartaFila(e: TceEndereco) {
     const atual = e.unidade_id in overrideCarta ? overrideCarta[e.unidade_id] : e.cartaEntregue;
     overrideCarta[e.unidade_id] = !atual;
     const fd = new FormData();
     fd.append('unidade_id', String(e.unidade_id));
     fd.append('undo', String(atual));
-    const r = await postComFila('?/toggleCarta', fd);
+    const r = await postComFila('?/toggleCarta', fd, `Carta em ${e.logradouro}, ${e.numero}${e.complemento ? ' - ' + e.complemento : ''}`);
     if (r.ok) {
       await invalidateAll();
       delete overrideCarta[e.unidade_id];
@@ -206,19 +221,14 @@
 </div>
 
 <!-- Barra de concluir -->
-{#if data.tce.status === 'aberto'}
+{#if data.tce.status === 'aberto' && !concluindoOtimista}
   <div class="fixed bottom-16 left-0 right-0 z-20 p-3">
-    <form
-      method="POST"
-      action="?/concluir"
-      use:enhance={() => async ({ result, update }) => {
-        await update();
-        if (result.type === 'success') { toast.success('TCE concluído'); await invalidateAll(); }
-      }}
-      onsubmit={(e) => { if (!confirm('Concluir este TCE?')) e.preventDefault(); }}
-    >
-      <input type="hidden" name="id" value={data.tce.id} />
-      <Button variant="success" type="submit" class="w-full"><Icon nome="check" size={14} /> Concluir TCE</Button>
-    </form>
+    <Button
+      type="button"
+      variant="success"
+      class="w-full"
+      loading={concluindo}
+      onclick={concluirTceFila}
+    ><Icon nome="check" size={14} /> Concluir TCE</Button>
   </div>
 {/if}

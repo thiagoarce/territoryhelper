@@ -1,10 +1,11 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
-  import { enhance, deserialize } from '$app/forms';
+  import { deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { postComFila } from '$lib/offline';
   import type { LocalComUnidades } from '$lib/server/queries';
 
   let {
@@ -87,15 +88,38 @@
     const fd = new FormData();
     fd.append('id', String(local.id));
     fd.append('marcar', String(marcar));
-    const res = await fetch('?/marcarNaoExiste', { method: 'POST', body: fd });
-    const parsed = deserialize(await res.text()) as any;
+    const r = await postComFila('?/marcarNaoExiste', fd, `${marcar ? 'Marcar' : 'Desmarcar'} "não existe mais" em ${local.logradouro}, ${local.numero}`);
     marcandoNaoExiste = false;
-    if (parsed.type === 'success') {
+    if (r.ok) {
       toast.success(marcar ? 'Marcado como "não existe mais"' : 'Desmarcado');
       open = false;
       await invalidateAll();
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+      open = false;
     } else {
-      toast.error(String(parsed.data?.erro || 'Falhou'));
+      toast.error(r.erro);
+    }
+  }
+
+  // W10: overlay (nome/notas/tipo/etc.) via postComFila — lê o FormData do
+  // form nativo em vez de use:enhance, pra poder enfileirar offline.
+  async function salvarLocal(ev: SubmitEvent) {
+    ev.preventDefault();
+    if (!local) return;
+    const fd = new FormData(ev.currentTarget as HTMLFormElement);
+    salvando = true;
+    const r = await postComFila('?/atualizarLocal', fd, `Editar ${local.logradouro}, ${local.numero}`);
+    salvando = false;
+    if (r.ok) {
+      toast.success('Salvo');
+      open = false;
+      await invalidateAll();
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+      open = false;
+    } else {
+      toast.error(r.erro);
     }
   }
 </script>
@@ -104,21 +128,7 @@
   {#if local}
     <form
       method="POST"
-      action="?/atualizarLocal"
-      use:enhance={() => {
-        salvando = true;
-        return async ({ result, update }) => {
-          await update();
-          salvando = false;
-          if (result.type === 'success') {
-            toast.success('Salvo');
-            open = false;
-            await invalidateAll();
-          } else if (result.type === 'failure') {
-            toast.error(String((result.data as any)?.erro || 'Falhou'));
-          }
-        };
-      }}
+      onsubmit={salvarLocal}
       class="space-y-4"
     >
       <input type="hidden" name="id" value={local.id} />

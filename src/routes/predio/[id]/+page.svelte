@@ -122,7 +122,7 @@
     const fd = new FormData();
     fd.append('unidade_id', String(u.id));
     fd.append('tipo', novoTipo);
-    const r = await postComFila('?/marcarDesfecho', fd);
+    const r = await postComFila('?/marcarDesfecho', fd, `Desfecho em ${data.predio.logradouro}, ${data.predio.numero}${u.complemento ? ' - ' + u.complemento : ''}`);
     if (!r.ok && r.offline) {
       toast.info('Salvo offline — sincroniza quando o sinal voltar');
     } else if (!r.ok) {
@@ -141,7 +141,8 @@
     const fd = new FormData();
     fd.append('unidade_id', String(u.id));
     fd.append('campo', campo);
-    const r = await postComFila('?/toggle', fd);
+    const CAMPO_LABEL: Record<string, string> = { carta_entregue: 'Carta escrita', desocupado: 'Desocupado', nao_escrever: 'Não escrever' };
+    const r = await postComFila('?/toggle', fd, `${CAMPO_LABEL[campo]} em ${data.predio.logradouro}, ${data.predio.numero}${u.complemento ? ' - ' + u.complemento : ''}`);
     if (!r.ok && r.offline) {
       toast.info('Salvo offline — sincroniza quando o sinal voltar');
     } else if (!r.ok) {

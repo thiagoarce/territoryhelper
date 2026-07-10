@@ -10,6 +10,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { invalidateAll } from '$app/navigation';
   import { flushFila, contarFila } from '$lib/offline';
+  import FilaOfflineSheet from '$lib/components/FilaOfflineSheet.svelte';
   import { onMount } from 'svelte';
 
   // Recarrega buscando a versão nova. skipWaiting no SW garante que o
@@ -18,9 +19,11 @@
     location.reload();
   }
 
-  // Fila offline (registro/cartas em /predio/[id] com sinal ruim): tenta
-  // sincronizar ao carregar a página e sempre que a conexão voltar.
+  // Fila offline (escritas de campo com sinal ruim): tenta sincronizar ao
+  // carregar a página e sempre que a conexão voltar. Item recusado pelo
+  // servidor fica na fila (não desaparece) — ver `FilaOfflineSheet`.
   let pendentesOffline = $state(0);
+  let filaAberta = $state(false);
   async function sincronizarFila() {
     const antes = await contarFila();
     if (antes === 0) return;
@@ -30,7 +33,7 @@
       toast.success(`${sincronizadas} ação(ões) sincronizada(s)`);
     }
     if (falhas > 0) {
-      toast.error(`${falhas} ação(ões) recusada(s) pelo servidor (descartadas — provavelmente sem permissão)`);
+      toast.error(`${falhas} ação(ões) recusada(s) pelo servidor — veja a fila offline`);
     }
     if (sincronizadas > 0 || falhas > 0) await invalidateAll();
   }
@@ -166,9 +169,12 @@
   <div class="fixed top-0 left-0 right-0 z-[59] bg-amber-600 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
     <Icon nome="refresh" size={14} />
     <span class="flex-1">{pendentesOffline} ação(ões) salva(s) offline — sincroniza sozinho quando o sinal voltar</span>
+    <button type="button" onclick={() => (filaAberta = true)} class="text-xs font-semibold bg-white/20 px-2 py-1 rounded hover:bg-white/30">Ver fila</button>
     <button type="button" onclick={sincronizarFila} class="text-xs font-semibold bg-white/20 px-2 py-1 rounded hover:bg-white/30">Tentar agora</button>
   </div>
 {/if}
+
+<FilaOfflineSheet bind:open={filaAberta} />
 
 {#if semChrome || !data.profile}
   {@render children()}

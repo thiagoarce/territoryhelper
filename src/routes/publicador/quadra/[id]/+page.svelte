@@ -1,7 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
   import { cartaEscritaNoCiclo } from '$lib/ciclos';
-  import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
@@ -23,12 +22,12 @@
   let overrideDesfecho = $state<Record<number, string | null>>({});
   let overrideCarta = $state<Record<number, boolean>>({});
 
-  async function marcarDesfechoFila(u: UnidadeEnriquecida, tipo: string) {
+  async function marcarDesfechoFila(u: UnidadeEnriquecida, tipo: string, l: LocalComUnidades) {
     overrideDesfecho[u.id] = tipo === '' ? null : tipo;
     const fd = new FormData();
     fd.append('unidade_id', String(u.id));
     fd.append('tipo', tipo);
-    const r = await postComFila('?/marcarDesfecho', fd);
+    const r = await postComFila('?/marcarDesfecho', fd, `Desfecho em ${l.logradouro}, ${l.numero}${u.complemento ? ' - ' + u.complemento : ''}`);
     if (r.ok) {
       await invalidateAll();
       delete overrideDesfecho[u.id];
@@ -40,12 +39,12 @@
     }
   }
 
-  async function toggleCartaFila(u: UnidadeEnriquecida, marcar: boolean) {
+  async function toggleCartaFila(u: UnidadeEnriquecida, marcar: boolean, l: LocalComUnidades) {
     overrideCarta[u.id] = marcar;
     const fd = new FormData();
     fd.append('unidade_id', String(u.id));
     fd.append('marcar', String(marcar));
-    const r = await postComFila('?/toggleCarta', fd);
+    const r = await postComFila('?/toggleCarta', fd, `Carta em ${l.logradouro}, ${l.numero}${u.complemento ? ' - ' + u.complemento : ''}`);
     if (r.ok) {
       await invalidateAll();
       delete overrideCarta[u.id];
@@ -62,6 +61,31 @@
   const podeDirigir = $derived(['dirigente', 'admin'].includes(data.minhaRole ?? ''));
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   let salvandoConclusao = $state(false);
+
+  // W10: concluir/desfazer conclusão viram postComFila (dirigente marca a
+  // quadra concluída no fim da saída, muitas vezes já saindo do sinal).
+  let overrideConcluida = $state<boolean | null>(null);
+  async function concluirQuadraFila() {
+    salvandoConclusao = true;
+    overrideConcluida = true;
+    const fd = new FormData();
+    fd.append('data', dataConclusao);
+    const r = await postComFila('?/concluirQuadra', fd, `Concluir quadra ${data.quadra.id}`);
+    salvandoConclusao = false;
+    if (r.ok) { toast.success('Concluída'); overrideConcluida = null; await invalidateAll(); }
+    else if (r.offline) toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    else { overrideConcluida = null; toast.error(r.erro); }
+  }
+  async function desfazerConclusaoFila() {
+    salvandoConclusao = true;
+    overrideConcluida = false;
+    const r = await postComFila('?/desfazerConclusao', new FormData(), `Desfazer conclusão da quadra ${data.quadra.id}`);
+    salvandoConclusao = false;
+    if (r.ok) { toast.success('Desfeito'); overrideConcluida = null; await invalidateAll(); }
+    else if (r.offline) toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+    else { overrideConcluida = null; toast.error(r.erro); }
+  }
+  const quadraConcluidaEfetiva = $derived(overrideConcluida ?? !!data.quadra.data_conclusao);
 
   // Modo simples: botões gigantes, sem mapa nem ações de edição.
   // Persistido em localStorage por usuário.
@@ -149,10 +173,10 @@
     try {
       const fd = new FormData();
       for (const id of ids) fd.append('ids', String(id));
-      const res = await fetch('?/reordenarLocais', { method: 'POST', body: fd });
-      const parsed = deserialize(await res.text()) as any;
-      if (parsed.type === 'success') await invalidateAll();
-      else toast.error(String(parsed.data?.erro || 'Falhou reordenar'));
+      const r = await postComFila('?/reordenarLocais', fd, `Reordenar face ${face} da quadra ${data.quadra.id}`);
+      if (r.ok) await invalidateAll();
+      else if (r.offline) toast.info('Sem rede — salvo no aparelho, sincroniza sozinho quando voltar');
+      else toast.error(r.erro);
     } finally {
       reordenandoId = null;
     }
@@ -274,37 +298,21 @@
 <!-- Ações de dirigente (marcar quadra concluída / desfazer) — só se role permite -->
 {#if podeDirigir}
   <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-    {#if data.quadra.data_conclusao}
+    {#if quadraConcluidaEfetiva}
       <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-sm text-green-700 flex-1"><Icon nome="check" size={14} /> Concluída em <strong>{new Date(data.quadra.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')}</strong></span>
-        <form
-          method="POST"
-          action="?/desfazerConclusao"
-          use:enhance={() => { salvandoConclusao = true; return async ({ result, update }) => {
-            await update(); salvandoConclusao = false;
-            if (result.type === 'success') { toast.success('Desfeito'); await invalidateAll(); }
-            else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
-          }; }}
-        >
-          <Button variant="secondary" size="sm" type="submit" loading={salvandoConclusao}>Desfazer</Button>
-        </form>
+        <span class="text-sm text-green-700 flex-1">
+          <Icon nome="check" size={14} />
+          {#if data.quadra.data_conclusao}Concluída em <strong>{new Date(data.quadra.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')}</strong>{:else}Concluída{/if}
+        </span>
+        <Button type="button" variant="secondary" size="sm" onclick={desfazerConclusaoFila} loading={salvandoConclusao}>Desfazer</Button>
       </div>
     {:else}
-      <form
-        method="POST"
-        action="?/concluirQuadra"
-        use:enhance={() => { salvandoConclusao = true; return async ({ result, update }) => {
-          await update(); salvandoConclusao = false;
-          if (result.type === 'success') { toast.success(String((result.data as any)?.msg || 'Concluída')); await invalidateAll(); }
-          else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
-        }; }}
-        class="flex items-center gap-2 flex-wrap"
-      >
+      <div class="flex items-center gap-2 flex-wrap">
         <label for="data-conc" class="text-sm text-slate-600">Concluir em</label>
         <input id="data-conc" type="date" name="data" bind:value={dataConclusao}
           class="rounded border border-slate-300 px-2 py-1 text-sm" />
-        <Button variant="success" size="sm" type="submit" loading={salvandoConclusao}><Icon nome="check" size={14} /> Marcar concluída</Button>
-      </form>
+        <Button type="button" variant="success" size="sm" onclick={concluirQuadraFila} loading={salvandoConclusao}><Icon nome="check" size={14} /> Marcar concluída</Button>
+      </div>
     {/if}
   </div>
 {/if}
@@ -403,7 +411,7 @@
                             <span class="text-xs rounded px-2 py-0.5 bg-slate-100 text-slate-400">{rotulos[u.desfecho_anterior] ?? u.desfecho_anterior} · ciclo anterior</span>
                           {/if}
                         </div>
-                        {@render botoes(u)}
+                        {@render botoes(u, l)}
                       </div>
                     {/each}
                   </div>
@@ -443,7 +451,7 @@
                         ><Icon nome="pencil" size={14} /></button>
                       </div>
                     </div>
-                    {@render botoes(u)}
+                    {@render botoes(u, l)}
                   </div>
                 {/each}
               {/if}
@@ -489,7 +497,7 @@
   </div>
 {/snippet}
 
-{#snippet botoes(u: UnidadeEnriquecida)}
+{#snippet botoes(u: UnidadeEnriquecida, l: LocalComUnidades)}
   {@const tipoEfetivo = u.id in overrideDesfecho ? overrideDesfecho[u.id] : u.ultimo_tipo}
   {@const cartaMarcada = u.id in overrideCarta ? overrideCarta[u.id] : !!u.carta_entregue}
   <div class="flex gap-1 flex-wrap" class:grid={modoSimples} class:grid-cols-2={modoSimples} class:gap-2={modoSimples}>
@@ -501,7 +509,7 @@
       {@const ativo = tipoEfetivo === opt.tipo}
       <button
         type="button"
-        onclick={() => marcarDesfechoFila(u, ativo ? '' : opt.tipo)}
+        onclick={() => marcarDesfechoFila(u, ativo ? '' : opt.tipo, l)}
         title={opt.label}
         aria-label={opt.label}
         class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {ativo ? 'bg-primary-600 text-white border-primary-600' : 'border-slate-300 hover:bg-slate-100'}"
@@ -511,7 +519,7 @@
     {/each}
     <button
       type="button"
-      onclick={() => toggleCartaFila(u, !cartaMarcada)}
+      onclick={() => toggleCartaFila(u, !cartaMarcada, l)}
       title="Carta entregue"
       aria-label="Carta entregue"
       class="rounded border transition-colors {modoSimples ? 'w-full text-base py-3 px-4' : 'px-3 py-1.5 text-sm'} {cartaMarcada ? 'bg-purple-600 text-white border-purple-600' : 'border-slate-300 hover:bg-slate-100'}"

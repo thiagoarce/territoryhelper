@@ -5,6 +5,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { postComFila } from '$lib/offline';
   import type { PredioCampo } from './$types';
 
   let { data }: {
@@ -147,6 +148,34 @@
   // Sheet criar prédio pendente
   let sheetCriar = $state(false);
   let salvandoNovo = $state(false);
+
+  // W10: criar prédio pendente via postComFila. Offline, o id do novo
+  // prédio só existe depois que a fila sincronizar de verdade — não dá
+  // pra navegar pra /predio/[id] na hora, então só fecha o sheet.
+  async function criarPredioPendenteFila(ev: SubmitEvent) {
+    ev.preventDefault();
+    const form = ev.currentTarget as HTMLFormElement;
+    const fd = new FormData(form);
+    const logradouro = String(fd.get('logradouro') ?? '');
+    const numero = String(fd.get('numero') ?? '');
+    salvandoNovo = true;
+    const r = await postComFila('?/criarPredioPendente', fd, `Criar prédio pendente ${logradouro}, ${numero}`);
+    salvandoNovo = false;
+    if (r.ok) {
+      toast.success(String(r.data?.msg || 'Criado'));
+      sheetCriar = false;
+      form.reset();
+      const id = r.data?.id;
+      if (id) goto('/predio/' + id);
+      else await invalidateAll();
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho, sincroniza quando o sinal voltar');
+      sheetCriar = false;
+      form.reset();
+    } else {
+      toast.error(r.erro);
+    }
+  }
 
   async function compartilharWhatsApp(predioId: number, nome: string | null, logradouro: string, numero: string) {
     try {
@@ -400,16 +429,7 @@
 <BottomSheet bind:open={sheetCriar} title="Criar prédio pendente">
   <form
     method="POST"
-    action="?/criarPredioPendente"
-    use:enhance={() => { salvandoNovo = true; return async ({ result, update }) => {
-      await update(); salvandoNovo = false;
-      if (result.type === 'success') {
-        toast.success(String((result.data as any)?.msg || 'Criado'));
-        sheetCriar = false;
-        const id = (result.data as any)?.id;
-        if (id) goto('/predio/' + id);
-      } else if (result.type === 'failure') toast.error(String((result.data as any)?.erro || 'Falhou'));
-    }; }}
+    onsubmit={criarPredioPendenteFila}
     class="space-y-3"
   >
     {#if lat != null}<input type="hidden" name="lat" value={lat} />{/if}
