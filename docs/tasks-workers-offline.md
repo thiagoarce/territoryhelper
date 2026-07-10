@@ -80,7 +80,7 @@
 > produção (migration 076 aplicada, salvar designação sem 1102, modo
 > avião, snapshot/restore) — não empilhar em cima de base não validada.
 
-- [ ] 🟡 **W9** (Sonnet) Leitura offline total do campo: converter os
+- [x] 🟡 **W9** (Sonnet) Leitura offline total do campo: converter os
       loads de campo restantes (agenda, TP, prédios, campanha,
       /predio/[id]) pra universal+comCache; prefetch completo "Baixar
       pra usar offline" com timestamp visível.
