@@ -143,6 +143,7 @@
       titulo: 'Sistema',
       items: [
         { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'users' },
+        { href: '/admin/relatorios/s13', label: 'Relatório S-13', icon: 'clipboard' },
         { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' },
         { href: '/admin/dev/backup', label: 'Backup', icon: 'inbox' }
       ]
