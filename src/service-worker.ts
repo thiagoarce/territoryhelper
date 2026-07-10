@@ -51,42 +51,69 @@ sw.addEventListener('fetch', (event) => {
   );
 });
 
+// iOS/WebKit REJEITA resposta "com redirecionamentos" servida pelo SW em
+// NAVEGAÇÃO ("Response served by service worker has redirections") — e o
+// app navega por rotas que SEMPRE redirecionam: `/` (start_url do PWA,
+// 303 por role) e `/dirigente/*` (301). Isso pega tanto o RELAY ao vivo
+// de um fetch que seguiu redirect quanto o REPLAY de uma entrada de cache
+// que carregue a flag `redirected`. Defesas (todas as três necessárias):
+// 1. Navegação online que redirecionou → devolve um redirect SINTETIZADO
+//    pelo próprio SW (isso é permitido) — o browser navega pra URL final,
+//    cai de novo aqui e ELA é cacheada sob a chave certa.
+// 2. Qualquer resposta servida do cache pra navegação → SEMPRE re-embrulha
+//    numa Response nova (redirected garantidamente false, independente do
+//    que o Cache API do WebKit preservou da entrada armazenada).
+// 3. Antes de cachear, remove a flag (semFlagDeRedirect) — não guarda
+//    resposta redirecionada nem pra subresource.
+async function respostaLimpa(res: Response): Promise<Response> {
+  const body = await res.blob();
+  return new Response(body, {
+    status: res.status || 200,
+    statusText: res.statusText || 'OK',
+    headers: new Headers(res.headers)
+  });
+}
+
+async function semFlagDeRedirect(res: Response): Promise<Response> {
+  if (!res.redirected) return res;
+  return respostaLimpa(res);
+}
+
 async function cacheFirst(req: Request): Promise<Response> {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(req);
-  if (cached) return cached;
+  if (cached) return req.mode === 'navigate' ? respostaLimpa(cached) : cached;
   const res = await fetch(req);
-  if (res.ok) cache.put(req, res.clone());
+  if (res.ok) cache.put(req, await semFlagDeRedirect(res.clone()));
   return res;
-}
-
-// iOS/WebKit REJEITA replay de resposta com `redirected: true` servida
-// pelo SW em navegação ("Response served by service worker has
-// redirections") — ex: `/` 303→/publicador. Antes de cachear, re-embrulha
-// o corpo numa Response "limpa" (200, sem flag de redirect).
-async function semFlagDeRedirect(res: Response): Promise<Response> {
-  if (!res.redirected) return res;
-  const body = await res.blob();
-  const headers = new Headers(res.headers);
-  return new Response(body, { status: 200, statusText: 'OK', headers });
 }
 
 async function networkFirst(req: Request): Promise<Response> {
   const cache = await caches.open(CACHE);
   try {
     const res = await fetch(req);
+    if (req.mode === 'navigate' && res.redirected) {
+      // Não cacheia sob a URL original — o browser segue o redirect
+      // sintetizado e a URL final é cacheada quando o novo fetch voltar.
+      return res.url ? Response.redirect(res.url, 303) : respostaLimpa(res);
+    }
     if (res.ok) cache.put(req, await semFlagDeRedirect(res.clone()));
     return res;
   } catch (e) {
     const cached = await cache.match(req);
-    // Entrada antiga ainda com flag de redirect (cache de versão anterior
-    // ao fix) não pode ser servida em navegação — cai pro offline.html.
-    if (cached && !(req.mode === 'navigate' && cached.redirected)) return cached;
-    // Navegação pra rota nunca visitada, sem rede: página offline amigável
-    // (static/offline.html, pré-cacheada) em vez do erro do Safari.
+    if (cached) return req.mode === 'navigate' ? respostaLimpa(cached) : cached;
     if (req.mode === 'navigate') {
+      // Abrir o app offline no start_url `/` (que online sempre
+      // redireciona e por isso nunca tem entrada própria no cache):
+      // manda pra home do campo se ela já foi baixada.
+      if (new URL(req.url).pathname === '/') {
+        const home = await cache.match('/publicador');
+        if (home) return Response.redirect('/publicador', 303);
+      }
+      // Rota nunca visitada, sem rede: página offline amigável
+      // (static/offline.html, pré-cacheada) em vez do erro do Safari.
       const off = await cache.match('/offline.html');
-      if (off) return off;
+      if (off) return respostaLimpa(off);
     }
     throw e;
   }
