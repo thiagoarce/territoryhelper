@@ -22,6 +22,10 @@ Rodada Exportáveis (E1–E5; specs em `docs/specs-exportaveis.md`).
   (Imprimir/Salvar PDF pelo navegador), com os ciclos de cada território
   calculados do histórico (abre na primeira quadra designada, fecha
   quando a última é concluída) e ano de serviço set→ago
+- Quadra concluída sem nenhuma designação registrada (histórico lançado
+  em lote, ou trabalho feito sem pedir formalmente) não some mais do
+  relatório: a data de designação é inferida como igual à de conclusão,
+  aparecendo como "(registro avulso)"
 
 ### Dashboard
 - Nova tela Administrar → Dashboard: cobertura de 12 meses, ciclo médio

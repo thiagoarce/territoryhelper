@@ -32,7 +32,14 @@ export interface CicloTerritorio {
   designado: string;
   /** null = ciclo ainda aberto */
   conclusao: string | null;
+  /** true = ciclo sem designação registrada, inferido das conclusões
+   *  (histórico lançado / quadra feita sem pedir) */
+  inferido?: boolean;
 }
+
+/** Rótulo do "Designado para" quando o ciclo foi inferido de conclusão
+ *  sem designação registrada. */
+export const DESIGNADO_INFERIDO = '(registro avulso)';
 
 export function ciclosDoTerritorio(
   quadraIds: string[],
@@ -40,7 +47,6 @@ export function ciclosDoTerritorio(
   conclusoes: Conclusao[]
 ): CicloTerritorio[] {
   if (quadraIds.length === 0) return [];
-  const evs = [...eventos].sort((a, b) => a.data.localeCompare(b.data));
   const porQuadra = new Map<string, string[]>();
   for (const c of conclusoes) {
     if (!quadraIds.includes(c.quadra_id)) continue;
@@ -49,6 +55,19 @@ export function ciclosDoTerritorio(
     porQuadra.set(c.quadra_id, arr);
   }
   for (const arr of porQuadra.values()) arr.sort();
+
+  // Conclusão sem designação registrada NÃO pode sumir do S-13
+  // (histórico lançado em lote, quadra feita sem pedir): cada conclusão
+  // vira um candidato a abrir ciclo com data de designação INFERIDA
+  // igual à data da conclusão. Se a conclusão já cai dentro de um ciclo
+  // real, o candidato é pulado pelo laço (mesma regra dos eventos
+  // normais); só a órfã abre ciclo. Empate de data com evento real →
+  // o real vem primeiro no sort e ganha o nome.
+  type Ev = EventoDesignacao & { inferido?: boolean };
+  const evs: Ev[] = [...eventos];
+  for (const datas of porQuadra.values())
+    for (const d of datas) evs.push({ data: d, nome: null, inferido: true });
+  evs.sort((a, b) => a.data.localeCompare(b.data) || Number(!!a.inferido) - Number(!!b.inferido));
 
   // Fechamento de um ciclo iniciado em `inicio`: pra cada quadra, a
   // PRIMEIRA conclusão >= inicio; se todas têm, fecha na maior delas.
@@ -70,8 +89,9 @@ export function ciclosDoTerritorio(
     const fim = fechamento(ev.data);
     ciclos.push({
       inicio: ev.data,
-      designado: ev.nome ?? 'Campo (grupo)',
-      conclusao: fim
+      designado: ev.inferido ? DESIGNADO_INFERIDO : (ev.nome ?? 'Campo (grupo)'),
+      conclusao: fim,
+      inferido: ev.inferido
     });
     if (fim === null) break; // ciclo aberto engole o resto dos eventos
     liberadoApos = fim;
