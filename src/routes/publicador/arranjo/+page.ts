@@ -63,7 +63,7 @@ export const load: PageLoad = async ({ parent }) => {
 export async function carregarArranjoCampo() {
   const supabase = supabaseBrowser();
 
-  const [arranjos, modalidades, { data: profs }, partesRes] = await Promise.all([
+  const [arranjos, modalidades, profsRes, partesRes] = await Promise.all([
     selectAll<ArranjoLinha>(
       supabase
         .from('arranjos')
@@ -82,6 +82,12 @@ export async function carregarArranjoCampo() {
       .order('criada_em')
   ]);
 
+  // Query crua não lança em falha de rede — sem lançar aqui, o comCache
+  // gravaria agenda sem nomes/partes por cima do snapshot bom (ver W5).
+  if (profsRes.error) throw profsRes.error;
+  if (partesRes.error) throw partesRes.error;
+
+  const profs = profsRes.data;
   const dirigentes: Record<string, string> = {};
   const nomesPorId: Record<string, string> = {};
   for (const p of profs ?? []) {

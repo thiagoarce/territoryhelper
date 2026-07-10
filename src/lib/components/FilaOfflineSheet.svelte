@@ -8,16 +8,28 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Icon from '$lib/ui/Icon.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import { listarFila, reenviarItem, descartarItem, type ItemFila } from '$lib/offline';
+  import { filaDoUsuarioAtual, reenviarItem, descartarItem, type ItemFila } from '$lib/offline';
   import { invalidateAll } from '$app/navigation';
 
-  let { open = $bindable(false) }: { open?: boolean } = $props();
+  let {
+    open = $bindable(false),
+    onMudanca
+  }: {
+    open?: boolean;
+    /** chamado sempre que a fila muda (retry/descarte) — o layout usa pra
+     *  atualizar as contagens do banner sem esperar o próximo evento */
+    onMudanca?: () => void;
+  } = $props();
 
   let itens = $state<ItemFila[]>([]);
   let ocupadoId = $state<number | null>(null);
 
   async function recarregar() {
-    itens = await listarFila();
+    // Só a fila do usuário logado — itens de outro usuário do aparelho
+    // ficam invisíveis esperando o dono voltar (não dá pra reenviar item
+    // de A com a sessão de B).
+    itens = await filaDoUsuarioAtual();
+    onMudanca?.();
   }
 
   $effect(() => {

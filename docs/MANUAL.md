@@ -268,6 +268,51 @@ Tela única, tanto pro admin quanto pro campo.
 
 ---
 
+# Trabalhar sem internet (modo offline)
+
+O modo campo funciona por completo sem sinal — pensado pro fluxo real:
+baixar tudo no Wi-Fi do salão, pregar na rua sem internet, sincronizar
+quando o sinal voltar.
+
+## Antes de sair de casa
+
+- **Automático**: abrir a home do campo (Designações) com internet já
+  baixa em segundo plano todas as suas quadras, TCEs, prédios de cartas,
+  agenda, TP e campanha.
+- **Manual**: em **Perfil → Offline**, o botão **Baixar tudo agora** faz
+  o mesmo download na hora — útil pra garantir antes de sair. Ali também
+  aparecem a última sincronização completa, o espaço usado e o botão
+  **Limpar dados offline** (só apaga a cópia de leitura; a fila de ações
+  pendentes nunca é apagada por esse botão).
+
+## Na rua, sem sinal
+
+- Cada tela mostra a idade do que você está vendo: **"Atualizado às
+  HH:MM"** (cinza) = dado fresco; **"Offline — dados de HH:MM"** (âmbar)
+  = você está vendo a última cópia baixada.
+- Marcar desfechos, cartas, concluir quadra/TCE, criar prédio pendente,
+  relatório de TP e pedidos de publicação **funcionam offline**: a ação
+  entra numa fila no aparelho ("salvo no aparelho, sincroniza sozinho").
+- **Não funcionam offline** (de propósito): gerar link público,
+  compartilhar PNG/WhatsApp, enviar foto, inscrição em turno de TP (o
+  app precisa checar conflito de horário na hora) e "Estacionar perto".
+  O fundo do mapa também pode aparecer vazio se aquela área nunca foi
+  vista com internet.
+
+## De volta ao sinal
+
+- A fila sobe sozinha assim que a conexão volta (ou pelo botão **Tentar
+  agora** do aviso âmbar no topo).
+- Se o servidor **recusar** alguma ação (ex: a designação foi trocada
+  enquanto você estava offline), ela **não some**: o aviso fica vermelho
+  e o botão **Ver fila** abre a lista, onde você decide **Tentar de
+  novo** ou **Descartar** cada item.
+- Num aparelho compartilhado, a fila é por pessoa: o que você marcou só
+  sobe na **sua** sessão — se outra pessoa entrar antes, os itens ficam
+  guardados esperando você voltar.
+
+---
+
 # Links públicos (sem precisar de login)
 
 ## Cartas de um prédio (`/cartas/[token]`)
@@ -299,8 +344,11 @@ quando está offline.
 
 ### "Trabalhei sem internet, os dados sumiram?"
 Não. O app salva localmente e reenvia sozinho quando a conexão voltar
-(aviso "salvo offline" aparece na hora). Não feche o navegador antes de
-ver a confirmação de que sincronizou.
+(aviso "salvo offline" aparece na hora). Pode fechar o app — a fila fica
+guardada no aparelho e sobe na próxima vez que abrir com internet. Se o
+aviso no topo ficar **vermelho** ("recusadas pelo servidor"), toque em
+**Ver fila** pra decidir item por item: tentar de novo ou descartar.
+Detalhes no capítulo "Trabalhar sem internet".
 
 ### "Apaguei uma conclusão sem querer"
 Toque na quadra (long-press na Visão Geral, ou histórico na tela da

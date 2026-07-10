@@ -9,7 +9,8 @@
   import NotificacoesBell from '$lib/components/NotificacoesBell.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { invalidateAll } from '$app/navigation';
-  import { flushFila, contarFila } from '$lib/offline';
+  import { flushFila, filaDoUsuarioAtual } from '$lib/offline';
+  import { gravarUidAtual } from '$lib/offline/status';
   import FilaOfflineSheet from '$lib/components/FilaOfflineSheet.svelte';
   import { onMount } from 'svelte';
 
@@ -22,13 +23,19 @@
   // Fila offline (escritas de campo com sinal ruim): tenta sincronizar ao
   // carregar a página e sempre que a conexão voltar. Item recusado pelo
   // servidor fica na fila (não desaparece) — ver `FilaOfflineSheet`.
-  let pendentesOffline = $state(0);
+  // Contagens separadas: pendente (sobe sozinho) vs erro (precisa do
+  // publicador decidir) — o banner promete coisas diferentes pra cada um.
+  let filaPendentes = $state(0);
+  let filaComErro = $state(0);
   let filaAberta = $state(false);
+  async function atualizarContagemFila() {
+    const itens = await filaDoUsuarioAtual();
+    filaPendentes = itens.filter((i) => i.status === 'pendente').length;
+    filaComErro = itens.filter((i) => i.status === 'erro').length;
+  }
   async function sincronizarFila() {
-    const antes = await contarFila();
-    if (antes === 0) return;
-    const { sincronizadas, falhas, restantes } = await flushFila();
-    pendentesOffline = restantes;
+    const { sincronizadas, falhas } = await flushFila();
+    await atualizarContagemFila();
     if (sincronizadas > 0) {
       toast.success(`${sincronizadas} ação(ões) sincronizada(s)`);
     }
@@ -42,7 +49,7 @@
   let online = $state(true);
   function aoFicarOffline() {
     online = false;
-    contarFila().then((n) => (pendentesOffline = n));
+    atualizarContagemFila();
   }
   function aoVoltarOnline() {
     online = true;
@@ -51,7 +58,6 @@
   onMount(() => {
     online = navigator.onLine;
     sincronizarFila();
-    contarFila().then((n) => (pendentesOffline = n));
     window.addEventListener('online', aoVoltarOnline);
     window.addEventListener('offline', aoFicarOffline);
     return () => {
@@ -61,6 +67,13 @@
   });
 
   let { data, children }: { data: { profile: any }; children: Snippet } = $props();
+
+  // Etiqueta de usuário da fila offline (aparelho compartilhado): a fila
+  // só enfileira/replaya itens do uid gravado aqui. Atualiza a cada troca
+  // de sessão (login/logout re-renderiza o layout com outro profile).
+  $effect(() => {
+    gravarUidAtual(data.profile?.id ?? null);
+  });
 
   // Rotas sem chrome (header/nav): públicas + login
   const rotasPublicas = ['/login', '/c', '/cartas', '/convite', '/t/'];
@@ -162,19 +175,26 @@
 {#if !online}
   <div class="fixed top-0 left-0 right-0 z-[59] bg-slate-700 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
     <Icon nome="alert" size={14} />
-    <span class="flex-1">Sem conexão — mostrando o que já foi carregado{pendentesOffline > 0 ? ` · ${pendentesOffline} ação(ões) na fila` : ''}</span>
+    <span class="flex-1">Sem conexão — mostrando o que já foi carregado{filaPendentes + filaComErro > 0 ? ` · ${filaPendentes + filaComErro} ação(ões) na fila` : ''}</span>
   </div>
-{:else if pendentesOffline > 0}
+{:else if filaComErro > 0}
+  <!-- Item recusado pelo servidor NÃO sobe sozinho — precisa do publicador -->
+  <div class="fixed top-0 left-0 right-0 z-[59] bg-red-600 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
+    <Icon nome="alert" size={14} />
+    <span class="flex-1">{filaComErro} ação(ões) recusada(s) pelo servidor — revise a fila{filaPendentes > 0 ? ` · ${filaPendentes} aguardando sinal` : ''}</span>
+    <button type="button" onclick={() => (filaAberta = true)} class="text-xs font-semibold bg-white/20 px-2 py-1 rounded hover:bg-white/30">Ver fila</button>
+  </div>
+{:else if filaPendentes > 0}
   <!-- Aviso de ações pendentes de sincronizar (sinal ruim em campo) -->
   <div class="fixed top-0 left-0 right-0 z-[59] bg-amber-600 text-white px-4 py-2 flex items-center gap-3 shadow-lg text-sm" style:top={$updated ? '44px' : '0'}>
     <Icon nome="refresh" size={14} />
-    <span class="flex-1">{pendentesOffline} ação(ões) salva(s) offline — sincroniza sozinho quando o sinal voltar</span>
+    <span class="flex-1">{filaPendentes} ação(ões) salva(s) offline — sincroniza sozinho quando o sinal voltar</span>
     <button type="button" onclick={() => (filaAberta = true)} class="text-xs font-semibold bg-white/20 px-2 py-1 rounded hover:bg-white/30">Ver fila</button>
     <button type="button" onclick={sincronizarFila} class="text-xs font-semibold bg-white/20 px-2 py-1 rounded hover:bg-white/30">Tentar agora</button>
   </div>
 {/if}
 
-<FilaOfflineSheet bind:open={filaAberta} />
+<FilaOfflineSheet bind:open={filaAberta} onMudanca={atualizarContagemFila} />
 
 {#if semChrome || !data.profile}
   {@render children()}

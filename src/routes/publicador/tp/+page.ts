@@ -165,6 +165,14 @@ export async function carregarTpCampo(minhaId: string) {
     supabase.from('profiles').select('id, nome').eq('ativo', true).eq('tp_aprovado', true).order('nome')
   ]);
 
+  // Queries cruas do supabase-js NÃO lançam em falha de rede (resolvem
+  // {data:null, error}) — sem este guard, rede caindo com onLine ainda
+  // true faria o load "resolver" com a agenda VAZIA e o comCache gravar
+  // isso por cima do snapshot bom (regra do W5: fetcher tem que lançar).
+  for (const r of [tpAgendamentosRes, tpExcecoesRes, tpCarrinhosRes, tpPontosRes, tpPecasRes, campanhaAtivaRes, tpRelatoriosRes, nomesRes, prefRes, dispRes, mesesRes, dispMesRes, aprovadosRes]) {
+    if (r.error) throw r.error;
+  }
+
   const tpAgendamentos = (tpAgendamentosRes.data ?? []) as AgendamentoBase[];
   const tpExcecoes = (tpExcecoesRes.data ?? []) as ExcecaoBase[];
   const tpCarrinhos: Record<number, TpCarrinhoLite> = {};

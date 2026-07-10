@@ -274,7 +274,7 @@ export async function prefetchTelasDeCampo(
     async () => gravarCache(chaveArranjoCampo(userId), await carregarArranjoCampo()),
     async () => gravarCache(chavePrediosCampo(userId), await carregarPrediosCampo(opts.podeCoordenar)),
     async () => gravarCache(chaveCampanhaCampo(userId), await carregarCampanhaCampo(userId)),
-    ...opts.predioIds.map((id) => async () => gravarCache(chavePredioCampo(id), await carregarPredioCampo(id)))
+    ...opts.predioIds.map((id) => async () => gravarCache(chavePredioCampo(id, userId), await carregarPredioCampo(id)))
   ];
   if (opts.podeVerTp) {
     tarefas.push(async () => {

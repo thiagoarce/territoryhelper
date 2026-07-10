@@ -105,6 +105,32 @@
 - [x] 🟢 **W12** (Sonnet) UX de estado offline: "dados de HH:MM" por
       tela, seção Offline em /perfil (última sync, baixar tudo, limpar).
 
+## Revisão final (Fable) — fechamento da v2.0.0
+
+- [x] Fix Safari "Response served by service worker has redirections":
+      SW sintetiza redirect próprio pra navegação que redirecionou
+      (start_url `/` sempre redireciona), replay de cache re-embrulhado
+      em Response limpa, launch offline em `/` cai pra /publicador.
+- [x] 🔴 Fix GRAVE na fila: URL relativa (`?/acao`) era guardada crua e
+      o flush (root layout) replayava contra a tela ATUAL — dado de
+      campo postado na action errada e perdido. Agora absolutiza no
+      enqueue (`resolverUrlDaAcao`, testado).
+- [x] Fix cache-de-tela-vazia: queries cruas sem checagem de `.error`
+      em TP/arranjo/campanha "resolviam" vazias em queda de rede com
+      onLine=true e o comCache gravava por cima do snapshot bom.
+- [x] Fila por usuário (aparelho compartilhado): item etiquetado com
+      uid; flush/sheet só tocam itens do usuário logado.
+- [x] Chave de cache do prédio ganhou uid (convenção do cache-leitura).
+- [x] Banner distingue pendente (âmbar, sobe sozinho) de recusado
+      (vermelho, "revise a fila").
+- [x] Docs: MANUAL ganhou capítulo "Trabalhar sem internet"; CHANGELOG
+      com a entrada da v2.0; CLAUDE.md com os invariantes novos.
+
+**Versão fechada na tag `v2.0.0`.** Único item aberto da rodada: W11
+(mapa offline PMTiles) — fica pra próxima versão; as telas funcionam
+offline sem ele (só o desenho de fundo do mapa fica vazio em área nunca
+vista com internet).
+
 ## Regras pro executor
 
 1. Ordem: W2 → W3 → W4 → W5 → W8 → W6 → W7. Não pular W2 (W3/W4

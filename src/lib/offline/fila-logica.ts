@@ -12,6 +12,26 @@ export interface ResumoLote {
   parouEm: number | null;
 }
 
+// As actions são chamadas com URL RELATIVA ('?/marcarDesfecho') — que o
+// fetch resolve contra a página ATUAL. Na hora de ENFILEIRAR isso precisa
+// virar URL absoluta: o flush roda no root layout, possivelmente com o
+// publicador já em OUTRA tela, e um '?/marcarDesfecho' relativo replayado
+// da home postaria na action errada (endpoint inexistente → item vira
+// "recusado" e o dado de campo se perde). Puro pra ser testável.
+export function resolverUrlDaAcao(url: string, baseHref: string): string {
+  return new URL(url, baseHref).href;
+}
+
+// Fila é POR USUÁRIO num aparelho compartilhado: item enfileirado por A
+// não pode ser replayado com a sessão de B (a action gravaria B como
+// autor do desfecho/conclusão). Item legado sem uid (fila anterior a esse
+// fix) é tratado como do usuário atual — melhor arriscar autor errado uma
+// única vez na migração do que descartar dado de campo.
+export function pertenceAoUsuario(item: { uid?: string | null }, uidAtual: string | null): boolean {
+  if (item.uid == null || item.uid === '') return true;
+  return item.uid === uidAtual;
+}
+
 // Erro de SERVIDOR (item recusado) marca e segue pro próximo — não
 // bloqueia os demais. Erro de REDE para o lote ali (sem sinal, não
 // adianta insistir nos seguintes agora).

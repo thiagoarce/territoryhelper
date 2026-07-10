@@ -21,8 +21,10 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function chavePredioCampo(id: number): string {
-  return `campo:predio:${id}`;
+// Chave inclui o uid como TODAS as outras (convenção do cache-leitura:
+// aparelho compartilhado, um usuário não abre snapshot do outro).
+export function chavePredioCampo(id: number, userId: string): string {
+  return `campo:predio:${id}:${userId}`;
 }
 
 export const load: PageLoad = async ({ params, parent }) => {
@@ -31,7 +33,7 @@ export const load: PageLoad = async ({ params, parent }) => {
   const id = Number(params.id);
   if (!Number.isFinite(id) || id <= 0) throw error(400, 'ID inválido');
 
-  const r = await comCache(chavePredioCampo(id), () => carregarPredioCampo(id));
+  const r = await comCache(chavePredioCampo(id, profile.id), () => carregarPredioCampo(id));
   return { ...r.valor, minhaRole: profile.role, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };
 };
 

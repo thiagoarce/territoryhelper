@@ -70,10 +70,19 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   (W10). `postComFila(url, formData, descricao)` tenta o POST normal; se
   a rede falhar de verdade (não um erro do servidor), enfileira com a
   `descricao` (texto legível pro publicador) e devolve `{offline:true}`
-  em vez de derrubar a UI. Item recusado pelo SERVIDOR (RLS/validação)
+  em vez de derrubar a UI. **Dois invariantes da fila (revisão final)**:
+  (1) a URL é ABSOLUTIZADA no enqueue (`fila-logica.ts::resolverUrlDaAcao`)
+  — call sites passam `'?/acao'` relativa, mas o flush roda no root
+  layout de QUALQUER tela, e uma URL relativa replayada de outra rota
+  postaria na action errada e perderia o dado; (2) cada item leva o `uid`
+  de quem enfileirou (root layout grava em localStorage via
+  `offline/status.ts`) e `flushFila`/`FilaOfflineSheet` só tocam itens do
+  usuário logado — aparelho compartilhado não replaya ação de A com a
+  sessão de B. Item recusado pelo SERVIDOR (RLS/validação)
   NÃO some da fila — fica `status:'erro'` + a mensagem, pro publicador
   decidir (tentar de novo/descartar) em `FilaOfflineSheet.svelte`, aberta
-  pelo banner do root layout. `flushFila()` reenvia os PENDENTES quando a
+  pelo banner do root layout (âmbar = aguardando sinal; vermelho = tem
+  item recusado). `flushFila()` reenvia os PENDENTES quando a
   conexão volta (root layout, on mount + evento `online`) — a lógica de
   "erro de servidor não bloqueia os seguintes, erro de rede para o lote"
   mora em `fila-logica.ts::processarLote` (puro, sem IndexedDB/fetch,
@@ -411,6 +420,22 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   Convenções. Idem `JSON.parse`/`JSON.stringify` de payload grande numa
   action: parse no BROWSER e mande lotes pequenos (padrão do restore de
   backup, W6).
+- Query CRUA do supabase-js (`supabase.from(...).select()`) dentro de um
+  fetcher usado com `comCache` SEM checar `.error` e lançar: em falha de
+  rede supabase-js NÃO lança (resolve `{data:null, error}`) — o load
+  "resolve" com listas vazias e o comCache grava a tela VAZIA por cima do
+  snapshot offline bom. Todo fetcher de load convertido lança em erro
+  (helpers de `$lib/queries.ts` já lançam; query crua precisa do
+  `if (res.error) throw res.error` explícito).
+- Enfileirar URL relativa (`'?/acao'`) na fila de escrita offline: o
+  flush roda no root layout de QUALQUER tela — replay de outra rota
+  postaria na action errada. `postComFila` já absolutiza no enqueue
+  (`resolverUrlDaAcao`); não criar outro caminho pra fila que pule isso.
+- Resposta com `redirected: true` servida pelo service worker pra uma
+  NAVEGAÇÃO: o Safari/WebKit rejeita ("Response served by service worker
+  has redirections"). O SW já sintetiza redirect próprio (online) e
+  re-embrulha replay de cache em Response limpa — manter essas defesas
+  ao mexer no `service-worker.ts` (o start_url `/` SEMPRE redireciona).
 
 ## Rodando testes
 

@@ -16,7 +16,8 @@ import {
   enfileirar, listarFila, removerDaFila, marcarErro, marcarPendente, obterItem, contarFila,
   type ItemFila
 } from './queue';
-import { processarLote } from './fila-logica';
+import { processarLote, resolverUrlDaAcao, pertenceAoUsuario } from './fila-logica';
+import { lerUidAtual } from './status';
 
 export type ResultadoEscrita =
   | { ok: true; offline: false; data: any }
@@ -38,7 +39,9 @@ export async function postComFila(url: string, formData: FormData, descricao: st
   } catch {
     // fetch rejeitou = sem rede de verdade (não é erro do servidor, que
     // chegaria como response válida acima). Enfileira pra reenviar depois.
-    await enfileirar(url, formData, descricao);
+    // A URL vai ABSOLUTIZADA (o replay acontece de qualquer tela) e
+    // etiquetada com o uid atual (aparelho compartilhado).
+    await enfileirar(resolverUrlDaAcao(url, location.href), formData, descricao, lerUidAtual());
     return { ok: false, offline: true };
   }
 }
@@ -52,12 +55,28 @@ export interface ResultadoFlush {
 }
 
 // Reenvia os PENDENTES em ordem (lógica de continuar/parar em
-// processarLote — testada em tests/fila-logica.test.ts).
+// processarLote — testada em tests/fila-logica.test.ts). Só itens do
+// USUÁRIO ATUAL: item de A esperando na fila não pode subir com a
+// sessão de B (aparelho compartilhado) — fica guardado até A voltar.
 export async function flushFila(): Promise<ResultadoFlush> {
-  const itens = (await listarFila()).filter((i) => i.status === 'pendente');
+  const uid = lerUidAtual();
+  const itens = (await listarFila()).filter(
+    (i) => i.status === 'pendente' && pertenceAoUsuario(i, uid)
+  );
   const resumo = await processarLote(itens, tentarReenviar);
-  const restantes = await contarFila();
+  const restantes = (await filaDoUsuarioAtual()).length;
   return { sincronizadas: resumo.sincronizados.length, falhas: resumo.comErro.length, restantes };
+}
+
+// Fila visível/contável = só a do usuário logado (a de outros usuários
+// do aparelho continua no IndexedDB, invisível, esperando o dono).
+export async function filaDoUsuarioAtual(): Promise<ItemFila[]> {
+  const uid = lerUidAtual();
+  return (await listarFila()).filter((i) => pertenceAoUsuario(i, uid));
+}
+
+export async function contarFilaDoUsuario(): Promise<number> {
+  return (await filaDoUsuarioAtual()).length;
 }
 
 async function tentarReenviar(item: ItemFila): Promise<'sucesso' | 'erro' | 'sem_rede'> {

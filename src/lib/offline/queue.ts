@@ -22,6 +22,9 @@ export interface ItemFila {
   descricao: string;
   status: StatusItemFila;
   erro: string | null;
+  /** uid de quem enfileirou — item de A não é replayado na sessão de B
+   *  (aparelho compartilhado); null = item legado, tratado como do atual */
+  uid: string | null;
   criadoEm: number;
 }
 
@@ -43,12 +46,12 @@ function abrirDb(): Promise<IDBDatabase> {
 
 // FormData só serializa como string aqui — não cobre upload de arquivo
 // (uso de campo, os fluxos offline são todos texto: ids, tipos, datas).
-export async function enfileirar(url: string, formData: FormData, descricao: string): Promise<void> {
+export async function enfileirar(url: string, formData: FormData, descricao: string, uid: string | null): Promise<void> {
   const entries: [string, string][] = [...formData.entries()].map(([k, v]) => [k, String(v)]);
   const db = await abrirDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).add({ url, entries, descricao, status: 'pendente', erro: null, criadoEm: Date.now() });
+    tx.objectStore(STORE).add({ url, entries, descricao, status: 'pendente', erro: null, uid, criadoEm: Date.now() });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -63,6 +66,7 @@ function normalizar(item: any): ItemFila {
     descricao: item.descricao ?? item.url,
     status: item.status ?? 'pendente',
     erro: item.erro ?? null,
+    uid: item.uid ?? null,
     criadoEm: item.criadoEm
   };
 }

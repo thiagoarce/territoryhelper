@@ -70,6 +70,11 @@ export async function carregarCampanhaCampo(minhaId: string | null) {
     listarQuadrasComGeo(supabase)
   ]);
 
+  // Query crua não lança em falha de rede — sem lançar aqui, o comCache
+  // gravaria campanha "inexistente" por cima do snapshot bom (ver W5).
+  if (ativaRes.error) throw ativaRes.error;
+  if (objetivosRes.error) throw objetivosRes.error;
+
   const c = ativaRes.data as any;
 
   let ativa: CampanhaResumo | null = null;

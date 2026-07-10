@@ -4,6 +4,56 @@ Mudanças relevantes do app. O app antigo em Google Apps Script (Jan–Jun
 2026) foi **arquivado** na tag/branch `v1-google-apps-script` — este
 changelog cobre a reescrita como PWA (SvelteKit + Supabase).
 
+## 2026-07 — v2.0: modo offline completo + fim dos erros 1102 (tag `v2.0.0`)
+
+Rodada Workers/Offline (W1–W12 + revisão final). Fecha a versão 2.0.
+
+### Fim dos travamentos "Error 1102" (limite de CPU do Cloudflare free)
+- Diagnóstico corrigido: o limite de ~10ms de CPU é **cumulativo por
+  requisição** — a arquitetura foi refeita em cima disso
+- Leituras pesadas saíram do servidor: as 11 telas principais (Geral,
+  Polígonos e todas as de campo) agora carregam os dados direto no
+  navegador (mesma segurança — RLS do Supabase decide o que cada um vê)
+- Agregações que derrubavam o servidor viraram views SQL
+  (`quadras_contagens`, `tces_com_quadras`)
+
+### Modo offline completo do campo ("salão → rua → salão")
+- Todas as telas de campo abrem sem sinal com a última cópia baixada;
+  abrir a home com internet baixa tudo sozinho ("Baixar tudo agora"
+  também disponível em Perfil → Offline)
+- Todas as escritas de campo entram numa fila no aparelho e sobem
+  sozinhas quando o sinal volta: desfechos, cartas, concluir quadra/TCE,
+  reordenar, criar prédio pendente, relatório de TP, pedidos
+- Fila revisável: item recusado pelo servidor **não some** — aviso
+  vermelho + tela pra tentar de novo ou descartar item por item
+- Fila por usuário: em aparelho compartilhado, o que A marcou nunca sobe
+  na sessão de B
+- Cada tela mostra "Atualizado às HH:MM" / "Offline — dados de HH:MM"
+- Corrigido o erro do Safari/iPhone "Response served by service worker
+  has redirections" ao reabrir o app sem sinal
+- Online-only por decisão: link público, PNG/WhatsApp, foto, inscrição
+  de TP (checa conflito de horário na hora), "Estacionar perto"
+
+### Backup funcionando de verdade
+- Snapshot e restauração reescritos: o navegador faz o trabalho pesado
+  e o servidor só recebe lotes pequenos — testado com a base real
+- Reset de rodada de testes preserva o registro de quadras feitas
+  (`quadras_conclusoes` + data de conclusão)
+
+### Revisão final (caça a bugs da rodada)
+- **Corrigido (grave)**: ação salva offline podia ser reenviada pro
+  endereço errado se a conexão voltasse com o app em outra tela — o
+  dado de campo se perdia; agora a fila guarda o endereço completo
+- **Corrigido**: queda de rede no meio do carregamento podia gravar uma
+  tela vazia por cima da cópia offline boa (TP/agenda/campanha)
+- Fila offline etiquetada por usuário + banner distingue "aguardando
+  sinal" (âmbar) de "recusado, revise" (vermelho)
+- Manual ganhou o capítulo "Trabalhar sem internet"
+
+### Pendente pra próxima versão
+- Mapa de fundo offline (PMTiles do município) — as telas funcionam sem
+  ele, só o desenho do mapa fica vazio em área nunca vista com internet
+
 ## 2026-07 — Revisão ampla + Testemunho Público + Publicações
 
 ### Revisão de bugs, UI, ícones e documentação

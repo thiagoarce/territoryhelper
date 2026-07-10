@@ -2,8 +2,8 @@
 // protege dado de campo): cobre a regra central da fila 2.0 — um item
 // recusado pelo SERVIDOR não bloqueia os seguintes; um item sem REDE
 // para o lote ali (não teria como os seguintes darem certo).
-import { test, assertEq } from './harness';
-import { processarLote, type ResultadoItem } from '$lib/offline/fila-logica';
+import { test, assertEq, assertTrue, assertFalse } from './harness';
+import { processarLote, resolverUrlDaAcao, pertenceAoUsuario, type ResultadoItem } from '$lib/offline/fila-logica';
 
 interface ItemFake { id: number }
 
@@ -53,4 +53,39 @@ test('lote vazio não tenta nada e não quebra', async () => {
   assertEq(resumo.sincronizados, []);
   assertEq(resumo.comErro, []);
   assertEq(resumo.parouEm, null);
+});
+
+// Regressão do bug de replay: URL relativa '?/acao' guardada crua na fila
+// resolvia contra a tela onde o flush rodava (root layout), não contra a
+// tela onde a ação foi feita — postava na action errada e perdia o dado.
+test('resolverUrlDaAcao ancora ?/acao na página onde a ação foi feita', () => {
+  assertEq(
+    resolverUrlDaAcao('?/marcarDesfecho', 'https://app.exemplo/publicador/quadra/Q12'),
+    'https://app.exemplo/publicador/quadra/Q12?/marcarDesfecho'
+  );
+});
+
+test('resolverUrlDaAcao substitui query existente da página', () => {
+  assertEq(
+    resolverUrlDaAcao('?/toggle', 'https://app.exemplo/predio/45?aba=cartas'),
+    'https://app.exemplo/predio/45?/toggle'
+  );
+});
+
+test('resolverUrlDaAcao preserva URL já absoluta', () => {
+  assertEq(
+    resolverUrlDaAcao('https://app.exemplo/predio/45?/toggle', 'https://app.exemplo/publicador'),
+    'https://app.exemplo/predio/45?/toggle'
+  );
+});
+
+test('pertenceAoUsuario: item de outro uid não é do usuário atual', () => {
+  assertFalse(pertenceAoUsuario({ uid: 'user-a' }, 'user-b'));
+  assertTrue(pertenceAoUsuario({ uid: 'user-a' }, 'user-a'));
+});
+
+test('pertenceAoUsuario: item legado sem uid conta como do usuário atual', () => {
+  assertTrue(pertenceAoUsuario({ uid: null }, 'user-b'));
+  assertTrue(pertenceAoUsuario({}, 'user-b'));
+  assertTrue(pertenceAoUsuario({ uid: '' }, 'user-b'));
 });
