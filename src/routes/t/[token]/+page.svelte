@@ -1,6 +1,8 @@
 <script lang="ts">
   import Icon from '$lib/ui/Icon.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
+  import CartaoTerritorio, { type QuadraContexto } from '$lib/components/CartaoTerritorio.svelte';
+  import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
@@ -52,12 +54,10 @@
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
   }
 
-  async function compartilharComImagem() {
-    const png = await mapaRef?.exportarPng();
-    if (!png) { compartilharLink(); return; }
+  async function compartilharPng(png: string, nomeArquivo: string) {
     try {
       const blob = await (await fetch(png)).blob();
-      const file = new File([blob], 'territorio.png', { type: 'image/png' });
+      const file = new File([blob], nomeArquivo, { type: 'image/png' });
       const nav: any = navigator;
       if (nav.canShare && nav.canShare({ files: [file] })) {
         await nav.share({ files: [file], text: `${msgTexto()}\n\n${urlPagina}` });
@@ -69,10 +69,99 @@
     // Fallback (desktop/navegador sem share de arquivo): baixa o PNG + abre WhatsApp
     const a = document.createElement('a');
     a.href = png;
-    a.download = 'territorio.png';
+    a.download = nomeArquivo;
     a.click();
-    toast.info('Mapa baixado — anexa no WhatsApp');
+    toast.info('Imagem baixada — anexa no WhatsApp');
     compartilharLink();
+  }
+
+  async function compartilharComImagem() {
+    // E1: com contexto de território (token com quadras), abre o sheet do
+    // Cartão S-12; sem quadras (só cartas/TCE), mantém o PNG cru do mapa.
+    if (contextoQuadras.length > 0) {
+      abrirSheetCartao();
+      return;
+    }
+    const png = await mapaRef?.exportarPng();
+    if (!png) { compartilharLink(); return; }
+    await compartilharPng(png, 'territorio.png');
+  }
+
+  // === E1: Cartão de Mapa de Território (S-12) ===
+  const contextoQuadras: QuadraContexto[] = (t.contexto?.quadras ?? []) as QuadraContexto[];
+  const contextoTerritorios: { id: string; nome: string | null }[] = t.contexto?.territorios ?? [];
+  const destaqueIds: string[] = (t.quadras ?? []).map((q: any) => String(q.id));
+  const terrNumeros = $derived(contextoTerritorios.map((tr) => tr.nome?.trim() || tr.id).join(', '));
+
+  let cartaoRef: { gerar: (o: { localidade: string; terrNumeros: string; basemap: string; limiarDias: number }) => Promise<string | null> } | null = $state(null);
+  let sheetCartao = $state(false);
+  let cartaoPng = $state<string | null>(null);
+  let gerandoCartao = $state(false);
+  let localidade = $state('');
+  let fundoCartao = $state<'positron' | 'liberty' | 'bright'>('positron');
+  let limiarMeses = $state(6);
+  let previaDesatualizada = $state(false);
+  let buscouLocalidade = false;
+
+  // Localidade pré-preenchida por geocodificação reversa (Nominatim) do
+  // centroide das quadras do token — campo continua editável (o OSM erra).
+  async function preencherLocalidade() {
+    if (buscouLocalidade || localidade) return;
+    buscouLocalidade = true;
+    try {
+      const pontos: [number, number][] = [];
+      for (const q of (t.quadras ?? []) as any[]) {
+        const anel = q.poly_geojson?.coordinates?.[0] as [number, number][] | undefined;
+        if (anel?.length) {
+          const cLng = anel.reduce((s, p) => s + p[0], 0) / anel.length;
+          const cLat = anel.reduce((s, p) => s + p[1], 0) / anel.length;
+          pontos.push([cLng, cLat]);
+        }
+      }
+      if (pontos.length === 0) return;
+      const lng = pontos.reduce((s, p) => s + p[0], 0) / pontos.length;
+      const lat = pontos.reduce((s, p) => s + p[1], 0) / pontos.length;
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&accept-language=pt-BR`);
+      if (!res.ok) return;
+      const j = await res.json();
+      const a = j?.address ?? {};
+      localidade = a.suburb || a.neighbourhood || a.city_district || a.town || a.city || a.municipality || '';
+    } catch {
+      // sem geocoder, digita à mão
+    }
+  }
+
+  async function gerarCartao() {
+    if (!cartaoRef) return;
+    gerandoCartao = true;
+    try {
+      const png = await cartaoRef.gerar({
+        localidade: localidade.trim(),
+        terrNumeros,
+        basemap: fundoCartao,
+        limiarDias: limiarMeses * 30
+      });
+      if (!png) {
+        toast.error('Não deu pra montar o cartão — confira a conexão');
+        return;
+      }
+      cartaoPng = png;
+      previaDesatualizada = false;
+    } finally {
+      gerandoCartao = false;
+    }
+  }
+
+  function abrirSheetCartao() {
+    sheetCartao = true;
+    void preencherLocalidade().then(() => {
+      if (!cartaoPng) void gerarCartao();
+    });
+  }
+
+  async function compartilharCartao() {
+    if (previaDesatualizada || !cartaoPng) await gerarCartao();
+    if (cartaoPng) await compartilharPng(cartaoPng, 'cartao-territorio.png');
   }
 </script>
 
@@ -149,3 +238,69 @@
     </p>
   </div>
 </div>
+
+<!-- E1: mapa oculto que renderiza o cartão S-12 -->
+{#if contextoQuadras.length > 0}
+  <CartaoTerritorio bind:this={cartaoRef} quadras={contextoQuadras} {destaqueIds} />
+{/if}
+
+<BottomSheet bind:open={sheetCartao} title="Cartão de território">
+  <div class="space-y-3">
+    {#if gerandoCartao}
+      <div class="h-56 rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
+        <span class="inline-block w-6 h-6 rounded-full border-2 border-primary-300 border-t-primary-600 animate-spin"></span>
+        Montando o cartão…
+      </div>
+    {:else if cartaoPng}
+      <div class="relative">
+        <img src={cartaoPng} alt="Prévia do cartão de território" class="w-full rounded-lg border border-slate-200" />
+        {#if previaDesatualizada}
+          <div class="absolute inset-0 rounded-lg bg-white/60 flex items-center justify-center">
+            <Button variant="secondary" size="sm" onclick={gerarCartao}><Icon nome="refresh" size={14} /> Atualizar prévia</Button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <div>
+      <label for="cartao-loc" class="block text-sm font-medium text-slate-700 mb-1">Localidade</label>
+      <input
+        id="cartao-loc"
+        bind:value={localidade}
+        oninput={() => (previaDesatualizada = true)}
+        placeholder="Ex: Vila Esperança"
+        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      />
+    </div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <label for="cartao-fundo" class="block text-sm font-medium text-slate-700 mb-1">Fundo do mapa</label>
+        <select id="cartao-fundo" bind:value={fundoCartao} onchange={() => (previaDesatualizada = true)} class="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm">
+          <option value="positron">Cinza</option>
+          <option value="liberty">Colorido</option>
+          <option value="bright">Brilhante</option>
+        </select>
+      </div>
+      <div>
+        <label for="cartao-limiar" class="block text-sm font-medium text-slate-700 mb-1">Feitas há pouco = últimos</label>
+        <select id="cartao-limiar" bind:value={limiarMeses} onchange={() => (previaDesatualizada = true)} class="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm">
+          <option value={3}>3 meses</option>
+          <option value={6}>6 meses</option>
+          <option value={12}>12 meses</option>
+        </select>
+      </div>
+    </div>
+
+    <p class="text-xs text-slate-500">
+      Terr. N.º <strong>{terrNumeros}</strong> — o cartão mostra todas as quadras
+      desse(s) território(s): as designadas em destaque, as feitas há pouco com ✕
+      vermelho e as demais em cinza.
+    </p>
+
+    <div class="flex gap-2 pt-1">
+      <Button variant="primary" onclick={compartilharCartao} loading={gerandoCartao} class="flex-1"><Icon nome="share" size={14} /> Compartilhar cartão</Button>
+      <Button variant="secondary" onclick={gerarCartao} loading={gerandoCartao}><Icon nome="refresh" size={14} /></Button>
+    </div>
+  </div>
+</BottomSheet>
