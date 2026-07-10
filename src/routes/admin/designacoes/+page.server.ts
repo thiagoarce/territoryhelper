@@ -99,11 +99,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     predios: prediosPorDesig[d.id] ?? []
   }));
 
-  const tces: TceHub[] = ((tceRes.data ?? []) as any[]).map((t) => ({
-    ...t,
-    publicador_nome: t.publicador_id ? nomePorId.get(t.publicador_id) ?? null : null
-  }));
-
   // Só entra no hub arranjo que tem TERRITÓRIO anexado (quadra/prédio/TCE) —
   // evento sem território é só agenda, mora em /admin/arranjos.
   const arranjosBrutos: ArranjoHub[] = ((arrRes.data ?? []) as any[])
@@ -115,6 +110,26 @@ export const load: PageServerLoad = async ({ locals }) => {
     tces_ids: a.tces_ids ?? [],
     dirigente_nome: a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null
   }));
+
+  // E3: TCE recém-criado NÃO é uma designação — só entra no hub quando
+  // está de fato designado: publicador direto, designação pessoal aberta
+  // (designacao_tces) ou dentro de arranjo ativo válido. TCE órfão
+  // continua gerível em /admin (filtro TCEs) e Polígonos. Concluído/
+  // cancelado que já foi trabalhado continua visível nos filtros de
+  // status (senão o histórico some).
+  const { data: tceDesig } = await locals.supabase
+    .from('designacao_tces')
+    .select('tce_id, designacoes!inner(status)')
+    .eq('designacoes.status', 'aberta');
+  const tcesDesignados = new Set((tceDesig ?? []).map((r: any) => r.tce_id as string));
+  for (const a of arranjosBrutos) for (const id of a.tces_ids) tcesDesignados.add(id);
+
+  const tces: TceHub[] = ((tceRes.data ?? []) as any[])
+    .filter((t) => t.status !== 'aberto' || t.publicador_id || tcesDesignados.has(t.id))
+    .map((t) => ({
+      ...t,
+      publicador_nome: t.publicador_id ? nomePorId.get(t.publicador_id) ?? null : null
+    }));
 
   // Só entra no hub arranjo que tem TERRITÓRIO anexado (quadra/prédio/TCE) —
   // evento sem território é só agenda, mora em /admin/arranjos.
