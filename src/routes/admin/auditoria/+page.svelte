@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
 
   let { data }: { data: any } = $props();
 
@@ -28,6 +29,7 @@
 <div>
   <h1 class="text-2xl font-bold">Auditoria</h1>
   <p class="text-sm text-slate-500 mt-1">Últimas 100 mudanças no banco. Quem mudou o quê, quando.</p>
+  <CacheInfoBadge cacheInfo={data.cacheInfo} />
 </div>
 
 <div class="mt-4 flex items-center gap-3 flex-wrap">

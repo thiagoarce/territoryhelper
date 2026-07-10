@@ -55,14 +55,28 @@
     online = true;
     sincronizarFila();
   }
+  // Chunk de JS de uma navegação lazy que 404ou (build antigo em memória
+  // depois de um deploy): recarrega — o HTML novo aponta pros chunks
+  // certos. Padrão do Vite pra PWA que fica dias aberto.
+  function aoFalharChunk() {
+    location.reload();
+  }
   onMount(() => {
+    // Sinaliza pro watchdog do app.html que o boot completou, apaga o
+    // contador de retry e tira a splash estática de trás do app.
+    (window as any).__appPronto = true;
+    try { sessionStorage.removeItem('th:boot-retry'); } catch {}
+    document.getElementById('splash-inicial')?.remove();
+
     online = navigator.onLine;
     sincronizarFila();
     window.addEventListener('online', aoVoltarOnline);
     window.addEventListener('offline', aoFicarOffline);
+    window.addEventListener('vite:preloadError', aoFalharChunk);
     return () => {
       window.removeEventListener('online', aoVoltarOnline);
       window.removeEventListener('offline', aoFicarOffline);
+      window.removeEventListener('vite:preloadError', aoFalharChunk);
     };
   });
 

@@ -14,5 +14,36 @@
   </head>
   <body data-sveltekit-preload-data="hover" class="bg-slate-50 text-slate-900 antialiased">
     <div style="display: contents">%sveltekit.body%</div>
+    <!-- Splash de boot: as rotas de campo são ssr=false (casca vazia até o
+         JS montar e os dados chegarem) — sem isso, abrir o app é tela
+         BRANCA por segundos (ou pra sempre, se um chunk velho 404ar após
+         deploy). Aparece com atraso de 150ms (boot rápido nem pisca) e o
+         root layout remove ao montar. Estilo inline de propósito: precisa
+         renderizar antes de qualquer CSS do bundle. -->
+    <div id="splash-inicial" style="position:fixed;inset:0;z-index:9999;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;animation:th-splash-in .2s ease .15s forwards;pointer-events:none">
+      <div style="width:44px;height:44px;border-radius:12px;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font:600 20px -apple-system,system-ui,sans-serif">T</div>
+      <div style="width:22px;height:22px;border:3px solid #c7d2fe;border-top-color:#4f46e5;border-radius:50%;animation:th-splash-spin .8s linear infinite"></div>
+      <style>
+        @keyframes th-splash-in { to { opacity: 1 } }
+        @keyframes th-splash-spin { to { transform: rotate(360deg) } }
+      </style>
+    </div>
+    <script>
+      // Watchdog de boot: se o app não montar em 12s COM internet (chunk
+      // de build antigo que 404ou após deploy, SW num estado ruim), força
+      // um reload — que busca o HTML/assets atuais e destrava. Máximo 2
+      // tentativas (sessionStorage) pra nunca virar loop; offline não
+      // recarrega (o SW resolve ou mostra offline.html).
+      (function () {
+        try {
+          var tentativas = Number(sessionStorage.getItem('th:boot-retry') || '0');
+          setTimeout(function () {
+            if (window.__appPronto || !navigator.onLine || tentativas >= 2) return;
+            sessionStorage.setItem('th:boot-retry', String(tentativas + 1));
+            location.reload();
+          }, 12000);
+        } catch (e) { /* sessionStorage indisponível — segue sem watchdog */ }
+      })();
+    </script>
   </body>
 </html>

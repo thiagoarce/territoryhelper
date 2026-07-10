@@ -191,7 +191,10 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   `/publicador`, `/publicador/casa-a-casa`, `/publicador/quadra/[id]`,
   `/publicador/tce/[id]` (W3/W4/W5/W8), `/publicador/arranjo`,
   `/publicador/tp`, `/publicador/predios`, `/publicador/campanha`,
-  `/predio/[id]` (W9 — fecha 100% das telas de campo). `ssr=false`
+  `/predio/[id]` (W9 — fecha 100% das telas de campo),
+  `/admin/auditoria` (pós-v2.0 — `audit_log` guarda `antes`/`depois`
+  inteiros, incluindo `poly` de quadras: 100 linhas disso no Worker
+  estouravam a CPU). `ssr=false`
   SOZINHO não resolve — um `+page.server.ts` load continua rodando no
   Worker via `__data.json`.
 - Loads universais usam helpers de **`$lib/queries.ts`**
