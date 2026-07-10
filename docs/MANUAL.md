@@ -284,6 +284,11 @@ quando o sinal voltar.
   aparecem a última sincronização completa, o espaço usado e o botão
   **Limpar dados offline** (só apaga a cópia de leitura; a fila de ações
   pendentes nunca é apagada por esse botão).
+- **Mapa do município** (uma vez só): ainda em Perfil → Offline, o botão
+  **Baixar mapa do município** guarda o desenho das ruas no aparelho —
+  sem ele, os mapas funcionam offline mas o fundo fica vazio. (Depende
+  do admin ter publicado o arquivo — ver
+  `scripts/gerar-mapa-offline.md`.)
 
 ## Na rua, sem sinal
 
@@ -310,6 +315,36 @@ quando o sinal voltar.
 - Num aparelho compartilhado, a fila é por pessoa: o que você marcou só
   sobe na **sua** sessão — se outra pessoa entrar antes, os itens ficam
   guardados esperando você voltar.
+
+---
+
+# Exportáveis
+
+## Cartão de território (S-12)
+
+Ao abrir um link público de território/arranjo (`/t/...`) e tocar em
+**Compartilhar com imagem**, o app monta o **Cartão de Mapa de
+Território** no formato do formulário oficial: Localidade (vem
+preenchida automaticamente, mas dá pra editar), Terr. N.º, e o mapa com
+todas as quadras do(s) território(s) — as **designadas** em destaque, as
+**feitas há pouco** com ✕ vermelho (você escolhe o período: 3, 6 ou 12
+meses) e as demais em cinza. Dá pra trocar o fundo do mapa
+(cinza/colorido/brilhante). Compartilha direto no WhatsApp.
+
+## Relatório S-13 (registro de designação)
+
+Menu admin → **Relatório S-13**: a folha oficial preenchida
+automaticamente a partir do histórico, por **ano de serviço** (setembro
+a agosto). A designação de um território "abre" quando a primeira quadra
+dele é designada e "fecha" quando a última é concluída. Botão
+**Imprimir / Salvar PDF** usa a impressão do navegador.
+
+## Dashboard
+
+Menu admin → **Dashboard**: cobertura dos últimos 12 meses, ritmo médio
+de ciclo, quadras há mais tempo sem trabalhar (com link direto),
+conclusões por mês e quantas quadras estão designadas / em arranjo /
+livres agora.
 
 ---
 

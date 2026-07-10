@@ -4,6 +4,42 @@ Mudanças relevantes do app. O app antigo em Google Apps Script (Jan–Jun
 2026) foi **arquivado** na tag/branch `v1-google-apps-script` — este
 changelog cobre a reescrita como PWA (SvelteKit + Supabase).
 
+## 2026-07 — v2.1: exportáveis (cartão S-12, relatório S-13, dashboard, mapa offline)
+
+Rodada Exportáveis (E1–E5; specs em `docs/specs-exportaveis.md`).
+
+### Cartão de Mapa de Território (formato S-12)
+- "Compartilhar com imagem" do link público agora gera o cartão no
+  layout do formulário oficial: Localidade (pré-preenchida por
+  geocodificação, editável), Terr. N.º, mapa com TODAS as quadras dos
+  territórios afetados — designadas em destaque, feitas há pouco com ✕
+  vermelho (limiar 3/6/12 meses), demais em cinza — e o rodapé clássico
+- Fundo do mapa selecionável (cinza/colorido/brilhante)
+- Requer a migration 078 aplicada
+
+### Relatório S-13 por ano de serviço
+- Nova tela Sistema → Relatório S-13: réplica imprimível do S-13-T
+  (Imprimir/Salvar PDF pelo navegador), com os ciclos de cada território
+  calculados do histórico (abre na primeira quadra designada, fecha
+  quando a última é concluída) e ano de serviço set→ago
+
+### Dashboard
+- Nova tela Administrar → Dashboard: cobertura de 12 meses, ciclo médio
+  entre conclusões, quadras há mais tempo sem trabalhar, conclusões por
+  mês e o funil designadas × arranjo futuro × livres
+
+### Correções e mapa offline
+- TCE recém-criado não polui mais o hub de designações — só aparece
+  quando designado a alguém ou anexado a arranjo
+- Auditoria: índice novo no banco (migration 077) + detalhe sob demanda
+  — o 500 era timeout do Postgres ordenando a tabela inteira
+- Splash de abertura + watchdog contra tela branca no boot
+- **Mapa de fundo offline (fecha o W11)**: o admin publica um recorte
+  PMTiles do município (guia em `scripts/gerar-mapa-offline.md`,
+  migration 079) e o publicador baixa uma vez em Perfil → Offline;
+  sem internet os mapas desenham as ruas desse arquivo — online nada
+  muda
+
 ## 2026-07 — v2.0: modo offline completo + fim dos erros 1102 (tag `v2.0.0`)
 
 Rodada Workers/Offline (W1–W12 + revisão final). Fecha a versão 2.0.

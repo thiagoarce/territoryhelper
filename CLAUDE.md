@@ -66,6 +66,25 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   `selectAll` e reduziam em JS, bloco síncrono que contribuía pros
   estouros de CPU do Cloudflare Workers nessas rotas.
 - `src/lib/ui/` — primitives: `Button`, `Card`, `BottomSheet`, `toast.svelte.ts`
+- `src/lib/s13.ts` — lógica PURA dos ciclos do Relatório S-13 (rodada
+  Exportáveis, E2; testada): designação de território abre no primeiro
+  evento (designação/arranjo) que toca quadra dele e fecha quando TODAS
+  as quadras têm conclusão >= abertura. Consumida por
+  `/admin/relatorios/s13` (folha imprimível por ano de serviço set→ago,
+  PDF = window.print). `CartaoTerritorio.svelte` (E1) gera o Cartão
+  S-12 como PNG (mapa MapLibre oculto + composição canvas), plugado no
+  "Compartilhar com imagem" do `/t/[token]` (RPC ganhou `contexto` na
+  migration 078). `/admin/dashboard` (E5) = saúde do território.
+- `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
+  extract do município no bucket público `mapa-offline` (migration 079,
+  gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
+  pra IndexedDB em /perfil. `estiloDoMapa(urlOnline)` é o decisor usado
+  pelos 4 componentes de mapa na construção: ONLINE devolve a URL
+  intocada (zero mudança), offline+arquivo devolve estilo protomaps
+  local. É o DONO ÚNICO do `addProtocol('pmtiles')` (global, o último
+  registro ganha — nenhum componente deve registrar outro) e serve
+  glifos do IndexedDB via protocolo `thassets://`. Deps: `pmtiles` +
+  `@protomaps/basemaps`.
 - `src/lib/offline/` — fila de escrita offline (IndexedDB), "fila 2.0"
   (W10). `postComFila(url, formData, descricao)` tenta o POST normal; se
   a rede falhar de verdade (não um erro do servidor), enfileira com a

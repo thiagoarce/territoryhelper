@@ -95,7 +95,7 @@
       ATENÇÃO: refatora queue.ts, que protege dado de campo — protocolo
       reforçado + testar "item com falha não bloqueia os demais".
 
-- [ ] 🔴 **W11** (Fable) Mapa offline via PMTiles: extract do município
+- [x] 🔴 **W11** (Fable) Mapa offline via PMTiles: extract do município
       (script documentado), bucket público `mapa-offline` no Storage,
       botão de download em /perfil, componentes de mapa usam style
       local + pmtiles:// quando disponível/offline (glifos/sprites
@@ -126,10 +126,10 @@
 - [x] Docs: MANUAL ganhou capítulo "Trabalhar sem internet"; CHANGELOG
       com a entrada da v2.0; CLAUDE.md com os invariantes novos.
 
-**Versão fechada na tag `v2.0.0`.** Único item aberto da rodada: W11
-(mapa offline PMTiles) — fica pra próxima versão; as telas funcionam
-offline sem ele (só o desenho de fundo do mapa fica vazio em área nunca
-vista com internet).
+**Versão fechada na tag `v2.0.0`.** O W11 (mapa offline PMTiles) foi
+entregue DEPOIS da tag, na rodada Exportáveis (E4 — ver
+docs/tasks-exportaveis.md): código completo, falta o usuário gerar o
+extract do município e subir no bucket (scripts/gerar-mapa-offline.md).
 
 ## Regras pro executor
 
