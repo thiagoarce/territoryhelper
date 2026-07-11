@@ -7,7 +7,7 @@ import { redirect } from '@sveltejs/kit';
 import { supabaseBrowser } from '$lib/supabase-browser';
 import { selectAll, quadrasEmArranjoFuturo } from '$lib/queries';
 import { comCache } from '$lib/offline/cache-leitura';
-import { hojeIsoBrasil, diasDesde } from '$lib/utils/data';
+import { hojeIsoBrasil, diasDesde, ehFimDeSemana } from '$lib/utils/data';
 
 export const ssr = false;
 
@@ -121,6 +121,14 @@ async function carregar() {
       if (i !== undefined) meses[i].qtd++;
     }
 
+  // Conclusões por dia da semana: fim de semana (sáb/dom) vs meio da
+  // semana. Só precisa da DATA (já temos) — dia da semana é derivável
+  // dela direto, diferente de manhã/tarde (precisaria de hora, que
+  // quadras_conclusoes não guarda).
+  let qtdFimDeSemana = 0, qtdMeioDaSemana = 0;
+  for (const datas of porQuadra.values())
+    for (const d of datas) (ehFimDeSemana(d) ? qtdFimDeSemana++ : qtdMeioDaSemana++);
+
   // Funil do momento
   const desigAbertasIds = new Set((desigAbertas.data ?? []).map((d: any) => d.id));
   const designadas = new Set(dq.filter((l) => desigAbertasIds.has(l.designacao_id)).map((l) => l.quadra_id));
@@ -140,6 +148,7 @@ async function carregar() {
     cicloGlobalDias: media(gapsGlobais),
     cicloPorTerritorio,
     conclusoesPorMes: meses,
+    conclusoesPorDiaSemana: { fimDeSemana: qtdFimDeSemana, meioDaSemana: qtdMeioDaSemana },
     funil: { designadas: qtdDesignadas, arranjo: qtdArranjo, livres: qtdLivres }
   };
 }

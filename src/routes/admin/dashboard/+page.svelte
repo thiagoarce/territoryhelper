@@ -14,6 +14,7 @@
       cicloGlobalDias: number | null;
       cicloPorTerritorio: CicloTerrMedia[];
       conclusoesPorMes: { mes: string; qtd: number }[];
+      conclusoesPorDiaSemana: { fimDeSemana: number; meioDaSemana: number };
       funil: { designadas: number; arranjo: number; livres: number };
       cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
@@ -23,6 +24,14 @@
     data.totalQuadras > 0 ? Math.round((data.cobertas12m / data.totalQuadras) * 100) : 0
   );
   const maxMes = $derived(Math.max(1, ...data.conclusoesPorMes.map((m) => m.qtd)));
+
+  // Comparação justa: fim de semana só tem 2 dias (sáb+dom) contra 5 de
+  // meio de semana — comparar total bruto sempre favoreceria "meio da
+  // semana" só pela quantidade de dias. A taxa por dia é o que realmente
+  // diz onde o pessoal está indo mais.
+  const taxaFimDeSemana = $derived(data.conclusoesPorDiaSemana.fimDeSemana / 2);
+  const taxaMeioDaSemana = $derived(data.conclusoesPorDiaSemana.meioDaSemana / 5);
+  const maxTaxa = $derived(Math.max(0.01, taxaFimDeSemana, taxaMeioDaSemana));
 
   function fmtMes(m: string): string {
     const [y, mm] = m.split('-');
@@ -82,6 +91,28 @@
           <div class="text-[9px] text-slate-400 truncate">{fmtMes(m.mes)}</div>
         </div>
       {/each}
+    </div>
+  </Card>
+
+  <!-- Fim de semana vs meio da semana -->
+  <Card padding="md">
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-1">Fim de semana vs. meio da semana</h2>
+    <p class="text-[11px] text-slate-400 mb-3">Taxa por dia (fim de semana tem só 2 dias contra 5 — comparar o total bruto enganaria).</p>
+    <div class="space-y-2">
+      <div class="flex items-center gap-2 text-sm">
+        <span class="w-28 shrink-0 text-slate-600">Fim de semana</span>
+        <div class="flex-1 h-4 rounded-full bg-slate-100 overflow-hidden">
+          <div class="h-full bg-primary-500" style:width="{(taxaFimDeSemana / maxTaxa) * 100}%"></div>
+        </div>
+        <span class="w-24 shrink-0 text-right text-xs text-slate-500">{taxaFimDeSemana.toFixed(1)}/dia ({data.conclusoesPorDiaSemana.fimDeSemana})</span>
+      </div>
+      <div class="flex items-center gap-2 text-sm">
+        <span class="w-28 shrink-0 text-slate-600">Meio da semana</span>
+        <div class="flex-1 h-4 rounded-full bg-slate-100 overflow-hidden">
+          <div class="h-full bg-primary-300" style:width="{(taxaMeioDaSemana / maxTaxa) * 100}%"></div>
+        </div>
+        <span class="w-24 shrink-0 text-right text-xs text-slate-500">{taxaMeioDaSemana.toFixed(1)}/dia ({data.conclusoesPorDiaSemana.meioDaSemana})</span>
+      </div>
     </div>
   </Card>
 

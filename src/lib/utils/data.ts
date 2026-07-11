@@ -27,3 +27,17 @@ export function hojeIsoLocal(offsetDias = 0): string {
 export function hojeIsoBrasil(offsetDias = 0): string {
   return new Date(Date.now() - 3 * 3600000 + offsetDias * 86400000).toISOString().substring(0, 10);
 }
+
+// Dia da semana (0=domingo..6=sábado) de uma data `yyyy-mm-dd`. Soma
+// T12:00:00 pelo mesmo motivo de sempre: parse direto de "yyyy-mm-dd"
+// vira UTC meia-noite, que em UTC-3 pode cair no dia anterior — meio-dia
+// nunca cruza a fronteira. Mesmo padrão já usado em tp-matching.ts e
+// arranjos.ts.
+export function diaDaSemana(dataIso: string): number {
+  return new Date(dataIso + 'T12:00:00').getDay();
+}
+
+export function ehFimDeSemana(dataIso: string): boolean {
+  const d = diaDaSemana(dataIso);
+  return d === 0 || d === 6;
+}
