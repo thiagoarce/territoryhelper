@@ -160,6 +160,50 @@ export function linhaDoAno(
   };
 }
 
+export interface LinhaImpressaS13 {
+  terr: string;
+  nome: string | null;
+  /** "Última data concluída" — nunca fica em branco numa folha nova,
+   *  nem na de continuação (instrução impressa no rodapé do S-13-T). */
+  ultima: string | null;
+  ciclos: CicloTerritorio[];
+  /** true = folha de CONTINUAÇÃO (território com mais ciclos do que
+   *  cabe numa folha) — no impresso vira quebra de página física. */
+  continuacao: boolean;
+}
+
+// Pagina os ciclos do ano em blocos de `colunas` designações — excedente
+// vira folha NOVA do mesmo território (não cabe tudo numa folha só, o
+// formulário oficial usa mais de uma folha pra território muito
+// trabalhado). Cada folha nova recebe sua PRÓPRIA "Última data
+// concluída": a do ano anterior na 1ª folha, e a conclusão do último
+// ciclo da folha anterior nas seguintes — nunca em branco.
+export function linhasImpressasS13(
+  territorios: { id: string; nome: string | null; ciclos: CicloTerritorio[] }[],
+  ano: number,
+  colunas: number
+): LinhaImpressaS13[] {
+  const out: LinhaImpressaS13[] = [];
+  for (const t of territorios) {
+    const l = linhaDoAno({ id: t.id, nome: t.nome }, t.ciclos, ano);
+    if (l.ciclos.length === 0) {
+      out.push({ terr: t.id, nome: t.nome, ultima: l.ultimaConclusaoAnterior, ciclos: [], continuacao: false });
+      continue;
+    }
+    for (let i = 0; i < l.ciclos.length; i += colunas) {
+      const ultima = i === 0 ? l.ultimaConclusaoAnterior : (l.ciclos[i - 1].conclusao ?? l.ultimaConclusaoAnterior);
+      out.push({
+        terr: t.id,
+        nome: t.nome,
+        ultima,
+        ciclos: l.ciclos.slice(i, i + colunas),
+        continuacao: i > 0
+      });
+    }
+  }
+  return out;
+}
+
 export type StatusTerritorio = 'pendente' | 'iniciado' | 'concluido';
 
 // Classificação usada na Visão Geral (E5 seguinte): "concluídas: N quadras"

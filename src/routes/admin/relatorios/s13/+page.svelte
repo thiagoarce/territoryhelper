@@ -5,7 +5,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import Button from '$lib/ui/Button.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
-  import { linhaDoAno, type CicloTerritorio } from '$lib/s13';
+  import { linhasImpressasS13, type LinhaImpressaS13 } from '$lib/s13';
   import type { TerritorioComCiclos } from './+page';
 
   let { data }: {
@@ -24,36 +24,7 @@
 
   const COLUNAS = 4; // como o formulário
 
-  interface LinhaImpressa {
-    terr: string;
-    nome: string | null;
-    ultima: string | null;
-    ciclos: CicloTerritorio[];
-    continuacao: boolean;
-  }
-
-  // Uma linha do formulário comporta 4 designações; excedente vira
-  // linha de continuação do mesmo território.
-  const linhas = $derived.by(() => {
-    const out: LinhaImpressa[] = [];
-    for (const t of data.territorios) {
-      const l = linhaDoAno({ id: t.id, nome: t.nome }, t.ciclos, ano);
-      if (l.ciclos.length === 0) {
-        out.push({ terr: t.id, nome: t.nome, ultima: l.ultimaConclusaoAnterior, ciclos: [], continuacao: false });
-        continue;
-      }
-      for (let i = 0; i < l.ciclos.length; i += COLUNAS) {
-        out.push({
-          terr: t.id,
-          nome: t.nome,
-          ultima: l.ultimaConclusaoAnterior,
-          ciclos: l.ciclos.slice(i, i + COLUNAS),
-          continuacao: i > 0
-        });
-      }
-    }
-    return out;
-  });
+  const linhas: LinhaImpressaS13[] = $derived(linhasImpressasS13(data.territorios, ano, COLUNAS));
 
   function fmt(d: string | null): string {
     if (!d) return '';
@@ -100,13 +71,13 @@
         {/each}
       </tr>
     </thead>
-    <tbody>
-      {#each linhas as l (l.terr + (l.continuacao ? '+' : ''))}
+    {#each linhas as l (l.terr + (l.continuacao ? '+' : ''))}
+      <tbody class="bloco-territorio" class:nova-folha={l.continuacao}>
         <tr class="linha-nome">
           <td rowspan="2" class="text-center font-semibold">
             {l.terr}{#if l.continuacao}<span class="text-[9px] block">(cont.)</span>{/if}
           </td>
-          <td rowspan="2" class="text-center">{l.continuacao ? '' : fmt(l.ultima)}</td>
+          <td rowspan="2" class="text-center">{fmt(l.ultima)}</td>
           {#each Array(COLUNAS) as _, i}
             <td colspan="2" class="nome">{l.ciclos[i]?.designado ?? ''}</td>
           {/each}
@@ -117,10 +88,12 @@
             <td class="text-center">{fmt(l.ciclos[i]?.conclusao ?? null)}</td>
           {/each}
         </tr>
-      {:else}
+      </tbody>
+    {:else}
+      <tbody>
         <tr><td colspan="10" class="text-center py-6 text-slate-400">Sem territórios com quadras ativas.</td></tr>
-      {/each}
-    </tbody>
+      </tbody>
+    {/each}
   </table>
 
   <p class="mt-2 text-[11px]">
@@ -148,6 +121,18 @@
   .tabela-s13 td.nome {
     height: 20px;
   }
+  /* Cabeçalho repete em toda página impressa (thead group é o padrão da
+     spec, mas Chrome/print engines variam — deixar explícito). Cada
+     bloco de território (par linha-nome/linha-datas) nunca quebra no
+     meio — um rowspan cortado por uma quebra de página fica ilegível. */
+  .tabela-s13 thead {
+    display: table-header-group;
+  }
+  .tabela-s13 .bloco-territorio {
+    display: table-row-group;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   @media print {
     .no-print,
     :global(header),
@@ -169,6 +154,14 @@
       background: #e2e8f0 !important;
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
+    }
+    /* Território muito trabalhado que estoura o bloco de 4 designações:
+       a folha de continuação é uma FOLHA NOVA de verdade (página física
+       nova), igual ao formulário oficial — não só mais linhas na mesma
+       folha. */
+    .tabela-s13 .bloco-territorio.nova-folha {
+      break-before: page;
+      page-break-before: always;
     }
   }
   @page {

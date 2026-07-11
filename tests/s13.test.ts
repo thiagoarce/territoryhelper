@@ -9,6 +9,7 @@ import {
   anoDeServicoDe,
   linhaDoAno,
   statusDoTerritorio,
+  linhasImpressasS13,
   DESIGNADO_ARRANJO
 } from '$lib/s13';
 
@@ -248,4 +249,49 @@ test('statusDoTerritorio: conclusão ANTIGA (de antes deste ciclo abrir) não co
   const ciclos = [{ inicio: '2025-03-01', designado: 'Ana', conclusao: null }];
   const conclusoes = [{ quadra_id: 'Q1', data: '2025-01-15' }]; // antes do inicio do ciclo
   assertEq(statusDoTerritorio(['Q1', 'Q2'], ciclos, conclusoes, false), 'pendente');
+});
+
+test('linhasImpressasS13: território com ≤4 ciclos cabe numa folha só', () => {
+  const ciclos = [
+    { inicio: '2025-09-01', designado: 'A', conclusao: '2025-09-05' },
+    { inicio: '2025-09-10', designado: 'B', conclusao: '2025-09-15' }
+  ];
+  const linhas = linhasImpressasS13([{ id: '1', nome: null, ciclos }], 2026, 4);
+  assertEq(linhas.length, 1);
+  assertEq(linhas[0], { terr: '1', nome: null, ultima: null, ciclos, continuacao: false });
+});
+
+test('linhasImpressasS13: 9 ciclos viram 3 folhas, cada uma com sua Última data concluída preenchida', () => {
+  const ciclos = [
+    { inicio: '2025-09-01', designado: 'A', conclusao: '2025-09-05' },
+    { inicio: '2025-09-10', designado: 'B', conclusao: '2025-09-15' },
+    { inicio: '2025-09-20', designado: 'C', conclusao: '2025-09-25' },
+    { inicio: '2025-10-01', designado: 'D', conclusao: '2025-10-05' }, // fim da folha 1
+    { inicio: '2025-10-10', designado: 'E', conclusao: '2025-10-15' },
+    { inicio: '2025-10-20', designado: 'F', conclusao: '2025-10-25' },
+    { inicio: '2025-11-01', designado: 'G', conclusao: '2025-11-05' },
+    { inicio: '2025-11-10', designado: 'H', conclusao: '2025-11-15' }, // fim da folha 2
+    { inicio: '2025-11-20', designado: 'I', conclusao: '2025-11-25' } // folha 3 (só 1 ciclo)
+  ];
+  const linhas = linhasImpressasS13([{ id: '28', nome: 'Jardim Oceania', ciclos }], 2026, 4);
+  assertEq(linhas.length, 3);
+  // folha 1: sem histórico anterior no ano — "Última data concluída" fica
+  // com o que já valia ANTES do ano (aqui, null — sem ciclo anterior).
+  assertEq(linhas[0].continuacao, false);
+  assertEq(linhas[0].ultima, null);
+  assertEq(linhas[0].ciclos.length, 4);
+  // folha 2 (continuação): "Última data concluída" = conclusão do
+  // ÚLTIMO ciclo da folha 1 (não fica em branco).
+  assertEq(linhas[1].continuacao, true);
+  assertEq(linhas[1].ultima, '2025-10-05');
+  assertEq(linhas[1].ciclos.length, 4);
+  // folha 3: idem, carrega da folha 2.
+  assertEq(linhas[2].continuacao, true);
+  assertEq(linhas[2].ultima, '2025-11-15');
+  assertEq(linhas[2].ciclos.length, 1);
+});
+
+test('linhasImpressasS13: território sem ciclo no ano ainda aparece (linha vazia)', () => {
+  const linhas = linhasImpressasS13([{ id: '5', nome: null, ciclos: [] }], 2026, 4);
+  assertEq(linhas, [{ terr: '5', nome: null, ultima: null, ciclos: [], continuacao: false }]);
 });
