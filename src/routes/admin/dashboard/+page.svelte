@@ -3,7 +3,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import Card from '$lib/ui/Card.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
-  import type { QuadraEsquecida, CicloTerrMedia } from './+page';
+  import type { QuadraEsquecida, CicloTerrMedia, DiaSemanaTerr } from './+page';
 
   let { data }: {
     data: {
@@ -14,7 +14,7 @@
       cicloGlobalDias: number | null;
       cicloPorTerritorio: CicloTerrMedia[];
       conclusoesPorMes: { mes: string; qtd: number }[];
-      conclusoesPorDiaSemana: { fimDeSemana: number; meioDaSemana: number };
+      diaSemanaPorTerritorio: DiaSemanaTerr[];
       funil: { designadas: number; arranjo: number; livres: number };
       cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
@@ -25,13 +25,11 @@
   );
   const maxMes = $derived(Math.max(1, ...data.conclusoesPorMes.map((m) => m.qtd)));
 
-  // Comparação justa: fim de semana só tem 2 dias (sáb+dom) contra 5 de
-  // meio de semana — comparar total bruto sempre favoreceria "meio da
-  // semana" só pela quantidade de dias. A taxa por dia é o que realmente
-  // diz onde o pessoal está indo mais.
-  const taxaFimDeSemana = $derived(data.conclusoesPorDiaSemana.fimDeSemana / 2);
-  const taxaMeioDaSemana = $derived(data.conclusoesPorDiaSemana.meioDaSemana / 5);
-  const maxTaxa = $derived(Math.max(0.01, taxaFimDeSemana, taxaMeioDaSemana));
+  const rotuloDiaSemana: Record<NonNullable<DiaSemanaTerr['maisEm']>, string> = {
+    fim_de_semana: 'mais fim de semana',
+    meio_da_semana: 'mais meio da semana',
+    empate: 'equilibrado'
+  };
 
   function fmtMes(m: string): string {
     const [y, mm] = m.split('-');
@@ -94,28 +92,6 @@
     </div>
   </Card>
 
-  <!-- Fim de semana vs meio da semana -->
-  <Card padding="md">
-    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-1">Fim de semana vs. meio da semana</h2>
-    <p class="text-[11px] text-slate-400 mb-3">Taxa por dia (fim de semana tem só 2 dias contra 5 — comparar o total bruto enganaria).</p>
-    <div class="space-y-2">
-      <div class="flex items-center gap-2 text-sm">
-        <span class="w-28 shrink-0 text-slate-600">Fim de semana</span>
-        <div class="flex-1 h-4 rounded-full bg-slate-100 overflow-hidden">
-          <div class="h-full bg-primary-500" style:width="{(taxaFimDeSemana / maxTaxa) * 100}%"></div>
-        </div>
-        <span class="w-24 shrink-0 text-right text-xs text-slate-500">{taxaFimDeSemana.toFixed(1)}/dia ({data.conclusoesPorDiaSemana.fimDeSemana})</span>
-      </div>
-      <div class="flex items-center gap-2 text-sm">
-        <span class="w-28 shrink-0 text-slate-600">Meio da semana</span>
-        <div class="flex-1 h-4 rounded-full bg-slate-100 overflow-hidden">
-          <div class="h-full bg-primary-300" style:width="{(taxaMeioDaSemana / maxTaxa) * 100}%"></div>
-        </div>
-        <span class="w-24 shrink-0 text-right text-xs text-slate-500">{taxaMeioDaSemana.toFixed(1)}/dia ({data.conclusoesPorDiaSemana.meioDaSemana})</span>
-      </div>
-    </div>
-  </Card>
-
   <div class="grid md:grid-cols-2 gap-3">
     <!-- Esquecidas -->
     <Card padding="md">
@@ -150,4 +126,23 @@
       <p class="text-[11px] text-slate-400 mt-2">— = ainda não há duas conclusões da mesma quadra pra medir.</p>
     </Card>
   </div>
+
+  <!-- Fim de semana vs meio da semana, por território -->
+  <Card padding="md">
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-1"><Icon nome="calendar" size={14} /> Fim de semana vs. meio da semana</h2>
+    <p class="text-[11px] text-slate-400 mb-2">Taxa por dia (fim de semana tem só 2 dias contra 5 — comparar o total bruto enganaria).</p>
+    <ul class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+      {#each data.diaSemanaPorTerritorio as t (t.territorio_id)}
+        <li class="py-1.5 flex items-center gap-2 text-sm">
+          <span class="font-medium">{t.nome?.trim() || `Território ${t.territorio_id}`}</span>
+          <span class="text-xs text-slate-400">{t.fimDeSemana} fds · {t.meioDaSemana} semana</span>
+          <span class="ml-auto text-xs {t.maisEm === null ? 'text-slate-400' : t.maisEm === 'empate' ? 'text-slate-500' : 'text-primary-700 font-medium'}">
+            {t.maisEm === null ? 'sem dados' : rotuloDiaSemana[t.maisEm]}
+          </span>
+        </li>
+      {:else}
+        <li class="py-4 text-center text-sm text-slate-400">Sem territórios com quadras ativas.</li>
+      {/each}
+    </ul>
+  </Card>
 </div>

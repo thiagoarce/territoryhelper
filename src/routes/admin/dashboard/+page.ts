@@ -25,6 +25,15 @@ export interface CicloTerrMedia {
   quadras: number;
 }
 
+export interface DiaSemanaTerr {
+  territorio_id: string;
+  nome: string | null;
+  fimDeSemana: number;
+  meioDaSemana: number;
+  /** null = sem nenhuma conclusão registrada pra esse território */
+  maisEm: 'fim_de_semana' | 'meio_da_semana' | 'empate' | null;
+}
+
 export const load: PageLoad = async ({ parent }) => {
   const { profile } = await parent();
   if (!profile) throw redirect(303, '/login');
@@ -121,13 +130,27 @@ async function carregar() {
       if (i !== undefined) meses[i].qtd++;
     }
 
-  // Conclusões por dia da semana: fim de semana (sáb/dom) vs meio da
-  // semana. Só precisa da DATA (já temos) — dia da semana é derivável
-  // dela direto, diferente de manhã/tarde (precisaria de hora, que
-  // quadras_conclusoes não guarda).
-  let qtdFimDeSemana = 0, qtdMeioDaSemana = 0;
-  for (const datas of porQuadra.values())
-    for (const d of datas) (ehFimDeSemana(d) ? qtdFimDeSemana++ : qtdMeioDaSemana++);
+  // Fim de semana (sáb/dom) vs meio da semana, POR TERRITÓRIO — não faz
+  // sentido como número único do sistema inteiro (só diz "no geral
+  // trabalha-se mais em dia de semana", óbvio já que são 5 dias contra
+  // 2). O que importa é o padrão de CADA território. Taxa por dia (não
+  // bruto) pra comparação justa dentro do mesmo território.
+  const diaSemanaPorTerr = new Map<string, { fds: number; mds: number }>();
+  for (const q of ativas) {
+    if (!q.territorio_id) continue;
+    const c = diaSemanaPorTerr.get(q.territorio_id) ?? { fds: 0, mds: 0 };
+    for (const d of porQuadra.get(q.id) ?? []) (ehFimDeSemana(d) ? c.fds++ : c.mds++);
+    diaSemanaPorTerr.set(q.territorio_id, c);
+  }
+  const diaSemanaPorTerritorio: DiaSemanaTerr[] = [...new Set(ativas.map((q) => q.territorio_id).filter(Boolean) as string[])]
+    .sort()
+    .map((tid) => {
+      const c = diaSemanaPorTerr.get(tid) ?? { fds: 0, mds: 0 };
+      const taxaFds = c.fds / 2, taxaMds = c.mds / 5;
+      const maisEm: DiaSemanaTerr['maisEm'] =
+        c.fds + c.mds === 0 ? null : Math.abs(taxaFds - taxaMds) < 0.01 ? 'empate' : taxaFds > taxaMds ? 'fim_de_semana' : 'meio_da_semana';
+      return { territorio_id: tid, nome: nomeTerr.get(tid) ?? null, fimDeSemana: c.fds, meioDaSemana: c.mds, maisEm };
+    });
 
   // Funil do momento
   const desigAbertasIds = new Set((desigAbertas.data ?? []).map((d: any) => d.id));
@@ -148,7 +171,7 @@ async function carregar() {
     cicloGlobalDias: media(gapsGlobais),
     cicloPorTerritorio,
     conclusoesPorMes: meses,
-    conclusoesPorDiaSemana: { fimDeSemana: qtdFimDeSemana, meioDaSemana: qtdMeioDaSemana },
+    diaSemanaPorTerritorio,
     funil: { designadas: qtdDesignadas, arranjo: qtdArranjo, livres: qtdLivres }
   };
 }
