@@ -326,12 +326,12 @@
     <div class="flex items-center gap-2 mb-2">
       <button type="button" onclick={voltar} class="text-xs opacity-90 hover:opacity-100">← Voltar</button>
       <div class="ml-auto flex gap-1">
-        <button type="button" onclick={() => (sheetEditar = true)} title="Editar prédio"
-          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="pencil" size={14} /></button>
-        <button type="button" onclick={() => (sheetPosicao = true)} title="Reportar posição errada"
-          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="map-pin" size={14} /></button>
-        <button type="button" disabled={compartilhando} onclick={compartilharWhatsApp} title="Compartilhar cartas"
-          class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center disabled:opacity-50"><Icon nome={compartilhando ? 'loader' : 'share'} size={14} spin={compartilhando} /></button>
+        <button type="button" onclick={() => (sheetEditar = true)} title="Editar prédio" aria-label="Editar prédio"
+          class="w-11 h-11 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="pencil" size={16} /></button>
+        <button type="button" onclick={() => (sheetPosicao = true)} title="Reportar posição errada" aria-label="Reportar posição errada"
+          class="w-11 h-11 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon nome="map-pin" size={16} /></button>
+        <button type="button" disabled={compartilhando} onclick={compartilharWhatsApp} title="Compartilhar cartas" aria-label="Compartilhar cartas"
+          class="w-11 h-11 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center disabled:opacity-50"><Icon nome={compartilhando ? 'loader' : 'share'} size={16} spin={compartilhando} /></button>
       </div>
     </div>
     <h1 class="text-xl font-bold">{data.predio.nome || `${data.predio.logradouro}, ${data.predio.numero}`}</h1>
