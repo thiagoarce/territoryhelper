@@ -27,27 +27,27 @@
 
 ## Onda 1 — Quick wins (sem migration)
 
-- [ ] 🟢 **U3** Publicador não-aprovado no TP não vê a aba/ícone do TP
+- [x] 🟢 **U3** Publicador não-aprovado no TP não vê a aba/ícone do TP
       (só admin vê mesmo sem `tp_aprovado`). Bottom nav + drawer +
       qualquer link direto.
 
-- [ ] 🟢 **U8** Botão pra voltar fase do TP (montagem → disponibilidade)
+- [x] 🟢 **U8** Botão pra voltar fase do TP (montagem → disponibilidade)
       ou reabrir um mês já fechado. Backend (`definirFaseMes`) já
       aceita qualquer transição — só falta UI.
 
-- [ ] 🟢 **U9** Dirigente ganha opção de finalizar a designação de
+- [x] 🟢 **U9** Dirigente ganha opção de finalizar a designação de
       arranjo ANTES do prazo (voluntário), sem esperar `precisaFinalizar()`.
 
-- [ ] 🟢 **U10** Polígonos: barra de abas com overflow no mobile
+- [x] 🟢 **U10** Polígonos: barra de abas com overflow no mobile
       (aba Curadoria nova estourou). CSS only.
 
-- [ ] 🟢 **U1** Ordenar endereços da quadra automaticamente ao redor do
+- [x] 🟢 **U1** Ordenar endereços da quadra automaticamente ao redor do
       centro (sentido horário) como ORDEM PADRÃO quando não há
       `ordem_na_quadra` manual.
 
 ## Onda 2 — Performance (backup + CPU)
 
-- [ ] 🟡 **U5** Corrigir export de backup (1kb + 500 = worker estourando
+- [x] 🟡 **U5** Corrigir export de backup (1kb + 500 = worker estourando
       CPU/tempo no meio do loop de 39 tabelas + 1 JSON.stringify
       gigante). Reescrever como streaming.
 
@@ -63,7 +63,7 @@
 
 ## Onda 4 — Polígonos / Auditar
 
-- [ ] 🟡 **U11** Auditar (Polígonos): mostrar os ENDEREÇOS de cada
+- [x] 🟡 **U11** Auditar (Polígonos): mostrar os ENDEREÇOS de cada
       cluster (não só a contagem), com link de Street View por
       endereço, e uma seleção "pertence a esta quadra" por endereço —
       os não selecionados caem em "sem quadra" → fluxo já existente de
@@ -71,7 +71,7 @@
 
 ## Onda 5 — Posição do prédio errada (decisão estrutural)
 
-- [ ] 🔴 **U2** Publicador reporta posição errada: (a) endereço certo,
+- [x] 🔴 **U2** Publicador reporta posição errada: (a) endereço certo,
       posição errada dentro da mesma quadra — botão "usar minha
       localização atual"; (b) endereço não pertence a esta quadra —
       escolher a quadra certa entre as próximas. Aplica na hora +
