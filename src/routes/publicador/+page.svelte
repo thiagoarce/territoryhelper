@@ -500,7 +500,7 @@
           </div>
         {/if}
         <div class="mt-2 flex items-center gap-3">
-          {#if data.minhaRole === 'dirigente' || data.minhaRole === 'admin'}
+          {#if (data.minhaRole === 'dirigente' || data.minhaRole === 'admin') && (a.quadras_ids.length > 0 || a.cartas_locais_ids.length > 0 || a.tces_ids.length > 0)}
             <a href="/publicador/casa-a-casa" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território →</a>
           {/if}
           <button type="button" disabled={gerandoLink === `arranjo:${a.id}`} onclick={() => abrirLinkPublico('arranjo', a.id)}

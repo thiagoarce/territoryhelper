@@ -203,7 +203,7 @@
                       <div class="mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
                         {partesDoArranjo.length} parte(s) já repartida(s) — <a href="/publicador/casa-a-casa" class="text-primary-700 hover:underline">gerencie em Casa a casa →</a>
                       </div>
-                    {:else if (a.quadras_ids?.length ?? 0) > 0 || (a.cartas_locais_ids?.length ?? 0) > 0}
+                    {:else if (a.quadras_ids?.length ?? 0) > 0 || (a.cartas_locais_ids?.length ?? 0) > 0 || (a.tces_ids?.length ?? 0) > 0}
                       <div class="mt-2 pt-2 border-t border-slate-100">
                         <a href="/publicador/casa-a-casa" class="text-xs font-medium text-primary-700 hover:underline"><Icon nome="scissors" size={14} /> Repartir território (em Casa a casa) →</a>
                       </div>
