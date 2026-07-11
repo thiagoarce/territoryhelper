@@ -5,7 +5,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import Button from '$lib/ui/Button.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
-  import { linhasImpressasS13, type LinhaImpressaS13 } from '$lib/s13';
+  import { folhasImpressasS13 } from '$lib/s13';
   import type { TerritorioComCiclos } from './+page';
 
   let { data }: {
@@ -24,35 +24,10 @@
 
   const COLUNAS = 4; // como o formulário
 
-  const linhas: LinhaImpressaS13[] = $derived(linhasImpressasS13(data.territorios, ano, COLUNAS));
-
-  interface BlocoImpresso {
-    linhas: LinhaImpressaS13[];
-    novaFolha: boolean;
-  }
-
-  // Agrupa em TABELAS separadas (não uma tabela gigante só) — cada folha
-  // de continuação (território que estourou o bloco de 4 designações)
-  // vira sua PRÓPRIA <table>, com o PRÓPRIO <thead>, dentro de uma <div>
-  // com quebra de página forçada. break-before em elemento de bloco
-  // (div) tem suporte confiável em qualquer motor de impressão —
-  // diferente de forçar quebra dentro de <tbody>/<tr>, que o Safari/
-  // WebKit (impressão do iPhone) não respeita de forma consistente.
-  const blocos: BlocoImpresso[] = $derived.by(() => {
-    const out: BlocoImpresso[] = [];
-    let atual: LinhaImpressaS13[] = [];
-    for (const l of linhas) {
-      if (l.continuacao) {
-        if (atual.length > 0) out.push({ linhas: atual, novaFolha: false });
-        out.push({ linhas: [l], novaFolha: true });
-        atual = [];
-      } else {
-        atual.push(l);
-      }
-    }
-    if (atual.length > 0) out.push({ linhas: atual, novaFolha: false });
-    return out;
-  });
+  // Cada "folha" = uma listagem COMPLETA de todos os territórios. Quando
+  // um território estoura as 4 designações do ano, nasce uma passada nova
+  // (folha nova) com TODOS os territórios de novo — modelo físico real.
+  const folhas = $derived(folhasImpressasS13(data.territorios, ano, COLUNAS));
 
   function fmt(d: string | null): string {
     if (!d) return '';
@@ -85,10 +60,14 @@
 {/snippet}
 
 <div class="folha-s13 mx-auto bg-white px-6 py-4 max-w-[1100px]">
-  {#each blocos as bloco, bi (bi)}
-    <div class="folha-bloco" class:nova-folha={bloco.novaFolha}>
-      {#if bi === 0 || bloco.novaFolha}
-        {@render cabecalhoFolha()}
+  {#each folhas as folha, fi (folha.passada)}
+    <div class="folha-passada" class:nova-folha={folha.passada > 0}>
+      {@render cabecalhoFolha()}
+      {#if folha.passada > 0}
+        <p class="-mt-2 mb-2 text-[11px] text-slate-500">
+          Continuação (designações {folha.passada * COLUNAS + 1}ª em diante) — a
+          coluna “Última data concluída” já traz a última data de cada território.
+        </p>
       {/if}
       <table class="w-full border-collapse tabela-s13">
         <thead>
@@ -106,12 +85,10 @@
             {/each}
           </tr>
         </thead>
-        {#each bloco.linhas as l (l.terr + (l.continuacao ? '+' : ''))}
+        {#each folha.linhas as l (l.terr)}
           <tbody class="bloco-territorio">
             <tr class="linha-nome">
-              <td rowspan="2" class="text-center font-semibold">
-                {l.terr}{#if l.continuacao}<span class="text-[9px] block">(cont.)</span>{/if}
-              </td>
+              <td rowspan="2" class="text-center font-semibold">{l.terr}</td>
               <td rowspan="2" class="text-center">{fmt(l.ultima)}</td>
               {#each Array(COLUNAS) as _, i}
                 <td colspan="2" class="nome">{l.ciclos[i]?.designado ?? ''}</td>
@@ -124,23 +101,20 @@
               {/each}
             </tr>
           </tbody>
+        {:else}
+          <tbody>
+            <tr><td colspan={2 + COLUNAS * 2} class="text-center py-6 text-slate-400">Sem territórios com quadras ativas.</td></tr>
+          </tbody>
         {/each}
       </table>
       <p class="mt-2 text-[11px]">
         *Ao iniciar uma nova folha, use esta coluna para registrar a data em
         que cada território foi concluído pela última vez.
       </p>
-      {#if bi === blocos.length - 1}
+      {#if fi === folhas.length - 1}
         <p class="text-[10px] text-slate-400">S-13-T · gerado pelo Territory Helper em {new Date().toLocaleDateString('pt-BR')}</p>
       {/if}
     </div>
-  {:else}
-    {@render cabecalhoFolha()}
-    <table class="w-full border-collapse tabela-s13">
-      <tbody>
-        <tr><td class="text-center py-6 text-slate-400">Sem territórios com quadras ativas.</td></tr>
-      </tbody>
-    </table>
   {/each}
 </div>
 
@@ -174,6 +148,13 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* Separador visual entre passadas NA TELA (na impressão vira página
+     nova de verdade, ver @media print). */
+  .folha-passada.nova-folha {
+    margin-top: 2.5rem;
+    border-top: 2px dashed #cbd5e1;
+    padding-top: 1.5rem;
+  }
   @media print {
     .no-print,
     :global(header),
@@ -196,16 +177,19 @@
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
     }
-    /* Território muito trabalhado que estoura o bloco de 4 designações:
-       a folha de continuação é uma FOLHA NOVA de verdade (página física
-       nova), igual ao formulário oficial — não só mais linhas na mesma
-       folha. Quebra forçada num <div> (bloco de nível de página), não
-       dentro de <tbody>/<tr> — o Safari/WebKit (impressão do iPhone)
-       não respeita break-before/page-break-before de forma confiável
-       dentro de estrutura de tabela, só em elementos de bloco. */
-    .folha-bloco.nova-folha {
+    /* Cada passada (nova listagem completa de TODOS os territórios) é
+       uma FOLHA NOVA de verdade — página física nova, igual ao servo
+       pegando outra folha em branco. Quebra forçada num <div> (bloco de
+       nível de página), não dentro de <tbody>/<tr> — o Safari/WebKit
+       (impressão do iPhone) não respeita break-before/page-break-before
+       de forma confiável dentro de estrutura de tabela, só em elementos
+       de bloco. */
+    .folha-passada.nova-folha {
       break-before: page;
       page-break-before: always;
+      margin-top: 0;
+      border-top: none;
+      padding-top: 0;
     }
   }
   @page {

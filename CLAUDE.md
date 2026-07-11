@@ -74,14 +74,20 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   assim (margem, evita ciclo preso meses por 1-2 quadras teimosas).
   Rótulo "Arranjo" (constante `DESIGNADO_ARRANJO`) quando não há nome
   de pessoa pra mostrar (arranjo sem dirigente, ou conclusão sem
-  designação/arranjo nenhum — `inferido`). `linhasImpressasS13` pagina
-  os ciclos do ano em folhas de 4 designações; território que estoura
-  isso ganha FOLHA NOVA de verdade (quebra de página física no
-  `@media print`) com a própria "Última data concluída" preenchida
-  (nunca em branco, carrega do último ciclo da folha anterior).
-  Consumida por `/admin/relatorios/s13` (folha imprimível por ano de
-  serviço set→ago, PDF = window.print; `thead` repete em toda página
-  impressa, cada bloco de território não quebra no meio).
+  designação/arranjo nenhum — `inferido`). `folhasImpressasS13` modela
+  o formulário FÍSICO: cada folha lista TODOS os territórios (ordem
+  NATURAL — "10" depois de "9", texto por último). O ano cabe em 4
+  designações por território; se ALGUM território estoura isso, nasce
+  uma "passada" nova (folha nova de verdade, quebra de página forçada
+  num `<div>` — NÃO em `<tbody>`, que o Safari/iOS ignora) reescrevendo
+  TODOS os territórios com a "Última data concluída" de cada um
+  preenchida (a última conclusão até o fim da passada anterior) e os
+  ciclos excedentes nas colunas; quem não estourou aparece com nome +
+  última data e colunas em branco. Se os territórios já ocupam N
+  páginas, cada passada ocupa N páginas. Consumida por
+  `/admin/relatorios/s13` (folha imprimível por ano de serviço set→ago,
+  PDF = window.print; `thead` repete em toda página impressa, cada
+  território não quebra no meio).
   `statusDoTerritorio` classifica pendente/iniciado/concluído (usado
   na Visão Geral). `CartaoTerritorio.svelte` (E1) gera o Cartão S-12
   como PNG (mapa MapLibre oculto + composição canvas), plugado no

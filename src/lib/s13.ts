@@ -160,48 +160,79 @@ export function linhaDoAno(
   };
 }
 
-export interface LinhaImpressaS13 {
+/** Uma linha (território) numa folha impressa: nome + "Última data
+ *  concluída" desta folha + os ciclos que cabem na janela de colunas
+ *  desta folha (pode ser vazio — o território aparece mesmo assim). */
+export interface CelulaS13 {
   terr: string;
   nome: string | null;
-  /** "Última data concluída" — nunca fica em branco numa folha nova,
-   *  nem na de continuação (instrução impressa no rodapé do S-13-T). */
+  /** "Última data concluída" DESTA folha: na 1ª folha = a do ano
+   *  anterior; nas seguintes = a última conclusão registrada até o fim
+   *  da folha anterior (baseline pra folha nova ser autossuficiente). */
   ultima: string | null;
   ciclos: CicloTerritorio[];
-  /** true = folha de CONTINUAÇÃO (território com mais ciclos do que
-   *  cabe numa folha) — no impresso vira quebra de página física. */
-  continuacao: boolean;
 }
 
-// Pagina os ciclos do ano em blocos de `colunas` designações — excedente
-// vira folha NOVA do mesmo território (não cabe tudo numa folha só, o
-// formulário oficial usa mais de uma folha pra território muito
-// trabalhado). Cada folha nova recebe sua PRÓPRIA "Última data
-// concluída": a do ano anterior na 1ª folha, e a conclusão do último
-// ciclo da folha anterior nas seguintes — nunca em branco.
-export function linhasImpressasS13(
+/** Uma FOLHA lógica do S-13 = uma listagem COMPLETA de TODOS os
+ *  territórios. Modelo físico do formulário: o servo tem uma folha com
+ *  todos os territórios; quando UM estoura as `colunas` designações do
+ *  ano, ele pega OUTRA folha, reescreve TODOS os nomes, preenche a
+ *  última data de cada e continua — não uma folha só do que estourou.
+ *  `passada` 0 = 1ª listagem (colunas 1-4), 1 = 2ª (colunas 5-8), etc. */
+export interface FolhaS13 {
+  passada: number;
+  linhas: CelulaS13[];
+}
+
+// Ordena territórios de forma NATURAL: "10" depois de "9" (não depois de
+// "1"), e territórios com nome de texto (ex: "Condomínio Parque Verde")
+// depois dos numéricos. `localeCompare` com numeric:true faz exatamente
+// isso — dígitos antes de letras, números comparados por valor.
+function compararTerritorio(a: string, b: string): number {
+  return a.localeCompare(b, 'pt', { numeric: true, sensitivity: 'base' });
+}
+
+// Monta as folhas impressas do S-13 no MODELO FÍSICO real do formulário:
+// cada folha lista TODOS os territórios (em ordem natural). O ano cabe em
+// `colunas` designações por território; se ALGUM território tiver mais do
+// que isso, cria-se uma folha NOVA inteira (passada seguinte) com todos
+// os territórios de novo — cada um com sua "Última data concluída"
+// preenchida (a última conclusão registrada até o fim da passada
+// anterior) e os ciclos excedentes nas colunas. Territórios que não
+// estouraram aparecem na folha nova com nome + última data e as colunas
+// de ciclo em branco (pro servo continuar preenchendo à mão). Quando os
+// territórios já ocupam N páginas físicas, cada passada ocupa N páginas —
+// o navegador pagina cada tabela por conta própria (thead repete).
+export function folhasImpressasS13(
   territorios: { id: string; nome: string | null; ciclos: CicloTerritorio[] }[],
   ano: number,
   colunas: number
-): LinhaImpressaS13[] {
-  const out: LinhaImpressaS13[] = [];
-  for (const t of territorios) {
-    const l = linhaDoAno({ id: t.id, nome: t.nome }, t.ciclos, ano);
-    if (l.ciclos.length === 0) {
-      out.push({ terr: t.id, nome: t.nome, ultima: l.ultimaConclusaoAnterior, ciclos: [], continuacao: false });
-      continue;
-    }
-    for (let i = 0; i < l.ciclos.length; i += colunas) {
-      const ultima = i === 0 ? l.ultimaConclusaoAnterior : (l.ciclos[i - 1].conclusao ?? l.ultimaConclusaoAnterior);
-      out.push({
-        terr: t.id,
-        nome: t.nome,
-        ultima,
-        ciclos: l.ciclos.slice(i, i + colunas),
-        continuacao: i > 0
-      });
-    }
+): FolhaS13[] {
+  const linhasAno = territorios
+    .map((t) => ({ terr: t.id, nome: t.nome, ...linhaDoAno({ id: t.id, nome: t.nome }, t.ciclos, ano) }))
+    .sort((a, b) => compararTerritorio(a.terr, b.terr));
+
+  const maxCiclos = linhasAno.reduce((m, l) => Math.max(m, l.ciclos.length), 0);
+  const numPassadas = Math.max(1, Math.ceil(maxCiclos / colunas));
+
+  const folhas: FolhaS13[] = [];
+  for (let p = 0; p < numPassadas; p++) {
+    const inicio = p * colunas;
+    const linhas: CelulaS13[] = linhasAno.map((l) => {
+      // Última data desta folha: na 1ª passada, a do ano anterior; nas
+      // seguintes, a última conclusão NÃO-nula entre os ciclos já
+      // impressos nas passadas anteriores (nunca em branco numa folha de
+      // continuação).
+      let ultima: string | null = l.ultimaConclusaoAnterior;
+      if (p > 0) {
+        const anteriores = l.ciclos.slice(0, inicio).filter((c) => c.conclusao !== null);
+        ultima = anteriores.length > 0 ? anteriores[anteriores.length - 1].conclusao : l.ultimaConclusaoAnterior;
+      }
+      return { terr: l.terr, nome: l.nome, ultima, ciclos: l.ciclos.slice(inicio, inicio + colunas) };
+    });
+    folhas.push({ passada: p, linhas });
   }
-  return out;
+  return folhas;
 }
 
 export type StatusTerritorio = 'pendente' | 'iniciado' | 'concluido';
