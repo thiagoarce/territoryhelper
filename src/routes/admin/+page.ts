@@ -14,6 +14,7 @@ import { supabaseBrowser } from '$lib/supabase-browser';
 import { listarQuadrasComGeo, listarDesignacoes, listarPublicadores } from '$lib/queries';
 import { statusCampanha } from '$lib/campanhas';
 import { comCache } from '$lib/offline/cache-leitura';
+import { ciclosDoTerritorio, statusDoTerritorio, type Conclusao, type EventoDesignacao } from '$lib/s13';
 
 export const ssr = false;
 
@@ -25,6 +26,12 @@ export interface TceComQuadras {
   prazo: string | null;
   publicador_nome: string | null;
   quadras_ids: string[];
+}
+
+export interface TerritoriosStatus {
+  pendente: number;
+  iniciado: number;
+  concluido: number;
 }
 
 export const load: PageLoad = async ({ parent }) => {
@@ -125,6 +132,45 @@ async function carregar() {
     }
   }
 
+  // Status por território (E5-seguinte): "concluídas: N quadras" sozinho
+  // não dizia nada — reusa a mesma lógica de ciclo do S-13 (com a margem
+  // de tolerância) pra classificar cada território em pendente/iniciado/
+  // concluído. Histórico COMPLETO de arranjos (não só ativo=true), já que
+  // ciclosDoTerritorio precisa saber quando ciclos passados abriram/
+  // fecharam — arranjosQuadras acima é só o subconjunto ativo, pra outra
+  // finalidade (cards de anexar).
+  const { data: arranjosTodos } = await supabase.from('arranjos').select('id, data, quadras_ids');
+  const territorioDaQuadra = new Map<string, string>();
+  for (const q of quadras) if (q.territorio_id) territorioDaQuadra.set(q.id, q.territorio_id);
+  const quadrasPorTerr = new Map<string, string[]>();
+  for (const q of quadras) {
+    if (!q.territorio_id) continue;
+    (quadrasPorTerr.get(q.territorio_id) ?? quadrasPorTerr.set(q.territorio_id, []).get(q.territorio_id)!).push(q.id);
+  }
+  const conclusoesPorTerr = new Map<string, Conclusao[]>();
+  for (const q of quadras) {
+    if (!q.territorio_id || !q.data_conclusao) continue;
+    (conclusoesPorTerr.get(q.territorio_id) ?? conclusoesPorTerr.set(q.territorio_id, []).get(q.territorio_id)!)
+      .push({ quadra_id: q.id, data: q.data_conclusao });
+  }
+  const eventosPorTerr = new Map<string, EventoDesignacao[]>();
+  const addEvento = (quadraId: string, data: string) => {
+    const terr = territorioDaQuadra.get(quadraId);
+    if (!terr) return;
+    (eventosPorTerr.get(terr) ?? eventosPorTerr.set(terr, []).get(terr)!).push({ data, nome: null });
+  };
+  for (const d of designacoes) for (const qid of d.quadras_ids) addEvento(qid, String(d.criada_em).substring(0, 10));
+  for (const a of arranjosTodos ?? []) {
+    if (!a.data) continue;
+    for (const qid of (a.quadras_ids ?? []) as string[]) addEvento(qid, a.data);
+  }
+  const territoriosStatus: TerritoriosStatus = { pendente: 0, iniciado: 0, concluido: 0 };
+  for (const [terrId, qids] of quadrasPorTerr) {
+    const ciclos = ciclosDoTerritorio(qids, eventosPorTerr.get(terrId) ?? [], conclusoesPorTerr.get(terrId) ?? []);
+    const temArranjoAtivo = qids.some((qid) => qid in arranjoPorQuadra);
+    territoriosStatus[statusDoTerritorio(qids, ciclos, conclusoesPorTerr.get(terrId) ?? [], temArranjoAtivo)]++;
+  }
+
   return {
     quadras,
     designacoesAbertas: abertas,
@@ -136,6 +182,7 @@ async function carregar() {
     campanhaPlanejada,
     reservadasIds,
     curadoriaPendente,
-    tces
+    tces,
+    territoriosStatus
   };
 }

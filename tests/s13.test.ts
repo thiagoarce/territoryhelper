@@ -8,6 +8,7 @@ import {
   periodoAnoDeServico,
   anoDeServicoDe,
   linhaDoAno,
+  statusDoTerritorio,
   DESIGNADO_ARRANJO
 } from '$lib/s13';
 
@@ -212,4 +213,39 @@ test('ciclo que ATRAVESSA o ano (abriu antes, fechou dentro) aparece', () => {
   const linha = linhaDoAno({ id: '1', nome: null }, todos, 2025);
   assertEq(linha.ciclos.length, 1);
   assertEq(linha.ultimaConclusaoAnterior, null);
+});
+
+test('statusDoTerritorio: sem ciclo nenhum e sem arranjo = pendente', () => {
+  assertEq(statusDoTerritorio(['Q1'], [], [], false), 'pendente');
+});
+
+test('statusDoTerritorio: sem ciclo mas com arranjo ativo tocando = iniciado', () => {
+  assertEq(statusDoTerritorio(['Q1'], [], [], true), 'iniciado');
+});
+
+test('statusDoTerritorio: último ciclo fechado = concluido', () => {
+  const ciclos = [{ inicio: '2025-01-01', designado: 'Ana', conclusao: '2025-01-20' }];
+  assertEq(statusDoTerritorio(['Q1'], ciclos, [{ quadra_id: 'Q1', data: '2025-01-20' }], false), 'concluido');
+});
+
+test('statusDoTerritorio: ciclo aberto sem nenhuma conclusão e sem arranjo = pendente', () => {
+  const ciclos = [{ inicio: '2025-01-01', designado: 'Ana', conclusao: null }];
+  assertEq(statusDoTerritorio(['Q1', 'Q2'], ciclos, [], false), 'pendente');
+});
+
+test('statusDoTerritorio: ciclo aberto com 1 quadra já concluída = iniciado', () => {
+  const ciclos = [{ inicio: '2025-01-01', designado: 'Ana', conclusao: null }];
+  const conclusoes = [{ quadra_id: 'Q1', data: '2025-01-15' }];
+  assertEq(statusDoTerritorio(['Q1', 'Q2'], ciclos, conclusoes, false), 'iniciado');
+});
+
+test('statusDoTerritorio: ciclo aberto sem conclusão mas com arranjo ativo = iniciado', () => {
+  const ciclos = [{ inicio: '2025-01-01', designado: 'Ana', conclusao: null }];
+  assertEq(statusDoTerritorio(['Q1', 'Q2'], ciclos, [], true), 'iniciado');
+});
+
+test('statusDoTerritorio: conclusão ANTIGA (de antes deste ciclo abrir) não conta pra iniciado', () => {
+  const ciclos = [{ inicio: '2025-03-01', designado: 'Ana', conclusao: null }];
+  const conclusoes = [{ quadra_id: 'Q1', data: '2025-01-15' }]; // antes do inicio do ciclo
+  assertEq(statusDoTerritorio(['Q1', 'Q2'], ciclos, conclusoes, false), 'pendente');
 });

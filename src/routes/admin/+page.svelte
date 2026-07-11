@@ -221,9 +221,8 @@
 
   const stats = $derived.by(() => {
     const total = data.quadras.length;
-    const concluidas = data.quadras.filter((q) => q.data_conclusao != null).length;
     const inativas = data.quadras.filter((q) => !q.ativa).length;
-    return { total, ativas: total - inativas, concluidas, alocadas: data.quadrasAlocadas.length, abertas: data.designacoesAbertas.length };
+    return { total, ativas: total - inativas, alocadas: data.quadrasAlocadas.length, abertas: data.designacoesAbertas.length };
   });
 </script>
 
@@ -258,22 +257,35 @@
   </div>
 
   <!-- Stats compactos -->
-  <div class="grid grid-cols-4 gap-2 text-center">
+  <div class="grid grid-cols-3 gap-2 text-center">
     <div class="rounded-lg bg-slate-50 p-2">
       <div class="text-lg font-bold">{stats.ativas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">ativas</div>
-    </div>
-    <div class="rounded-lg bg-green-50 p-2">
-      <div class="text-lg font-bold text-green-700">{stats.concluidas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">concluídas</div>
+      <div class="text-[10px] text-slate-500 uppercase">quadras ativas</div>
     </div>
     <div class="rounded-lg bg-blue-50 p-2">
       <div class="text-lg font-bold text-blue-700">{stats.alocadas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">designadas</div>
+      <div class="text-[10px] text-slate-500 uppercase">quadras designadas</div>
     </div>
     <div class="rounded-lg p-2 {stats.abertas > 0 ? 'bg-amber-50' : 'bg-slate-50'}">
       <div class="text-lg font-bold {stats.abertas > 0 ? 'text-amber-700' : ''}">{stats.abertas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">abertas</div>
+      <div class="text-[10px] text-slate-500 uppercase">designações abertas</div>
+    </div>
+  </div>
+
+  <!-- Status por território: "concluídas: N quadras" sozinho não dizia
+       nada — o que importa é o estado do ciclo do território (S-13). -->
+  <div class="grid grid-cols-3 gap-2 text-center">
+    <div class="rounded-lg bg-slate-50 p-2">
+      <div class="text-lg font-bold">{data.territoriosStatus.pendente}</div>
+      <div class="text-[10px] text-slate-500 uppercase">territ. pendentes</div>
+    </div>
+    <div class="rounded-lg bg-amber-50 p-2">
+      <div class="text-lg font-bold text-amber-700">{data.territoriosStatus.iniciado}</div>
+      <div class="text-[10px] text-slate-500 uppercase">territ. iniciados</div>
+    </div>
+    <div class="rounded-lg bg-green-50 p-2">
+      <div class="text-lg font-bold text-green-700">{data.territoriosStatus.concluido}</div>
+      <div class="text-[10px] text-slate-500 uppercase">territ. concluídos</div>
     </div>
   </div>
 

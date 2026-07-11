@@ -251,13 +251,29 @@
         }
       });
 
+      // Halo neutro por baixo da borda colorida: como quadras.color já é
+      // sincronizado com a cor do território (poligonos/+page.server.ts),
+      // essa borda JÁ diferencia território — só que 2px fino se perde
+      // contra preenchimentos fortes (recência/densidade). O halo dá
+      // contraste sem mudar a cor em si.
+      mapa.addLayer({
+        id: 'quadras-line-halo',
+        type: 'line',
+        source: 'quadras',
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 4.5,
+          'line-opacity': 0.6
+        }
+      });
+
       mapa.addLayer({
         id: 'quadras-line',
         type: 'line',
         source: 'quadras',
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': 2
+          'line-width': 2.5
         }
       });
 

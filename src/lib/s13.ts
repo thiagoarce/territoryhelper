@@ -159,3 +159,28 @@ export function linhaDoAno(
     ciclos: doAno
   };
 }
+
+export type StatusTerritorio = 'pendente' | 'iniciado' | 'concluido';
+
+// Classificação usada na Visão Geral (E5 seguinte): "concluídas: N quadras"
+// sozinho não dizia nada — o que importa é o estado do CICLO do território.
+// - concluido: o ciclo mais recente já fechou (nada aberto agora).
+// - iniciado: tem ciclo aberto E já rolou alguma coisa nele (quadra
+//   concluída dentro do ciclo, ou arranjo ativo tocando o território) —
+//   "marcamos como concluída a primeira quadra, mesmo sem designação, ou
+//   já tá designado a um arranjo ativo" (regra do usuário).
+// - pendente: sem ciclo nenhum ainda, ou ciclo aberto mas zero movimento.
+export function statusDoTerritorio(
+  quadraIds: string[],
+  ciclos: CicloTerritorio[],
+  conclusoes: Conclusao[],
+  temArranjoAtivo: boolean
+): StatusTerritorio {
+  if (ciclos.length === 0) return temArranjoAtivo ? 'iniciado' : 'pendente';
+  const ultimo = ciclos[ciclos.length - 1];
+  if (ultimo.conclusao !== null) return 'concluido';
+  const algumaConcluidaNesseCiclo = conclusoes.some(
+    (c) => quadraIds.includes(c.quadra_id) && c.data >= ultimo.inicio
+  );
+  return algumaConcluidaNesseCiclo || temArranjoAtivo ? 'iniciado' : 'pendente';
+}
