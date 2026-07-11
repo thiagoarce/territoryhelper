@@ -80,7 +80,7 @@
     };
   });
 
-  let { data, children }: { data: { profile: any }; children: Snippet } = $props();
+  let { data, children }: { data: { profile: any; temCasaACasa?: boolean }; children: Snippet } = $props();
 
   // Etiqueta de usuário da fila offline (aparelho compartilhado): a fila
   // só enfileira/replaya itens do uid gravado aqui. Atualiza a cada troca
@@ -114,9 +114,14 @@
   // TP só aparece pra quem tem profiles.tp_aprovado — admin vê mesmo sem
   // aprovação (é quem aprova os outros).
   const vePodeTp = $derived(role === 'admin' || !!data.profile?.tp_aprovado);
+  // Casa a casa só aparece se tiver ALGO pra mostrar ali (arranjo que
+  // dirige, parte, território pessoal ou TCE pessoal) — mesmo padrão do
+  // TP. Sem isso, dirigente designado a um arranjo ainda sem quadras
+  // via aba vazia sem sentido (RPC leve, migration 081).
+  const veCasaACasa = $derived(!!data.temCasaACasa);
   const bottomNav = $derived<{ href: string; label: string; icon: NomeIcone }[]>([
     { href: '/publicador', label: 'Designações', icon: 'home' },
-    { href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' },
+    ...(veCasaACasa ? [{ href: '/publicador/casa-a-casa', label: 'Casa a casa', icon: 'door' as NomeIcone }] : []),
     { href: '/publicador/arranjo', label: 'Agenda', icon: 'clipboard' },
     ...(vePodeTp ? [{ href: '/publicador/tp', label: 'TP', icon: 'megaphone' as NomeIcone }] : []),
     { href: '/publicador/predios', label: 'Prédios', icon: 'building' }
