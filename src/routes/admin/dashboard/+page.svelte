@@ -25,12 +25,6 @@
   );
   const maxMes = $derived(Math.max(1, ...data.conclusoesPorMes.map((m) => m.qtd)));
 
-  const rotuloDiaSemana: Record<NonNullable<DiaSemanaTerr['maisEm']>, string> = {
-    fim_de_semana: 'mais fim de semana',
-    meio_da_semana: 'mais meio da semana',
-    empate: 'equilibrado'
-  };
-
   function fmtMes(m: string): string {
     const [y, mm] = m.split('-');
     return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(mm) - 1] + '/' + y.substring(2);
@@ -129,20 +123,28 @@
 
   <!-- Fim de semana vs meio da semana, por território -->
   <Card padding="md">
-    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-1"><Icon nome="calendar" size={14} /> Fim de semana vs. meio da semana</h2>
-    <p class="text-[11px] text-slate-400 mb-2">Taxa por dia (fim de semana tem só 2 dias contra 5 — comparar o total bruto enganaria).</p>
-    <ul class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-      {#each data.diaSemanaPorTerritorio as t (t.territorio_id)}
-        <li class="py-1.5 flex items-center gap-2 text-sm">
-          <span class="font-medium">{t.nome?.trim() || `Território ${t.territorio_id}`}</span>
-          <span class="text-xs text-slate-400">{t.fimDeSemana} fds · {t.meioDaSemana} semana</span>
-          <span class="ml-auto text-xs {t.maisEm === null ? 'text-slate-400' : t.maisEm === 'empate' ? 'text-slate-500' : 'text-primary-700 font-medium'}">
-            {t.maisEm === null ? 'sem dados' : rotuloDiaSemana[t.maisEm]}
-          </span>
-        </li>
-      {:else}
-        <li class="py-4 text-center text-sm text-slate-400">Sem territórios com quadras ativas.</li>
-      {/each}
-    </ul>
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2"><Icon nome="calendar" size={14} /> Quadras concluídas: fim de semana vs. meio da semana</h2>
+    <div class="max-h-80 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-slate-500 uppercase text-left">
+            <th class="font-medium pb-1">Território</th>
+            <th class="font-medium pb-1 text-right w-24">Fim de semana</th>
+            <th class="font-medium pb-1 text-right w-24">Meio da semana</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {#each data.diaSemanaPorTerritorio as t (t.territorio_id)}
+            <tr>
+              <td class="py-1.5 font-medium">{t.nome?.trim() || `Território ${t.territorio_id}`}</td>
+              <td class="py-1.5 text-right">{t.fimDeSemana}</td>
+              <td class="py-1.5 text-right">{t.meioDaSemana}</td>
+            </tr>
+          {:else}
+            <tr><td colspan="3" class="py-4 text-center text-slate-400">Sem territórios com quadras ativas.</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   </Card>
 </div>

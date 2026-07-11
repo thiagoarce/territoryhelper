@@ -28,10 +28,13 @@ export interface CicloTerrMedia {
 export interface DiaSemanaTerr {
   territorio_id: string;
   nome: string | null;
+  /** contagem simples de quadras concluídas no fim de semana/meio da
+   *  semana — SEM normalizar por dias disponíveis. A taxa por dia
+   *  (dividir por 2 e por 5) inflava demais o fim de semana e o
+   *  resultado ficava sempre "mais fim de semana", mesmo quando o
+   *  bruto de meio de semana era claramente maior — não era útil. */
   fimDeSemana: number;
   meioDaSemana: number;
-  /** null = sem nenhuma conclusão registrada pra esse território */
-  maisEm: 'fim_de_semana' | 'meio_da_semana' | 'empate' | null;
 }
 
 export const load: PageLoad = async ({ parent }) => {
@@ -133,8 +136,9 @@ async function carregar() {
   // Fim de semana (sáb/dom) vs meio da semana, POR TERRITÓRIO — não faz
   // sentido como número único do sistema inteiro (só diz "no geral
   // trabalha-se mais em dia de semana", óbvio já que são 5 dias contra
-  // 2). O que importa é o padrão de CADA território. Taxa por dia (não
-  // bruto) pra comparação justa dentro do mesmo território.
+  // 2). Contagem simples (sem normalizar por taxa/dia) — quadra pode
+  // começar num tipo de dia e terminar no outro, o que importa é o dia
+  // da CONCLUSÃO, sem peso nenhum.
   const diaSemanaPorTerr = new Map<string, { fds: number; mds: number }>();
   for (const q of ativas) {
     if (!q.territorio_id) continue;
@@ -146,10 +150,7 @@ async function carregar() {
     .sort()
     .map((tid) => {
       const c = diaSemanaPorTerr.get(tid) ?? { fds: 0, mds: 0 };
-      const taxaFds = c.fds / 2, taxaMds = c.mds / 5;
-      const maisEm: DiaSemanaTerr['maisEm'] =
-        c.fds + c.mds === 0 ? null : Math.abs(taxaFds - taxaMds) < 0.01 ? 'empate' : taxaFds > taxaMds ? 'fim_de_semana' : 'meio_da_semana';
-      return { territorio_id: tid, nome: nomeTerr.get(tid) ?? null, fimDeSemana: c.fds, meioDaSemana: c.mds, maisEm };
+      return { territorio_id: tid, nome: nomeTerr.get(tid) ?? null, fimDeSemana: c.fds, meioDaSemana: c.mds };
     });
 
   // Funil do momento
