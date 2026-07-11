@@ -201,8 +201,11 @@ async function carregar(minhaId: string, role: string) {
   }
 
   // A2: cobertura por quadra do "Seu grupo" — pro sheet de ação (Concluir/
-  // Compartilhar) mostrar X/Y endereços feitos.
-  const coberturaPorQuadraMap = arranjoQueDirijo
+  // Compartilhar) mostrar X/Y endereços feitos. Arranjo sem quadras ainda
+  // (dirigente designado antes do território ser anexado) não tem o que
+  // cobrir — pula a query (calcularCoberturaPorQuadra já se protege
+  // contra array vazio, mas nem vale a viagem de rede aqui).
+  const coberturaPorQuadraMap = arranjoQueDirijo && arranjoQueDirijo.quadras_ids.length > 0
     ? await calcularCoberturaPorQuadra(supabase, arranjoQueDirijo.quadras_ids)
     : new Map<string, CoberturaQuadra>();
   const coberturaPorQuadra = Object.fromEntries(coberturaPorQuadraMap);

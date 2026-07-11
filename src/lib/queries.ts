@@ -154,6 +154,13 @@ export async function calcularCoberturaPorQuadra(
   supabase: SupabaseClient,
   quadrasIds?: string[]
 ): Promise<Map<string, CoberturaQuadra>> {
+  // quadrasIds vazio (array passado, mas sem nenhum id — ex: arranjo
+  // ainda sem território) É DIFERENTE de undefined (sem filtro,
+  // "cobertura geral"). Sem essa distinção, o `.length > 0` abaixo cai
+  // pro caminho "sem filtro" e busca TODOS os locais da congregação —
+  // travava a aba de quem dirige um arranjo recém-criado sem quadras.
+  if (quadrasIds && quadrasIds.length === 0) return new Map();
+
   // Locais → quadras (filtra se passado quadrasIds; marcado_nao_existe sai da
   // contagem de progresso — A7)
   let qLocais = supabase.from('locais').select('id, quadra_id').eq('marcado_nao_existe', false);
