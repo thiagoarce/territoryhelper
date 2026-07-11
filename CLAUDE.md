@@ -74,7 +74,13 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   PDF = window.print). `CartaoTerritorio.svelte` (E1) gera o Cartão
   S-12 como PNG (mapa MapLibre oculto + composição canvas), plugado no
   "Compartilhar com imagem" do `/t/[token]` (RPC ganhou `contexto` na
-  migration 078). `/admin/dashboard` (E5) = saúde do território.
+  migration 078). `/admin/dashboard` (E5) = saúde do território. Ideia
+  futura (não implementada): quadras trabalhadas mais de manhã vs à
+  tarde, ou mais em fim de semana vs meio de semana — hoje inviável,
+  `quadras_conclusoes.data_conclusao` é só `date` (sem hora) e
+  `arranjos` tem `hora_inicio`/`dia_semana` mas isso é quando o arranjo
+  COMEÇA, não quando cada quadra foi de fato concluída dentro dele.
+  Precisaria de timestamp em `quadras_conclusoes` pra ficar viável.
 - `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
