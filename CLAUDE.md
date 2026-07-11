@@ -68,19 +68,35 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 - `src/lib/ui/` — primitives: `Button`, `Card`, `BottomSheet`, `toast.svelte.ts`
 - `src/lib/s13.ts` — lógica PURA dos ciclos do Relatório S-13 (rodada
   Exportáveis, E2; testada): designação de território abre no primeiro
-  evento (designação/arranjo) que toca quadra dele e fecha quando TODAS
-  as quadras têm conclusão >= abertura. Consumida por
-  `/admin/relatorios/s13` (folha imprimível por ano de serviço set→ago,
-  PDF = window.print). `CartaoTerritorio.svelte` (E1) gera o Cartão
-  S-12 como PNG (mapa MapLibre oculto + composição canvas), plugado no
-  "Compartilhar com imagem" do `/t/[token]` (RPC ganhou `contexto` na
-  migration 078). `/admin/dashboard` (E5) = saúde do território. Ideia
-  futura (não implementada): quadras trabalhadas mais de manhã vs à
-  tarde, ou mais em fim de semana vs meio de semana — hoje inviável,
-  `quadras_conclusoes.data_conclusao` é só `date` (sem hora) e
-  `arranjos` tem `hora_inicio`/`dia_semana` mas isso é quando o arranjo
-  COMEÇA, não quando cada quadra foi de fato concluída dentro dele.
-  Precisaria de timestamp em `quadras_conclusoes` pra ficar viável.
+  evento (designação/arranjo) que toca quadra dele e fecha quando
+  (quase) todas as quadras têm conclusão >= abertura — `fechamento()`
+  tolera até `max(2, 10% das quadras)` sem conclusão pra fechar mesmo
+  assim (margem, evita ciclo preso meses por 1-2 quadras teimosas).
+  Rótulo "Arranjo" (constante `DESIGNADO_ARRANJO`) quando não há nome
+  de pessoa pra mostrar (arranjo sem dirigente, ou conclusão sem
+  designação/arranjo nenhum — `inferido`). `linhasImpressasS13` pagina
+  os ciclos do ano em folhas de 4 designações; território que estoura
+  isso ganha FOLHA NOVA de verdade (quebra de página física no
+  `@media print`) com a própria "Última data concluída" preenchida
+  (nunca em branco, carrega do último ciclo da folha anterior).
+  Consumida por `/admin/relatorios/s13` (folha imprimível por ano de
+  serviço set→ago, PDF = window.print; `thead` repete em toda página
+  impressa, cada bloco de território não quebra no meio).
+  `statusDoTerritorio` classifica pendente/iniciado/concluído (usado
+  na Visão Geral). `CartaoTerritorio.svelte` (E1) gera o Cartão S-12
+  como PNG (mapa MapLibre oculto + composição canvas), plugado no
+  "Compartilhar com imagem" do `/t/[token]` (RPC `territorio_publico`
+  ganhou `contexto` na migration 078 — quadras do MESMO território do
+  arranjo/designação — e quadras VIZINHAS de qualquer território dentro
+  de 250m via `ST_DWithin` na migration 080, pro dirigente saber se dá
+  pra avançar quando termina cedo; mesma classificação/legenda de
+  sempre, sem mudança no componente). `/admin/dashboard` (E5) = saúde
+  do território, incluindo fim de semana vs meio de semana POR
+  território (taxa por dia, não bruto). Ideia futura (não
+  implementada): quadras trabalhadas mais de manhã vs à tarde — hoje
+  inviável, `quadras_conclusoes.data_conclusao` é só `date` (sem hora);
+  precisaria de timestamp pra ficar viável (diferente de dia da semana,
+  que já dá pra derivar da data pura — `$lib/utils/data.ts::diaDaSemana`).
 - `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
