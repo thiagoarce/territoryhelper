@@ -2,13 +2,13 @@
 // a ÚLTIMA quadra do território é concluída" tem armadilhas de borda
 // (evento dentro de ciclo aberto, conclusão antiga não conta, ciclo nunca
 // fechado engole o resto) que só teste puro segura.
-import { test, assertEq } from './harness';
+import { test, assertEq, assertTrue } from './harness';
 import {
   ciclosDoTerritorio,
   periodoAnoDeServico,
   anoDeServicoDe,
   linhaDoAno,
-  DESIGNADO_INFERIDO
+  DESIGNADO_ARRANJO
 } from '$lib/s13';
 
 test('ciclo simples: designa, conclui as duas quadras, fecha na última', () => {
@@ -34,7 +34,7 @@ test('conclusão ANTERIOR à designação não fecha o ciclo dela — mas vira c
     [{ quadra_id: 'Q1', data: '2025-02-15' }]
   );
   assertEq(ciclos, [
-    { inicio: '2025-02-15', designado: DESIGNADO_INFERIDO, conclusao: '2025-02-15', inferido: true },
+    { inicio: '2025-02-15', designado: DESIGNADO_ARRANJO, conclusao: '2025-02-15', inferido: true },
     { inicio: '2025-03-01', designado: 'Ana', conclusao: null }
   ]);
 });
@@ -70,18 +70,18 @@ test('dois ciclos completos em sequência', () => {
   );
   assertEq(ciclos, [
     { inicio: '2025-01-10', designado: 'João', conclusao: '2025-02-01' },
-    { inicio: '2025-05-01', designado: 'Campo (grupo)', conclusao: '2025-06-01' }
+    { inicio: '2025-05-01', designado: DESIGNADO_ARRANJO, conclusao: '2025-06-01' }
   ]);
 });
 
-test('ciclo aberto engole eventos posteriores', () => {
+test('ciclo NUNCA fechado (nenhuma quadra jamais concluída) engole eventos posteriores', () => {
   const ciclos = ciclosDoTerritorio(
     ['Q1', 'Q2'],
     [
       { data: '2025-01-10', nome: 'João' },
       { data: '2025-06-01', nome: 'Maria' }
     ],
-    [{ quadra_id: 'Q1', data: '2025-01-20' }] // Q2 nunca concluída
+    [] // nenhuma quadra concluída nunca — nem a margem de tolerância salva isso
   );
   assertEq(ciclos.length, 1);
   assertEq(ciclos[0].conclusao, null);
@@ -97,7 +97,7 @@ test('conclusão sem NENHUMA designação registrada abre ciclo inferido (histó
     ]
   );
   assertEq(ciclos, [
-    { inicio: '2025-01-20', designado: DESIGNADO_INFERIDO, conclusao: '2025-02-05', inferido: true }
+    { inicio: '2025-01-20', designado: DESIGNADO_ARRANJO, conclusao: '2025-02-05', inferido: true }
   ]);
 });
 
@@ -113,7 +113,9 @@ test('conclusão órfã DENTRO de um ciclo real não abre ciclo inferido duplica
   assertEq(ciclos, [{ inicio: '2025-01-01', designado: 'João', conclusao: '2025-02-05' }]);
 });
 
-test('mistura: território com um ciclo real fechado e uma quadra concluída depois sem designação nova', () => {
+test('mistura: com margem, a 2ª quadra refeita sozinha já fecha o ciclo (território de 2 quadras)', () => {
+  // N=2 → margem=2: 1 quadra sem conclusão NOVA (Q2 só tem a conclusão já
+  // consumida pelo ciclo anterior) ainda fecha o ciclo — Q1 sozinha basta.
   const ciclos = ciclosDoTerritorio(
     ['Q1', 'Q2'],
     [{ data: '2025-01-01', nome: 'João' }],
@@ -125,8 +127,56 @@ test('mistura: território com um ciclo real fechado e uma quadra concluída dep
   );
   assertEq(ciclos, [
     { inicio: '2025-01-01', designado: 'João', conclusao: '2025-02-05' },
-    { inicio: '2025-06-10', designado: DESIGNADO_INFERIDO, conclusao: null, inferido: true }
+    { inicio: '2025-06-10', designado: DESIGNADO_ARRANJO, conclusao: '2025-06-10', inferido: true }
   ]);
+});
+
+test('margem: território de 3 quadras fecha com 1 sem conclusão (dentro da margem mínima de 2)', () => {
+  const ciclos = ciclosDoTerritorio(
+    ['Q1', 'Q2', 'Q3'],
+    [{ data: '2025-01-01', nome: 'João' }],
+    [
+      { quadra_id: 'Q1', data: '2025-01-10' },
+      { quadra_id: 'Q2', data: '2025-01-15' }
+      // Q3 nunca concluída — 1 falta, margem(3) = max(2, ceil(0.3)) = 2
+    ]
+  );
+  assertEq(ciclos, [{ inicio: '2025-01-01', designado: 'João', conclusao: '2025-01-15' }]);
+});
+
+test('margem: território grande (30 quadras) fecha com exatamente 3 faltando (10%) mas não com 4', () => {
+  const quadraIds = Array.from({ length: 30 }, (_, i) => `Q${i + 1}`);
+  // margem(30) = max(2, ceil(3.0)) = 3
+  const conclusoesCom3Faltando = quadraIds
+    .slice(0, 27)
+    .map((qid, i) => ({ quadra_id: qid, data: `2025-02-${String(i + 1).padStart(2, '0')}` }));
+  const fechaCom3 = ciclosDoTerritorio(
+    quadraIds,
+    [{ data: '2025-01-01', nome: 'João' }],
+    conclusoesCom3Faltando
+  );
+  assertEq(fechaCom3.length, 1);
+  assertTrue(fechaCom3[0].conclusao !== null, 'deveria fechar tolerando 3 quadras faltando de 30');
+
+  const conclusoesCom4Faltando = quadraIds
+    .slice(0, 26)
+    .map((qid, i) => ({ quadra_id: qid, data: `2025-02-${String(i + 1).padStart(2, '0')}` }));
+  const abertoCom4 = ciclosDoTerritorio(
+    quadraIds,
+    [{ data: '2025-01-01', nome: 'João' }],
+    conclusoesCom4Faltando
+  );
+  assertEq(abertoCom4.length, 1);
+  assertEq(abertoCom4[0].conclusao, null);
+});
+
+test('margem NUNCA fecha com zero quadras concluídas, mesmo em território pequeno', () => {
+  const ciclos = ciclosDoTerritorio(
+    ['Q1', 'Q2'],
+    [{ data: '2025-01-01', nome: 'João' }],
+    [] // nenhuma conclusão — margem(2)=2 cobriria as 2 faltando, mas não fecha com ZERO feitas
+  );
+  assertEq(ciclos, [{ inicio: '2025-01-01', designado: 'João', conclusao: null }]);
 });
 
 test('empate de data entre evento real e conclusão órfã: o real ganha o nome', () => {

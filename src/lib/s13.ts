@@ -4,11 +4,13 @@
 // território é concluída".
 //
 // Modelo: por território, eventos de DESIGNAÇÃO (designações pessoais e
-// arranjos que tocam alguma quadra dele) abrem um CICLO; o ciclo fecha na
-// data em que TODAS as quadras do território têm alguma conclusão >= a
-// abertura (fechamento = a última dessas primeiras conclusões). Eventos de
-// designação que caem DENTRO de um ciclo aberto pertencem a ele (não abrem
-// outro — trabalhar o mesmo território em várias frentes é um ciclo só).
+// arranjos que tocam alguma quadra dele) abrem um CICLO; o ciclo fecha
+// quando (quase) todas as quadras do território têm alguma conclusão >= a
+// abertura — até `margem` quadras podem ficar sem conclusão e o ciclo
+// fecha assim mesmo (fechamento = a maior conclusão entre as que têm,
+// ver `fechamento()`). Eventos de designação que caem DENTRO de um ciclo
+// aberto pertencem a ele (não abrem outro — trabalhar o mesmo território
+// em várias frentes é um ciclo só).
 //
 // Aproximação documentada: o conjunto de quadras é o ATUAL (quadra criada
 // depois "entra" na história retroativamente) — o S-13 é um retrato, não
@@ -37,9 +39,12 @@ export interface CicloTerritorio {
   inferido?: boolean;
 }
 
-/** Rótulo do "Designado para" quando o ciclo foi inferido de conclusão
- *  sem designação registrada. */
-export const DESIGNADO_INFERIDO = '(registro avulso)';
+/** Rótulo do "Designado para" quando não há nome de pessoa pra mostrar:
+ *  arranjo sem dirigente definido, ou ciclo inferido de conclusão sem
+ *  nenhuma designação/arranjo registrado (histórico em lote, quadra
+ *  feita sem pedir) — na prática os dois casos costumam ser trabalho em
+ *  grupo não lançado formalmente, então usam o mesmo rótulo. */
+export const DESIGNADO_ARRANJO = 'Arranjo';
 
 export function ciclosDoTerritorio(
   quadraIds: string[],
@@ -69,14 +74,30 @@ export function ciclosDoTerritorio(
     for (const d of datas) evs.push({ data: d, nome: null, inferido: true });
   evs.sort((a, b) => a.data.localeCompare(b.data) || Number(!!a.inferido) - Number(!!b.inferido));
 
+  // Margem de tolerância: território raramente fecha 100% no mesmo fôlego
+  // — sobra 1 quadra teimosa e o pessoal já considera feito. Tolera até
+  // `margem` quadras sem conclusão (proporcional ao tamanho, mínimo 2)
+  // pra não prender o ciclo aberto por meses esperando só uma quadra. As
+  // quadras toleradas, se forem concluídas bem depois, viram conclusão
+  // órfã (mecanismo de inferido acima) — não ficam perdidas, só entram
+  // como um registro à parte em vez de esticar este ciclo.
+  const margem = Math.max(2, Math.ceil(quadraIds.length * 0.1));
+
   // Fechamento de um ciclo iniciado em `inicio`: pra cada quadra, a
-  // PRIMEIRA conclusão >= inicio; se todas têm, fecha na maior delas.
+  // PRIMEIRA conclusão >= inicio; fecha na maior delas quando no máximo
+  // `margem` quadras ficaram sem conclusão (nunca fecha com ZERO
+  // conclusões — isso não é "quase todo mundo feito", é nada feito).
   function fechamento(inicio: string): string | null {
     let maior: string | null = null;
+    let faltando = 0;
     for (const qid of quadraIds) {
       const datas = porQuadra.get(qid) ?? [];
       const primeira = datas.find((d) => d >= inicio);
-      if (!primeira) return null;
+      if (!primeira) {
+        faltando++;
+        if (faltando > margem) return null;
+        continue;
+      }
       if (!maior || primeira > maior) maior = primeira;
     }
     return maior;
@@ -89,7 +110,7 @@ export function ciclosDoTerritorio(
     const fim = fechamento(ev.data);
     ciclos.push({
       inicio: ev.data,
-      designado: ev.inferido ? DESIGNADO_INFERIDO : (ev.nome ?? 'Campo (grupo)'),
+      designado: ev.nome ?? DESIGNADO_ARRANJO,
       conclusao: fim,
       inferido: ev.inferido
     });

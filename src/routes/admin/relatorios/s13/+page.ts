@@ -42,8 +42,8 @@ async function carregar() {
     ),
     supabase.from('designacoes').select('id, criada_em, publicador_id'),
     // TODOS os arranjos (inclusive finalizados/inativos) — é histórico
-    selectAll<{ id: number; data: string | null; quadras_ids: string[] | null }>(
-      supabase.from('arranjos').select('id, data, quadras_ids').order('id')
+    selectAll<{ id: number; data: string | null; quadras_ids: string[] | null; dirigente_id: string | null }>(
+      supabase.from('arranjos').select('id, data, quadras_ids, dirigente_id').order('id')
     ),
     supabase.from('profiles').select('id, nome')
   ]);
@@ -102,7 +102,7 @@ async function carregar() {
       const chave = `a${a.id}|${terr}`;
       if (jaContou.has(chave)) continue;
       jaContou.add(chave);
-      addEvento(qid, a.data, null);
+      addEvento(qid, a.data, a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null);
     }
   }
 
