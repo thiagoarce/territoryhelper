@@ -357,7 +357,36 @@ export const actions: Actions = {
       }
     }
 
-    return { ok: true, msg: `${ids.length} quadra(s) marcada(s) como concluída(s)` };
+    // Território designado a arranjo com quadras SOBRANDO (não concluídas
+    // ainda): não libera sozinho — só avisa a UI, que pergunta ao admin se
+    // quer liberar (reusa a action liberarQuadrasDeArranjos já existente).
+    // Cenário real: sobra 1-2 quadras teimosas e o admin já dá o
+    // território como pronto — igual à margem de tolerância do S-13.
+    const { data: arranjosTocados } = await locals.supabase
+      .from('arranjos')
+      .select('id, quadras_ids')
+      .eq('ativo', true)
+      .overlaps('quadras_ids', ids);
+    let quadrasRestantesEmArranjo: string[] = [];
+    if (arranjosTocados && arranjosTocados.length > 0) {
+      const todasQuadrasDosArranjos = [...new Set(arranjosTocados.flatMap((a) => (a.quadras_ids ?? []) as string[]))];
+      const outrasQuadras = todasQuadrasDosArranjos.filter((qid) => !ids.includes(qid));
+      if (outrasQuadras.length > 0) {
+        const { data: statusOutras } = await locals.supabase
+          .from('quadras')
+          .select('id, data_conclusao')
+          .in('id', outrasQuadras);
+        quadrasRestantesEmArranjo = (statusOutras ?? [])
+          .filter((q) => q.data_conclusao == null)
+          .map((q) => q.id);
+      }
+    }
+
+    return {
+      ok: true,
+      msg: `${ids.length} quadra(s) marcada(s) como concluída(s)`,
+      quadrasRestantesEmArranjo
+    };
   },
 
   // Reverter restaura a PENÚLTIMA conclusão. Se não houver penúltima

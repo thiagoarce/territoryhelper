@@ -144,20 +144,24 @@
   const selReservadas = $derived([...selecionadas].filter((qid) => reservadasSet.has(qid)));
   let salvandoReserva = $state(false);
 
-  async function liberarDeArranjo() {
-    if (selEmArranjo.length === 0) return;
-    if (!confirm(`Liberar ${selEmArranjo.length} quadra(s) do(s) arranjo(s)? A trava some — a quadra fica livre pra novo uso.`)) return;
+  async function liberarQuadrasIds(ids: string[]) {
     const fd = new FormData();
-    for (const qid of selEmArranjo) fd.append('quadras_ids', qid);
+    for (const qid of ids) fd.append('quadras_ids', qid);
     const res = await fetch('?/liberarQuadrasDeArranjos', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text());
     if (parsed.type === 'success') {
       toast.success(String((parsed.data as any)?.msg || 'Liberadas'));
-      selecionadas = new Set();
       await invalidateAll();
     } else if (parsed.type === 'failure') {
       toast.error(String((parsed.data as any)?.erro || 'Falhou'));
     }
+  }
+
+  async function liberarDeArranjo() {
+    if (selEmArranjo.length === 0) return;
+    if (!confirm(`Liberar ${selEmArranjo.length} quadra(s) do(s) arranjo(s)? A trava some — a quadra fica livre pra novo uso.`)) return;
+    await liberarQuadrasIds(selEmArranjo);
+    selecionadas = new Set();
   }
 
   async function reservarParaCampanha() {
@@ -483,6 +487,12 @@
               toast.success(d?.msg || 'Concluídas');
               limparSelecao();
               await invalidateAll();
+              const restantes = (d?.quadrasRestantesEmArranjo ?? []) as string[];
+              if (restantes.length > 0 && confirm(
+                `Esse arranjo ainda tem ${restantes.length} quadra(s) não concluída(s) (${restantes.join(', ')}). Liberar essas quadras do arranjo?`
+              )) {
+                await liberarQuadrasIds(restantes);
+              }
             } else if (result.type === 'failure') {
               toast.error(String((result.data as any)?.erro || 'Falhou'));
             }
