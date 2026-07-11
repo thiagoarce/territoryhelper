@@ -26,6 +26,34 @@
 
   const linhas: LinhaImpressaS13[] = $derived(linhasImpressasS13(data.territorios, ano, COLUNAS));
 
+  interface BlocoImpresso {
+    linhas: LinhaImpressaS13[];
+    novaFolha: boolean;
+  }
+
+  // Agrupa em TABELAS separadas (não uma tabela gigante só) — cada folha
+  // de continuação (território que estourou o bloco de 4 designações)
+  // vira sua PRÓPRIA <table>, com o PRÓPRIO <thead>, dentro de uma <div>
+  // com quebra de página forçada. break-before em elemento de bloco
+  // (div) tem suporte confiável em qualquer motor de impressão —
+  // diferente de forçar quebra dentro de <tbody>/<tr>, que o Safari/
+  // WebKit (impressão do iPhone) não respeita de forma consistente.
+  const blocos: BlocoImpresso[] = $derived.by(() => {
+    const out: BlocoImpresso[] = [];
+    let atual: LinhaImpressaS13[] = [];
+    for (const l of linhas) {
+      if (l.continuacao) {
+        if (atual.length > 0) out.push({ linhas: atual, novaFolha: false });
+        out.push({ linhas: [l], novaFolha: true });
+        atual = [];
+      } else {
+        atual.push(l);
+      }
+    }
+    if (atual.length > 0) out.push({ linhas: atual, novaFolha: false });
+    return out;
+  });
+
   function fmt(d: string | null): string {
     if (!d) return '';
     const [y, m, dia] = d.split('-');
@@ -51,56 +79,69 @@
   </div>
 </div>
 
-<div class="folha-s13 mx-auto bg-white px-6 py-4 max-w-[1100px]">
+{#snippet cabecalhoFolha()}
   <h2 class="text-center font-bold text-lg tracking-wide">REGISTRO DE DESIGNAÇÃO DE TERRITÓRIO</h2>
   <p class="mt-1 mb-3 text-sm"><strong>Ano de Serviço:</strong> <span class="underline underline-offset-2">&nbsp;&nbsp;{ano}&nbsp;&nbsp;</span></p>
+{/snippet}
 
-  <table class="w-full border-collapse tabela-s13">
-    <thead>
-      <tr>
-        <th rowspan="2" class="w-[52px]">Terr.<br />n.º</th>
-        <th rowspan="2" class="w-[86px]">Última data concluída*</th>
-        {#each Array(COLUNAS) as _}
-          <th colspan="2">Designado para</th>
+<div class="folha-s13 mx-auto bg-white px-6 py-4 max-w-[1100px]">
+  {#each blocos as bloco, bi (bi)}
+    <div class="folha-bloco" class:nova-folha={bloco.novaFolha}>
+      {#if bi === 0 || bloco.novaFolha}
+        {@render cabecalhoFolha()}
+      {/if}
+      <table class="w-full border-collapse tabela-s13">
+        <thead>
+          <tr>
+            <th rowspan="2" class="w-[52px]">Terr.<br />n.º</th>
+            <th rowspan="2" class="w-[86px]">Última data concluída*</th>
+            {#each Array(COLUNAS) as _}
+              <th colspan="2">Designado para</th>
+            {/each}
+          </tr>
+          <tr>
+            {#each Array(COLUNAS) as _}
+              <th class="sub">Data da designação</th>
+              <th class="sub">Data da conclusão</th>
+            {/each}
+          </tr>
+        </thead>
+        {#each bloco.linhas as l (l.terr + (l.continuacao ? '+' : ''))}
+          <tbody class="bloco-territorio">
+            <tr class="linha-nome">
+              <td rowspan="2" class="text-center font-semibold">
+                {l.terr}{#if l.continuacao}<span class="text-[9px] block">(cont.)</span>{/if}
+              </td>
+              <td rowspan="2" class="text-center">{fmt(l.ultima)}</td>
+              {#each Array(COLUNAS) as _, i}
+                <td colspan="2" class="nome">{l.ciclos[i]?.designado ?? ''}</td>
+              {/each}
+            </tr>
+            <tr class="linha-datas">
+              {#each Array(COLUNAS) as _, i}
+                <td class="text-center">{fmt(l.ciclos[i]?.inicio ?? null)}</td>
+                <td class="text-center">{fmt(l.ciclos[i]?.conclusao ?? null)}</td>
+              {/each}
+            </tr>
+          </tbody>
         {/each}
-      </tr>
-      <tr>
-        {#each Array(COLUNAS) as _}
-          <th class="sub">Data da designação</th>
-          <th class="sub">Data da conclusão</th>
-        {/each}
-      </tr>
-    </thead>
-    {#each linhas as l (l.terr + (l.continuacao ? '+' : ''))}
-      <tbody class="bloco-territorio" class:nova-folha={l.continuacao}>
-        <tr class="linha-nome">
-          <td rowspan="2" class="text-center font-semibold">
-            {l.terr}{#if l.continuacao}<span class="text-[9px] block">(cont.)</span>{/if}
-          </td>
-          <td rowspan="2" class="text-center">{fmt(l.ultima)}</td>
-          {#each Array(COLUNAS) as _, i}
-            <td colspan="2" class="nome">{l.ciclos[i]?.designado ?? ''}</td>
-          {/each}
-        </tr>
-        <tr class="linha-datas">
-          {#each Array(COLUNAS) as _, i}
-            <td class="text-center">{fmt(l.ciclos[i]?.inicio ?? null)}</td>
-            <td class="text-center">{fmt(l.ciclos[i]?.conclusao ?? null)}</td>
-          {/each}
-        </tr>
-      </tbody>
-    {:else}
+      </table>
+      <p class="mt-2 text-[11px]">
+        *Ao iniciar uma nova folha, use esta coluna para registrar a data em
+        que cada território foi concluído pela última vez.
+      </p>
+      {#if bi === blocos.length - 1}
+        <p class="text-[10px] text-slate-400">S-13-T · gerado pelo Territory Helper em {new Date().toLocaleDateString('pt-BR')}</p>
+      {/if}
+    </div>
+  {:else}
+    {@render cabecalhoFolha()}
+    <table class="w-full border-collapse tabela-s13">
       <tbody>
-        <tr><td colspan="10" class="text-center py-6 text-slate-400">Sem territórios com quadras ativas.</td></tr>
+        <tr><td class="text-center py-6 text-slate-400">Sem territórios com quadras ativas.</td></tr>
       </tbody>
-    {/each}
-  </table>
-
-  <p class="mt-2 text-[11px]">
-    *Ao iniciar uma nova folha, use esta coluna para registrar a data em que
-    cada território foi concluído pela última vez.
-  </p>
-  <p class="text-[10px] text-slate-400">S-13-T · gerado pelo Territory Helper em {new Date().toLocaleDateString('pt-BR')}</p>
+    </table>
+  {/each}
 </div>
 
 <style>
@@ -158,8 +199,11 @@
     /* Território muito trabalhado que estoura o bloco de 4 designações:
        a folha de continuação é uma FOLHA NOVA de verdade (página física
        nova), igual ao formulário oficial — não só mais linhas na mesma
-       folha. */
-    .tabela-s13 .bloco-territorio.nova-folha {
+       folha. Quebra forçada num <div> (bloco de nível de página), não
+       dentro de <tbody>/<tr> — o Safari/WebKit (impressão do iPhone)
+       não respeita break-before/page-break-before de forma confiável
+       dentro de estrutura de tabela, só em elementos de bloco. */
+    .folha-bloco.nova-folha {
       break-before: page;
       page-break-before: always;
     }
