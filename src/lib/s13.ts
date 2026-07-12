@@ -12,6 +12,17 @@
 // aberto pertencem a ele (não abrem outro — trabalhar o mesmo território
 // em várias frentes é um ciclo só).
 //
+// Fechamento FORÇADO: um ciclo pode ficar aberto além do que a margem
+// tolera (mais quadras teimosas do que o normal). Se isso acontecer mas o
+// território for designado de novo (evento REAL, não inferido de
+// conclusão órfã) — regra do usuário: "se designar assim a gente dá como
+// concluído pela última quadra e segue o baile" — o ciclo travado fecha
+// na melhor data disponível (a maior conclusão desde a abertura, mesmo
+// que só parte das quadras tenha, e mesmo ZERO) e um ciclo novo abre pro
+// evento novo, marcado com `fechamentoForcado` (regra: só uma
+// REdesignação de verdade prova que o território seguiu adiante — uma
+// conclusão órfã sozinha não força nada, continua engolindo o resto).
+//
 // Aproximação documentada: o conjunto de quadras é o ATUAL (quadra criada
 // depois "entra" na história retroativamente) — o S-13 é um retrato, não
 // uma auditoria.
@@ -37,6 +48,10 @@ export interface CicloTerritorio {
   /** true = ciclo sem designação registrada, inferido das conclusões
    *  (histórico lançado / quadra feita sem pedir) */
   inferido?: boolean;
+  /** true = fechou sem satisfazer a margem de tolerância normal, forçado
+   *  por uma redesignação real que provou que o território seguiu
+   *  adiante (pode ter deixado quadra pra trás — ver doc do arquivo) */
+  fechamentoForcado?: boolean;
 }
 
 /** Rótulo do "Designado para" quando não há nome de pessoa pra mostrar:
@@ -103,19 +118,50 @@ export function ciclosDoTerritorio(
     return maior;
   }
 
+  // Fechamento FORÇADO: sem margem — a MAIOR conclusão disponível desde
+  // `inicio` (mesmo que só algumas quadras tenham), null se NENHUMA
+  // quadra do território tem conclusão nenhuma desde então. Só chamado
+  // quando uma redesignação real já provou que o território seguiu
+  // adiante (ver doc do arquivo).
+  function fechamentoForcado(inicio: string): string | null {
+    let maior: string | null = null;
+    for (const qid of quadraIds) {
+      const datas = porQuadra.get(qid) ?? [];
+      const primeira = datas.find((d) => d >= inicio);
+      if (primeira && (!maior || primeira > maior)) maior = primeira;
+    }
+    return maior;
+  }
+
   const ciclos: CicloTerritorio[] = [];
   let liberadoApos: string | null = null; // fim do ciclo anterior
-  for (const ev of evs) {
+  for (let i = 0; i < evs.length; i++) {
+    const ev = evs[i];
     if (liberadoApos !== null && ev.data <= liberadoApos) continue; // dentro/antes do ciclo anterior
-    const fim = fechamento(ev.data);
+
+    let fim = fechamento(ev.data);
+    let forcado = false;
+    if (fim === null) {
+      // Só força se houver um evento REAL (não inferido) mais novo depois
+      // deste — prova de que o território foi designado de novo mesmo
+      // sem toda quadra concluída. Conclusão órfã sozinha não força nada.
+      const temRedesignacao = evs.slice(i + 1).some((e) => !e.inferido && e.data > ev.data);
+      if (temRedesignacao) {
+        fim = fechamentoForcado(ev.data);
+        forcado = true;
+      }
+    }
+
     ciclos.push({
       inicio: ev.data,
       designado: ev.nome ?? DESIGNADO_ARRANJO,
       conclusao: fim,
-      inferido: ev.inferido
+      inferido: ev.inferido,
+      fechamentoForcado: forcado || undefined
     });
-    if (fim === null) break; // ciclo aberto engole o resto dos eventos
-    liberadoApos = fim;
+
+    if (fim === null && !forcado) break; // genuinamente aberto, sem evento futuro que force — engole o resto
+    liberadoApos = fim ?? ev.data; // forçado sem nenhuma conclusão: usa a própria abertura como piso
   }
   return ciclos;
 }

@@ -76,17 +76,82 @@ test('dois ciclos completos em sequência', () => {
   ]);
 });
 
-test('ciclo NUNCA fechado (nenhuma quadra jamais concluída) engole eventos posteriores', () => {
+test('ciclo NUNCA fechado (nenhuma quadra jamais concluída) sem redesignação real depois fica aberto', () => {
+  const ciclos = ciclosDoTerritorio(
+    ['Q1', 'Q2'],
+    [{ data: '2025-01-10', nome: 'João' }],
+    [] // nenhuma quadra concluída nunca — nem a margem de tolerância salva isso
+  );
+  assertEq(ciclos.length, 1);
+  assertEq(ciclos[0].conclusao, null);
+});
+
+test('ciclo NUNCA fechado, mas com REDESIGNAÇÃO real depois: força fechamento (sem data) e abre o novo', () => {
+  // Diferente do teste acima: aqui há um 2º evento REAL (Maria) — a regra
+  // do usuário vale mesmo sem NENHUMA conclusão registrada no ciclo
+  // travado (não esconde a redesignação real por falta de dado).
   const ciclos = ciclosDoTerritorio(
     ['Q1', 'Q2'],
     [
       { data: '2025-01-10', nome: 'João' },
       { data: '2025-06-01', nome: 'Maria' }
     ],
-    [] // nenhuma quadra concluída nunca — nem a margem de tolerância salva isso
+    []
   );
+  assertEq(ciclos, [
+    { inicio: '2025-01-10', designado: 'João', conclusao: null, fechamentoForcado: true },
+    { inicio: '2025-06-01', designado: 'Maria', conclusao: null }
+  ]);
+});
+
+test('ciclo travado além da margem: redesignação REAL depois força fechamento e abre ciclo novo', () => {
+  // Território-3/Paulo-Bonan: ciclo de João travou (faltam quadras além
+  // da margem), mas uma designação REAL posterior (arranjo de Paulo)
+  // prova que o território seguiu adiante — fecha o de João na melhor
+  // data disponível e abre o de Paulo, em vez de engolir o evento.
+  // 5 quadras, margem=2: só Q1 concluída, 4 faltando > margem — não fecha normal.
+  const ciclos = ciclosDoTerritorio(
+    ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'],
+    [
+      { data: '2025-01-01', nome: 'João' },
+      { data: '2025-06-01', nome: 'Paulo' }
+    ],
+    [{ quadra_id: 'Q1', data: '2025-01-10' }]
+  );
+  assertEq(ciclos, [
+    { inicio: '2025-01-01', designado: 'João', conclusao: '2025-01-10', fechamentoForcado: true },
+    { inicio: '2025-06-01', designado: 'Paulo', conclusao: null }
+  ]);
+});
+
+test('ciclo travado sem NENHUMA conclusão: redesignação real ainda força, com conclusao null', () => {
+  const ciclos = ciclosDoTerritorio(
+    ['Q1', 'Q2', 'Q3'],
+    [
+      { data: '2025-01-01', nome: 'João' },
+      { data: '2025-06-01', nome: 'Paulo' }
+    ],
+    [] // nenhuma quadra concluída no ciclo de João
+  );
+  assertEq(ciclos, [
+    { inicio: '2025-01-01', designado: 'João', conclusao: null, fechamentoForcado: true },
+    { inicio: '2025-06-01', designado: 'Paulo', conclusao: null }
+  ]);
+});
+
+test('ciclo travado além da margem SEM redesignação real depois: continua engolindo (só conclusão órfã não força)', () => {
+  // 10 quadras, margem=2. Q1-Q6 concluídas cedo, Q7 concluída bem tarde
+  // (conclusão órfã, sem nenhum evento real depois) — mas Q8/Q9/Q10
+  // nunca são concluídas: faltam 3 > margem(2), não fecha; e como o único
+  // evento posterior é a própria conclusão órfã (inferida), não força.
+  const quadraIds = Array.from({ length: 10 }, (_, i) => `Q${i + 1}`);
+  const conclusoes = [
+    ...['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6'].map((qid) => ({ quadra_id: qid, data: '2025-01-10' })),
+    { quadra_id: 'Q7', data: '2025-08-01' }
+  ];
+  const ciclos = ciclosDoTerritorio(quadraIds, [{ data: '2025-01-01', nome: 'João' }], conclusoes);
   assertEq(ciclos.length, 1);
-  assertEq(ciclos[0].conclusao, null);
+  assertEq(ciclos[0], { inicio: '2025-01-01', designado: 'João', conclusao: null });
 });
 
 test('conclusão sem NENHUMA designação registrada abre ciclo inferido (histórico/registro avulso)', () => {

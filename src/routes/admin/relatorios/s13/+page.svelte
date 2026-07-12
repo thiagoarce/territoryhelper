@@ -97,7 +97,12 @@
             <tr class="linha-datas">
               {#each Array(COLUNAS) as _, i}
                 <td class="text-center">{fmt(l.ciclos[i]?.inicio ?? null)}</td>
-                <td class="text-center">{fmt(l.ciclos[i]?.conclusao ?? null)}</td>
+                <td class="text-center">
+                  {fmt(l.ciclos[i]?.conclusao ?? null)}{#if l.ciclos[i]?.fechamentoForcado}<sup
+                      class="forcado"
+                      title="Encerrado automaticamente por uma nova designação — pode haver quadra(s) sem conclusão registrada">†</sup
+                    >{/if}
+                </td>
               {/each}
             </tr>
           </tbody>
@@ -111,6 +116,12 @@
         *Ao iniciar uma nova folha, use esta coluna para registrar a data em
         que cada território foi concluído pela última vez.
       </p>
+      {#if folha.linhas.some((l) => l.ciclos.some((c) => c.fechamentoForcado))}
+        <p class="text-[11px]">
+          †Encerrado automaticamente por causa de uma nova designação —
+          pode haver quadra(s) que ficaram sem conclusão registrada nesse ciclo.
+        </p>
+      {/if}
       {#if fi === folhas.length - 1}
         <p class="text-[10px] text-slate-400">S-13-T · gerado pelo Territory Helper em {new Date().toLocaleDateString('pt-BR')}</p>
       {/if}

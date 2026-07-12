@@ -72,6 +72,15 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   (quase) todas as quadras têm conclusão >= abertura — `fechamento()`
   tolera até `max(2, 10% das quadras)` sem conclusão pra fechar mesmo
   assim (margem, evita ciclo preso meses por 1-2 quadras teimosas).
+  Ciclo travado além da margem NÃO engole redesignações reais pra
+  sempre: se uma nova designação/arranjo REAL (não `inferido`) chegar
+  pro mesmo território enquanto o ciclo anterior segue aberto,
+  `fechamentoForcado()` fecha esse ciclo na melhor conclusão disponível
+  (ou `null` se nenhuma quadra jamais concluiu) e abre o ciclo novo pra
+  redesignação — sinalizado com `fechamentoForcado: true` (o S-13
+  imprime um † na data de conclusão + nota de rodapé). Uma conclusão
+  ÓRFÃ sozinha (`inferido`) não força nada — continua engolindo, só uma
+  redesignação de verdade prova que o território seguiu adiante.
   Rótulo "Arranjo" (constante `DESIGNADO_ARRANJO`) quando não há nome
   de pessoa pra mostrar (arranjo sem dirigente, ou conclusão sem
   designação/arranjo nenhum — `inferido`). `folhasImpressasS13` modela
