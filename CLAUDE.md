@@ -80,7 +80,16 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   redesignação — sinalizado com `fechamentoForcado: true` (o S-13
   imprime um † na data de conclusão + nota de rodapé). Uma conclusão
   ÓRFÃ sozinha (`inferido`) não força nada — continua engolindo, só uma
-  redesignação de verdade prova que o território seguiu adiante.
+  redesignação de verdade prova que o território seguiu adiante. Ciclo
+  INFERIDO (órfão) tem a janela de busca da conclusão LIMITADA à próxima
+  designação/arranjo REAL (`proximoRealApos`) — sem isso, uma quadra
+  esquecida e concluída sozinha (histórico solto) ficava aberta
+  esperando o resto do território e, quando uma redesignação de
+  verdade vinha meses depois e terminava o serviço, o ciclo órfão
+  "roubava" essa conclusão pra si (fechava tarde demais, com a data
+  certa mas escondendo a redesignação real por trás). Ciclo REAL não
+  tem esse teto — evento dentro dele continua pertencendo a ele, regra
+  de sempre.
   Rótulo "Arranjo" (constante `DESIGNADO_ARRANJO`) quando não há nome
   de pessoa pra mostrar (arranjo sem dirigente, ou conclusão sem
   designação/arranjo nenhum — `inferido`). `folhasImpressasS13` modela

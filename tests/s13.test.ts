@@ -154,6 +154,40 @@ test('ciclo travado além da margem SEM redesignação real depois: continua eng
   assertEq(ciclos[0], { inicio: '2025-01-01', designado: 'João', conclusao: null });
 });
 
+test('território 29: quadra esquecida sozinha (órfã) não engole a redesignação real que vem depois', () => {
+  // Cenário real reportado: uma quadra foi concluída sozinha em 22/04
+  // (território "esquecido" — resto nunca terminou), e só em 04/07 o
+  // território foi designado de novo de verdade, concluindo em 10/07. O
+  // ciclo órfão de 22/04 não pode ficar aberto esperando o resto do
+  // território indefinidamente e acabar fechando em 10/07 — isso
+  // escondia a redesignação real de 04/07 do relatório.
+  const quadraIds = ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'];
+  const eventos = [
+    { data: '2026-02-21', nome: null }, // designação anterior (fecha sozinha, sem problema)
+    { data: '2026-07-04', nome: null } // redesignação REAL — a que estava sendo engolida
+  ];
+  const conclusoes = [
+    // ciclo anterior fecha limpo em 07/03
+    ...quadraIds.map((qid) => ({ quadra_id: qid, data: '2026-03-07' })),
+    // quadra esquecida, concluída sozinha bem depois — órfã
+    { quadra_id: 'Q3', data: '2026-04-22' },
+    // território retomado de verdade em 04/07, todas concluídas em 10/07
+    ...quadraIds.map((qid) => ({ quadra_id: qid, data: '2026-07-10' }))
+  ];
+  const ciclos = ciclosDoTerritorio(quadraIds, eventos, conclusoes);
+  assertEq(ciclos, [
+    { inicio: '2026-02-21', designado: DESIGNADO_ARRANJO, conclusao: '2026-03-07' },
+    {
+      inicio: '2026-04-22',
+      designado: DESIGNADO_ARRANJO,
+      conclusao: '2026-04-22',
+      inferido: true,
+      fechamentoForcado: true
+    },
+    { inicio: '2026-07-04', designado: DESIGNADO_ARRANJO, conclusao: '2026-07-10' }
+  ]);
+});
+
 test('conclusão sem NENHUMA designação registrada abre ciclo inferido (histórico/registro avulso)', () => {
   const ciclos = ciclosDoTerritorio(
     ['Q1', 'Q2'],

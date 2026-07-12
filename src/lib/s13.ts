@@ -23,6 +23,16 @@
 // REdesignação de verdade prova que o território seguiu adiante — uma
 // conclusão órfã sozinha não força nada, continua engolindo o resto).
 //
+// Ciclo INFERIDO (conclusão órfã, sem designação real por trás) tem uma
+// janela LIMITADA à próxima designação/arranjo REAL — senão uma quadra
+// esquecida e concluída sozinha (histórico solto) ficava aberta esperando
+// o resto do território indefinidamente e, quando uma redesignação de
+// verdade vinha meses depois e terminava o serviço, o ciclo órfão
+// "roubava" esse trabalho todo pra si (fechava tarde demais, com a data
+// certa mas o nome/início errados) — a redesignação real ficava invisível
+// no relatório, engolida por trás. Ciclo REAL não tem esse teto: evento
+// dentro dele continua pertencendo a ele normalmente (regra de sempre).
+//
 // Aproximação documentada: o conjunto de quadras é o ATUAL (quadra criada
 // depois "entra" na história retroativamente) — o S-13 é um retrato, não
 // uma auditoria.
@@ -99,15 +109,16 @@ export function ciclosDoTerritorio(
   const margem = Math.max(2, Math.ceil(quadraIds.length * 0.1));
 
   // Fechamento de um ciclo iniciado em `inicio`: pra cada quadra, a
-  // PRIMEIRA conclusão >= inicio; fecha na maior delas quando no máximo
-  // `margem` quadras ficaram sem conclusão (nunca fecha com ZERO
-  // conclusões — isso não é "quase todo mundo feito", é nada feito).
-  function fechamento(inicio: string): string | null {
+  // PRIMEIRA conclusão >= inicio (e < `limite`, se houver — ver abaixo);
+  // fecha na maior delas quando no máximo `margem` quadras ficaram sem
+  // conclusão (nunca fecha com ZERO conclusões — isso não é "quase todo
+  // mundo feito", é nada feito).
+  function fechamento(inicio: string, limite: string | null): string | null {
     let maior: string | null = null;
     let faltando = 0;
     for (const qid of quadraIds) {
       const datas = porQuadra.get(qid) ?? [];
-      const primeira = datas.find((d) => d >= inicio);
+      const primeira = datas.find((d) => d >= inicio && (limite === null || d < limite));
       if (!primeira) {
         faltando++;
         if (faltando > margem) return null;
@@ -119,18 +130,29 @@ export function ciclosDoTerritorio(
   }
 
   // Fechamento FORÇADO: sem margem — a MAIOR conclusão disponível desde
-  // `inicio` (mesmo que só algumas quadras tenham), null se NENHUMA
-  // quadra do território tem conclusão nenhuma desde então. Só chamado
-  // quando uma redesignação real já provou que o território seguiu
-  // adiante (ver doc do arquivo).
-  function fechamentoForcado(inicio: string): string | null {
+  // `inicio` (e < `limite`, se houver), mesmo que só algumas quadras
+  // tenham; null se NENHUMA quadra do território tem conclusão nenhuma
+  // na janela. Só chamado quando uma redesignação real já provou que o
+  // território seguiu adiante (ver doc do arquivo).
+  function fechamentoForcado(inicio: string, limite: string | null): string | null {
     let maior: string | null = null;
     for (const qid of quadraIds) {
       const datas = porQuadra.get(qid) ?? [];
-      const primeira = datas.find((d) => d >= inicio);
+      const primeira = datas.find((d) => d >= inicio && (limite === null || d < limite));
       if (primeira && (!maior || primeira > maior)) maior = primeira;
     }
     return maior;
+  }
+
+  // Próxima designação/arranjo REAL (não inferida) depois do índice `i`
+  // — usada como TETO da janela de um ciclo INFERIDO (órfão), pra ele não
+  // "roubar" trabalho de uma redesignação de verdade que vier depois (ver
+  // doc do arquivo: quadra esquecida sozinha não pode engolir o arranjo
+  // seguinte). Ciclo REAL nunca é limitado por isso — segue com a regra
+  // de sempre (evento dentro dele pertence a ele, sem cortar a janela).
+  function proximoRealApos(i: number): string | null {
+    for (let j = i + 1; j < evs.length; j++) if (!evs[j].inferido) return evs[j].data;
+    return null;
   }
 
   const ciclos: CicloTerritorio[] = [];
@@ -139,15 +161,16 @@ export function ciclosDoTerritorio(
     const ev = evs[i];
     if (liberadoApos !== null && ev.data <= liberadoApos) continue; // dentro/antes do ciclo anterior
 
-    let fim = fechamento(ev.data);
+    const limite = ev.inferido ? proximoRealApos(i) : null;
+    let fim = fechamento(ev.data, limite);
     let forcado = false;
     if (fim === null) {
       // Só força se houver um evento REAL (não inferido) mais novo depois
       // deste — prova de que o território foi designado de novo mesmo
       // sem toda quadra concluída. Conclusão órfã sozinha não força nada.
-      const temRedesignacao = evs.slice(i + 1).some((e) => !e.inferido && e.data > ev.data);
+      const temRedesignacao = ev.inferido ? limite !== null : proximoRealApos(i) !== null;
       if (temRedesignacao) {
-        fim = fechamentoForcado(ev.data);
+        fim = fechamentoForcado(ev.data, limite);
         forcado = true;
       }
     }
