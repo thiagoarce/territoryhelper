@@ -255,6 +255,15 @@
               concluida: !!q.data_conclusao,
               territorio_id: q.territorio_id,
               qtd_locais: q.qtd_locais,
+              // CRÍTICO: precisa estar aqui também, não só no $effect de
+              // atualização — senão o modo "densidade (residências)" lê
+              // ['get','qtd_unidades'] => null no setup inicial e o
+              // interpolate renderiza tudo da mesma cor (bug: mapa de
+              // residências saía todo cinza). O $effect de setData só
+              // re-roda quando uma dep reativa muda, não depois que o
+              // style-load (async) chama setupCamadas — então o feature
+              // set inicial, sem qtd_unidades, ficava valendo.
+              qtd_unidades: q.qtd_unidades,
               data_conclusao: q.data_conclusao,
               dias_concluido: dias,
               concluida_na_campanha: concluidasCampanhaSet.has(q.id)
