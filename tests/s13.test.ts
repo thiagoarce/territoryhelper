@@ -188,6 +188,49 @@ test('território 29: quadra esquecida sozinha (órfã) não engole a redesigna�
   ]);
 });
 
+test('território 29 real: SEM nenhuma designação/arranjo jamais registrado, quadra esquecida some por 73 dias', () => {
+  // Dados reais extraídos do banco: território nunca passou pelo fluxo de
+  // designação/arranjo (só "concluir quadra" direto no mapa). Sem NENHUM
+  // evento real, proximoRealApos nunca ajuda — só o gap de silêncio (73
+  // dias entre 22/04 e 04/07, > GAP_ABANDONO_DIAS=60) evita que o ciclo
+  // órfão de 22/04 espere o território inteiro ser refeito e engula tudo
+  // num ciclo só (22/04→10/07, o bug reportado).
+  const quadraIds = ['29A', '29B', '29C', '29D', '29E'];
+  const conclusoes = [
+    { quadra_id: '29A', data: '2025-09-30' },
+    { quadra_id: '29B', data: '2025-09-30' },
+    { quadra_id: '29C', data: '2025-10-03' },
+    { quadra_id: '29D', data: '2025-10-03' },
+    { quadra_id: '29E', data: '2025-10-03' },
+    { quadra_id: '29A', data: '2026-02-21' },
+    { quadra_id: '29C', data: '2026-02-21' },
+    { quadra_id: '29A', data: '2026-03-07' },
+    { quadra_id: '29B', data: '2026-03-07' },
+    { quadra_id: '29C', data: '2026-03-07' },
+    { quadra_id: '29D', data: '2026-03-07' },
+    { quadra_id: '29E', data: '2026-03-07' },
+    { quadra_id: '29A', data: '2026-04-22' }, // quadra esquecida, sozinha
+    { quadra_id: '29A', data: '2026-07-04' }, // 73 dias de silêncio depois — território retomado
+    { quadra_id: '29B', data: '2026-07-07' },
+    { quadra_id: '29C', data: '2026-07-08' },
+    { quadra_id: '29D', data: '2026-07-08' },
+    { quadra_id: '29E', data: '2026-07-10' }
+  ];
+  const ciclos = ciclosDoTerritorio(quadraIds, [], conclusoes);
+  assertEq(ciclos, [
+    { inicio: '2025-09-30', designado: DESIGNADO_ARRANJO, conclusao: '2025-10-03', inferido: true },
+    { inicio: '2026-02-21', designado: DESIGNADO_ARRANJO, conclusao: '2026-03-07', inferido: true },
+    {
+      inicio: '2026-04-22',
+      designado: DESIGNADO_ARRANJO,
+      conclusao: '2026-04-22',
+      inferido: true,
+      fechamentoForcado: true
+    },
+    { inicio: '2026-07-04', designado: DESIGNADO_ARRANJO, conclusao: '2026-07-10', inferido: true }
+  ]);
+});
+
 test('conclusão sem NENHUMA designação registrada abre ciclo inferido (histórico/registro avulso)', () => {
   const ciclos = ciclosDoTerritorio(
     ['Q1', 'Q2'],

@@ -87,9 +87,17 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   esperando o resto do território e, quando uma redesignação de
   verdade vinha meses depois e terminava o serviço, o ciclo órfão
   "roubava" essa conclusão pra si (fechava tarde demais, com a data
-  certa mas escondendo a redesignação real por trás). Ciclo REAL não
-  tem esse teto — evento dentro dele continua pertencendo a ele, regra
-  de sempre.
+  certa mas escondendo a redesignação real por trás). Território que
+  NUNCA teve designação/arranjo real (100% concluído direto no mapa,
+  sem `proximoRealApos` pra se apoiar) usa um segundo teto:
+  `limiteGapInferido` fecha o ciclo órfão se ficar `> 60 dias`
+  (`GAP_ABANDONO_DIAS`) sem NENHUMA conclusão nova em qualquer quadra do
+  território — silêncio longo é tratado como território esquecido
+  (bug real do território 29: quadra concluída sozinha, resto retomado
+  73 dias depois sem nenhuma designação/arranjo por trás; sem o gap o
+  ciclo órfão ficava esperando pra sempre e engolia a retomada inteira
+  num só ciclo). Ciclo REAL não tem nenhum desses dois tetos — evento
+  dentro dele continua pertencendo a ele, regra de sempre.
   Rótulo "Arranjo" (constante `DESIGNADO_ARRANJO`) quando não há nome
   de pessoa pra mostrar (arranjo sem dirigente, ou conclusão sem
   designação/arranjo nenhum — `inferido`). `folhasImpressasS13` modela

@@ -24,14 +24,16 @@
 // conclusão órfã sozinha não força nada, continua engolindo o resto).
 //
 // Ciclo INFERIDO (conclusão órfã, sem designação real por trás) tem uma
-// janela LIMITADA à próxima designação/arranjo REAL — senão uma quadra
-// esquecida e concluída sozinha (histórico solto) ficava aberta esperando
-// o resto do território indefinidamente e, quando uma redesignação de
-// verdade vinha meses depois e terminava o serviço, o ciclo órfão
-// "roubava" esse trabalho todo pra si (fechava tarde demais, com a data
-// certa mas o nome/início errados) — a redesignação real ficava invisível
-// no relatório, engolida por trás. Ciclo REAL não tem esse teto: evento
-// dentro dele continua pertencendo a ele normalmente (regra de sempre).
+// janela LIMITADA — a próxima designação/arranjo REAL, SE houver, e
+// também qualquer silêncio > 60 dias sem nenhuma conclusão nova no
+// território (`limiteGapInferido`) — senão uma quadra esquecida e
+// concluída sozinha (histórico solto) ficava aberta esperando o resto do
+// território indefinidamente e, quando o trabalho retomava meses depois
+// (com ou sem uma redesignação real por trás), o ciclo órfão "roubava"
+// esse trabalho todo pra si (fechava tarde demais, com a data certa mas
+// o início errado, escondendo que era um esforço novo). Ciclo REAL não
+// tem esse teto: evento dentro dele continua pertencendo a ele
+// normalmente (regra de sempre).
 //
 // Aproximação documentada: o conjunto de quadras é o ATUAL (quadra criada
 // depois "entra" na história retroativamente) — o S-13 é um retrato, não
@@ -155,13 +157,41 @@ export function ciclosDoTerritorio(
     return null;
   }
 
+  // Território que NUNCA teve designação/arranjo real (100% conclusões
+  // avulsas, ex: admin concluindo quadra direto no mapa sem passar pelo
+  // fluxo de designação) não tem `proximoRealApos` pra se apoiar — sem
+  // outro teto, um ciclo inferido buscava conclusão futura SEM LIMITE de
+  // tempo, então uma quadra esquecida sozinha ficava "esperando" o
+  // território inteiro ser refeito meses depois e engolia tudo num ciclo
+  // só (bug do território 29: quadra concluída sozinha em 22/04, resto só
+  // voltou em 04/07 — 73 dias de silêncio — e o relatório mostrava um
+  // ciclo só 22/04→10/07). Silêncio > GAP_ABANDONO_DIAS entre duas
+  // conclusões seguidas (de QUALQUER quadra do território) é tratado como
+  // território esquecido: nada depois do silêncio conta pra este ciclo.
+  const GAP_ABANDONO_DIAS = 60;
+  function diasEntre(a: string, b: string): number {
+    return (Date.parse(b) - Date.parse(a)) / 86400000;
+  }
+  function limiteGapInferido(inicio: string): string | null {
+    const todas = [...porQuadra.values()].flat().filter((d) => d >= inicio).sort();
+    for (let i = 1; i < todas.length; i++) {
+      if (diasEntre(todas[i - 1], todas[i]) > GAP_ABANDONO_DIAS) return todas[i];
+    }
+    return null;
+  }
+  function menorData(a: string | null, b: string | null): string | null {
+    if (a === null) return b;
+    if (b === null) return a;
+    return a < b ? a : b;
+  }
+
   const ciclos: CicloTerritorio[] = [];
   let liberadoApos: string | null = null; // fim do ciclo anterior
   for (let i = 0; i < evs.length; i++) {
     const ev = evs[i];
     if (liberadoApos !== null && ev.data <= liberadoApos) continue; // dentro/antes do ciclo anterior
 
-    const limite = ev.inferido ? proximoRealApos(i) : null;
+    const limite = ev.inferido ? menorData(proximoRealApos(i), limiteGapInferido(ev.data)) : null;
     let fim = fechamento(ev.data, limite);
     let forcado = false;
     if (fim === null) {
