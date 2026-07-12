@@ -122,7 +122,11 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   arranjo/designação — e quadras VIZINHAS de qualquer território dentro
   de 250m via `ST_DWithin` na migration 080, pro dirigente saber se dá
   pra avançar quando termina cedo; mesma classificação/legenda de
-  sempre, sem mudança no componente). `/admin/dashboard` (E5) = saúde
+  sempre, sem mudança no componente). Limiar de "feita há pouco" do
+  cartão (marca ✕ vermelho) é em DIAS (15/30/60, default 30) — era em
+  meses (3/6/12); o ciclo real de território desta congregação gira a
+  cada ~2 meses, então o limiar em meses quase nunca desmarcava nada.
+  `/admin/dashboard` (E5) = saúde
   do território, incluindo fim de semana vs meio de semana POR
   território (taxa por dia, não bruto). Ideia futura (não
   implementada): quadras trabalhadas mais de manhã vs à tarde — hoje
@@ -346,7 +350,21 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
 
 - **Geral** (`/admin`) — mapa multi-seleção de quadras; **designar** (território
   pessoal) + **anexar a arranjo** (saída em grupo). Cor por
-  status (recência) / território / densidade / idade da conclusão.
+  status (recência) / território / densidade / campanha (só quando tem
+  campanha EM ANDAMENTO — `statusCampanha()==='em_andamento'` — calculado
+  no cliente a partir de `quadras.data_conclusao >= data_inicio`, sem
+  query nova; reusa o modo `colorirPor='campanha'` que já existia no
+  `MapaAdmin.svelte` mas não estava exposto na tela) / idade da conclusão.
+  Densidade (endereços/residências) usa degraus de cor DINÂMICOS
+  (`stopsDensidade` em `MapaAdmin.svelte`, frações do maior valor real
+  entre as quadras carregadas) — os limiares fixos antigos (0/5/15/30/60)
+  foram calibrados num bairro de casas; numa área de prédios (dezenas de
+  unidades por quadra) tudo passava de 60 e o mapa inteiro virava uma cor
+  só, parecendo "quebrado". Toolbar + resumo de números compactados pro
+  mapa (a tela principal) não disputar espaço com eles no mobile: os 2
+  toggles (TCEs/Rótulos) viraram botões ícone numa linha só com o select,
+  e os 6 números (quadras/território) colapsam num resumo de 1 linha por
+  padrão, expansível.
   **Concluir quadra** fundido aqui (long-press abre histórico +
   reverter + limpar conclusão + conflito de data anterior — era a tela
   `/admin/registro`, removida). **Filtro "TCEs"** (A21-f1): esconde o

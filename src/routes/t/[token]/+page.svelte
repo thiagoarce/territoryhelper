@@ -99,7 +99,10 @@
   let gerandoCartao = $state(false);
   let localidade = $state('');
   let fundoCartao = $state<'positron' | 'liberty' | 'bright'>('positron');
-  let limiarMeses = $state(6);
+  // Padrão 30 dias: o ciclo de território real dessa congregação gira a
+  // cada ~2 meses, então "feitas há pouco" em meses (3/6/12) praticamente
+  // nunca desmarcava nada — dias casam melhor com o ritmo real.
+  let limiarDias = $state(30);
   let previaDesatualizada = $state(false);
   let buscouLocalidade = false;
 
@@ -139,7 +142,7 @@
         localidade: localidade.trim(),
         terrNumeros,
         basemap: fundoCartao,
-        limiarDias: limiarMeses * 30
+        limiarDias
       });
       if (!png) {
         toast.error('Não deu pra montar o cartão — confira a conexão');
@@ -284,10 +287,10 @@
       </div>
       <div>
         <label for="cartao-limiar" class="block text-sm font-medium text-slate-700 mb-1">Feitas há pouco = últimos</label>
-        <select id="cartao-limiar" bind:value={limiarMeses} onchange={() => (previaDesatualizada = true)} class="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm">
-          <option value={3}>3 meses</option>
-          <option value={6}>6 meses</option>
-          <option value={12}>12 meses</option>
+        <select id="cartao-limiar" bind:value={limiarDias} onchange={() => (previaDesatualizada = true)} class="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm">
+          <option value={15}>15 dias</option>
+          <option value={30}>30 dias</option>
+          <option value={60}>60 dias</option>
         </select>
       </div>
     </div>

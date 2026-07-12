@@ -8,8 +8,9 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import type { QuadraGeo, DesignacaoEnriquecida } from '$lib/queries';
-  import type { TceComQuadras } from './+page';
+  import type { TceComQuadras, TerritoriosStatus } from './+page';
   import { diasDesde } from '$lib/utils/data';
+  import { statusCampanha } from '$lib/campanhas';
 
   let {
     data,
@@ -27,6 +28,7 @@
       reservadasIds: string[];
       curadoriaPendente: { total: number; edicao: number; criacao: number; nao_existe: number };
       tces: TceComQuadras[];
+      territoriosStatus: TerritoriosStatus;
       profile?: import('$lib/types').Profile | null;
       cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
@@ -34,10 +36,26 @@
   } = $props();
 
   // Estado
-  let colorirPor = $state<'conclusao' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias'>('conclusao');
+  let colorirPor = $state<'conclusao' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'campanha'>('conclusao');
   let mostrarRotulos = $state(true);
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
+  // Painel de números (quadras ativas/designadas/... + territórios) fica
+  // colapsado por padrão no mobile — o mapa é a tela principal, o resumo
+  // detalhado é consulta ocasional, não precisa competir por espaço.
+  let statsAbertas = $state(false);
+
+  // Filtro "quadras feitas da campanha": só faz sentido com campanha JÁ EM
+  // ANDAMENTO (planejada ainda não teve chance de concluir nada). Calculado
+  // no cliente a partir de `data.quadras` (já carregada) — sem query nova.
+  const campanhaEmAndamento = $derived(
+    data.campanhaAtiva && statusCampanha(data.campanhaAtiva) === 'em_andamento' ? data.campanhaAtiva : null
+  );
+  const concluidasNaCampanha = $derived(
+    campanhaEmAndamento
+      ? data.quadras.filter((q) => q.data_conclusao && q.data_conclusao >= campanhaEmAndamento.data_inicio).map((q) => q.id)
+      : []
+  );
 
   // A21-f1: filtro "TCEs" — esconde o resto e mostra só as quadras que
   // contêm unidades de algum TCE (representação por quadras-contêiner,
@@ -232,66 +250,98 @@
 
 <div class="p-4 space-y-3">
   <CacheInfoBadge cacheInfo={data.cacheInfo} />
-  <!-- Toolbar topo -->
-  <div class="flex flex-wrap items-center gap-2">
-    <select bind:value={colorirPor} disabled={modoTce} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:opacity-50">
-      <option value="conclusao">Cor por conclusão</option>
-      <option value="territorio">Cor por território</option>
-      <option value="densidade_enderecos">Cor por densidade (endereços)</option>
-      <option value="densidade_residencias">Cor por densidade (residências)</option>
+  <!-- Toolbar topo: select flexível + 2 toggles compactos, tudo numa linha
+       só (mobile não pode gastar uma linha inteira num único checkbox). -->
+  <div class="flex items-center gap-1.5">
+    <select bind:value={colorirPor} disabled={modoTce} class="flex-1 min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:opacity-50">
+      <option value="conclusao">Conclusão</option>
+      <option value="territorio">Território</option>
+      <option value="densidade_enderecos">Densidade (endereços)</option>
+      <option value="densidade_residencias">Densidade (residências)</option>
+      {#if campanhaEmAndamento}<option value="campanha">Campanha "{campanhaEmAndamento.nome}"</option>{/if}
     </select>
 
     <button
       type="button"
       onclick={() => { modoTce = !modoTce; tceSelecionado = null; limparSelecaoTce(); }}
-      class="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-lg border"
+      class="flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium rounded-lg border shrink-0"
       class:bg-orange-100={modoTce}
       class:border-orange-300={modoTce}
       class:text-orange-800={modoTce}
       class:border-slate-300={!modoTce}
+      aria-pressed={modoTce}
     >
-      <Icon nome="store" size={14} /> TCEs
-      {#if data.tces.length > 0}<span class="text-[10px] px-1.5 rounded-full bg-orange-200 text-orange-800">{data.tces.length}</span>{/if}
+      <Icon nome="store" size={14} />
+      {#if data.tces.length > 0}<span class="text-[10px] px-1 rounded-full bg-orange-200 text-orange-800">{data.tces.length}</span>{/if}
     </button>
 
-    <label class="flex items-center gap-1.5 text-sm cursor-pointer ml-auto">
-      <input type="checkbox" bind:checked={mostrarRotulos} class="w-4 h-4 rounded" />
-      Rótulos
-    </label>
+    <button
+      type="button"
+      onclick={() => (mostrarRotulos = !mostrarRotulos)}
+      class="flex items-center justify-center w-9 h-9 rounded-lg border shrink-0"
+      class:bg-primary-100={mostrarRotulos}
+      class:border-primary-300={mostrarRotulos}
+      class:text-primary-700={mostrarRotulos}
+      class:border-slate-300={!mostrarRotulos}
+      aria-pressed={mostrarRotulos}
+      aria-label="Mostrar rótulos das quadras no mapa"
+      title="Rótulos"
+    >
+      <Icon nome="tag" size={14} />
+    </button>
   </div>
 
-  <!-- Stats compactos -->
-  <div class="grid grid-cols-3 gap-2 text-center">
-    <div class="rounded-lg bg-slate-50 p-2">
-      <div class="text-lg font-bold">{stats.ativas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">quadras ativas</div>
-    </div>
-    <div class="rounded-lg bg-blue-50 p-2">
-      <div class="text-lg font-bold text-blue-700">{stats.alocadas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">quadras designadas</div>
-    </div>
-    <div class="rounded-lg p-2 {stats.abertas > 0 ? 'bg-amber-50' : 'bg-slate-50'}">
-      <div class="text-lg font-bold {stats.abertas > 0 ? 'text-amber-700' : ''}">{stats.abertas}</div>
-      <div class="text-[10px] text-slate-500 uppercase">designações abertas</div>
-    </div>
-  </div>
+  <!-- Resumo de números: colapsado por padrão (mapa é a estrela da tela;
+       o detalhe fica a 1 toque, não empurrando o mapa pra fora da tela). -->
+  <button
+    type="button"
+    onclick={() => (statsAbertas = !statsAbertas)}
+    class="w-full flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs"
+    aria-expanded={statsAbertas}
+  >
+    <span class="text-slate-600">
+      <strong class="text-slate-900">{stats.ativas}</strong> quadras ·
+      <strong class="text-blue-700">{stats.alocadas}</strong> designadas ·
+      <strong class={stats.abertas > 0 ? 'text-amber-700' : 'text-slate-900'}>{stats.abertas}</strong> abertas ·
+      <strong class="text-green-700">{data.territoriosStatus.concluido}</strong>/<strong class="text-amber-700">{data.territoriosStatus.iniciado}</strong>/<strong>{data.territoriosStatus.pendente}</strong> territ.
+    </span>
+    <Icon nome={statsAbertas ? 'chevron-up' : 'chevron-down'} size={14} class="text-slate-400 shrink-0" />
+  </button>
 
-  <!-- Status por território: "concluídas: N quadras" sozinho não dizia
-       nada — o que importa é o estado do ciclo do território (S-13). -->
-  <div class="grid grid-cols-3 gap-2 text-center">
-    <div class="rounded-lg bg-slate-50 p-2">
-      <div class="text-lg font-bold">{data.territoriosStatus.pendente}</div>
-      <div class="text-[10px] text-slate-500 uppercase">territ. pendentes</div>
+  {#if statsAbertas}
+    <!-- Stats compactos -->
+    <div class="grid grid-cols-3 gap-2 text-center">
+      <div class="rounded-lg bg-slate-50 p-2">
+        <div class="text-lg font-bold">{stats.ativas}</div>
+        <div class="text-[10px] text-slate-500 uppercase">quadras ativas</div>
+      </div>
+      <div class="rounded-lg bg-blue-50 p-2">
+        <div class="text-lg font-bold text-blue-700">{stats.alocadas}</div>
+        <div class="text-[10px] text-slate-500 uppercase">quadras designadas</div>
+      </div>
+      <div class="rounded-lg p-2 {stats.abertas > 0 ? 'bg-amber-50' : 'bg-slate-50'}">
+        <div class="text-lg font-bold {stats.abertas > 0 ? 'text-amber-700' : ''}">{stats.abertas}</div>
+        <div class="text-[10px] text-slate-500 uppercase">designações abertas</div>
+      </div>
     </div>
-    <div class="rounded-lg bg-amber-50 p-2">
-      <div class="text-lg font-bold text-amber-700">{data.territoriosStatus.iniciado}</div>
-      <div class="text-[10px] text-slate-500 uppercase">territ. iniciados</div>
+
+    <!-- Status por território: "concluídas: N quadras" sozinho não dizia
+         nada — o que importa é o estado do ciclo do território (S-13). -->
+    <div class="grid grid-cols-3 gap-2 text-center">
+      <div class="rounded-lg bg-slate-50 p-2">
+        <div class="text-lg font-bold">{data.territoriosStatus.pendente}</div>
+        <div class="text-[10px] text-slate-500 uppercase">territ. pendentes</div>
+      </div>
+      <div class="rounded-lg bg-amber-50 p-2">
+        <div class="text-lg font-bold text-amber-700">{data.territoriosStatus.iniciado}</div>
+        <div class="text-[10px] text-slate-500 uppercase">territ. iniciados</div>
+      </div>
+      <div class="rounded-lg bg-green-50 p-2">
+        <div class="text-lg font-bold text-green-700">{data.territoriosStatus.concluido}</div>
+        <div class="text-[10px] text-slate-500 uppercase">territ. concluídos</div>
+      </div>
     </div>
-    <div class="rounded-lg bg-green-50 p-2">
-      <div class="text-lg font-bold text-green-700">{data.territoriosStatus.concluido}</div>
-      <div class="text-[10px] text-slate-500 uppercase">territ. concluídos</div>
-    </div>
-  </div>
+  {/if}
 
   {#if modoTce}
     <div class="grid gap-3 md:grid-cols-[2fr_1fr]">
@@ -365,6 +415,12 @@
         <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-600/60"></span>&gt;90d</span>
         <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/30"></span>inativa</span>
       </div>
+    {:else if colorirPor === 'campanha' && campanhaEmAndamento}
+      <div class="flex items-center gap-3 text-xs flex-wrap">
+        <span class="font-medium text-slate-600">Campanha "{campanhaEmAndamento.nome}":</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-green-700/75"></span>feita na campanha ({concluidasNaCampanha.length})</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-400/35"></span>resto</span>
+      </div>
     {/if}
 
     <!-- Mapa -->
@@ -375,6 +431,7 @@
       {mostrarRotulos}
       quadrasAlocadas={data.quadrasAlocadas}
       reservadasIds={data.reservadasIds}
+      concluidasCampanha={concluidasNaCampanha}
       bind:selecionadas
       basemap={data.profile?.pref_basemap ?? 'bright'}
       onClick={onClickQuadra}

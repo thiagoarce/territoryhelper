@@ -62,6 +62,10 @@
   $effect(() => {
     const k = selKey + alocadasKey + colorirPor; // força tracking
     void k;
+    // Densidade recalcula os degraus de cor a partir de `quadras` (ver
+    // stopsDensidade) — precisa reler quando os dados mudam, não só
+    // quando o modo/seleção mudam.
+    void quadras;
     if (!mapa || !mapa.getLayer('quadras-fill')) return;
     const expr = buildFillExpr(colorirPor, selecionadas, new Set(quadrasAlocadas));
     mapa.setPaintProperty('quadras-fill', 'fill-color', expr);
@@ -136,6 +140,26 @@
     }
   });
 
+  // Densidade (endereços/residências): os limiares fixos (0/5/15/30/60)
+  // foram calibrados olhando pra um bairro de casas — numa área de prédios
+  // (dezenas de unidades por quadra) tudo passava de 60 e virava um mapa
+  // inteiro da mesma cor mais forte, "não funcionando" visualmente (bug
+  // reportado: "densidade/residências não tá funcionando"). Em vez de
+  // limiar fixo, calcula os 5 degraus como frações do MAIOR valor real
+  // presente nas quadras atuais — se adapta a qualquer congregação/bairro,
+  // não só à que serviu de referência original.
+  function stopsDensidade(valores: number[]): number[] {
+    const max = valores.length > 0 ? Math.max(...valores) : 0;
+    if (max <= 4) return [0, 1, 2, 3, Math.max(max, 4)]; // território minúsculo: degraus de 1 em 1
+    const brutos = [0, max * 0.15, max * 0.35, max * 0.6, max];
+    const stops: number[] = [];
+    for (const v of brutos) {
+      const r = Math.round(v);
+      stops.push(stops.length > 0 && r <= stops[stops.length - 1] ? stops[stops.length - 1] + 1 : r);
+    }
+    return stops;
+  }
+
   function buildFillExpr(modo: ColorirPor, sel: Set<string>, alocadas: Set<string>): any {
     // Default por modo
     let defaultColor: any;
@@ -161,14 +185,16 @@
     } else if (modo === 'territorio') {
       defaultColor = ['get', 'color'];
     } else if (modo === 'densidade_enderecos') {
+      const [s0, s1, s2, s3, s4] = stopsDensidade(quadras.map((q) => q.qtd_locais));
       defaultColor = [
         'interpolate', ['linear'], ['get', 'qtd_locais'],
-        0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
+        s0, '#fef3c7', s1, '#fde68a', s2, '#fcd34d', s3, '#f59e0b', s4, '#dc2626'
       ];
     } else if (modo === 'densidade_residencias') {
+      const [s0, s1, s2, s3, s4] = stopsDensidade(quadras.map((q) => q.qtd_unidades));
       defaultColor = [
         'interpolate', ['linear'], ['get', 'qtd_unidades'],
-        0, '#fef3c7', 5, '#fde68a', 15, '#fcd34d', 30, '#f59e0b', 60, '#dc2626'
+        s0, '#fef3c7', s1, '#fde68a', s2, '#fcd34d', s3, '#f59e0b', s4, '#dc2626'
       ];
     } else if (modo === 'campanha') {
       // "Só a campanha": ignora histórico anterior — concluída no período =
