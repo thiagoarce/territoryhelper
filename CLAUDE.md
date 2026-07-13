@@ -409,7 +409,16 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
 - **Designações** (`/admin/designacoes`) — hub central: lista todas as
   designações pessoais/cartas + arranjos + TCEs num só lugar (filtros por
   tipo/status, concluir/reabrir/cancelar/excluir, link público, realocar
-  quadras não terminadas pra outro arranjo)
+  quadras não terminadas pra outro arranjo). **Arranjo não tem coluna de
+  status** (só `ativo boolean`) — o filtro Concluídas/Canceladas deriva o
+  status no `load` combinando `ativo` com `arranjoAindaVale()`: inativo
+  cujo calendário já tinha vencido = concluída (fluxo normal,
+  `finalizarArranjo`), inativo que ainda "venceria" = cancelada
+  (desativado antes da hora em `/admin/arranjos`). Designação pessoal
+  de TCE (via `designacao_tces`) mostra o chip do TCE no card "Pessoal"
+  e o card solto da seção TCEs resolve o nome do publicador pela
+  designação aberta quando `tces.publicador_id` está vazio (esse fluxo
+  nunca seta essa coluna — só a designação direta via arranjo seta).
 - **TP** (`/admin/tp/*`, navegação em 5 seções — sidebar no desktop, sheet
   no mobile): **Planner** (`/admin/tp`, grade semanal tipo Google Calendar —
   `TpGradeSemana.svelte` — clicar/arrastar num horário vazio cria
