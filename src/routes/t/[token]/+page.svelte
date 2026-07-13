@@ -34,6 +34,18 @@
       icone: 'map-pin' as const
     }));
 
+  // Comércios de TCE viram marcadores também — mesmo tratamento de prédios,
+  // ícone diferente pra distinguir no mapa.
+  const poisTceComercios = (t.tce_comercios ?? [])
+    .filter((c: any) => Array.isArray(c.geo_geojson?.coordinates))
+    .map((c: any) => ({
+      id: 'tce-' + c.id,
+      lat: c.geo_geojson.coordinates[1],
+      lng: c.geo_geojson.coordinates[0],
+      nome: c.nome || `${c.logradouro ?? ''}, ${c.numero ?? ''}`,
+      icone: 'store' as const
+    }));
+
   let mapaRef: { exportarPng: () => Promise<string | null> } | null = $state(null);
 
   const titulo: string = t.tipo === 'arranjo' ? (t.titulo ?? 'Arranjo') : `Território de ${t.titulo}`;
@@ -46,6 +58,10 @@
     }
     if (t.local_endereco) partes.push(`${t.local_endereco}`);
     if ((t.quadras ?? []).length > 0) partes.push(`Quadras: ${(t.quadras as any[]).map((q) => q.id).join(', ')}`);
+    if ((t.tce_comercios ?? []).length > 0) {
+      const nomes = (t.tces ?? []).map((tc: any) => tc.nome).join(', ');
+      partes.push(`Território comercial${nomes ? ' (' + nomes + ')' : ''}: ${t.tce_comercios.length} comércio(s)`);
+    }
     return partes.join('\n');
   }
 
@@ -194,8 +210,8 @@
 
   <div class="p-4 space-y-4 max-w-3xl mx-auto">
     <!-- Mapa -->
-    {#if quadrasMapa.length > 0 || poisPredios.length > 0}
-      <AdminMapa bind:this={mapaRef} quadras={quadrasMapa} pois={poisPredios} altura={420} />
+    {#if quadrasMapa.length > 0 || poisPredios.length > 0 || poisTceComercios.length > 0}
+      <AdminMapa bind:this={mapaRef} quadras={quadrasMapa} pois={[...poisPredios, ...poisTceComercios]} altura={420} />
     {/if}
 
     <!-- Compartilhar -->
@@ -230,7 +246,22 @@
       </div>
     {/if}
 
-    {#if t.tces && t.tces.length > 0}
+    {#if (t.tce_comercios ?? []).length > 0}
+      <div class="rounded-lg border border-orange-200 bg-orange-50 p-3">
+        <div class="text-xs uppercase tracking-wider font-semibold text-orange-700 mb-2">
+          <Icon nome="store" size={14} /> Comércios ({t.tce_comercios.length})
+          {#if (t.tces ?? []).length > 0}· {t.tces.map((tc: any) => tc.nome).join(', ')}{/if}
+        </div>
+        <ul class="divide-y divide-orange-100">
+          {#each t.tce_comercios as c}
+            <li class="py-1.5 text-sm">
+              <span class="font-medium">{c.nome || `${c.logradouro ?? ''}, ${c.numero ?? ''}`}</span>
+              {#if c.nome}<span class="text-xs text-slate-500"> · {c.logradouro ?? ''}, {c.numero ?? ''}</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {:else if t.tces && t.tces.length > 0}
       <div class="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm">
         <Icon nome="store" size={14} /> Território comercial: <strong>{t.tces.map((tc: any) => tc.nome).join(', ')}</strong>
       </div>

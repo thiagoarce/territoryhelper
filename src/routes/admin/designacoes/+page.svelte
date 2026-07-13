@@ -195,6 +195,7 @@
   const arranjosFiltrados = $derived(
     (filtroTipo === 'todas' || filtroTipo === 'arranjo')
       ? data.arranjos.filter((a) => {
+          if (!statusOk(a.status)) return false;
           if (busca.trim()) {
             const b = busca.toLowerCase();
             const alvo = `${a.nome ?? ''} ${a.dirigente_nome ?? ''} ${a.quadras_ids.join(' ')}`.toLowerCase();
@@ -204,6 +205,27 @@
         })
       : []
   );
+
+  // Nome do TCE por id — pro chip no card "Pessoal" (design. só-de-TCE).
+  const nomeTcePorId = $derived(new Map(data.tces.map((t) => [t.id, t.nome])));
+
+  // TCE coberto por uma designação pessoal ABERTA — pro card solto da
+  // seção TCEs não mostrar "(sem publicador)" quando já está designado
+  // (esse fluxo nunca seta tces.publicador_id, só designacao_tces).
+  const designacaoPorTce = $derived.by(() => {
+    const m = new Map<string, DesignacaoHub>();
+    for (const d of data.designacoes) {
+      if (d.status !== 'aberta') continue;
+      for (const tid of d.tces_ids) m.set(tid, d);
+    }
+    return m;
+  });
+
+  function nomeTce(t: TceHub): string {
+    if (t.publicador_nome) return t.publicador_nome;
+    const d = designacaoPorTce.get(t.id);
+    return d ? nomesDesignacao(d) : '(sem publicador)';
+  }
 
   function fmtData(iso: string | null): string {
     if (!iso) return '—';
@@ -289,6 +311,15 @@
                 {/each}
               </div>
             {/if}
+            {#if d.tces_ids.length > 0}
+              <div class="mt-1.5 flex flex-wrap gap-1">
+                {#each d.tces_ids as tid}
+                  <span class="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded truncate max-w-[200px]">
+                    <Icon nome="store" size={14} /> {nomeTcePorId.get(tid) ?? tid}
+                  </span>
+                {/each}
+              </div>
+            {/if}
             {#if d.notas}<div class="mt-1 text-xs italic text-slate-500 truncate">{d.notas}</div>{/if}
           </div>
           <div class="flex flex-col gap-1 items-end shrink-0">
@@ -316,6 +347,9 @@
               <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-100 text-green-700"><Icon nome="tent" size={14} /> Arranjo</span>
               <span class="font-semibold text-sm">{a.nome ?? 'Arranjo'}</span>
               <span class="text-xs text-slate-500"><Icon nome="user" size={14} /> {a.dirigente_nome ?? '(sem dirigente)'}</span>
+              {#if a.status !== 'aberta'}
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{a.status}</span>
+              {/if}
             </div>
             <div class="text-xs text-slate-500 mt-1">
               {#if a.data}{fmtData(a.data)}{/if}
@@ -357,7 +391,7 @@
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-orange-100 text-orange-700"><Icon nome="store" size={14} /> TCE</span>
               <span class="font-semibold text-sm">{t.nome}</span>
-              <span class="text-xs text-slate-500">{t.publicador_nome ?? '(sem publicador)'}</span>
+              <span class="text-xs text-slate-500">{nomeTce(t)}</span>
               {#if t.status !== 'aberto'}
                 <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{t.status}</span>
               {/if}

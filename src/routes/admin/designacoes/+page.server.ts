@@ -39,6 +39,7 @@ export interface ArranjoHub {
   quadras_ids: string[];
   cartas_locais_ids: number[];
   tces_ids: string[];
+  status: 'aberta' | 'concluida' | 'cancelada';
 }
 
 export interface ArranjoDestino {
@@ -50,7 +51,10 @@ export interface ArranjoDestino {
 export const load: PageServerLoad = async ({ locals }) => {
   const ontem = hojeIsoBrasil(-1);
 
-  const [designacoes, publicadores, tceRes, dlRes, arrRes, dpRes] = await Promise.all([
+  const seiseMesesAtras = hojeIsoBrasil(-183);
+  const ARRANJO_COLS = 'id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tces_ids, recorrente, data_fim';
+
+  const [designacoes, publicadores, tceRes, dlRes, arrRes, arrInativosRes, dpRes] = await Promise.all([
     listarDesignacoes(locals.supabase),
     listarPublicadores(locals.supabase),
     locals.supabase
@@ -63,10 +67,20 @@ export const load: PageServerLoad = async ({ locals }) => {
     // "designação" (herdada pelo dirigente)
     locals.supabase
       .from('arranjos')
-      .select('id, nome, data, hora_inicio, local_endereco, dirigente_id, quadras_ids, cartas_locais_ids, tces_ids, recorrente, data_fim')
+      .select(ARRANJO_COLS)
       .eq('ativo', true)
       .or(`data.gte.${ontem},data.is.null,recorrente.eq.true`)
       .order('data'),
+    // Arranjos INATIVOS — alimentam as abas Concluídas/Canceladas do hub.
+    // Janela de 6 meses + limit como teto de segurança (rota roda no
+    // Worker — CLAUDE.md pede pra não trazer histórico ilimitado).
+    locals.supabase
+      .from('arranjos')
+      .select(ARRANJO_COLS)
+      .eq('ativo', false)
+      .or(`data.gte.${seiseMesesAtras},data.is.null,recorrente.eq.true`)
+      .order('data', { ascending: false })
+      .limit(300),
     // Multi-publicador: participantes por designação (líder primeiro)
     locals.supabase.from('designacao_publicadores').select('designacao_id, publicador_id, papel')
   ]);
@@ -99,17 +113,30 @@ export const load: PageServerLoad = async ({ locals }) => {
     predios: prediosPorDesig[d.id] ?? []
   }));
 
-  // Só entra no hub arranjo que tem TERRITÓRIO anexado (quadra/prédio/TCE) —
-  // evento sem território é só agenda, mora em /admin/arranjos.
-  const arranjosBrutos: ArranjoHub[] = ((arrRes.data ?? []) as any[])
-    .filter((a) => arranjoAindaVale(a, ontem))
-    .map((a) => ({
+  const mapArranjo = (a: any): Omit<ArranjoHub, 'status'> => ({
     ...a,
     quadras_ids: a.quadras_ids ?? [],
     cartas_locais_ids: a.cartas_locais_ids ?? [],
     tces_ids: a.tces_ids ?? [],
     dirigente_nome: a.dirigente_id ? nomePorId.get(a.dirigente_id) ?? null : null
+  });
+
+  const arranjosAtivosRaw: ArranjoHub[] = ((arrRes.data ?? []) as any[])
+    .filter((a) => arranjoAindaVale(a, ontem))
+    .map((a) => ({ ...mapArranjo(a), status: 'aberta' as const }));
+
+  // Arranjo não tem coluna própria de status — só `ativo`. Deriva
+  // concluída/cancelada reaproveitando arranjoAindaVale: se o evento já
+  // tinha vencido pelo próprio calendário quando virou inativo, foi
+  // finalizado no fluxo normal (Casa a casa, evento passado) → concluída;
+  // se ainda "venceria" mas está inativo, foi desativado antes da hora
+  // (editar arranjo em /admin/arranjos) → cancelada.
+  const arranjosInativosRaw: ArranjoHub[] = ((arrInativosRes.data ?? []) as any[]).map((a) => ({
+    ...mapArranjo(a),
+    status: arranjoAindaVale(a, ontem) ? ('cancelada' as const) : ('concluida' as const)
   }));
+
+  const arranjosBrutos: ArranjoHub[] = [...arranjosAtivosRaw, ...arranjosInativosRaw];
 
   // E3: TCE recém-criado NÃO é uma designação — só entra no hub quando
   // está de fato designado: publicador direto, designação pessoal aberta
@@ -122,7 +149,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     .select('tce_id, designacoes!inner(status)')
     .eq('designacoes.status', 'aberta');
   const tcesDesignados = new Set((tceDesig ?? []).map((r: any) => r.tce_id as string));
-  for (const a of arranjosBrutos) for (const id of a.tces_ids) tcesDesignados.add(id);
+  for (const a of arranjosAtivosRaw) for (const id of a.tces_ids) tcesDesignados.add(id);
 
   const tces: TceHub[] = ((tceRes.data ?? []) as any[])
     .filter((t) => t.status !== 'aberto' || t.publicador_id || tcesDesignados.has(t.id))
@@ -139,7 +166,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // Destinos possíveis pra realocar quadras — QUALQUER arranjo futuro ativo,
   // com ou sem território (pode estar vazio esperando receber as quadras).
-  const arranjosDestino: ArranjoDestino[] = arranjosBrutos.map((a) => ({
+  // Só os ativos: arranjo concluído/cancelado não pode virar destino.
+  const arranjosDestino: ArranjoDestino[] = arranjosAtivosRaw.map((a) => ({
     id: a.id,
     nome: a.nome,
     data: a.data
