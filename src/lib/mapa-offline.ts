@@ -8,9 +8,12 @@
 // trocam o estilo do OpenFreeMap por um estilo local que lê os tiles do
 // arquivo baixado (protocolo pmtiles:// do MapLibre).
 //
-// Invariante de segurança visual: ONLINE nada muda — a troca de estilo
-// só acontece com navigator.onLine === false E arquivo baixado. Sem
-// arquivo, offline fica como hoje (fundo vazio, overlays desenham).
+// Invariante de segurança visual: ONLINE o style é o MESMO de sempre
+// (só que buscado com timeout + cópia local em IndexedDB — ver
+// estiloOnlineComCache — pra rede travada na abertura não deixar o mapa
+// cinza pra sempre). A troca pro estilo pmtiles só acontece com
+// navigator.onLine === false E arquivo baixado. Offline sem arquivo usa
+// a cópia do style se houver (fundo vazio, overlays desenham).
 //
 // Glifos (fontes dos rótulos): o MapLibre busca por HTTP — offline isso
 // falharia. No download do mapa também baixamos os ranges latinos das
@@ -33,9 +36,13 @@ function urlArquivoBucket(): string {
 
 const CHAVE_META = 'territoryhelper:mapa-offline';
 const DB_NAME = 'territoryhelper-mapa';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_ARQUIVO = 'arquivo';
 const STORE_GLIFOS = 'glifos';
+// Cópia do style JSON do OpenFreeMap (v2) — fallback quando o fetch do
+// style trava/falha na abertura (rede instável), pro mapa não ficar
+// cinza pra sempre esperando um style que nunca chega.
+const STORE_ESTILOS = 'estilos';
 
 // Fontes/ranges que o estilo light do protomaps usa pra rótulos latinos.
 const FONTES = ['Noto Sans Regular', 'Noto Sans Medium', 'Noto Sans Italic'];
@@ -63,6 +70,7 @@ function abrirDb(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_ARQUIVO)) db.createObjectStore(STORE_ARQUIVO);
       if (!db.objectStoreNames.contains(STORE_GLIFOS)) db.createObjectStore(STORE_GLIFOS);
+      if (!db.objectStoreNames.contains(STORE_ESTILOS)) db.createObjectStore(STORE_ESTILOS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -217,11 +225,48 @@ function estiloOffline(): any {
   };
 }
 
+// Busca o style JSON com timeout e mantém uma cópia em IndexedDB.
+// Motivo (bug real no iPhone): abrir o PWA com rede instável deixava o
+// fetch do style pendurado — o MapLibre não tem retry, então o mapa
+// ficava CINZA pra sempre (nem os overlays desenham sem style) até o
+// usuário trocar de tela e voltar (remonta o mapa, refaz o fetch).
+// Com cópia guardada, espera pouco pela rede e cai pra cópia; sem
+// cópia (primeira visita), espera mais e, falhando, devolve a URL
+// (comportamento nativo de sempre). O style do OpenFreeMap só tem URLs
+// ABSOLUTAS (sources/glyphs/sprite), então passar o objeto é seguro.
+async function estiloOnlineComCache(urlOnline: string): Promise<any> {
+  const guardadoP = ler<any>(STORE_ESTILOS, urlOnline).catch(() => null);
+  try {
+    const temCopia = !!(await guardadoP);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), temCopia ? 4000 : 12000);
+    let res: Response;
+    try {
+      res = await fetch(urlOnline, { signal: ctrl.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) throw new Error(`style http ${res.status}`);
+    const estilo = await res.json();
+    gravar(STORE_ESTILOS, urlOnline, estilo).catch(() => {});
+    return estilo;
+  } catch {
+    return (await guardadoP) ?? urlOnline;
+  }
+}
+
 // Decisor central usado pelos componentes de mapa na CONSTRUÇÃO:
-// online → a URL de sempre (zero mudança de comportamento);
-// offline com arquivo baixado → estilo local pmtiles.
+// online → o MESMO style de sempre, mas buscado com timeout + cópia
+//   local (ver estiloOnlineComCache) pra rede instável não deixar o
+//   mapa cinza pra sempre;
+// offline com arquivo baixado → estilo local pmtiles;
+// offline sem arquivo → a cópia guardada do style, se houver (fundo
+//   não carrega sem rede, mas os OVERLAYS — quadras/pinos — desenham).
 export async function estiloDoMapa(urlOnline: string): Promise<any> {
-  if (typeof navigator === 'undefined' || navigator.onLine !== false) return urlOnline;
-  const ok = await prepararMapaOffline();
-  return ok ? estiloOffline() : urlOnline;
+  if (typeof navigator === 'undefined' || typeof indexedDB === 'undefined') return urlOnline;
+  if (navigator.onLine === false) {
+    const ok = await prepararMapaOffline();
+    if (ok) return estiloOffline();
+  }
+  return estiloOnlineComCache(urlOnline);
 }

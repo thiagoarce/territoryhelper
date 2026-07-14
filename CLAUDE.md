@@ -137,9 +137,16 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
   pra IndexedDB em /perfil. `estiloDoMapa(urlOnline)` é o decisor usado
-  pelos 4 componentes de mapa na construção: ONLINE devolve a URL
-  intocada (zero mudança), offline+arquivo devolve estilo protomaps
-  local. É o DONO ÚNICO do `addProtocol('pmtiles')` (global, o último
+  pelos 4 componentes de mapa na construção: ONLINE busca o style JSON
+  com timeout + cópia em IndexedDB (`estiloOnlineComCache` — rede
+  travada na abertura cai pra cópia em vez de deixar o mapa cinza pra
+  sempre; MapLibre não tem retry de style), offline+arquivo devolve
+  estilo protomaps local, offline sem arquivo usa a cópia do style se
+  houver (overlays desenham sobre fundo vazio). O CSS do maplibre é
+  BUNDLADO (`import 'maplibre-gl/dist/maplibre-gl.css'` nos 4
+  componentes + CartaoTerritorio) — nunca voltar pro `<link>` do unpkg
+  em runtime (rede instável deixava o mapa quebrado/em branco e a
+  versão pinada 4.7.1 nem batia com o maplibre 5.x instalado). É o DONO ÚNICO do `addProtocol('pmtiles')` (global, o último
   registro ganha — nenhum componente deve registrar outro) e serve
   glifos do IndexedDB via protocolo `thassets://`. Deps: `pmtiles` +
   `@protomaps/basemaps`.

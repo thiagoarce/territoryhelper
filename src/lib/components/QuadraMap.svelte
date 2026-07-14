@@ -1,4 +1,5 @@
 <script lang="ts">
+  import 'maplibre-gl/dist/maplibre-gl.css';
   import { onMount, onDestroy, mount } from 'svelte';
   import { estiloDoMapa } from '$lib/mapa-offline';
   import type { LocalComUnidades } from '$lib/server/queries';
@@ -142,19 +143,11 @@
     const maplibre = maplibreModule.default ?? maplibreModule;
     maplibreRef = maplibre;
 
-    // CSS via CDN — economiza ~80KB no bundle
-    if (!document.querySelector('link[data-maplibre-css]')) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
-      link.setAttribute('data-maplibre-css', '');
-      document.head.appendChild(link);
-    }
-
     // OpenFreeMap — vector tiles 100% free, sem API key, sem limites.
     // Estilos disponíveis: liberty (colorido), bright, positron (cinza claro).
     // E4: offline com o mapa do município baixado, estiloDoMapa troca
-    // pro estilo pmtiles local (online devolve a URL intocada). O
+    // pro estilo pmtiles local (online busca o style com timeout +
+    // cópia local — rede travada não deixa o mapa cinza). O
     // protocolo pmtiles é registrado SÓ em $lib/mapa-offline — não
     // registrar outro aqui (addProtocol é global, o último ganha).
     const style = await estiloDoMapa('https://tiles.openfreemap.org/styles/positron');

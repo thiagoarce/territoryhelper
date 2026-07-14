@@ -1,4 +1,5 @@
 <script lang="ts">
+  import 'maplibre-gl/dist/maplibre-gl.css';
   import { estiloDoMapa } from '$lib/mapa-offline';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
@@ -287,14 +288,6 @@
   onMount(async () => {
     const mod = await import('maplibre-gl');
     maplibre = mod.default ?? mod;
-    if (!document.querySelector('link[data-maplibre-css]')) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
-      link.setAttribute('data-maplibre-css', '');
-      document.head.appendChild(link);
-    }
-
     mapa = new maplibre.Map({
       container,
       style: await estiloDoMapa(BASEMAPS[basemap] ?? BASEMAPS.positron),
