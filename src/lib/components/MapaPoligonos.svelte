@@ -1,6 +1,7 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
-  import { estiloDoMapa } from '$lib/mapa-offline';
+  import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import type { LocalComGeo } from '../../routes/admin/poligonos/+page.server';
@@ -60,6 +61,7 @@
 
   let container: HTMLDivElement;
   let mapa = $state<any>(null);
+  let carregamento: ReturnType<typeof estadoCarregamentoMapa> | null = $state(null);
   let maplibre: any = null;
   let draw: any = null; // terra-draw instance
 
@@ -286,16 +288,14 @@
   }
 
   onMount(async () => {
-    const mod = await import('maplibre-gl');
-    maplibre = mod.default ?? mod;
-    mapa = new maplibre.Map({
+    const { maplibre: ml, mapa: m } = await criarMapaBase({
       container,
-      style: await estiloDoMapa(BASEMAPS[basemap] ?? BASEMAPS.positron),
-      center: [-34.863, -7.115],
-      zoom: 14,
-      attributionControl: { compact: true } as any
+      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
+      zoom: 14
     });
-    mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
+    maplibre = ml;
+    mapa = m;
+    carregamento = estadoCarregamentoMapa(mapa);
 
     function setupCamadas() {
       if (!mapa.getStyle()) return;
@@ -490,8 +490,14 @@
 
   onDestroy(() => {
     if (draw) try { draw.stop(); } catch {}
+    carregamento?.destruir();
     if (mapa) try { mapa.remove(); } catch {}
   });
 </script>
 
-<div bind:this={container} class="rounded-xl overflow-hidden border border-slate-200 shadow-sm" style:height={altura + 'px'}></div>
+<div class="relative">
+  <div bind:this={container} class="rounded-xl overflow-hidden border border-slate-200 shadow-sm" style:height={altura + 'px'}></div>
+  {#if carregamento?.carregando}
+    <MapaCarregando demorando={carregamento.demorando} travado={carregamento.travado} />
+  {/if}
+</div>

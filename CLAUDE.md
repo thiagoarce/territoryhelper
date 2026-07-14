@@ -135,6 +135,15 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   construir a análise em cima dele (proxy razoável, não perfeito — bulk
   no admin/backfill grava `marcado_em=now()` na hora do registro, não
   necessariamente a hora do trabalho de campo).
+- `src/lib/mapa-base.svelte.ts` — base compartilhada dos 4 componentes de
+  mapa (`MapaAdmin`, `AdminMapa`, `MapaPoligonos`, `QuadraMap`):
+  `criarMapaBase()` (import dinâmico do maplibre-gl + `new maplibre.Map`
+  + NavigationControl — antes cada componente repetia esse bloco) e
+  `estadoCarregamentoMapa()` (runes: `carregando`/`demorando`/`travado`,
+  liga `MapaCarregando.svelte` como overlay enquanto o style não chega —
+  sem isso a abertura com rede lenta parecia "mapa quebrado" em vez de
+  "carregando"). Cada componente ainda é dono das PRÓPRIAS camadas
+  (fill/line/source) — só a criação da instância é compartilhada.
 - `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez

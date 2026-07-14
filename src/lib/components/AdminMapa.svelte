@@ -1,6 +1,7 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
-  import { estiloDoMapa } from '$lib/mapa-offline';
+  import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy, mount } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
@@ -85,6 +86,7 @@
 
   let container: HTMLDivElement;
   let mapa: any = null;
+  let carregamento: ReturnType<typeof estadoCarregamentoMapa> | null = $state(null);
   let carregado = $state(false);
   let userMarker: any = null;
   let watchId: number | null = null;
@@ -239,19 +241,16 @@
   });
 
   onMount(async () => {
-    const maplibreModule = await import('maplibre-gl');
-    const maplibre = maplibreModule.default ?? maplibreModule;
-    maplibreRef = maplibre;
-    mapa = new maplibre.Map({
+    const { maplibre, mapa: m } = await criarMapaBase({
       container,
-      style: await estiloDoMapa(BASEMAPS[basemap] ?? BASEMAPS.positron),
-      center: [-34.863, -7.115],
+      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
       zoom: 14,
-      attributionControl: { compact: true } as any,
       // habilita screenshot via toDataURL (perf negligível pra este uso)
-      ...({ preserveDrawingBuffer: true } as any)
+      extra: { preserveDrawingBuffer: true }
     });
-    mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
+    maplibreRef = maplibre;
+    mapa = m;
+    carregamento = estadoCarregamentoMapa(mapa);
 
     mapa.on('load', () => {
       // Aglutina todas as quadras como uma FeatureCollection
@@ -398,6 +397,7 @@
 
   onDestroy(() => {
     if (watchId != null) try { navigator.geolocation.clearWatch(watchId); } catch {}
+    carregamento?.destruir();
     if (mapa) try { mapa.remove(); } catch {}
   });
 </script>
@@ -408,6 +408,9 @@
     class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
     style:height={altura + 'px'}
   ></div>
+  {#if carregamento?.carregando}
+    <MapaCarregando demorando={carregamento.demorando} travado={carregamento.travado} />
+  {/if}
 
   {#if legenda && carregado}
     <div class="absolute bottom-2 left-2 z-10 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-sm px-2 py-1.5 text-[11px] space-y-1 pointer-events-none">

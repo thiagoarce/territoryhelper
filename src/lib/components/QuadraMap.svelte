@@ -1,7 +1,8 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { onMount, onDestroy, mount } from 'svelte';
-  import { estiloDoMapa } from '$lib/mapa-offline';
+  import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import type { LocalComUnidades } from '$lib/server/queries';
   import Icon, { type NomeIcone } from '$lib/ui/Icon.svelte';
 
@@ -23,6 +24,7 @@
   let container: HTMLDivElement;
   let mapa: any = null;
   let maplibreRef: any = null;
+  let carregamento: ReturnType<typeof estadoCarregamentoMapa> | null = $state(null);
   let userMarker: any = null;
   let localMarkers: any[] = [];
   let watchId: number | null = null;
@@ -138,29 +140,21 @@
   });
 
   onMount(async () => {
-    // MapLibre + Protomaps via import dinâmico (não carrega no SSR)
-    const maplibreModule = await import('maplibre-gl');
-    const maplibre = maplibreModule.default ?? maplibreModule;
-    maplibreRef = maplibre;
-
     // OpenFreeMap — vector tiles 100% free, sem API key, sem limites.
-    // Estilos disponíveis: liberty (colorido), bright, positron (cinza claro).
-    // E4: offline com o mapa do município baixado, estiloDoMapa troca
+    // E4: offline com o mapa do município baixado, criarMapaBase troca
     // pro estilo pmtiles local (online busca o style com timeout +
     // cópia local — rede travada não deixa o mapa cinza). O
     // protocolo pmtiles é registrado SÓ em $lib/mapa-offline — não
     // registrar outro aqui (addProtocol é global, o último ganha).
-    const style = await estiloDoMapa('https://tiles.openfreemap.org/styles/positron');
-
-    mapa = new maplibre.Map({
+    const { maplibre, mapa: m } = await criarMapaBase({
       container,
-      style: style as any,
-      center: [-34.863, -7.115],
+      styleUrl: 'https://tiles.openfreemap.org/styles/positron',
       zoom: 15,
-      attributionControl: { compact: true } as any
+      navControl: { visualizePitch: false }
     });
-
-    mapa.addControl(new maplibre.NavigationControl({ visualizePitch: false }), 'top-right');
+    maplibreRef = maplibre;
+    mapa = m;
+    carregamento = estadoCarregamentoMapa(mapa);
 
     mapa.on('load', () => {
       // Polígono da quadra
@@ -256,6 +250,7 @@
     if (watchId != null) {
       try { navigator.geolocation.clearWatch(watchId); } catch {}
     }
+    carregamento?.destruir();
     if (mapa) {
       try { mapa.remove(); } catch {}
       mapa = null;
@@ -263,8 +258,13 @@
   });
 </script>
 
-<div
-  bind:this={container}
-  class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
-  style:height={altura + 'px'}
-></div>
+<div class="relative">
+  <div
+    bind:this={container}
+    class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
+    style:height={altura + 'px'}
+  ></div>
+  {#if carregamento?.carregando}
+    <MapaCarregando demorando={carregamento.demorando} travado={carregamento.travado} />
+  {/if}
+</div>

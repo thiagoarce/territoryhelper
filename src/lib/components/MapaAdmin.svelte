@@ -1,6 +1,7 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
-  import { estiloDoMapa } from '$lib/mapa-offline';
+  import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
@@ -44,8 +45,10 @@
 
   let container: HTMLDivElement;
   let mapa = $state<any>(null);
+  let maplibreRef: any = null;
   let userMarker: any = null;
   let watchId: number | null = null;
+  let carregamento: ReturnType<typeof estadoCarregamentoMapa> | null = $state(null);
 
   // Expõe getCanvas pra export PNG
   export function exportarPng(): string | null {
@@ -217,17 +220,15 @@
   }
 
   onMount(async () => {
-    const mod = await import('maplibre-gl');
-    const maplibre = mod.default ?? mod;
-    mapa = new maplibre.Map({
+    const { maplibre, mapa: m } = await criarMapaBase({
       container,
-      style: await estiloDoMapa(BASEMAPS[basemap] ?? BASEMAPS.positron),
-      center: [-34.863, -7.115],
+      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
       zoom: 14,
-      attributionControl: { compact: true } as any,
-      ...({ preserveDrawingBuffer: true } as any)
+      extra: { preserveDrawingBuffer: true }
     });
-    mapa.addControl(new maplibre.NavigationControl({}), 'top-right');
+    maplibreRef = maplibre;
+    mapa = m;
+    carregamento = estadoCarregamentoMapa(mapa);
 
     function setupCamadas() {
       if (!mapa.getStyle()) return; // style ainda não pronto
@@ -476,7 +477,7 @@
       let popupQuadraId: string | null = null; // qual quadra o popup tá mostrando agora
       function mostrarPopup(q: any, lngLat: any, fromClick: boolean) {
         if (popup) popup.remove();
-        popup = new maplibre.Popup({
+        popup = new maplibreRef.Popup({
           closeButton: fromClick,
           closeOnClick: false,
           offset: 8
@@ -524,7 +525,7 @@
           if (!q.poly_geojson) continue;
           const coords = (q.poly_geojson as any).coordinates?.[0] || [];
           for (const c of coords) {
-            if (!bounds) bounds = new maplibre.LngLatBounds(c as any, c as any);
+            if (!bounds) bounds = new maplibreRef.LngLatBounds(c as any, c as any);
             else bounds.extend(c as any);
           }
         }
@@ -538,7 +539,7 @@
           if (!userMarker) {
             const el = document.createElement('div');
             el.style.cssText = `width:18px;height:18px;background:#2563eb;border:3px solid white;border-radius:50%;box-shadow:0 0 0 4px rgba(37,99,235,.3)`;
-            userMarker = new maplibre.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(mapa);
+            userMarker = new maplibreRef.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(mapa);
           } else {
             userMarker.setLngLat([longitude, latitude]);
           }
@@ -549,12 +550,18 @@
 
   onDestroy(() => {
     if (watchId != null) try { navigator.geolocation.clearWatch(watchId); } catch {}
+    carregamento?.destruir();
     if (mapa) try { mapa.remove(); } catch {}
   });
 </script>
 
-<div
-  bind:this={container}
-  class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
-  style:height={altura + 'px'}
-></div>
+<div class="relative">
+  <div
+    bind:this={container}
+    class="rounded-xl overflow-hidden border border-slate-200 shadow-sm"
+    style:height={altura + 'px'}
+  ></div>
+  {#if carregamento?.carregando}
+    <MapaCarregando demorando={carregamento.demorando} travado={carregamento.travado} />
+  {/if}
+</div>
