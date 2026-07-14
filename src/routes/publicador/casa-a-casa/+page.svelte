@@ -5,10 +5,12 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
+  import EstacionarPertoSheet from '$lib/components/EstacionarPertoSheet.svelte';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/ui/toast.svelte';
   import { hojeIsoLocal } from '$lib/utils/data';
+  import { centroidePoligono } from '$lib/utils/geo';
   import type { QuadraGeo } from '$lib/server/queries';
 
   interface ArranjoQueDirijo {
@@ -123,6 +125,33 @@
     !data.arranjoQueDirijo && data.minhasPartes.length === 0 && data.territorioPessoal.length === 0
       && data.territorioPessoalTces.length === 0
   );
+
+  // "Estacionar perto" — um sheet só, reusado pelas seções de mapa
+  // (Seu grupo / Território pessoal). `secaoEstacionar` decide qual
+  // AdminMapa recebe os pinos encontrados (não dá pra jogar os pontos
+  // em TODOS os mapas da tela — cada um tem fitBounds próprio, um pino
+  // de estacionamento longe da "outra" seção puxaria o zoom dela pra
+  // fora do território sem sentido).
+  let sheetEstacionar = $state(false);
+  let poisEstacionar = $state<{ id: string; lat: number; lng: number; nome: string; icone: any; url?: string }[]>([]);
+  let centroEstacionar = $state<{ lat: number; lng: number } | null>(null);
+  let secaoEstacionar = $state<'grupo' | 'pessoal' | null>(null);
+
+  function centroDeQuadras(quadras: { poly_geojson: unknown }[]): { lat: number; lng: number } | null {
+    const centros = quadras.map((q) => centroidePoligono(q.poly_geojson)).filter(Boolean) as { lat: number; lng: number }[];
+    if (centros.length === 0) return null;
+    return {
+      lat: centros.reduce((s, c) => s + c.lat, 0) / centros.length,
+      lng: centros.reduce((s, c) => s + c.lng, 0) / centros.length
+    };
+  }
+
+  function abrirEstacionar(secao: 'grupo' | 'pessoal', quadras: { poly_geojson: unknown }[]) {
+    secaoEstacionar = secao;
+    centroEstacionar = centroDeQuadras(quadras);
+    poisEstacionar = [];
+    sheetEstacionar = true;
+  }
 
   // Modal "todas as designações" — o featured (arranjoQueDirijo) + os outros,
   // pra não encher a tela mas ainda dar acesso ao detalhe completo.
@@ -320,8 +349,18 @@
       <div class="text-xs text-primary-700 font-medium mb-1.5">{fmtDia(a.data)}</div>
       {#if a.quadrasGeo.length > 0}
         <Card padding="sm">
-          <AdminMapa quadras={a.quadrasGeo} altura={300} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={(q) => abrirAcaoQuadra(q, a)} />
+          <AdminMapa
+            quadras={a.quadrasGeo}
+            altura={300}
+            destacarIds={a.quadras_ids}
+            basemap={data.profile?.pref_basemap ?? 'positron'}
+            onQuadraClick={(q) => abrirAcaoQuadra(q, a)}
+            pois={secaoEstacionar === 'grupo' ? poisEstacionar : []}
+          />
         </Card>
+        <button type="button" onclick={() => abrirEstacionar('grupo', a.quadrasGeo)} class="mt-1.5 text-xs text-primary-700 hover:underline">
+          <Icon nome="parking" size={14} /> Estacionar perto
+        </button>
       {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
         {#each a.quadras_ids as qid}
@@ -398,8 +437,18 @@
       <h2 class="text-xs uppercase tracking-wider font-bold text-slate-600 mb-2 flex items-center gap-2"><Icon nome="target" size={14} /> Território pessoal</h2>
       {#if data.territorioPessoal.length > 0}
         <Card padding="sm">
-          <AdminMapa quadras={data.territorioPessoal} altura={300} destacarIds={data.territorioPessoal.map((q) => q.id)} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
+          <AdminMapa
+            quadras={data.territorioPessoal}
+            altura={300}
+            destacarIds={data.territorioPessoal.map((q) => q.id)}
+            basemap={data.profile?.pref_basemap ?? 'positron'}
+            onQuadraClick={abrirQuadra}
+            pois={secaoEstacionar === 'pessoal' ? poisEstacionar : []}
+          />
         </Card>
+        <button type="button" onclick={() => abrirEstacionar('pessoal', data.territorioPessoal)} class="mt-1.5 text-xs text-slate-600 hover:underline">
+          <Icon nome="parking" size={14} /> Estacionar perto
+        </button>
       {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
         {#each data.territorioPessoal as q (q.id)}
@@ -422,6 +471,8 @@
 
 <!-- Modal "todas as designações" — detalhe completo, o card acima já mostra só o próximo -->
 <!-- A2: "Finalizar designação" com conferência por quadra -->
+<EstacionarPertoSheet bind:open={sheetEstacionar} centro={centroEstacionar} bind:pois={poisEstacionar} />
+
 <BottomSheet bind:open={sheetFinalizar} title={finalizarAlvo ? `Finalizar — ${finalizarAlvo.nome}` : ''}>
   {#if finalizarAlvo}
     <div class="space-y-1.5 mb-3">

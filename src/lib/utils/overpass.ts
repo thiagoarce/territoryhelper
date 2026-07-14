@@ -3,7 +3,7 @@
 
 export type CategoriaPOI = 'parking' | 'pharmacy' | 'square' | 'fuel' | 'supermarket' | 'bakery';
 
-interface POI {
+export interface POI {
   id: string;
   lat: number;
   lng: number;
@@ -37,12 +37,23 @@ export async function buscarPOIs(
   const blocos = categorias.map((c) => `node${queryPorCategoria[c]}(around:${raioMetros},${lat},${lng});`).join('');
   const query = `[out:json][timeout:10];(${blocos});out body;`;
 
+  // Timeout no fetch em si (o `[timeout:10]` da query acima só limita a
+  // EXECUÇÃO no servidor Overpass — sem isso, conexão travada/resposta
+  // que nunca chega deixava o botão "carregando" pra sempre).
   const url = 'https://overpass-api.de/api/interpreter';
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(query)
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query),
+      signal: ctrl.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!resp.ok) throw new Error('Overpass falhou: ' + resp.status);
   const json: any = await resp.json();
 

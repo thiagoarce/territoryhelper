@@ -2,6 +2,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import CartaoTerritorio, { type QuadraContexto } from '$lib/components/CartaoTerritorio.svelte';
+  import EstacionarPertoSheet from '$lib/components/EstacionarPertoSheet.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Toaster from '$lib/ui/Toaster.svelte';
   import Button from '$lib/ui/Button.svelte';
@@ -45,6 +46,32 @@
       nome: c.nome || `${c.logradouro ?? ''}, ${c.numero ?? ''}`,
       icone: 'store' as const
     }));
+
+  // Centro de referência pra "Estacionar perto" — média de TODOS os
+  // pontos disponíveis nesse token (quadras via centroide do polígono,
+  // prédios/comércios de TCE via ponto direto, TCE via centroide do
+  // hull) — funciona pra qualquer tipo de compartilhamento (quadra,
+  // cartas ou TCE), não só o caso com quadras.
+  const centroEstacionar = ((): { lat: number; lng: number } | null => {
+    const pontos: [number, number][] = [];
+    for (const q of (t.quadras ?? []) as any[]) {
+      const anel = q.poly_geojson?.coordinates?.[0] as [number, number][] | undefined;
+      if (anel?.length) pontos.push([anel.reduce((s, p) => s + p[0], 0) / anel.length, anel.reduce((s, p) => s + p[1], 0) / anel.length]);
+    }
+    for (const tc of (t.tces ?? []) as any[]) {
+      const anel = tc.poly_geojson?.coordinates?.[0] as [number, number][] | undefined;
+      if (anel?.length) pontos.push([anel.reduce((s, p) => s + p[0], 0) / anel.length, anel.reduce((s, p) => s + p[1], 0) / anel.length]);
+    }
+    for (const p of poisPredios) pontos.push([p.lng, p.lat]);
+    for (const c of poisTceComercios) pontos.push([c.lng, c.lat]);
+    if (pontos.length === 0) return null;
+    return {
+      lat: pontos.reduce((s, p) => s + p[1], 0) / pontos.length,
+      lng: pontos.reduce((s, p) => s + p[0], 0) / pontos.length
+    };
+  })();
+  let sheetEstacionar = $state(false);
+  let poisEstacionar = $state<{ id: string; lat: number; lng: number; nome: string; icone: any; url?: string }[]>([]);
 
   let mapaRef: { exportarPng: () => Promise<string | null> } | null = $state(null);
 
@@ -210,8 +237,8 @@
 
   <div class="p-4 space-y-4 max-w-3xl mx-auto">
     <!-- Mapa -->
-    {#if quadrasMapa.length > 0 || poisPredios.length > 0 || poisTceComercios.length > 0}
-      <AdminMapa bind:this={mapaRef} quadras={quadrasMapa} pois={[...poisPredios, ...poisTceComercios]} altura={420} />
+    {#if quadrasMapa.length > 0 || poisPredios.length > 0 || poisTceComercios.length > 0 || poisEstacionar.length > 0}
+      <AdminMapa bind:this={mapaRef} quadras={quadrasMapa} pois={[...poisPredios, ...poisTceComercios, ...poisEstacionar]} altura={420} />
     {/if}
 
     <!-- Compartilhar -->
@@ -219,6 +246,9 @@
       <Button variant="primary" onclick={compartilharComImagem} class="flex-1"><Icon nome="share" size={14} /> Compartilhar com imagem</Button>
       <Button variant="secondary" onclick={compartilharLink} class="flex-1"><Icon nome="link" size={14} /> Só o link</Button>
     </div>
+    <Button variant="secondary" onclick={() => (sheetEstacionar = true)} class="w-full">
+      <Icon nome="parking" size={14} /> Estacionar perto
+    </Button>
 
     <!-- Lista textual (pra quem não carrega o mapa) -->
     {#if (t.quadras ?? []).length > 0}
@@ -277,6 +307,8 @@
 {#if contextoQuadras.length > 0}
   <CartaoTerritorio bind:this={cartaoRef} quadras={contextoQuadras} {destaqueIds} />
 {/if}
+
+<EstacionarPertoSheet bind:open={sheetEstacionar} centro={centroEstacionar} bind:pois={poisEstacionar} />
 
 <BottomSheet bind:open={sheetCartao} title="Cartão de território">
   <div class="space-y-3">

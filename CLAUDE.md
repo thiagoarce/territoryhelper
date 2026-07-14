@@ -59,7 +59,19 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   header global — fallback in-app de PUSH-A, funciona sem push;
   "Limpar lidas" apaga as PRÓPRIAS notificações já lidas via
   `POST /api/notificacoes {limparLidas:true}` — RLS de DELETE própria,
-  migration 088; não-lida nunca é apagada por aqui)
+  migration 088; não-lida nunca é apagada por aqui),
+  `EstacionarPertoSheet.svelte` ("Estacionar perto" do app antigo,
+  reconstruído — `$lib/utils/overpass.ts` já existia pronto mas órfão,
+  nenhuma tela usava; busca POIs via Overpass/OSM num raio de 800m de
+  um centro, categorias estacionamento/praça/farmácia/padaria/posto/
+  mercado, clique num pino abre rota no Google Maps via `pois[].url`
+  do `AdminMapa`. Usado em `/t/[token]` — centro é a média de TODOS os
+  pontos do token (quadras/TCE via centroide do polígono, prédios/
+  comércios via ponto direto, funciona pra qualquer tipo de
+  compartilhamento) — e em `/publicador/casa-a-casa` (Seu grupo e
+  Território pessoal, cada seção com seu próprio centro/pinos — pinos
+  de uma seção NUNCA vazam pro `AdminMapa` de outra, senão o fitBounds
+  de um puxa o zoom do outro pro lugar errado)
 - `src/lib/erros-client.ts` — telemetria de erros do CLIENT: `instalarCapturaDeErros`
   (chamado no root layout, só com sessão conhecida) registra
   `window.onerror`/`unhandledrejection` e manda pra `erros_client`
