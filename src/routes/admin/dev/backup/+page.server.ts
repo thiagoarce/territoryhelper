@@ -63,5 +63,24 @@ export const actions: Actions = {
     const { error } = await supabaseAdmin.rpc('exec_sql' as any, { query: setvals });
     if (error) return fail(400, { erro: 'Falhou realinhar sequences: ' + error.message });
     return { ok: true };
+  },
+
+  // Higiene de dados: notificacoes é append-only e o Postgres free tem
+  // 500MB — sem limpeza, cresce pra sempre. Só apaga LIDA e antiga (nunca
+  // mexe em não-lida, mesmo velha, pra não sumir um aviso que o
+  // publicador ainda não viu). supabaseAdmin porque não há policy de
+  // DELETE cross-user em notificacoes (RLS só cobre o dono).
+  limparNotificacoesAntigas: async ({ locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+
+    const limite = new Date(Date.now() - 90 * 86400000).toISOString();
+    const { error, count } = await supabaseAdmin
+      .from('notificacoes')
+      .delete({ count: 'exact' })
+      .not('lida_em', 'is', null)
+      .lt('lida_em', limite);
+    if (error) return fail(400, { erro: 'Falhou limpar notificações: ' + error.message });
+    return { ok: true, removidas: count ?? 0 };
   }
 };

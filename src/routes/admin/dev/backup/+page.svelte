@@ -100,6 +100,28 @@
   let arquivoInput = $state<HTMLInputElement | null>(null);
   let snapshotEscolhido = $state<string | null>(null);
 
+  // ── Higiene de dados ─────────────────────────────────────────────────
+  let limpandoNotificacoes = $state(false);
+  let resultadoLimpeza = $state<string | null>(null);
+  async function limparNotificacoesAntigas() {
+    limpandoNotificacoes = true;
+    resultadoLimpeza = null;
+    try {
+      const res = await fetch('?/limparNotificacoesAntigas', { method: 'POST', body: new FormData() });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') {
+        resultadoLimpeza = `${parsed.data.removidas} notificação(ões) removida(s).`;
+        toast.success('Limpeza concluída');
+      } else {
+        toast.error(String(parsed.data?.erro || 'Falhou limpar'));
+      }
+    } catch (e: any) {
+      toast.error('Erro: ' + (e?.message || e));
+    } finally {
+      limpandoNotificacoes = false;
+    }
+  }
+
   async function postAction(action: string, fd: FormData): Promise<{ ok: boolean; erro?: string }> {
     const res = await fetch(action, { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
@@ -297,6 +319,21 @@
           </div>
         {/each}
       </div>
+    {/if}
+  </Card>
+
+  <Card padding="md">
+    <h2 class="font-semibold mb-1">Higiene de dados</h2>
+    <p class="text-xs text-slate-500 mb-3">
+      <strong>notificacoes</strong> é append-only e só cresce — o Postgres
+      do plano free tem 500MB. Apaga só notificação JÁ LIDA com mais de
+      90 dias; não-lida nunca é apagada, mesmo antiga.
+    </p>
+    <Button variant="secondary" loading={limpandoNotificacoes} onclick={limparNotificacoesAntigas} class="w-full">
+      <Icon nome="trash" size={14} /> Limpar notificações lidas antigas
+    </Button>
+    {#if resultadoLimpeza}
+      <p class="text-xs text-slate-500 mt-2">{resultadoLimpeza}</p>
     {/if}
   </Card>
 </div>

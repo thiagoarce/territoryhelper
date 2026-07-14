@@ -14,7 +14,10 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     conclusão — Registro foi fundido aqui), `poligonos`, `predios`
     (com Trabalhar + GPS + Designar cartas), `campanha`, `arranjos`,
     `tp`, `designacoes`, `usuarios`, `auditoria`, `dev/sql`,
-    `dev/backup` (export JSON de todas as tabelas + restore por upsert)
+    `dev/backup` (export JSON de todas as tabelas + restore por upsert +
+    higiene de dados: botão que apaga `notificacoes` LIDA com mais de 90
+    dias via `supabaseAdmin` — não-lida nunca é tocada, mesmo antiga;
+    RLS de `notificacoes` não tem policy de DELETE cross-user)
   - `publicador/` — modo campo (**tanto publicador quanto dirigente**):
     home/carteira (território pessoal + ✉ cartas + pregação em grupo via
     `arranjo_partes` + TCEs), `quadra/[id]` (com "Marcar concluída" se
