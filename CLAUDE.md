@@ -216,7 +216,18 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   trabalhar essa quadra?", espelhando as mesmas cláusulas de
   `pode_editar_local` (RLS). `guards.ts::exigirQuadraDesignada` só busca
   os booleans (via query) e delega a decisão pra cá.
-- `src/hooks.server.ts` — client Supabase + sessão em `locals`
+- `src/hooks.server.ts` — client Supabase + sessão em `locals`. Terceiro
+  handle da sequence é o "cron preguiçoso" dos lembretes automáticos
+  (ver `$lib/server/lembretes.ts`): piggyback no primeiro request
+  `/admin` de um admin no dia, via `waitUntil` (nunca atrasa a
+  resposta). **Não é um Cloudflare Cron Trigger de verdade** —
+  `@sveltejs/adapter-cloudflare` gera `_worker.js` do zero a cada build
+  só com `fetch` (sem `scheduled`), hackear isso seria frágil; a trava
+  `job_execucoes` (migration 086) garante que a lógica pesada roda só
+  1x/dia mesmo com N requests admin naquele dia. Lembra: designação
+  pessoal aberta com `prazo` a ≤7 dias (ao publicador, 1x só, nunca
+  repete) e território sem NENHUMA conclusão há >90 dias (aos admins,
+  no máx. 1x/30 dias) — dedup em `lembretes_enviados`.
 - `supabase/migrations/` — SQL numerado. Aplicar via `/admin/dev/sql` (RPC
   `exec_sql`) ou painel Supabase.
 - `scripts/migrate-from-csv.ts` — importa CSVs do IBGE/GAS → Postgres

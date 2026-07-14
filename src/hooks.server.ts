@@ -3,6 +3,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
 import type { Profile } from '$lib/types';
+import { talvezRodarLembretesDiarios } from '$lib/server/lembretes';
 
 // 1. Cria client Supabase com cookies da sessão. Anexa em event.locals.
 const supabase: Handle = async ({ event, resolve }) => {
@@ -76,4 +77,19 @@ const profile: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(supabase, profile);
+// 3. "Cron preguiçoso" (ver migration 086/lembretes.ts pra motivação):
+// piggyback no primeiro request admin do dia, nunca atrasa a resposta
+// (waitUntil roda depois do response ir pro cliente). Não é um request
+// de admin de verdade toda vez — job_execucoes garante que só executa
+// a lógica pesada uma vez por dia, o resto é 1 SELECT rápido.
+const lembretesDiarios: Handle = async ({ event, resolve }) => {
+  if (event.url.pathname.startsWith('/admin') && event.locals.profile?.role === 'admin') {
+    const ctx = (event.platform as any)?.context;
+    const rodar = talvezRodarLembretesDiarios();
+    if (ctx?.waitUntil) ctx.waitUntil(rodar);
+    else rodar.catch(() => {});
+  }
+  return resolve(event);
+};
+
+export const handle = sequence(supabase, profile, lembretesDiarios);
