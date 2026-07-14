@@ -5,6 +5,7 @@ import type { Actions } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { criarNotificacao } from '$lib/server/push';
+import { registrarConclusaoQuadra } from '$lib/server/conclusao';
 
 export const actions: Actions = {
   // A2: sheet de ação da quadra em "Seu grupo" — mesma lógica de
@@ -19,11 +20,8 @@ export const actions: Actions = {
     const quadraId = String(fd.get('quadra_id') ?? '');
     if (!quadraId) return fail(400, { erro: 'quadra_id obrigatório' });
     const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
-    const { error: err } = await locals.supabase
-      .from('quadras')
-      .update({ data_conclusao: data })
-      .eq('id', quadraId);
-    if (err) return fail(400, { erro: err.message });
+    const { error: err } = await registrarConclusaoQuadra(locals.supabase, quadraId, data, locals.user.id);
+    if (err) return fail(400, { erro: err });
     return { ok: true, msg: 'Quadra concluída em ' + data };
   },
 

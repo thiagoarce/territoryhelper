@@ -129,10 +129,12 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   `/admin/dashboard` (E5) = saúde
   do território, incluindo fim de semana vs meio de semana POR
   território (taxa por dia, não bruto). Ideia futura (não
-  implementada): quadras trabalhadas mais de manhã vs à tarde — hoje
-  inviável, `quadras_conclusoes.data_conclusao` é só `date` (sem hora);
-  precisaria de timestamp pra ficar viável (diferente de dia da semana,
-  que já dá pra derivar da data pura — `$lib/utils/data.ts::diaDaSemana`).
+  implementada): quadras trabalhadas mais de manhã vs à tarde —
+  `data_conclusao` é só `date` (sem hora), mas `quadras_conclusoes.
+  marcado_em` (timestamptz, migration 019) já existe pra isso; falta só
+  construir a análise em cima dele (proxy razoável, não perfeito — bulk
+  no admin/backfill grava `marcado_em=now()` na hora do registro, não
+  necessariamente a hora do trabalho de campo).
 - `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
@@ -223,7 +225,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `convites` | Link público `/convite/<token>` só pra DEFINIR senha — o publicador (`auth.users`+`profiles`) já é criado na hora do convite (senha descartável, `email_confirm=false`), via `convites.publicador_id`. Isso permite designar território pra alguém antes de ele abrir o link. Revogar convite não-usado apaga o usuário provisório junto. `/admin/usuarios` gera 1 ou em lote (cola `nome,email,role` por linha); botão **Histórico** por linha (A27) carrega sob demanda um resumo read-only (`registros`/`quadras_conclusoes`/`tp_agendamento_participantes`/`unidades.carta_escrita_por`, contagem por mês, últimos 6 meses) |
 | `territorios` | id text, nome, cor, status |
 | `quadras` | id text, `poly geometry(Polygon,4326)`, color, `territorio_id`, **`ativa` boolean**, `data_conclusao`, `reservada_campanha_id` (quarentena — some do pool geral enquanto reservada pra campanha) |
-| `quadras_conclusoes` | histórico append-only de conclusões (data, autor) |
+| `quadras_conclusoes` | histórico append-only de conclusões (data, autor, `marcado_em` timestamptz). TODA escrita de conclusão precisa passar por `$lib/server/conclusao.ts` (`registrarConclusaoQuadra`/`desfazerConclusaoQuadra`) — nunca fazer `update quadras set data_conclusao=...` direto fora dali; já rolou bug real de 2 actions (concluir em campo) atualizando só `quadras.data_conclusao` e pulando o histórico, invisível pro S-13/dashboard/campanha (migration 084 fez o backfill) |
 | `locais` | endereço físico: `geo Point`, tipo (casa/predio/comercio/coletivo/terreno), `quadra_id`, setor/quadra_ibge/face_ibge, portaria, `nao_eh_predio`, **`pendente`** (criado pelo publicador; admin valida) |
 | `unidades` | apto/unidade dentro de um local. `carta_entregue` (date) = carta ESCRITA (+ `carta_escrita_por`, migration 055) — a ENTREGA é registro tipo='carta' no casa a casa |
 | `registros` | trilha append-only de eventos por unidade (conversou/carta/desfeito…) |

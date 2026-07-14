@@ -6,6 +6,7 @@ import type { Actions } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
+import { registrarConclusaoQuadra, desfazerConclusaoQuadra } from '$lib/server/conclusao';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
@@ -301,11 +302,8 @@ export const actions: Actions = {
     }
     const fd = await request.formData();
     const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
-    const { error: err } = await locals.supabase
-      .from('quadras')
-      .update({ data_conclusao: data })
-      .eq('id', params.id);
-    if (err) return fail(400, { erro: err.message });
+    const { error: err } = await registrarConclusaoQuadra(locals.supabase, params.id, data, locals.user.id);
+    if (err) return fail(400, { erro: err });
     return { ok: true, msg: 'Quadra concluída em ' + data };
   },
 
@@ -315,11 +313,8 @@ export const actions: Actions = {
     if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
       return fail(403, { erro: 'Só dirigente/admin' });
     }
-    const { error: err } = await locals.supabase
-      .from('quadras')
-      .update({ data_conclusao: null })
-      .eq('id', params.id);
-    if (err) return fail(400, { erro: err.message });
+    const { error: err } = await desfazerConclusaoQuadra(locals.supabase, params.id);
+    if (err) return fail(400, { erro: err });
     return { ok: true, msg: 'Conclusão desfeita' };
   },
 
