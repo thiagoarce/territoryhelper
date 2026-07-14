@@ -51,6 +51,13 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   `EditarLocalSheet.svelte`, `InstallPrompt.svelte`, `TpGradeSemana.svelte`
   (grade semanal do Planner de TP), `NotificacoesBell.svelte` (sino no
   header global — fallback in-app de PUSH-A, funciona sem push)
+- `src/lib/comprimir-imagem.ts` — resize+reencode via `<canvas>` no
+  CLIENT antes de qualquer upload de foto (máx. 1280px no maior lado,
+  JPEG 82% — corta ~80-90% do peso de foto de câmera; Storage do
+  Supabase free é 1GB só). Usado em `EditarLocalSheet.svelte` (foto de
+  local) e `/publicacoes` (capa de publicação). Falha de qualquer tipo
+  (formato exótico, canvas indisponível) devolve o arquivo ORIGINAL —
+  nunca bloqueia o upload por causa da otimização.
 - `src/lib/server/push.ts` — `criarNotificacao(publicadorIds, {titulo,
   corpo, url})` grava em `notificacoes` (via `supabaseAdmin`, bypassa RLS
   pra notificar outros) e dispara `enviarTickle` (Web Push "tickle" sem

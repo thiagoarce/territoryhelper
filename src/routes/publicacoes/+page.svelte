@@ -6,6 +6,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { comprimirImagem } from '$lib/comprimir-imagem';
   import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha, RevistaMesLinha, CarrinhoLite, InventarioItem } from './$types';
 
   let { data }: {
@@ -54,7 +55,7 @@
     enviandoImagem = true;
     const fd = new FormData();
     fd.append('id', String(pubEdit.id));
-    fd.append('imagem', file);
+    fd.append('imagem', await comprimirImagem(file));
     const res = await fetch('?/uploadImagemPublicacao', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     enviandoImagem = false;

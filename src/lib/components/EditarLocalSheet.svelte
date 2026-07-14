@@ -6,6 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { postComFila } from '$lib/offline';
+  import { comprimirImagem } from '$lib/comprimir-imagem';
   import type { LocalComUnidades } from '$lib/server/queries';
 
   let {
@@ -44,7 +45,7 @@
     uploadingFoto = true;
     const fd = new FormData();
     fd.append('local_id', String(local.id));
-    fd.append('foto', file);
+    fd.append('foto', await comprimirImagem(file));
     try {
       const res = await fetch('?/uploadFoto', { method: 'POST', body: fd });
       const parsed = deserialize(await res.text()) as any;
