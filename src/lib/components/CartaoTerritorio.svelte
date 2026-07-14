@@ -78,7 +78,14 @@
         }
       }));
     if (features.length === 0) return null;
-    const bbox = bboxDeTudo(features);
+    // Zoom no TERRITÓRIO (quadras destacadas), não no contexto inteiro —
+    // bug real na impressão em lote: `quadras` ali é a congregação inteira
+    // (pro contexto cinza ficar completo), então o bbox de TODAS as
+    // features enquadrava o mapa geral em vez do território sendo
+    // impresso. Cai pro bbox de tudo só se por algum motivo não houver
+    // nenhuma quadra destacada.
+    const featuresDestaque = features.filter((f) => f.properties.estado === 'destaque');
+    const bbox = bboxDeTudo(featuresDestaque.length > 0 ? featuresDestaque : features);
     if (!bbox) return null;
 
     return new Promise((resolve) => {
