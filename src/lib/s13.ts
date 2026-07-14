@@ -198,9 +198,16 @@ export function ciclosDoTerritorio(
       // Só força se houver um evento REAL (não inferido) mais novo depois
       // deste — prova de que o território foi designado de novo mesmo
       // sem toda quadra concluída. Conclusão órfã sozinha não força nada.
-      const temRedesignacao = ev.inferido ? limite !== null : proximoRealApos(i) !== null;
+      const proxReal = proximoRealApos(i);
+      const temRedesignacao = ev.inferido ? limite !== null : proxReal !== null;
       if (temRedesignacao) {
-        fim = fechamentoForcado(ev.data, limite);
+        // A busca forçada TEM teto na redesignação (também no ramo real):
+        // sem ele, pegava conclusões feitas DEPOIS dela — o trabalho da
+        // equipe nova —, o fim caía dentro do ciclo novo e o evento real
+        // seguinte era pulado no `continue` lá em cima. Resultado: a
+        // redesignação sumia do S-13, engolida pelo ciclo que ela mesma
+        // veio fechar.
+        fim = fechamentoForcado(ev.data, ev.inferido ? limite : proxReal);
         forcado = true;
       }
     }
@@ -246,9 +253,17 @@ export function linhaDoAno(
   ano: number
 ): LinhaS13 {
   const { inicio, fim } = periodoAnoDeServico(ano);
-  const doAno = todosCiclos.filter(
-    (c) => c.inicio <= fim && (c.conclusao === null || c.conclusao >= inicio)
-  );
+  const doAno = todosCiclos.filter((c, k) => {
+    if (c.inicio > fim) return false;
+    // Ciclo fechado À FORÇA sem nenhuma conclusão (conclusao null +
+    // fechamentoForcado) NÃO está "ainda aberto": ele terminou quando a
+    // redesignação seguinte começou — usa o início do ciclo seguinte como
+    // fim efetivo. Sem isso, o null passava no filtro de "aberto" pra
+    // sempre e a linha reaparecia em TODOS os anos futuros da folha.
+    const fimEfetivo =
+      c.conclusao ?? (c.fechamentoForcado ? (todosCiclos[k + 1]?.inicio ?? null) : null);
+    return fimEfetivo === null || fimEfetivo >= inicio;
+  });
   const anteriores = todosCiclos.filter((c) => c.conclusao !== null && c.conclusao! < inicio);
   const ultima = anteriores.length > 0 ? anteriores[anteriores.length - 1].conclusao : null;
   return {

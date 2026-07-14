@@ -70,7 +70,10 @@
     return {
       pessoal: abertas.filter((d) => (d.tipo ?? 'pessoal') === 'pessoal').length,
       cartas: abertas.filter((d) => d.tipo === 'cartas').length,
-      tce: data.tces.filter((t) => t.status === 'aberto').length
+      tce: data.tces.filter((t) => t.status === 'aberto').length,
+      // data.arranjos agora inclui inativos (concluídos/cancelados dos
+      // últimos 6 meses) — conta só os abertos, igual aos vizinhos
+      arranjos: data.arranjos.filter((a) => a.status === 'aberta').length
     };
   });
 
@@ -237,7 +240,7 @@
   <div>
     <h1 class="text-2xl font-bold">Designações</h1>
     <p class="text-sm text-slate-500">
-      Gestão central — <Icon nome="target" size={14} /> {stats.pessoal} pessoais · <Icon nome="mail" size={14} /> {stats.cartas} cartas · <Icon nome="store" size={14} /> {stats.tce} TCEs · <Icon nome="tent" size={14} /> {data.arranjos.length} arranjo(s)
+      Gestão central — <Icon nome="target" size={14} /> {stats.pessoal} pessoais · <Icon nome="mail" size={14} /> {stats.cartas} cartas · <Icon nome="store" size={14} /> {stats.tce} TCEs · <Icon nome="tent" size={14} /> {stats.arranjos} arranjo(s)
     </p>
   </div>
 

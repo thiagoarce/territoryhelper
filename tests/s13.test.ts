@@ -139,6 +139,47 @@ test('ciclo travado sem NENHUMA conclusão: redesignação real ainda força, co
   ]);
 });
 
+test('fechamento forçado NÃO engole o trabalho da própria redesignação (teto na data dela)', () => {
+  // Regressão: a busca forçada era SEM teto no ramo real — pegava as
+  // conclusões que a equipe NOVA fez (jun), o fim caía dentro do ciclo
+  // novo e o evento do Paulo era pulado (sumia do S-13). Com o teto, o
+  // ciclo do João fecha na melhor conclusão ANTES da redesignação e o
+  // do Paulo abre normalmente.
+  const ciclos = ciclosDoTerritorio(
+    ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10'],
+    [
+      { data: '2025-01-01', nome: 'João' },
+      { data: '2025-06-01', nome: 'Paulo' }
+    ],
+    [
+      { quadra_id: 'Q1', data: '2025-01-10' },
+      { quadra_id: 'Q2', data: '2025-01-15' },
+      { quadra_id: 'Q3', data: '2025-01-20' },
+      // trabalho da redesignação (Paulo) — não pode fechar o ciclo do João
+      { quadra_id: 'Q4', data: '2025-06-10' },
+      { quadra_id: 'Q5', data: '2025-06-12' }
+    ]
+  );
+  assertEq(ciclos, [
+    { inicio: '2025-01-01', designado: 'João', conclusao: '2025-01-20', fechamentoForcado: true },
+    { inicio: '2025-06-01', designado: 'Paulo', conclusao: null }
+  ]);
+});
+
+test('linhaDoAno: ciclo forçado SEM conclusão não reaparece nos anos seguintes', () => {
+  // Regressão: conclusao null passava no filtro de "ainda aberto" pra
+  // sempre — o ciclo fechado à força sem data reaparecia em toda folha
+  // futura. O fim efetivo dele é o início do ciclo seguinte.
+  const todos = [
+    { inicio: '2025-01-10', designado: 'João', conclusao: null, fechamentoForcado: true },
+    { inicio: '2025-06-01', designado: 'Maria', conclusao: '2025-07-01' }
+  ] as any[];
+  // Ano de serviço 2025 (set/2024–ago/2025): os dois aparecem
+  assertEq(linhaDoAno({ id: '1', nome: null }, todos, 2025).ciclos.length, 2);
+  // Ano 2026 (set/2025–ago/2026): nenhum — o forçado terminou em 06/2025
+  assertEq(linhaDoAno({ id: '1', nome: null }, todos, 2026).ciclos.length, 0);
+});
+
 test('ciclo travado além da margem SEM redesignação real depois: continua engolindo (só conclusão órfã não força)', () => {
   // 10 quadras, margem=2. Q1-Q6 concluídas cedo, Q7 concluída bem tarde
   // (conclusão órfã, sem nenhum evento real depois) — mas Q8/Q9/Q10

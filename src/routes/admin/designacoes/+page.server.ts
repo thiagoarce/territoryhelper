@@ -131,9 +131,18 @@ export const load: PageServerLoad = async ({ locals }) => {
   // finalizado no fluxo normal (Casa a casa, evento passado) → concluída;
   // se ainda "venceria" mas está inativo, foi desativado antes da hora
   // (editar arranjo em /admin/arranjos) → cancelada.
+  // O cutoff é AMANHÃ, não `ontem`: finalizar no PRÓPRIO dia (após 20h)
+  // ou no seguinte é o caminho feliz de precisaFinalizar — com `ontem`,
+  // todo arranjo recém-finalizado caía na aba Canceladas por 1-2 dias.
+  // Pontual SEM data nunca passa por precisaFinalizar (exige a.data), só
+  // pode ter sido desativado manualmente → cancelada sempre.
+  const amanha = hojeIsoBrasil(1);
   const arranjosInativosRaw: ArranjoHub[] = ((arrInativosRes.data ?? []) as any[]).map((a) => ({
     ...mapArranjo(a),
-    status: arranjoAindaVale(a, ontem) ? ('cancelada' as const) : ('concluida' as const)
+    status:
+      (!a.recorrente && !a.data) || arranjoAindaVale(a, amanha)
+        ? ('cancelada' as const)
+        : ('concluida' as const)
   }));
 
   const arranjosBrutos: ArranjoHub[] = [...arranjosAtivosRaw, ...arranjosInativosRaw];
