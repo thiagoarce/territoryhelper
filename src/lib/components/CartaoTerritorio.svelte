@@ -132,11 +132,15 @@
           id: 'cartao-rotulo', type: 'symbol', source: 'cartao',
           layout: {
             'text-field': ['get', 'id'],
-            'text-size': 13,
+            // Letra da quadra ilegível no cartão impresso era queixa real
+            // (13px renderizado quase 1:1 numa imagem "2x" vira ~6-7px
+            // efetivo no papel) — subiu bastante, allow-overlap já
+            // garante que nunca some, só sobrepõe em quadra minúscula.
+            'text-size': 20,
             'text-font': ['Noto Sans Bold'],
             'text-allow-overlap': true
           },
-          paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 }
+          paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
         });
         // O ✕ das concluídas recentes mora no PRÓPRIO mapa (camada symbol
         // deslocada pra baixo do rótulo) — escala e posiciona de graça.
@@ -145,12 +149,12 @@
           filter: ['==', ['get', 'estado'], 'recente'],
           layout: {
             'text-field': '✕',
-            'text-size': 30,
+            'text-size': 38,
             'text-font': ['Noto Sans Bold'],
             'text-offset': [0, 0.9],
             'text-allow-overlap': true
           },
-          paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 }
+          paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 }
         });
         map.once('idle', () => {
           clearTimeout(timeout);
@@ -245,25 +249,41 @@
     ctx.lineWidth = 1.5;
     ctx.strokeRect(dx, dy, dw, dh);
 
-    // Legenda compacta dentro do mapa (canto inferior esquerdo)
+    // Legenda compacta dentro do mapa (canto inferior esquerdo) — fonte e
+    // caixas de cor bem maiores (queixa real: legenda ilegível no cartão
+    // impresso). `textBaseline = 'middle'` centraliza o texto na caixinha
+    // de cor sem precisar calcular offset de baseline na mão.
     const leg = [
       { cor: CORES.destaqueFill, rotulo: 'Designadas' },
       { cor: CORES.recenteFill, rotulo: 'Feitas há pouco (✕)' },
       { cor: CORES.livreFill, rotulo: 'Disponíveis' }
     ];
-    const legX = dx + 10, legY = dy + dh - 34;
-    ctx.font = '18px system-ui, sans-serif';
+    const legFonte = 26, legSwatch = 26, legPadX = 14, legGap = 34;
+    ctx.font = `600 ${legFonte}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
+    let larguraTotal = legPadX;
+    for (const l of leg) larguraTotal += legSwatch + 10 + ctx.measureText(l.rotulo).width + legGap;
+    larguraTotal += legPadX - legGap;
+    const legX = dx + 14;
+    const legY = dy + dh - 40;
+    const legH = legSwatch + 22;
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fillRect(legX - legPadX, legY - legH / 2, larguraTotal, legH);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(legX - legPadX, legY - legH / 2, larguraTotal, legH);
     let cursor = legX;
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    const legW = leg.reduce((acc, l) => acc + 26 + ctx.measureText(l.rotulo).width + 18, 12);
-    ctx.fillRect(legX - 6, legY - 20, legW, 30);
     for (const l of leg) {
       ctx.fillStyle = l.cor;
-      ctx.fillRect(cursor, legY - 13, 18, 18);
+      ctx.fillRect(cursor, legY - legSwatch / 2, legSwatch, legSwatch);
+      ctx.strokeStyle = 'rgba(15,23,42,0.25)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cursor, legY - legSwatch / 2, legSwatch, legSwatch);
       ctx.fillStyle = '#0f172a';
-      ctx.fillText(l.rotulo, cursor + 26, legY + 2);
-      cursor += 26 + ctx.measureText(l.rotulo).width + 18;
+      ctx.fillText(l.rotulo, cursor + legSwatch + 10, legY);
+      cursor += legSwatch + 10 + ctx.measureText(l.rotulo).width + legGap;
     }
+    ctx.textBaseline = 'alphabetic'; // reset — resto do desenho (rodapé) espera baseline padrão
 
     // Rodapé (texto clássico do S-12)
     ctx.fillStyle = '#000000';
