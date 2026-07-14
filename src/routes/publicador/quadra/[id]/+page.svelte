@@ -209,18 +209,30 @@
     abertos = new Set(abertos);
   }
 
-  // Filtro simples: todos / pendentes / feitos
-  let filtro = $state<'todos' | 'pendentes' | 'feitos'>('todos');
+  // Filtro simples: todos / pendentes / feitos / revisitas
+  let filtro = $state<'todos' | 'pendentes' | 'feitos' | 'revisitas'>('todos');
 
   function unidadeFeita(u: UnidadeEnriquecida): boolean {
     return !!u.ultimo_tipo && u.ultimo_tipo !== 'desfeito' && u.ultimo_tipo !== 'carta_undo';
   }
 
+  // "Não atendeu" já é um desfecho VÁLIDO (visitou, ninguém abriu) —
+  // diferente de pendente (nunca visitado). Mas é justamente quem mais
+  // vale voltar: já sabe o endereço, só faltou encontrar alguém em casa.
+  function ehRevisita(u: UnidadeEnriquecida): boolean {
+    return u.ultimo_tipo === 'naoAtendeu';
+  }
+
   function passaFiltro(u: UnidadeEnriquecida): boolean {
     if (filtro === 'todos') return true;
+    if (filtro === 'revisitas') return ehRevisita(u);
     const feita = unidadeFeita(u);
     return filtro === 'feitos' ? feita : !feita;
   }
+
+  const totalRevisitas = $derived(
+    data.locais.reduce((acc, l) => acc + l.unidades.filter(ehRevisita).length, 0)
+  );
 
   function localPassaFiltro(l: LocalComUnidades): boolean {
     return l.unidades.some(passaFiltro);
@@ -333,7 +345,7 @@
 {/if}
 
 <!-- Filtros -->
-<div class="mt-4 flex gap-2">
+<div class="mt-4 flex gap-2 flex-wrap">
   {#each [['todos', 'Todos'], ['pendentes', 'Pendentes'], ['feitos', 'Feitos']] as [k, label]}
     <button
       onclick={() => (filtro = k as any)}
@@ -347,6 +359,20 @@
       {label}
     </button>
   {/each}
+  {#if totalRevisitas > 0}
+    <button
+      onclick={() => (filtro = filtro === 'revisitas' ? 'todos' : 'revisitas')}
+      class="px-3 py-1 text-sm rounded border flex items-center gap-1"
+      class:bg-slate-200={filtro === 'revisitas'}
+      class:border-slate-500={filtro === 'revisitas'}
+      class:text-slate-800={filtro === 'revisitas'}
+      class:border-slate-200={filtro !== 'revisitas'}
+      class:text-slate-600={filtro !== 'revisitas'}
+      title="Endereços onde ninguém atendeu — já sabe onde é, só falta encontrar alguém em casa"
+    >
+      <Icon nome="undo" size={12} /> Revisitas ({totalRevisitas})
+    </button>
+  {/if}
 </div>
 
 <div class="mt-4 space-y-4">

@@ -21,7 +21,10 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   - `publicador/` — modo campo (**tanto publicador quanto dirigente**):
     home/carteira (território pessoal + ✉ cartas + pregação em grupo via
     `arranjo_partes` + TCEs), `quadra/[id]` (com "Marcar concluída" se
-    dirigente), `mapa` (visão geral READ-ONLY do território de toda a
+    dirigente; filtro **Revisitas** conta unidades com `ultimo_tipo ===
+    'naoAtendeu'` — desfecho VÁLIDO do ciclo atual, diferente de
+    "pendente" — que vale a pena tentar de novo), `mapa` (visão geral
+    READ-ONLY do território de toda a
     congregação — só dirigente/admin, sem concluir/repartir/POI/PNG,
     acessível por um ÍCONE no header, não é aba da bottom nav; concluir
     geral e repartir geral são papel do admin/servo de território, não do
