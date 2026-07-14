@@ -146,6 +146,14 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   cartão (marca ✕ vermelho) é em DIAS (15/30/60, default 30) — era em
   meses (3/6/12); o ciclo real de território desta congregação gira a
   cada ~2 meses, então o limiar em meses quase nunca desmarcava nada.
+  `/admin/relatorios/cartoes` (aprimoramento recomendado) gera os
+  cartões de TODOS os territórios de uma vez, reusando o mesmo
+  `CartaoTerritorio.svelte` — sequencial (ele cria/destrói sua própria
+  instância MapLibre por `gerar()`, não paralelizável no mesmo container
+  oculto), `quadras` (contexto) é a CONGREGAÇÃO INTEIRA em vez do raio de
+  250m do compartilhamento individual (não precisa de RPC nova — já tem
+  tudo carregado), `destaqueIds` troca por território a cada iteração.
+  "Imprimir/Salvar PDF" = `window.print()`, mesmo padrão do S-13.
   `/admin/dashboard` (E5) = saúde
   do território, incluindo fim de semana vs meio de semana POR
   território (taxa por dia, não bruto). Ideia futura (não

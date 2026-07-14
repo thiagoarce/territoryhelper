@@ -152,6 +152,7 @@
       items: [
         { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'users' },
         { href: '/admin/relatorios/s13', label: 'Relatório S-13', icon: 'clipboard' },
+        { href: '/admin/relatorios/cartoes', label: 'Cartões S-12 em lote', icon: 'map' },
         { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' },
         { href: '/admin/dev/backup', label: 'Backup', icon: 'inbox' },
         { href: '/admin/dev/erros', label: 'Erros do client', icon: 'alert' }
