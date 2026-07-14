@@ -3,7 +3,7 @@
 // continuam server-side com o guard de posse próprio (pode_editar_local
 // via RPC — defesa em profundidade, o load do layout não protege POST).
 import type { Actions } from './$types';
-import { hojeIsoBrasil } from '$lib/utils/data';
+import { hojeIsoBrasil, horaBrasilParaIso } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 import { registrarConclusaoQuadra, desfazerConclusaoQuadra } from '$lib/server/conclusao';
@@ -302,7 +302,9 @@ export const actions: Actions = {
     }
     const fd = await request.formData();
     const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
-    const { error: err } = await registrarConclusaoQuadra(locals.supabase, params.id, data, locals.user.id);
+    const hora = String(fd.get('hora') ?? '').trim();
+    const marcadoEm = hora ? horaBrasilParaIso(data, hora) : null;
+    const { error: err } = await registrarConclusaoQuadra(locals.supabase, params.id, data, locals.user.id, marcadoEm);
     if (err) return fail(400, { erro: err });
     return { ok: true, msg: 'Quadra concluída em ' + data };
   },

@@ -75,8 +75,9 @@
 
   // Concluir quadra (fundido de /admin/registro)
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
+  let horaConclusao = $state(new Date().toTimeString().slice(0, 5));
   let salvandoConclusao = $state(false);
-  let conflito = $state<{ ids: string[]; data: string; ultimas: { id: string; ultima: string }[] } | null>(null);
+  let conflito = $state<{ ids: string[]; data: string; hora: string; ultimas: { id: string; ultima: string }[] } | null>(null);
   let sheetDetalheQuadra = $state(false);
   let quadraDetalhe = $state<QuadraGeo | null>(null);
   let historicoQuadra = $state<{ data_conclusao: string; marcado_em: string; nome: string | null }[]>([]);
@@ -111,6 +112,7 @@
       const fd = new FormData();
       for (const id of conflito.ids) fd.append('ids', id);
       fd.append('data', conflito.data);
+      fd.append('hora', conflito.hora);
       fd.append('modo', modo);
       const res = await fetch('?/marcarConcluidas', { method: 'POST', body: fd });
       const result = deserialize(await res.text()) as any;
@@ -538,7 +540,7 @@
             if (result.type === 'success') {
               const d = result.data as any;
               if (d?.conflito) {
-                conflito = { ids: d.ids, data: d.data, ultimas: d.ultimas };
+                conflito = { ids: d.ids, data: d.data, hora: horaConclusao, ultimas: d.ultimas };
                 return;
               }
               toast.success(d?.msg || 'Concluídas');
@@ -559,6 +561,7 @@
       >
         {#each [...selecionadas] as id}<input type="hidden" name="ids" value={id} />{/each}
         <input name="data" type="date" bind:value={dataConclusao} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+        <input name="hora" type="time" bind:value={horaConclusao} class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" title="Hora que o trabalho foi feito" />
         <Button variant="success" size="sm" type="submit" loading={salvandoConclusao}><Icon nome="check" size={14} /> Concluir</Button>
       </form>
       <form

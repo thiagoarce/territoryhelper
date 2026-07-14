@@ -25,6 +25,7 @@ export interface ArranjoQueDirijo {
   id: number;
   nome: string;
   data: string;
+  hora_inicio: string | null;
   quadras_ids: string[];
   cartas_locais_ids: number[];
   tces_ids: string[];
@@ -88,7 +89,7 @@ async function carregar(minhaId: string, role: string) {
     // de finalizar + futuros, e filtro os dois casos em JS abaixo.
     supabase
       .from('arranjos')
-      .select('id, nome, quadras_ids, cartas_locais_ids, tces_ids, interessados, recorrente, data, data_fim')
+      .select('id, nome, quadras_ids, cartas_locais_ids, tces_ids, interessados, recorrente, data, data_fim, hora_inicio')
       .eq('ativo', true)
       .eq('dirigente_id', minhaId)
       .or(`data.gte.${ha60dias},data.is.null,recorrente.eq.true`)
@@ -109,6 +110,7 @@ async function carregar(minhaId: string, role: string) {
       id: a.id,
       nome: a.nome ?? 'Arranjo',
       data: a.data as string,
+      hora_inicio: (a.hora_inicio as string | null) ?? null,
       quadras_ids: (a.quadras_ids ?? []) as string[],
       cartas_locais_ids: (a.cartas_locais_ids ?? []) as number[],
       tces_ids: (a.tces_ids ?? []) as string[],

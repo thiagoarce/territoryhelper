@@ -4,7 +4,7 @@
 // continuam server-side de propósito: guards, travas de conflito e
 // notificação são defesa em profundidade).
 import type { Actions } from './$types';
-import { hojeIsoBrasil } from '$lib/utils/data';
+import { hojeIsoBrasil, horaBrasilParaIso } from '$lib/utils/data';
 import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
 import {
@@ -246,6 +246,8 @@ export const actions: Actions = {
     const fd = await request.formData();
     const ids = fd.getAll('ids').map((v) => String(v)).filter(Boolean);
     const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
+    const hora = String(fd.get('hora') ?? '').trim();
+    const marcadoEm = hora ? horaBrasilParaIso(data, hora) : null;
     // modo: 'normal' (detecta conflito) | 'substituir' (troca a mais recente) | 'historico' (só adiciona)
     const modo = String(fd.get('modo') ?? 'normal');
     if (ids.length === 0) return fail(400, { erro: 'Selecione ao menos 1 quadra' });
@@ -320,7 +322,8 @@ export const actions: Actions = {
     const linhas = ids.map((qid) => ({
       quadra_id: qid,
       data_conclusao: data,
-      marcado_por: locals.user!.id
+      marcado_por: locals.user!.id,
+      ...(marcadoEm ? { marcado_em: marcadoEm, hora_informada: true } : {})
     }));
     await locals.supabase.from('quadras_conclusoes').insert(linhas);
 

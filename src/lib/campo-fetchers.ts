@@ -92,7 +92,10 @@ export async function verificarPosseQuadra(
   });
 }
 
-export type DadosQuadraCampo = DadosQuadraTrabalho & { cicloCartasPorLocal: Record<number, string | null> };
+export type DadosQuadraCampo = DadosQuadraTrabalho & {
+  cicloCartasPorLocal: Record<number, string | null>;
+  arranjoHoraInicio: string | null;
+};
 
 export async function carregarQuadraCampo(quadraId: string): Promise<DadosQuadraCampo> {
   const supabase = supabaseBrowser();
@@ -103,7 +106,19 @@ export async function carregarQuadraCampo(quadraId: string): Promise<DadosQuadra
   for (const l of dados.locais) {
     cicloCartasPorLocalMap[l.id] = cicloEfetivo(ciclos, l.id)?.iniciado_em ?? null;
   }
-  return { ...dados, cicloCartasPorLocal: cicloCartasPorLocalMap };
+  // Pré-preenche a hora de conclusão com a do arranjo vinculado, se
+  // houver — arranjo ativo cuja quadras_ids contém esta quadra. Só um
+  // convite/atalho (o servo ainda pode editar), não precisa ser exato.
+  const { data: arr } = await supabase
+    .from('arranjos')
+    .select('hora_inicio')
+    .eq('ativo', true)
+    .contains('quadras_ids', [quadraId])
+    .not('hora_inicio', 'is', null)
+    .order('data', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  return { ...dados, cicloCartasPorLocal: cicloCartasPorLocalMap, arranjoHoraInicio: arr?.hora_inicio ?? null };
 }
 
 export interface TceEndereco {

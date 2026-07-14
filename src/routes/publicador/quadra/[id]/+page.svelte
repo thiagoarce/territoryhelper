@@ -15,7 +15,7 @@
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
   import { postComFila } from '$lib/offline';
 
-  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null>; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
+  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null>; arranjoHoraInicio: string | null; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
 
   // W8 ("modo rua"): desfechos/carta resilientes a sinal ruim — mesmo
   // padrão de /predio/[id]: overlay otimista local + postComFila (sem
@@ -61,6 +61,12 @@
   let sheetAdd = $state(false);
   const podeDirigir = $derived(['dirigente', 'admin'].includes(data.minhaRole ?? ''));
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
+  // Hora que o trabalho foi feito de verdade (não "hora do registro") —
+  // pré-preenche com a do arranjo vinculado, se houver (ver
+  // carregarQuadraCampo::arranjoHoraInicio); senão, hora atual. O servo
+  // pode ajustar — quem sabe quando concluiu é ele, não o sistema.
+  // svelte-ignore state_referenced_locally
+  let horaConclusao = $state((data.arranjoHoraInicio ?? new Date().toTimeString()).slice(0, 5));
   let salvandoConclusao = $state(false);
 
   // W10: concluir/desfazer conclusão viram postComFila (dirigente marca a
@@ -71,6 +77,7 @@
     overrideConcluida = true;
     const fd = new FormData();
     fd.append('data', dataConclusao);
+    fd.append('hora', horaConclusao);
     const r = await postComFila('?/concluirQuadra', fd, `Concluir quadra ${data.quadra.id}`);
     salvandoConclusao = false;
     if (r.ok) { toast.success('Concluída'); overrideConcluida = null; await invalidateAll(); }
@@ -324,6 +331,9 @@
       <div class="flex items-center gap-2 flex-wrap">
         <label for="data-conc" class="text-sm text-slate-600">Concluir em</label>
         <input id="data-conc" type="date" name="data" bind:value={dataConclusao}
+          class="rounded border border-slate-300 px-2 py-1 text-sm" />
+        <label for="hora-conc" class="text-sm text-slate-600">às</label>
+        <input id="hora-conc" type="time" name="hora" bind:value={horaConclusao}
           class="rounded border border-slate-300 px-2 py-1 text-sm" />
         <Button type="button" variant="success" size="sm" onclick={concluirQuadraFila} loading={salvandoConclusao}><Icon nome="check" size={14} /> Marcar concluída</Button>
       </div>

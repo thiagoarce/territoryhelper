@@ -2,7 +2,7 @@
 // com ssr=false) — leituras direto browser→Supabase via RLS. Este
 // arquivo fica só com as ACTIONS (guards de role/dirigência intactos).
 import type { Actions } from './$types';
-import { hojeIsoBrasil } from '$lib/utils/data';
+import { hojeIsoBrasil, horaBrasilParaIso } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { criarNotificacao } from '$lib/server/push';
 import { registrarConclusaoQuadra } from '$lib/server/conclusao';
@@ -20,7 +20,9 @@ export const actions: Actions = {
     const quadraId = String(fd.get('quadra_id') ?? '');
     if (!quadraId) return fail(400, { erro: 'quadra_id obrigatório' });
     const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
-    const { error: err } = await registrarConclusaoQuadra(locals.supabase, quadraId, data, locals.user.id);
+    const hora = String(fd.get('hora') ?? '').trim();
+    const marcadoEm = hora ? horaBrasilParaIso(data, hora) : null;
+    const { error: err } = await registrarConclusaoQuadra(locals.supabase, quadraId, data, locals.user.id, marcadoEm);
     if (err) return fail(400, { erro: err });
     return { ok: true, msg: 'Quadra concluída em ' + data };
   },

@@ -15,15 +15,29 @@
 // data_conclusao da quadra sempre vira a MAIOR data do histórico (nunca
 // deixa uma conclusão fora de ordem "voltar" a data pra trás) — mesmo
 // invariante que a versão admin já mantinha.
+//
+// `marcadoEm` (opcional): timestamp ISO explícito pra guardar em
+// quadras_conclusoes.marcado_em. É a hora que o servo INFORMOU que o
+// trabalho foi feito (ver $lib/utils/data.ts::horaBrasilParaIso) — não
+// "quando foi registrado no sistema". Sem isso, o banco usa `now()`
+// (default da coluna), que é só a hora do registro — pior proxy, mas
+// não quebra nada pra quem ainda não informa hora (ex: modo histórico
+// do admin, que marca datas passadas em lote). `hora_informada` (migration
+// 087) marca esse caso como HORA REAL — protege contra o backfill de
+// estimativa (por dia da semana) rodar de novo e sobrescrever dado real.
 export async function registrarConclusaoQuadra(
   supabase: { from: (t: string) => any },
   quadraId: string,
   dataConclusao: string,
-  marcadoPor: string | null
+  marcadoPor: string | null,
+  marcadoEm?: string | null
 ): Promise<{ error: string | null }> {
-  const { error: errIns } = await supabase
-    .from('quadras_conclusoes')
-    .insert({ quadra_id: quadraId, data_conclusao: dataConclusao, marcado_por: marcadoPor });
+  const linha: Record<string, unknown> = { quadra_id: quadraId, data_conclusao: dataConclusao, marcado_por: marcadoPor };
+  if (marcadoEm) {
+    linha.marcado_em = marcadoEm;
+    linha.hora_informada = true;
+  }
+  const { error: errIns } = await supabase.from('quadras_conclusoes').insert(linha);
   if (errIns) return { error: errIns.message };
 
   const { data: max } = await supabase

@@ -41,3 +41,15 @@ export function ehFimDeSemana(dataIso: string): boolean {
   const d = diaDaSemana(dataIso);
   return d === 0 || d === 6;
 }
+
+// Combina uma data (yyyy-mm-dd) + hora LOCAL do Brasil (HH:MM) num
+// timestamp UTC (ISO) — pro publicador informar "concluí às 15h" e isso
+// virar um timestamptz correto (marcado_em), sem depender de fuso do
+// Postgres. Offset fixo -03:00 (Brasil não observa horário de verão
+// desde 2019) direto na string, formato que o Date entende sem
+// ambiguidade de fuso local do processo que roda o código.
+export function horaBrasilParaIso(dataIso: string, horaHHMM: string): string | null {
+  if (!/^\d{2}:\d{2}$/.test(horaHHMM)) return null;
+  const d = new Date(`${dataIso}T${horaHHMM}:00-03:00`);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}

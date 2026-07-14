@@ -15,6 +15,7 @@
     id: number;
     nome: string;
     data: string;
+    hora_inicio: string | null;
     quadras_ids: string[];
     cartas_locais_ids: number[];
     tces_ids: string[];
@@ -79,19 +80,26 @@
   let quadraAcao = $state<QuadraGeo | null>(null);
   let arranjoDaQuadraAcao = $state<ArranjoQueDirijo | null>(null);
   let concluindoQuadraAcao = $state(false);
+  let dataConclusaoAcao = $state(hojeIsoLocal());
+  let horaConclusaoAcao = $state(new Date().toTimeString().slice(0, 5));
 
   function abrirAcaoQuadra(q: QuadraGeo, a: ArranjoQueDirijo) {
     quadraAcao = q;
     arranjoDaQuadraAcao = a;
+    dataConclusaoAcao = hojeIsoLocal();
+    // Pré-preenche com a hora do arranjo, se tiver — o dirigente pode
+    // ajustar (quem sabe quando concluiu de verdade é ele).
+    horaConclusaoAcao = (a.hora_inicio ?? new Date().toTimeString()).slice(0, 5);
     sheetQuadraAcao = true;
   }
 
   async function concluirQuadraAcao() {
     if (!quadraAcao) return;
-    if (!confirm(`Marcar ${quadraAcao.id} como concluída hoje?`)) return;
     concluindoQuadraAcao = true;
     const fd = new FormData();
     fd.append('quadra_id', quadraAcao.id);
+    fd.append('data', dataConclusaoAcao);
+    fd.append('hora', horaConclusaoAcao);
     const res = await fetch('?/concluirQuadraGrupo', { method: 'POST', body: fd });
     const parsed = deserialize(await res.text()) as any;
     concluindoQuadraAcao = false;
@@ -447,6 +455,14 @@
       </div>
     {/if}
     <div class="space-y-2">
+      <div class="flex items-center gap-2 flex-wrap text-sm">
+        <label for="data-conc-acao" class="text-slate-600">Concluída em</label>
+        <input id="data-conc-acao" type="date" bind:value={dataConclusaoAcao}
+          class="rounded border border-slate-300 px-2 py-1" />
+        <label for="hora-conc-acao" class="text-slate-600">às</label>
+        <input id="hora-conc-acao" type="time" bind:value={horaConclusaoAcao}
+          class="rounded border border-slate-300 px-2 py-1" />
+      </div>
       <Button variant="primary" loading={concluindoQuadraAcao} onclick={concluirQuadraAcao} class="w-full">
         <Icon nome="check" size={14} /> Marcar concluída
       </Button>
