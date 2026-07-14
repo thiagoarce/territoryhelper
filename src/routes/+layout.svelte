@@ -11,6 +11,7 @@
   import { invalidateAll } from '$app/navigation';
   import { flushFila, filaDoUsuarioAtual } from '$lib/offline';
   import { gravarUidAtual } from '$lib/offline/status';
+  import { instalarCapturaDeErros } from '$lib/erros-client';
   import FilaOfflineSheet from '$lib/components/FilaOfflineSheet.svelte';
   import { onMount } from 'svelte';
 
@@ -87,6 +88,7 @@
   // de sessão (login/logout re-renderiza o layout com outro profile).
   $effect(() => {
     gravarUidAtual(data.profile?.id ?? null);
+    instalarCapturaDeErros(data.profile?.id ?? null);
   });
 
   // Rotas sem chrome (header/nav): públicas + login
@@ -151,7 +153,8 @@
         { href: '/admin/usuarios', label: 'Usuários e convites', icon: 'users' },
         { href: '/admin/relatorios/s13', label: 'Relatório S-13', icon: 'clipboard' },
         { href: '/admin/auditoria', label: 'Auditoria', icon: 'history' },
-        { href: '/admin/dev/backup', label: 'Backup', icon: 'inbox' }
+        { href: '/admin/dev/backup', label: 'Backup', icon: 'inbox' },
+        { href: '/admin/dev/erros', label: 'Erros do client', icon: 'alert' }
       ]
     }
   ];

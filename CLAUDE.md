@@ -57,6 +57,13 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   `EditarLocalSheet.svelte`, `InstallPrompt.svelte`, `TpGradeSemana.svelte`
   (grade semanal do Planner de TP), `NotificacoesBell.svelte` (sino no
   header global — fallback in-app de PUSH-A, funciona sem push)
+- `src/lib/erros-client.ts` — telemetria de erros do CLIENT: `instalarCapturaDeErros`
+  (chamado no root layout, só com sessão conhecida) registra
+  `window.onerror`/`unhandledrejection` e manda pra `erros_client`
+  (migration 085, RLS: qualquer autenticado insere o PRÓPRIO erro, só
+  admin lê/apaga), throttle de até 8 por sessão + dedup por mensagem.
+  Visível em `/admin/dev/erros` — sem isso um erro no aparelho do
+  publicador só aparece se ele reportar de viva voz.
 - `src/lib/comprimir-imagem.ts` — resize+reencode via `<canvas>` no
   CLIENT antes de qualquer upload de foto (máx. 1280px no maior lado,
   JPEG 82% — corta ~80-90% do peso de foto de câmera; Storage do
