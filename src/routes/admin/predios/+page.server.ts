@@ -4,6 +4,8 @@ import { fail } from '@sveltejs/kit';
 import { listarPredios, carregarPredioDetalhado, listarPublicadores, selectAll } from '$lib/server/queries';
 import type { PredioListado } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
+import { arranjoAindaVale } from '$lib/arranjos';
+import { hojeIsoBrasil } from '$lib/utils/data';
 
 export type PredioAdmin = PredioListado & { distancia_m?: number };
 
@@ -61,13 +63,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const cartasIds = new Set((mods ?? []).filter((m: any) => m.tipo_territorio === 'cartas_lista').map((m: any) => m.id));
   const { data: arrRaw } = await locals.supabase
     .from('arranjos')
-    .select('id, nome, modalidade_id, data, dia_semana, recorrente, cartas_locais_ids, hora_inicio, ativo')
+    .select('id, nome, modalidade_id, data, dia_semana, recorrente, cartas_locais_ids, hora_inicio, ativo, data_fim')
     .eq('ativo', true)
     .order('data', { nullsFirst: false })
     .order('hora_inicio', { nullsFirst: false });
   const modById = new Map((mods ?? []).map((m: any) => [m.id, m]));
+  // arranjoAindaVale: arranjo passado some da lista de anexar (mesma
+  // regra aplicada em /admin — oferecer saída vencida só confunde).
+  const ontem = hojeIsoBrasil(-1);
   const arranjosCartas = (arrRaw ?? [])
-    .filter((a: any) => cartasIds.has(a.modalidade_id))
+    .filter((a: any) => cartasIds.has(a.modalidade_id) && arranjoAindaVale(a, ontem))
     .map((a: any) => ({
       ...a,
       modalidade_nome: modById.get(a.modalidade_id)?.nome ?? '?',

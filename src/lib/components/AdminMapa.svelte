@@ -168,13 +168,23 @@
   });
 
   // Renderiza pois como marcadores clicáveis (Google Maps ao clicar).
-  // Reativo — muda quando o prop pois muda.
+  // BUG REAL que esteve aqui: o guard vinha ANTES da leitura de `pois`,
+  // e mapa/maplibreRef não são reativos — na 1ª execução (mapa ainda
+  // sendo criado, async) o effect retornava cedo SEM rastrear `pois` e
+  // nunca mais rodava. Resultado: nenhum pino jamais aparecia (nem os
+  // prédios do /t/[token], nem o Estacionar perto), silenciosamente.
+  // Regra dos runes (ver CLAUDE.md): deps reativas SEMPRE antes do guard
+  // + `carregado` como gatilho de "mapa pronto" (padrão dos outros
+  // effects deste arquivo).
+  let qtdPoisDesenhados = -1; // -1 = primeiro draw (fit inicial do load já cobre)
   $effect(() => {
-    if (!mapa || !maplibreRef) return;
+    const lista = pois;
+    const ok = carregado;
+    if (!ok || !mapa || !maplibreRef) return;
     // limpa marcadores antigos
     for (const m of poiMarkers) try { m.remove(); } catch {}
     poiMarkers = [];
-    for (const p of pois) {
+    for (const p of lista) {
       const el = document.createElement('button');
       el.type = 'button';
       el.title = p.nome;
@@ -190,6 +200,19 @@
       const m = new maplibreRef.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(mapa);
       poiMarkers.push(m);
     }
+    // Pinos que CHEGAM depois do load (Estacionar perto): estende o
+    // enquadramento atual pra incluir — POI a até 800m do centro cai
+    // fora da vista ajustada ao território, e sem isso "buscou mas não
+    // apareceu nada". No primeiro draw não mexe (o fitBounds do load já
+    // considerou os pois iniciais).
+    if (qtdPoisDesenhados !== -1 && lista.length > 0 && lista.length !== qtdPoisDesenhados) {
+      try {
+        const bounds = mapa.getBounds();
+        for (const p of lista) bounds.extend([p.lng, p.lat]);
+        mapa.fitBounds(bounds, { padding: 40, duration: 400, maxZoom: 16 });
+      } catch {}
+    }
+    qtdPoisDesenhados = lista.length;
   });
 
   const STATUS_COLORS: Record<string, string> = {

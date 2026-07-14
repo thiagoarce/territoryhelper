@@ -53,9 +53,17 @@
       }));
       const idsNovos = new Set(novos.map((p) => p.id));
       pois = [...pois.filter((p) => !idsNovos.has(p.id)), ...novos];
-      if (novos.length === 0) toast.info(`Nenhum(a) ${categoriaLabel(cat).toLowerCase()} encontrado(a) por perto`);
+      if (novos.length === 0) {
+        toast.info(`Nenhum(a) ${categoriaLabel(cat).toLowerCase()} encontrado(a) por perto`);
+      } else {
+        // FECHA o sheet no sucesso: o modal cobre o mapa — sem fechar,
+        // os pinos apareciam "atrás" e a sensação era de que nada
+        // aconteceu (bug de UX real reportado).
+        toast.success(`${novos.length} ponto(s) no mapa — toque num pino pra abrir a rota`);
+        open = false;
+      }
     } catch {
-      toast.error('Falhou buscar — confira a conexão');
+      toast.error('Falhou buscar — servidor de mapas ocupado ou sem conexão. Tenta de novo.');
     } finally {
       buscando = null;
     }

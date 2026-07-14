@@ -15,6 +15,8 @@ import { listarQuadrasComGeo, listarDesignacoes, listarPublicadores } from '$lib
 import { statusCampanha } from '$lib/campanhas';
 import { comCache } from '$lib/offline/cache-leitura';
 import { ciclosDoTerritorio, statusDoTerritorio, type Conclusao, type EventoDesignacao } from '$lib/s13';
+import { arranjoAindaVale } from '$lib/arranjos';
+import { hojeIsoBrasil } from '$lib/utils/data';
 
 export const ssr = false;
 
@@ -101,13 +103,20 @@ async function carregar() {
   const modsQuadrasIds = new Set((modsQ ?? []).filter((m: any) => m.tipo_territorio === 'quadras').map((m: any) => m.id));
   const { data: arranjosRaw } = await supabase
     .from('arranjos')
-    .select('id, nome, modalidade_id, data, dia_semana, recorrente, quadras_ids, hora_inicio, ativo')
+    .select('id, nome, modalidade_id, data, dia_semana, recorrente, quadras_ids, hora_inicio, ativo, data_fim')
     .eq('ativo', true)
     .order('data', { nullsFirst: false })
     .order('hora_inicio', { nullsFirst: false });
   const modById = new Map((modsQ ?? []).map((m: any) => [m.id, m]));
+  // arranjoAindaVale: arranjo PASSADO (pontual com data vencida) some
+  // daqui — tanto da lista do sheet "Anexar a arranjo" (oferecer saída
+  // de semana passada só confunde) quanto da trava de "quadra alocada"
+  // (liberar pela data é o comportamento documentado — mesma regra de
+  // quadrasEmArranjoFuturo/posse). data_fim entra no select por causa
+  // dos recorrentes legados (arranjoAindaVale lê ele).
+  const ontem = hojeIsoBrasil(-1);
   const arranjosQuadras = (arranjosRaw ?? [])
-    .filter((a: any) => modsQuadrasIds.has(a.modalidade_id))
+    .filter((a: any) => modsQuadrasIds.has(a.modalidade_id) && arranjoAindaVale(a, ontem))
     .map((a: any) => ({
       ...a,
       modalidade_nome: modById.get(a.modalidade_id)?.nome ?? '?',
