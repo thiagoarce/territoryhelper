@@ -3,7 +3,7 @@
   import Card from '$lib/ui/Card.svelte';
   import { goto } from '$app/navigation';
   import type { OcorrenciaAgendamento } from '$lib/tp-agendamentos';
-  import type { TpCarrinhoCor } from './$types';
+  import type { TpCarrinhoCor } from './+page.server';
 
   let { data }: {
     data: {

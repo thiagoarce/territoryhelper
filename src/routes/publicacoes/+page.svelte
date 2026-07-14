@@ -7,7 +7,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { comprimirImagem } from '$lib/comprimir-imagem';
-  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha, RevistaMesLinha, CarrinhoLite, InventarioItem } from './$types';
+  import type { PedidoLinha, ReposicaoItem, TendenciaMes, PublicacaoCatalogo, CategoriaPublicacao, PublicadorLinha, ControleLinha, RevistaMesLinha, CarrinhoLite, InventarioItem } from './+page.server';
 
   let { data }: {
     data: {

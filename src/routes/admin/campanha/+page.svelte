@@ -9,7 +9,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import type { Campanha } from '$lib/types';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { CampanhaPeriodo, Publicacao, Suprimento } from './$types';
+  import type { CampanhaPeriodo, Publicacao, Suprimento } from './+page.server';
 
   let { data, form }: {
     data: {

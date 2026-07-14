@@ -8,7 +8,7 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
   import { semanaAtual, ocorrenciasEntre, agruparPorData, rangeDoPeriodo, DIAS_SEMANA, DIAS_ORDENADOS, type Periodo } from '$lib/arranjos';
-  import type { Modalidade, Arranjo, PredioLite } from './$types';
+  import type { Modalidade, Arranjo, PredioLite } from './+page.server';
 
   interface PredioChip {
     id: number;

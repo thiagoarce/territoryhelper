@@ -7,7 +7,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { postComFila } from '$lib/offline';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
-  import type { PredioCampo } from './$types';
+  import type { PredioCampo } from './+page';
 
   let { data }: {
     data: {

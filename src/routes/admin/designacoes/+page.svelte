@@ -6,7 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import Card from '$lib/ui/Card.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { DesignacaoHub, TceHub, ArranjoHub, ArranjoDestino } from './$types';
+  import type { DesignacaoHub, TceHub, ArranjoHub, ArranjoDestino } from './+page.server';
 
   let { data }: {
     data: {

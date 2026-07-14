@@ -15,7 +15,7 @@
     TpPontoLite,
     TpParticipanteLinha,
     TpDisponibilidadeLinha
-  } from './$types';
+  } from './+page.server';
 
   let { data }: {
     data: {

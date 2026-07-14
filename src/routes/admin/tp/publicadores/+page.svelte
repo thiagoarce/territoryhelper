@@ -5,7 +5,7 @@
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/ui/toast.svelte';
   import { DIAS_SEMANA } from '$lib/arranjos';
-  import type { TpPublicadorLinha } from './$types';
+  import type { TpPublicadorLinha } from './+page.server';
 
   let { data }: { data: { publicadores: TpPublicadorLinha[] } } = $props();
 

@@ -16,7 +16,7 @@
   import type {
     TpCarrinhoLite, TpPontoLite, TpParticipanteLinha, TpPecaCatalogoLite,
     TpRelatorioLinha, CampanhaPublicacaoLite, TpDisponibilidadeLinha
-  } from './$types';
+  } from './+page';
 
   let { data }: {
     data: {

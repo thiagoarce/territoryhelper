@@ -4,7 +4,7 @@
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { LocalComGeo } from '../../routes/admin/poligonos/+page.server';
+  import type { LocalComGeo } from '../../routes/admin/poligonos/+page';
 
   type Basemap = 'positron' | 'liberty' | 'bright';
 

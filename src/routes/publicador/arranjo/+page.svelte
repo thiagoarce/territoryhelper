@@ -8,7 +8,7 @@
   import { ocorrenciasEntre, agruparPorData, rangeDoPeriodo, type Periodo } from '$lib/arranjos';
   import { page } from '$app/stores';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
-  import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './$types';
+  import type { ArranjoLinha, ModalidadeLite, ParteLinha } from './+page';
 
   interface PredioChip {
     id: number;

@@ -6,7 +6,7 @@
   import Button from '$lib/ui/Button.svelte';
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { TpCarrinhoTipo, TpPecaCatalogo, TpCarrinho } from './$types';
+  import type { TpCarrinhoTipo, TpPecaCatalogo, TpCarrinho } from './+page.server';
 
   let { data }: {
     data: {
