@@ -7,7 +7,7 @@ import { redirect } from '@sveltejs/kit';
 import { supabaseBrowser } from '$lib/supabase-browser';
 import { selectAll, quadrasEmArranjoFuturo } from '$lib/queries';
 import { comCache } from '$lib/offline/cache-leitura';
-import { hojeIsoBrasil, diasDesde, ehFimDeSemana } from '$lib/utils/data';
+import { hojeIsoBrasil, diasDesde, ehFimDeSemana, horaLocalBrasilDe } from '$lib/utils/data';
 
 export const ssr = false;
 
@@ -37,6 +37,18 @@ export interface DiaSemanaTerr {
   meioDaSemana: number;
 }
 
+export interface PeriodoDiaTerr {
+  territorio_id: string;
+  nome: string | null;
+  /** Mesma filosofia do fim de semana/meio da semana: contagem BRUTA de
+   *  conclusões por período, sem normalizar. Só conta evento que tem
+   *  `marcado_em` (quadras_conclusoes — a hora não existe na tabela
+   *  quadras). Manhã = antes de 12h local; tarde = 12h em diante
+   *  (inclui noite — pedido do usuário foi binário manhã/tarde). */
+  manha: number;
+  tarde: number;
+}
+
 export const load: PageLoad = async ({ parent }) => {
   const { profile } = await parent();
   if (!profile) throw redirect(303, '/login');
@@ -50,8 +62,8 @@ async function carregar() {
     selectAll<{ id: string; territorio_id: string | null; ativa: boolean; data_conclusao: string | null }>(
       supabase.from('quadras').select('id, territorio_id, ativa, data_conclusao').order('id')
     ),
-    selectAll<{ quadra_id: string; data_conclusao: string }>(
-      supabase.from('quadras_conclusoes').select('quadra_id, data_conclusao').order('id')
+    selectAll<{ quadra_id: string; data_conclusao: string; marcado_em: string | null }>(
+      supabase.from('quadras_conclusoes').select('quadra_id, data_conclusao, marcado_em').order('id')
     ),
     supabase.from('territorios').select('id, nome').order('id'),
     supabase.from('designacoes').select('id').eq('status', 'aberta'),
@@ -153,6 +165,29 @@ async function carregar() {
       return { territorio_id: tid, nome: nomeTerr.get(tid) ?? null, fimDeSemana: c.fds, meioDaSemana: c.mds };
     });
 
+  // Manhã vs tarde, POR TERRITÓRIO — mesma filosofia (contagem bruta por
+  // evento de conclusão, sem normalizar). Só existe hora em
+  // quadras_conclusoes.marcado_em (a coluna quadras.data_conclusao é só
+  // date) — itera direto sobre `conclusoes`, não sobre `porQuadra`
+  // (que já perdeu a hora ao virar lista de strings de data deduplicadas).
+  const territorioDaQuadraAtiva = new Map(ativas.map((q) => [q.id, q.territorio_id]));
+  const periodoDiaPorTerr = new Map<string, { m: number; t: number }>();
+  for (const c of conclusoes) {
+    if (!c.marcado_em) continue;
+    const tid = territorioDaQuadraAtiva.get(c.quadra_id);
+    if (!tid) continue;
+    const cur = periodoDiaPorTerr.get(tid) ?? { m: 0, t: 0 };
+    if (horaLocalBrasilDe(c.marcado_em) < 12) cur.m++;
+    else cur.t++;
+    periodoDiaPorTerr.set(tid, cur);
+  }
+  const periodoDiaPorTerritorio: PeriodoDiaTerr[] = [...new Set(ativas.map((q) => q.territorio_id).filter(Boolean) as string[])]
+    .sort()
+    .map((tid) => {
+      const c = periodoDiaPorTerr.get(tid) ?? { m: 0, t: 0 };
+      return { territorio_id: tid, nome: nomeTerr.get(tid) ?? null, manha: c.m, tarde: c.t };
+    });
+
   // Funil do momento
   const desigAbertasIds = new Set((desigAbertas.data ?? []).map((d: any) => d.id));
   const designadas = new Set(dq.filter((l) => desigAbertasIds.has(l.designacao_id)).map((l) => l.quadra_id));
@@ -173,6 +208,7 @@ async function carregar() {
     cicloPorTerritorio,
     conclusoesPorMes: meses,
     diaSemanaPorTerritorio,
+    periodoDiaPorTerritorio,
     funil: { designadas: qtdDesignadas, arranjo: qtdArranjo, livres: qtdLivres }
   };
 }

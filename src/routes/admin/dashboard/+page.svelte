@@ -3,7 +3,7 @@
   import Icon from '$lib/ui/Icon.svelte';
   import Card from '$lib/ui/Card.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
-  import type { QuadraEsquecida, CicloTerrMedia, DiaSemanaTerr } from './+page';
+  import type { QuadraEsquecida, CicloTerrMedia, DiaSemanaTerr, PeriodoDiaTerr } from './+page';
 
   let { data }: {
     data: {
@@ -15,6 +15,7 @@
       cicloPorTerritorio: CicloTerrMedia[];
       conclusoesPorMes: { mes: string; qtd: number }[];
       diaSemanaPorTerritorio: DiaSemanaTerr[];
+      periodoDiaPorTerritorio: PeriodoDiaTerr[];
       funil: { designadas: number; arranjo: number; livres: number };
       cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
@@ -146,5 +147,36 @@
         </tbody>
       </table>
     </div>
+  </Card>
+
+  <!-- Manhã vs tarde, por território -->
+  <Card padding="md">
+    <h2 class="text-sm font-semibold text-slate-600 uppercase mb-2"><Icon nome="clock" size={14} /> Quadras concluídas: manhã vs. tarde</h2>
+    <div class="max-h-80 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-slate-500 uppercase text-left">
+            <th class="font-medium pb-1">Território</th>
+            <th class="font-medium pb-1 text-right w-24">Manhã</th>
+            <th class="font-medium pb-1 text-right w-24">Tarde</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {#each data.periodoDiaPorTerritorio as t (t.territorio_id)}
+            <tr>
+              <td class="py-1.5 font-medium">{t.nome?.trim() || `Território ${t.territorio_id}`}</td>
+              <td class="py-1.5 text-right">{t.manha}</td>
+              <td class="py-1.5 text-right">{t.tarde}</td>
+            </tr>
+          {:else}
+            <tr><td colspan="3" class="py-4 text-center text-slate-400">Sem territórios com quadras ativas.</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-[11px] text-slate-400 mt-2">
+      Manhã = antes das 12h. Baseado na hora informada ao concluir — histórico
+      anterior a essa funcionalidade usa uma estimativa por dia da semana, não a hora real.
+    </p>
   </Card>
 </div>

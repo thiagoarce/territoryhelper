@@ -42,6 +42,12 @@ export function ehFimDeSemana(dataIso: string): boolean {
   return d === 0 || d === 6;
 }
 
+// Hora local do Brasil (0-23) de um timestamp UTC (ISO) — usado pra
+// classificar conclusão de quadra em manhã/tarde no dashboard.
+export function horaLocalBrasilDe(iso: string): number {
+  return (new Date(iso).getUTCHours() + 24 - 3) % 24;
+}
+
 // Combina uma data (yyyy-mm-dd) + hora LOCAL do Brasil (HH:MM) num
 // timestamp UTC (ISO) — pro publicador informar "concluí às 15h" e isso
 // virar um timestamptz correto (marcado_em), sem depender de fuso do
