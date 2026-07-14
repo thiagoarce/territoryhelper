@@ -607,3 +607,12 @@ Testes em Node puro via `tsx` (resolve `$lib`), sem framework — cobrem
 lógica pura de `$lib` (posse de quadra, status de campanha, expansão de
 ocorrências de arranjo/TP, `diasDesde`). Não há integração contra Supabase
 real (precisaria de projeto de teste com seed). Ver `tests/README.md`.
+
+`npm run check` (svelte-check): baseline são só **10 erros**, todos
+`Cannot find module '$env/...'` — o módulo está corretamente declarado
+em `.svelte-kit/ambient.d.ts` (confirmado lendo o arquivo direto) e o
+`npm run build` resolve sem problema; é uma limitação do svelte-check
+num ambiente sem `.env` real completo, não um bug de código. **Nunca
+"consertar" isso trocando `$env/static/*` por `$env/dynamic/*`** — já
+quebrou o deploy inteiro uma vez por isso (ver seção Deploy). Qualquer
+erro NOVO além desses 10 é regressão de verdade.

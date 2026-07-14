@@ -14,6 +14,7 @@ export interface ArranjoBase {
   dirigente_id: string | null;
   quadras_ids: string[] | null;
   cartas_locais_ids: number[] | null;
+  tces_ids: string[] | null;
   arquivo_url: string | null;
   arquivo_nome: string | null;
   notas: string | null;

@@ -195,7 +195,7 @@
               { v: 'porteiro', icone: 'shield', label: 'Porteiro' },
               { v: 'eletronica', icone: 'circle-dot', label: 'Eletrônica' },
               { v: 'sem', icone: 'door', label: 'Sem portaria' }
-            ] as opt}
+            ] as const as opt}
               <label class="cursor-pointer">
                 <input type="radio" name="tipo_entrada" value={opt.v} checked={local.tipo_entrada === opt.v} class="peer sr-only" />
                 <div class="text-center text-sm px-3 py-3 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700 hover:bg-slate-50">

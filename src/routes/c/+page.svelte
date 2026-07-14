@@ -1,8 +1,8 @@
 <script lang="ts">
-  import Icon from '$lib/ui/Icon.svelte';
+  import Icon, { type NomeIcone } from '$lib/ui/Icon.svelte';
   let { data }: { data: { objetivos: any[] } } = $props();
 
-  const MOD_INFO: Record<string, { label: string; icone: string; cor: string }> = {
+  const MOD_INFO: Record<string, { label: string; icone: NomeIcone; cor: string }> = {
     casa: { icone: 'home', label: 'Casa em casa', cor: 'from-blue-500 to-blue-700' },
     comercial: { icone: 'store', label: 'Comercial', cor: 'from-emerald-500 to-emerald-700' },
     rural: { icone: 'wheat', label: 'Rural', cor: 'from-amber-500 to-amber-700' },

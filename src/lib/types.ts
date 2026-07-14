@@ -141,6 +141,7 @@ export interface Designacao {
   criada_em: string;
   prazo: string | null;
   status: 'aberta' | 'concluida' | 'cancelada';
+  tipo: 'pessoal' | 'cartas';
   notas: string | null;
   criado_por: string | null;
   atualizado_em: string;

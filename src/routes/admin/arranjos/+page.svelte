@@ -578,6 +578,7 @@
           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           value={arrEditando.modalidade_id}
           onchange={(e) => {
+            if (!arrEditando) return;
             const id = Number((e.target as HTMLSelectElement).value);
             const m = modalidadeById[id];
             if (!m) { arrEditando = { ...arrEditando, modalidade_id: id }; return; }
@@ -592,7 +593,7 @@
             };
           }}
         >
-          {#each data.modalidades.filter((m) => m.ativo || m.id === arrEditando.modalidade_id) as m}
+          {#each data.modalidades.filter((m) => m.ativo || m.id === arrEditando?.modalidade_id) as m}
             <option value={m.id}>{m.nome} · {tipoLabel(m.tipo_territorio)}</option>
           {/each}
         </select>
@@ -612,6 +613,7 @@
               name="recorrente"
               checked={arrEditando.recorrente}
               onchange={(e) => {
+                if (!arrEditando) return;
                 const ck = (e.target as HTMLInputElement).checked;
                 const fimAno = new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10);
                 arrEditando = {
@@ -739,6 +741,7 @@
                     type="checkbox"
                     checked={sel}
                     onchange={(e) => {
+                      if (!arrEditando) return;
                       const cur = new Set(arrEditando.cartas_locais_ids ?? []);
                       if ((e.target as HTMLInputElement).checked) cur.add(p.id);
                       else cur.delete(p.id);
@@ -768,6 +771,7 @@
                     type="checkbox"
                     checked={sel}
                     onchange={(e) => {
+                      if (!arrEditando) return;
                       const cur = new Set(arrEditando.tces_ids ?? []);
                       if ((e.target as HTMLInputElement).checked) cur.add(t.id);
                       else cur.delete(t.id);

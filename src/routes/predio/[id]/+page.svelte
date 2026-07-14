@@ -445,7 +445,7 @@
                 { c: 'carta_entregue' as const, icone: 'mail', cls: 'bg-purple-600', l: 'Carta escrita' },
                 { c: 'desocupado' as const, icone: 'door-closed', cls: 'bg-slate-600', l: 'Desocupado' },
                 { c: 'nao_escrever' as const, icone: 'ban', cls: 'bg-red-600', l: 'Não escrever' }
-              ] as opt}
+              ] as const as opt}
                 {@const ativo = campoEfetivo(u, opt.c)}
                 <button
                   type="button"
@@ -504,7 +504,7 @@
     <div>
       <span class="block text-sm font-medium mb-2">Portaria</span>
       <div class="grid grid-cols-3 gap-2">
-        {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem', icone: 'door' }] as opt}
+        {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem', icone: 'door' }] as const as opt}
           <label class="cursor-pointer">
             <input type="radio" name="tipo_entrada" value={opt.v} checked={data.predio.tipo_entrada === opt.v} class="peer sr-only" />
             <div class="text-center text-sm px-2 py-2 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">

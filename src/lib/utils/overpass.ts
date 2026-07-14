@@ -81,8 +81,17 @@ export function categoriaLabel(c: CategoriaPOI): string {
 }
 
 // Nome do ícone lucide (ver $lib/ui/Icon.svelte) — zero emoji no app.
+const ICONE_POR_CATEGORIA = {
+  parking: 'parking',
+  pharmacy: 'pill',
+  square: 'trees',
+  fuel: 'fuel',
+  supermarket: 'cart',
+  bakery: 'croissant'
+} as const;
+
 export function categoriaIcone(c: CategoriaPOI): 'parking' | 'pill' | 'trees' | 'fuel' | 'cart' | 'croissant' {
-  return { parking: 'parking', pharmacy: 'pill', square: 'trees', fuel: 'fuel', supermarket: 'cart', bakery: 'croissant' }[c];
+  return ICONE_POR_CATEGORIA[c];
 }
 
 // Gera URL do Google Maps pra navegação até um ponto.

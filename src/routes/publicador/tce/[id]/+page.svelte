@@ -120,7 +120,7 @@
       { tipo: 'naoAtendeu', icone: 'door-closed', rotulo: 'Não atendeu' },
       { tipo: 'semConversa', icone: 'door', rotulo: 'Sem conversa' },
       { tipo: 'conversou', icone: 'chat', rotulo: 'Conversou' }
-    ] as opt}
+    ] as const as opt}
       <button type="button"
         onclick={() => marcarDesfechoFila(e, tipoEfetivo === opt.tipo ? '' : opt.tipo)}
         class="w-10 h-10 rounded-lg border flex items-center justify-center"

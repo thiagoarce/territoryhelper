@@ -9,13 +9,14 @@
   import { toast } from '$lib/ui/toast.svelte';
   import type { Campanha } from '$lib/types';
   import type { QuadraGeo } from '$lib/server/queries';
-  import type { CampanhaPeriodo, Publicacao, Suprimento } from './+page.server';
+  import type { CampanhaPeriodo, CampanhaHistorico, Publicacao, Suprimento } from './+page.server';
 
   let { data, form }: {
     data: {
       objetivos: Campanha[];
       periodos: CampanhaPeriodo[];
       ativa: CampanhaPeriodo | null;
+      historico: CampanhaHistorico[];
       quadras: QuadraGeo[];
       quadrasConcluidasNoPeriodo: string[];
       conclusoesSemana: { semana: string; qtd: number }[];
@@ -140,7 +141,7 @@
     { v: 'cartas', icone: 'mail', label: 'Cartas' },
     { v: 'telefone', icone: 'phone', label: 'Telefone' },
     { v: 'publico', icone: 'megaphone', label: 'Testemunho público' }
-  ];
+  ] as const;
 
   const porModalidade = $derived.by(() => {
     const m = new Map<string, Campanha[]>();

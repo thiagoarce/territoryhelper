@@ -47,7 +47,10 @@ function abrirDb(): Promise<IDBDatabase> {
 // FormData só serializa como string aqui — não cobre upload de arquivo
 // (uso de campo, os fluxos offline são todos texto: ids, tipos, datas).
 export async function enfileirar(url: string, formData: FormData, descricao: string, uid: string | null): Promise<void> {
-  const entries: [string, string][] = [...formData.entries()].map(([k, v]) => [k, String(v)]);
+  // `.entries()` existe no FormData do browser (onde este módulo roda) —
+  // o cast contorna o tipo de FormData do @cloudflare/workers-types (mais
+  // enxuto, sem iterator) que o TS pega globalmente no projeto.
+  const entries: [string, string][] = [...(formData as any).entries()].map(([k, v]: [string, unknown]) => [k, String(v)]);
   const db = await abrirDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');

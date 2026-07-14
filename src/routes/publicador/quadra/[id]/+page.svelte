@@ -533,7 +533,7 @@
       { tipo: 'naoAtendeu', icone: 'door-closed', label: 'Não atendeu' },
       { tipo: 'semConversa', icone: 'door', label: 'Sem palestra' },
       { tipo: 'conversou', icone: 'chat', label: 'Conversou' }
-    ] as opt}
+    ] as const as opt}
       {@const ativo = tipoEfetivo === opt.tipo}
       <button
         type="button"

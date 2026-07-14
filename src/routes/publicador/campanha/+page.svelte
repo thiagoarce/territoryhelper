@@ -31,7 +31,7 @@
     { v: 'cartas', icone: 'mail', label: 'Cartas' },
     { v: 'telefone', icone: 'phone', label: 'Telefone' },
     { v: 'publico', icone: 'megaphone', label: 'Testemunho público' }
-  ];
+  ] as const;
 
   const TIPO_LABEL: Record<string, string> = {
     conversou: 'Conversou', semConversa: 'Sem palestra', naoAtendeu: 'Não atendeu',

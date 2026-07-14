@@ -166,7 +166,7 @@
                     await update();
                     enviandoTesteId = null;
                     if (result.type === 'success') toast.success(`Notificação de teste enviada pra ${u.nome}`);
-                    else toast.error(String((result.data as any)?.erro || 'Falhou'));
+                    else toast.error(String((result as any).data?.erro || 'Falhou'));
                   };
                 }}
               >

@@ -513,7 +513,7 @@
       <div>
         <span class="block text-sm font-medium mb-2">Entrada do prédio</span>
         <div class="grid grid-cols-3 gap-2">
-          {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem portaria', icone: 'door' }] as opt}
+          {#each [{ v: 'porteiro', l: 'Porteiro', icone: 'shield' }, { v: 'eletronica', l: 'Eletrônica', icone: 'circle-dot' }, { v: 'sem', l: 'Sem portaria', icone: 'door' }] as const as opt}
             <label class="cursor-pointer">
               <input type="radio" name="tipo_entrada" value={opt.v} checked={predioSel.tipo_entrada === opt.v} class="peer sr-only" />
               <div class="text-center text-sm px-3 py-3 border border-slate-300 rounded-lg peer-checked:bg-primary-50 peer-checked:border-primary-500 peer-checked:text-primary-700">

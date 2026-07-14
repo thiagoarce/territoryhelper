@@ -5,6 +5,7 @@ import { selectAll, quadrasEmArranjoFuturo, msgConflitoArranjo } from '$lib/serv
 import { statusCampanha } from '$lib/campanhas';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { criarNotificacao } from '$lib/server/push';
+import type { ArranjoBase } from '$lib/arranjos';
 
 export interface Modalidade {
   id: number;
@@ -18,29 +19,15 @@ export interface Modalidade {
   ordem: number;
 }
 
-export interface Arranjo {
-  id: number;
-  modalidade_id: number;
-  nome: string | null;
-  recorrente: boolean;
-  dia_semana: number | null;
-  data: string | null;
-  hora_inicio: string | null;
-  hora_fim: string | null;
-  local_endereco: string | null;
+// Estende ArranjoBase (o shape compartilhado com arranjoAindaVale/
+// ocorrenciasEntre em $lib/arranjos.ts) em vez de redeclarar os mesmos
+// campos à parte — os dois já tinham desalinhado (Arranjo sem
+// `interessados`, ArranjoBase sem `local_lat`/`local_lng`/
+// `excecoes_datas`), gerando erros de tipo nos dois sentidos.
+export interface Arranjo extends ArranjoBase {
   local_lat: number | null;
   local_lng: number | null;
-  dirigente_id: string | null;
-  quadras_ids: string[] | null;
-  cartas_locais_ids: number[] | null;
-  arquivo_url: string | null;
-  arquivo_nome: string | null;
-  notas: string | null;
-  ativo: boolean;
-  data_inicio: string | null;
-  data_fim: string | null;
   excecoes_datas: string[] | null;
-  tces_ids: string[];
 }
 
 export interface PredioLite {
@@ -83,15 +70,15 @@ export const load: PageServerLoad = async ({ locals }) => {
         .order('hora_inicio', { nullsFirst: false })
         .order('id')
     ), [] as Arranjo[]),
-    safe('dirigentes', locals.supabase
+    safe('dirigentes', Promise.resolve(locals.supabase
       .from('profiles')
       .select('id, nome')
       .in('role', ['dirigente', 'admin'])
       .eq('ativo', true)
-      .order('nome'),
+      .order('nome')),
       { data: [] as { id: string; nome: string }[], error: null } as any
     ),
-    safe('quadras', locals.supabase.from('quadras').select('id').eq('ativa', true).order('id'),
+    safe('quadras', Promise.resolve(locals.supabase.from('quadras').select('id').eq('ativa', true).order('id')),
       { data: [] as { id: string }[], error: null } as any),
     safe('predios', selectAll<PredioLite>(
       locals.supabase
@@ -129,7 +116,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const prediosMap: Record<number, PredioChip> = {};
   if (predioIds.length > 0) {
     const [locaisRes, unidsRes] = await Promise.all([
-      safe('predios_chip', locals.supabase.from('locais').select('id, logradouro, numero, nome').in('id', predioIds),
+      safe('predios_chip', Promise.resolve(locals.supabase.from('locais').select('id, logradouro, numero, nome').in('id', predioIds)),
         { data: [] as any[], error: null } as any),
       safe('predios_chip_units', selectAll<{ local_id: number; carta_entregue: string | null }>(
         locals.supabase.from('unidades').select('local_id, carta_entregue').in('local_id', predioIds)
@@ -332,6 +319,7 @@ export const actions: Actions = {
       data.nome = mod?.nome ?? 'Arranjo';
     }
 
+    const criadoPor = locals.user.id;
     if (data.recorrente) {
       // Em vez de armazenar 1 linha recorrente, expande em N arranjos pontuais
       // independentes (cada um editável). Usuário pode mudar dirigente, território,
@@ -350,7 +338,7 @@ export const actions: Actions = {
         data: d,
         data_inicio: null,
         data_fim: null,
-        criado_por: locals.user.id
+        criado_por: criadoPor
       }));
       const { error } = await locals.supabase.from('arranjos').insert(rows);
       if (error) return fail(400, { erro: error.message });
