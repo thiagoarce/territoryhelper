@@ -36,7 +36,18 @@ sw.addEventListener('activate', (event) => {
 //   SW livre de lógica de negócio evita duplicar a decisão de retry aqui
 //   e lá.
 sw.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  if (event.request.method !== 'GET') {
+    // Logout: limpa as respostas de DADOS do cache (HTML/JSON autenticados
+    // — /api/notificacoes, __data.json, páginas). Aparelho compartilhado
+    // não pode servir offline a home/notificações do usuário anterior pro
+    // próximo (o cache do SW não é chaveado por uid, diferente do cache de
+    // leitura em IndexedDB). Os assets do shell ficam (hash-versionados,
+    // iguais pra qualquer usuário).
+    if (event.request.method === 'POST' && new URL(event.request.url).pathname === '/logout') {
+      event.waitUntil(limparCacheDeDados());
+    }
+    return;
+  }
   const url = new URL(event.request.url);
   // Não cacheia chamadas pra Supabase (sempre fresco)
   if (url.hostname.endsWith('supabase.co')) return;
@@ -65,6 +76,18 @@ sw.addEventListener('fetch', (event) => {
 //    que o Cache API do WebKit preservou da entrada armazenada).
 // 3. Antes de cachear, remove a flag (semFlagDeRedirect) — não guarda
 //    resposta redirecionada nem pra subresource.
+// Remove do cache tudo que NÃO é asset do shell (ou seja: respostas de
+// dados/páginas, potencialmente autenticadas). Chamada no logout.
+async function limparCacheDeDados(): Promise<void> {
+  const cache = await caches.open(CACHE);
+  const chaves = await cache.keys();
+  await Promise.all(
+    chaves
+      .filter((req) => !ASSETS.includes(new URL(req.url).pathname))
+      .map((req) => cache.delete(req))
+  );
+}
+
 async function respostaLimpa(res: Response): Promise<Response> {
   const body = await res.blob();
   return new Response(body, {
