@@ -56,7 +56,10 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   sem polígono — nesse caso ajusta o zoom pros pontos em vez do centro fixo),
   `EditarLocalSheet.svelte`, `InstallPrompt.svelte`, `TpGradeSemana.svelte`
   (grade semanal do Planner de TP), `NotificacoesBell.svelte` (sino no
-  header global — fallback in-app de PUSH-A, funciona sem push)
+  header global — fallback in-app de PUSH-A, funciona sem push;
+  "Limpar lidas" apaga as PRÓPRIAS notificações já lidas via
+  `POST /api/notificacoes {limparLidas:true}` — RLS de DELETE própria,
+  migration 088; não-lida nunca é apagada por aqui)
 - `src/lib/erros-client.ts` — telemetria de erros do CLIENT: `instalarCapturaDeErros`
   (chamado no root layout, só com sessão conhecida) registra
   `window.onerror`/`unhandledrejection` e manda pra `erros_client`

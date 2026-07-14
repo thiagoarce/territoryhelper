@@ -33,6 +33,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return json({ ok: true });
   }
 
+  // Publicador limpa as PRÓPRIAS notificações já lidas (RLS restringe
+  // ao dono — migration 088). Não-lida nunca é apagada por aqui: se o
+  // publicador quer sumir com ela, marca como lida primeiro.
+  if (body.limparLidas) {
+    const { error } = await locals.supabase
+      .from('notificacoes')
+      .delete()
+      .not('lida_em', 'is', null);
+    if (error) return json({ erro: error.message }, { status: 400 });
+    return json({ ok: true });
+  }
+
   const id = Number(body.id ?? 0);
   if (!id) return json({ erro: 'id obrigatório' }, { status: 400 });
   const { error } = await locals.supabase.from('notificacoes').update({ lida_em: agora }).eq('id', id);

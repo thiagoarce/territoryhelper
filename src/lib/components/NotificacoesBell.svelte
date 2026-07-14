@@ -71,6 +71,24 @@
     }).catch(() => {});
   }
 
+  const temLidas = $derived(notificacoes.some((n) => n.lida_em));
+  let limpando = $state(false);
+  async function limparLidas() {
+    limpando = true;
+    try {
+      const res = await fetch('/api/notificacoes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ limparLidas: true })
+      });
+      if (res.ok) notificacoes = notificacoes.filter((n) => !n.lida_em);
+    } catch {
+      // Offline — tenta de novo na próxima abertura.
+    } finally {
+      limpando = false;
+    }
+  }
+
   function tempoRelativo(iso: string): string {
     const diffMs = Date.now() - new Date(iso).getTime();
     const min = Math.floor(diffMs / 60000);
@@ -97,11 +115,18 @@
 </button>
 
 <BottomSheet bind:open={aberto} title="Notificações">
-  {#if naoLidas > 0}
-    <button type="button" onclick={marcarTodasLidas} class="text-xs text-primary-700 hover:underline mb-2">
-      Marcar todas como lidas
-    </button>
-  {/if}
+  <div class="flex items-center gap-3 mb-2">
+    {#if naoLidas > 0}
+      <button type="button" onclick={marcarTodasLidas} class="text-xs text-primary-700 hover:underline">
+        Marcar todas como lidas
+      </button>
+    {/if}
+    {#if temLidas}
+      <button type="button" onclick={limparLidas} disabled={limpando} class="text-xs text-slate-500 hover:underline disabled:opacity-40">
+        {limpando ? 'Limpando...' : 'Limpar lidas'}
+      </button>
+    {/if}
+  </div>
   {#if carregando && notificacoes.length === 0}
     <p class="text-sm text-slate-400 text-center py-6">Carregando...</p>
   {:else if notificacoes.length === 0}
