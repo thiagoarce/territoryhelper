@@ -204,13 +204,15 @@ export interface ViaComNome {
   pontos: [number, number][]; // [lng, lat], na ordem da via
 }
 
-// bbox em graus (sul, oeste, norte, leste) — mesmo formato que a Overpass usa.
-export async function buscarViasComNome(bbox: {
+export interface BBoxGraus {
   south: number;
   west: number;
   north: number;
   east: number;
-}): Promise<ViaComNome[]> {
+}
+
+// bbox em graus (sul, oeste, norte, leste) — mesmo formato que a Overpass usa.
+export async function buscarViasComNome(bbox: BBoxGraus): Promise<ViaComNome[]> {
   // `out geom` traz a geometria completa inline pra CADA way (evita um
   // segundo passo de resolver nós) — suficiente pra desenhar a linha e
   // ancorar o texto, sem pedir nó por nó.
@@ -219,9 +221,15 @@ export async function buscarViasComNome(bbox: {
 
   // Uma rua real quase sempre vira VÁRIOS ways no OSM (um por quadra/
   // trecho) — sem deduplicar, o mesmo nome se repetiria várias vezes
-  // muito perto uma da outra, poluindo o cartão. Fica só o trecho mais
-  // longo (mais pontos, proxy simples de comprimento) de cada nome.
-  const porNome = new Map<string, ViaComNome>();
+  // muito perto uma da outra, poluindo o cartão. Fica UM trecho por
+  // nome: o com mais pontos DENTRO do bbox (a way pode se estender
+  // quilômetros além do bbox pedido — a Overpass devolve a geometria
+  // inteira de qualquer way que TOQUE o bbox; escolher pelo tamanho
+  // total podia eleger um trecho longe do território e o rótulo cair
+  // fora do cartão).
+  const dentroDoBbox = ([lng, lat]: [number, number]) =>
+    lat >= bbox.south && lat <= bbox.north && lng >= bbox.west && lng <= bbox.east;
+  const porNome = new Map<string, { via: ViaComNome; placar: number }>();
   for (const el of json.elements ?? []) {
     if (el.type !== 'way') continue;
     const nome = el.tags?.name;
@@ -231,8 +239,67 @@ export async function buscarViasComNome(bbox: {
       .filter((g: any) => typeof g?.lat === 'number' && typeof g?.lon === 'number')
       .map((g: any) => [g.lon, g.lat] as [number, number]);
     if (pontos.length < 2) continue;
+    const placar = pontos.filter(dentroDoBbox).length;
     const atual = porNome.get(nome);
-    if (!atual || pontos.length > atual.pontos.length) porNome.set(nome, { nome, pontos });
+    if (!atual || placar > atual.placar) porNome.set(nome, { via: { nome, pontos }, placar });
   }
-  return [...porNome.values()];
+  return [...porNome.values()].map((v) => v.via);
+}
+
+// Ponto de ancoragem + ângulo do rótulo de uma via, pro texto ser
+// desenhado como SÍMBOLO DE PONTO rotacionado (não de linha):
+// `symbol-placement: line/line-center` do MapLibre só renderiza o texto
+// se ele COUBER no comprimento da linha na tela — no zoom de um
+// território inteiro, um trecho de rua tem ~80px e um nome tem ~300px,
+// então NADA aparecia (text-allow-overlap não desliga essa checagem, só
+// a colisão entre símbolos). Ponto rotacionado não tem essa regra.
+// Anche: o ponto no MEIO do caminho (por distância acumulada, não o
+// vértice do meio) e o ângulo do segmento onde ele cai, normalizado pra
+// nunca ficar de cabeça pra baixo. Puro e exportado pra teste.
+export function pontoDoRotulo(
+  pontos: [number, number][]
+): { lng: number; lat: number; angulo: number } | null {
+  if (pontos.length < 2) return null;
+  // Equiretangular local: bom o bastante pra ângulo/distância de rua.
+  const cosLat = Math.cos((pontos[0][1] * Math.PI) / 180);
+  const dist = (a: [number, number], b: [number, number]) =>
+    Math.hypot((b[0] - a[0]) * cosLat, b[1] - a[1]);
+  let total = 0;
+  for (let i = 1; i < pontos.length; i++) total += dist(pontos[i - 1], pontos[i]);
+  if (total === 0) return null;
+  let acc = 0;
+  const alvo = total / 2;
+  for (let i = 1; i < pontos.length; i++) {
+    const d = dist(pontos[i - 1], pontos[i]);
+    if (acc + d >= alvo && d > 0) {
+      const t = (alvo - acc) / d;
+      const lng = pontos[i - 1][0] + (pontos[i][0] - pontos[i - 1][0]) * t;
+      const lat = pontos[i - 1][1] + (pontos[i][1] - pontos[i - 1][1]) * t;
+      // Ângulo em graus HORÁRIOS a partir da horizontal da tela (y da
+      // tela cresce pra baixo, daí o -dLat). text-rotate é horário.
+      let angulo =
+        (Math.atan2(-(pontos[i][1] - pontos[i - 1][1]), (pontos[i][0] - pontos[i - 1][0]) * cosLat) * 180) /
+        Math.PI;
+      // Nunca de cabeça pra baixo: normaliza pra (-90, 90]
+      angulo = ((((angulo + 90) % 180) + 180) % 180) - 90;
+      return { lng, lat, angulo };
+    }
+    acc += d;
+  }
+  return null;
+}
+
+// "Rua Pastor Josebias Fialho Marinho" não cabe no cartão — o cartão do
+// app antigo abreviava ("R. Pastor Josebias...") e é o padrão de
+// qualquer mapa impresso. Só o TIPO do logradouro (prefixo), o nome em
+// si fica inteiro.
+export function abreviarLogradouro(nome: string): string {
+  return nome
+    .replace(/^Rua\s/i, 'R. ')
+    .replace(/^Avenida\s/i, 'Av. ')
+    .replace(/^Travessa\s/i, 'Tv. ')
+    .replace(/^Rodovia\s/i, 'Rod. ')
+    .replace(/^Alameda\s/i, 'Al. ')
+    .replace(/^Estrada\s/i, 'Est. ')
+    .replace(/^Praça\s/i, 'Pç. ');
 }

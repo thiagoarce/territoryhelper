@@ -10,7 +10,7 @@
   import maplibregl from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { diasDesde } from '$lib/utils/data';
-  import { buscarViasComNome, type ViaComNome } from '$lib/utils/overpass';
+  import { buscarViasComNome, pontoDoRotulo, abreviarLogradouro, type ViaComNome } from '$lib/utils/overpass';
 
   export interface QuadraContexto {
     id: string;
@@ -145,33 +145,49 @@
         // sempre aparece (allow-overlap), no tamanho que a gente escolhe.
         const vias = await viasPromise;
         const nomesStyle = ['highway-name-major', 'highway-name-minor', 'highway-name-path'];
-        if (vias.length > 0) {
+        // Cada via vira UM ponto rotacionado (não uma linha) — ver
+        // pontoDoRotulo em overpass.ts: `symbol-placement: line-center`
+        // do MapLibre só desenha o texto se ele COUBER no comprimento da
+        // via na tela, e no zoom de um território o nome (~300px) é bem
+        // maior que o trecho (~80px), então quase nada aparecia (as duas
+        // tentativas anteriores). Símbolo de PONTO com `text-rotate` não
+        // tem essa checagem: sempre renderiza, no ângulo real da rua.
+        const feats = vias
+          .map((v) => {
+            const p = pontoDoRotulo(v.pontos);
+            return p
+              ? {
+                  type: 'Feature' as const,
+                  geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+                  properties: { nome: abreviarLogradouro(v.nome), angulo: p.angulo }
+                }
+              : null;
+          })
+          .filter((f): f is NonNullable<typeof f> => f !== null);
+        if (feats.length > 0) {
           // Some com o rótulo do style pra não duplicar nome de rua.
           for (const layerId of nomesStyle) {
             try { map.setLayoutProperty(layerId, 'visibility', 'none'); } catch {}
           }
           map.addSource('vias', {
             type: 'geojson',
-            data: {
-              type: 'FeatureCollection',
-              features: vias.map((v) => ({
-                type: 'Feature' as const,
-                geometry: { type: 'LineString' as const, coordinates: v.pontos },
-                properties: { nome: v.nome }
-              }))
-            }
+            data: { type: 'FeatureCollection', features: feats }
           });
           map.addLayer({
             id: 'vias-nome', type: 'symbol', source: 'vias',
             layout: {
-              'symbol-placement': 'line-center',
               'text-field': ['get', 'nome'],
-              'text-size': 20,
+              'text-size': 19,
               'text-font': ['Noto Sans Bold'],
-              'text-allow-overlap': true,
-              'text-rotation-alignment': 'map'
+              'text-rotate': ['get', 'angulo'],
+              'text-rotation-alignment': 'map',
+              // Deixa o MapLibre esconder rótulos que colidem entre si —
+              // duas ruas cruzando com nomes um por cima do outro fica
+              // ilegível; melhor sumir com um do que empilhar.
+              'text-allow-overlap': false,
+              'text-padding': 2
             },
-            paint: { 'text-color': '#1e293b', 'text-halo-color': '#ffffff', 'text-halo-width': 2.2 }
+            paint: { 'text-color': '#1e293b', 'text-halo-color': '#ffffff', 'text-halo-width': 2.4 }
           });
         } else {
           // Sem dado da Overpass (rede/serviço fora) — fallback: pelo
