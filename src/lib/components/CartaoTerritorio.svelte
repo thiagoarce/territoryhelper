@@ -107,6 +107,36 @@
 
       map.on('error', () => { /* tile faltando não aborta — o idle decide */ });
       map.on('load', () => {
+        // Nome de rua ilegível no cartão impresso era queixa real (print
+        // comparado lado a lado com o cartão do app antigo, que mostrava
+        // os nomes claramente). Duas causas no style padrão do
+        // OpenFreeMap (mesma em positron/liberty/bright — conferido):
+        // 1) `highway-name-minor` (rua residencial comum) só aparece a
+        //    partir do zoom 15 — o fitBounds do território, calculado
+        //    pra caber todas as quadras destacadas, com frequência fica
+        //    ABAIXO disso, e a rua nem chega a ser desenhada;
+        // 2) mesmo quando aparece, o text-size do style (~12-13px) é
+        //    desenhado no mapa fonte (~1480px) e depois vai pro canvas
+        //    "2x" do cartão (1600px) quase 1:1 — no papel impresso em
+        //    tamanho real isso equivale a uns 6-7px, minúsculo (mesmo
+        //    problema que já corrigimos pro rótulo de quadra/legenda).
+        // setLayerZoomRange derruba o piso de zoom (nome de rua aparece
+        // em QUALQUER zoom que o território tiver caído) e
+        // setLayoutProperty aumenta o texto — só nesta instância oculta
+        // de geração do cartão, o mapa interativo normal do app não muda.
+        for (const layerId of ['highway-name-major', 'highway-name-minor', 'highway-name-path']) {
+          try {
+            map.setLayerZoomRange(layerId, 0, 24);
+            map.setLayoutProperty(layerId, 'text-size', 19);
+            // Halo mais forte — texto do style (#666, halo fino) precisa
+            // continuar legível por cima do preenchimento colorido das
+            // quadras (destaque/recente), não só do fundo claro do mapa.
+            map.setPaintProperty(layerId, 'text-halo-width', 1.6);
+          } catch {
+            // style sem essa camada (versão futura do OpenFreeMap) — não impede o resto
+          }
+        }
+
         map.addSource('cartao', { type: 'geojson', data: { type: 'FeatureCollection', features } });
         map.addLayer({
           id: 'cartao-fill', type: 'fill', source: 'cartao',
