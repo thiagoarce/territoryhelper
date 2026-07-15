@@ -62,6 +62,21 @@
     return [[minLng, minLat], [maxLng, maxLat]];
   }
 
+  // Rótulo da quadra no cartão = SÓ a letra, sem o número do território.
+  // As quadras têm id tipo "1A"/"1B".."1M" (território 1); repetir o "1"
+  // em toda quadra polui o cartão e o número do território já aparece no
+  // campo "Terr. N.º". Tira o prefixo do PRÓPRIO território da quadra
+  // (cada quadra do contexto pode ser de um território diferente) — ex.:
+  // "1A" no território "1" → "A", "29C" no "29" → "C". Fallback pro id
+  // inteiro se não casar (território null, ou id que não começa com ele).
+  function rotuloQuadra(id: string, territorioId: string | null): string {
+    if (territorioId && id.startsWith(territorioId)) {
+      const resto = id.slice(territorioId.length);
+      if (resto) return resto;
+    }
+    return id;
+  }
+
   async function renderizarMapa(basemap: string, limiarDias: number): Promise<string | null> {
     const destaque = new Set(destaqueIds);
     const features = quadras
@@ -71,6 +86,7 @@
         geometry: q.poly_geojson as any,
         properties: {
           id: q.id,
+          rotulo: rotuloQuadra(q.id, q.territorio_id),
           estado: destaque.has(q.id)
             ? 'destaque'
             : q.data_conclusao && diasDesde(q.data_conclusao) <= limiarDias
@@ -177,8 +193,12 @@
             id: 'vias-nome', type: 'symbol', source: 'vias',
             layout: {
               'text-field': ['get', 'nome'],
-              'text-size': 19,
-              'text-font': ['Noto Sans Bold'],
+              // Peso REGULAR (não bold) + tamanho e halo menores pra
+              // aproximar do cartão de referência do usuário: nome de rua
+              // lá é preto, fino, discreto ao longo da via — não "grita".
+              // A letra da quadra (vermelha, 30px, bold) é que domina.
+              'text-size': 16,
+              'text-font': ['Noto Sans Regular'],
               'text-rotate': ['get', 'angulo'],
               'text-rotation-alignment': 'map',
               // Deixa o MapLibre esconder rótulos que colidem entre si —
@@ -187,7 +207,7 @@
               'text-allow-overlap': false,
               'text-padding': 2
             },
-            paint: { 'text-color': '#1e293b', 'text-halo-color': '#ffffff', 'text-halo-width': 2.4 }
+            paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 }
           });
         } else {
           // Sem dado da Overpass (rede/serviço fora) — fallback: pelo
@@ -226,16 +246,19 @@
         map.addLayer({
           id: 'cartao-rotulo', type: 'symbol', source: 'cartao',
           layout: {
-            'text-field': ['get', 'id'],
-            // Letra da quadra ilegível no cartão impresso era queixa real
-            // (13px renderizado quase 1:1 numa imagem "2x" vira ~6-7px
-            // efetivo no papel) — subiu bastante, allow-overlap já
-            // garante que nunca some, só sobrepõe em quadra minúscula.
-            'text-size': 20,
+            // SÓ a letra (rotulo, sem o número do território — ver
+            // rotuloQuadra) e GRANDE, como no cartão do app antigo que o
+            // usuário usa de referência: letra da quadra é o elemento mais
+            // proeminente do cartão.
+            'text-field': ['get', 'rotulo'],
+            'text-size': 30,
             'text-font': ['Noto Sans Bold'],
             'text-allow-overlap': true
           },
-          paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
+          // Vermelho como no cartão de referência — destaca a letra sobre
+          // qualquer preenchimento; halo branco grosso garante contraste
+          // até por cima da quadra vermelha (recente).
+          paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 2.6 }
         });
         // O ✕ das concluídas recentes mora no PRÓPRIO mapa (camada symbol
         // deslocada pra baixo do rótulo) — escala e posiciona de graça.
