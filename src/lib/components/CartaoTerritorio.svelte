@@ -10,6 +10,7 @@
   import maplibregl from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { diasDesde } from '$lib/utils/data';
+  import { buscarViasComNome, type ViaComNome } from '$lib/utils/overpass';
 
   export interface QuadraContexto {
     id: string;
@@ -88,6 +89,30 @@
     const bbox = bboxDeTudo(featuresDestaque.length > 0 ? featuresDestaque : features);
     if (!bbox) return null;
 
+    // Busca as vias com nome (Overpass) JÁ, em paralelo com a criação do
+    // mapa/carregamento dos tiles — os dois são I/O, não precisa esperar
+    // um pro outro começar. Bbox com folga de 25% (mín. ~150m) pra pegar
+    // rua que corta perto da borda do território, não só as bem no meio.
+    const [[minLng, minLat], [maxLng, maxLat]] = bbox;
+    const folgaLat = Math.max((maxLat - minLat) * 0.25, 0.0015);
+    const folgaLng = Math.max((maxLng - minLng) * 0.25, 0.0015);
+    // Teto de 6s pro fetch de vias, MENOR que o timeout geral do cartão
+    // (20s, abaixo) — buscarViasComNome tenta até 3 espelhos Overpass em
+    // sequência internamente e cada um pode levar até 13s; sem esse
+    // teto, os 3 fora do ar em sequência estourariam o timeout do
+    // cartão INTEIRO antes mesmo de cair no fallback (regressão: cartão
+    // que sempre funcionou — sem depender de rede externa nenhuma —
+    // passaria a falhar quando só a Overpass estivesse fora).
+    const viasPromise: Promise<ViaComNome[]> = Promise.race([
+      buscarViasComNome({
+        south: minLat - folgaLat,
+        west: minLng - folgaLng,
+        north: maxLat + folgaLat,
+        east: maxLng + folgaLng
+      }),
+      new Promise<ViaComNome[]>((r) => setTimeout(() => r([]), 6000))
+    ]).catch(() => [] as ViaComNome[]); // sem vias = cai no fallback do style (ver load abaixo)
+
     return new Promise((resolve) => {
       const map = new maplibregl.Map({
         container: containerMapa,
@@ -106,34 +131,58 @@
       const timeout = setTimeout(() => acabar(null), 20000);
 
       map.on('error', () => { /* tile faltando não aborta — o idle decide */ });
-      map.on('load', () => {
-        // Nome de rua ilegível no cartão impresso era queixa real (print
-        // comparado lado a lado com o cartão do app antigo, que mostrava
-        // os nomes claramente). Duas causas no style padrão do
-        // OpenFreeMap (mesma em positron/liberty/bright — conferido):
-        // 1) `highway-name-minor` (rua residencial comum) só aparece a
-        //    partir do zoom 15 — o fitBounds do território, calculado
-        //    pra caber todas as quadras destacadas, com frequência fica
-        //    ABAIXO disso, e a rua nem chega a ser desenhada;
-        // 2) mesmo quando aparece, o text-size do style (~12-13px) é
-        //    desenhado no mapa fonte (~1480px) e depois vai pro canvas
-        //    "2x" do cartão (1600px) quase 1:1 — no papel impresso em
-        //    tamanho real isso equivale a uns 6-7px, minúsculo (mesmo
-        //    problema que já corrigimos pro rótulo de quadra/legenda).
-        // setLayerZoomRange derruba o piso de zoom (nome de rua aparece
-        // em QUALQUER zoom que o território tiver caído) e
-        // setLayoutProperty aumenta o texto — só nesta instância oculta
-        // de geração do cartão, o mapa interativo normal do app não muda.
-        for (const layerId of ['highway-name-major', 'highway-name-minor', 'highway-name-path']) {
-          try {
-            map.setLayerZoomRange(layerId, 0, 24);
-            map.setLayoutProperty(layerId, 'text-size', 19);
-            // Halo mais forte — texto do style (#666, halo fino) precisa
-            // continuar legível por cima do preenchimento colorido das
-            // quadras (destaque/recente), não só do fundo claro do mapa.
-            map.setPaintProperty(layerId, 'text-halo-width', 1.6);
-          } catch {
-            // style sem essa camada (versão futura do OpenFreeMap) — não impede o resto
+      map.on('load', async () => {
+        // Nome de rua ilegível/ausente no cartão impresso era queixa real
+        // (print comparado lado a lado com o cartão do app antigo).
+        // Tentamos primeiro só ajustar a camada de nome de rua do PRÓPRIO
+        // style (setLayerZoomRange/text-size) e não resolveu de verdade —
+        // a geometria da via às vezes nem está presente no tile naquele
+        // zoom (simplificação do tileset de terceiro, fora do nosso
+        // controle) e o posicionamento sofre colisão com outras camadas.
+        // Solução de verdade: desenhamos o nome NÓS MESMOS, como camada
+        // própria, a partir de dados buscados na Overpass (mesma API já
+        // usada em Estacionar perto — ver $lib/utils/overpass.ts). Texto
+        // sempre aparece (allow-overlap), no tamanho que a gente escolhe.
+        const vias = await viasPromise;
+        const nomesStyle = ['highway-name-major', 'highway-name-minor', 'highway-name-path'];
+        if (vias.length > 0) {
+          // Some com o rótulo do style pra não duplicar nome de rua.
+          for (const layerId of nomesStyle) {
+            try { map.setLayoutProperty(layerId, 'visibility', 'none'); } catch {}
+          }
+          map.addSource('vias', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: vias.map((v) => ({
+                type: 'Feature' as const,
+                geometry: { type: 'LineString' as const, coordinates: v.pontos },
+                properties: { nome: v.nome }
+              }))
+            }
+          });
+          map.addLayer({
+            id: 'vias-nome', type: 'symbol', source: 'vias',
+            layout: {
+              'symbol-placement': 'line-center',
+              'text-field': ['get', 'nome'],
+              'text-size': 20,
+              'text-font': ['Noto Sans Bold'],
+              'text-allow-overlap': true,
+              'text-rotation-alignment': 'map'
+            },
+            paint: { 'text-color': '#1e293b', 'text-halo-color': '#ffffff', 'text-halo-width': 2.2 }
+          });
+        } else {
+          // Sem dado da Overpass (rede/serviço fora) — fallback: pelo
+          // menos tenta destravar o rótulo nativo do style, melhor que
+          // nada em vez de mapa totalmente sem nome de rua.
+          for (const layerId of nomesStyle) {
+            try {
+              map.setLayerZoomRange(layerId, 0, 24);
+              map.setLayoutProperty(layerId, 'text-size', 19);
+              map.setPaintProperty(layerId, 'text-halo-width', 1.6);
+            } catch {}
           }
         }
 

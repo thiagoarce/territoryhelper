@@ -86,6 +86,24 @@ async function postOverpass(endpoint: string, query: string): Promise<any> {
   }
 }
 
+// Cadeia de fallback compartilhada por qualquer chamador (POIs, vias) —
+// tenta cada espelho, lembra qual funcionou pra começar por ele na
+// próxima chamada da sessão (endpointBomIdx é módulo, compartilhado).
+async function comFallback(query: string): Promise<any> {
+  let ultimoErro: unknown = null;
+  for (let i = 0; i < ENDPOINTS.length; i++) {
+    const idx = (endpointBomIdx + i) % ENDPOINTS.length;
+    try {
+      const json = await postOverpass(ENDPOINTS[idx], query);
+      endpointBomIdx = idx;
+      return json;
+    } catch (e) {
+      ultimoErro = e;
+    }
+  }
+  throw ultimoErro ?? new Error('Overpass indisponível');
+}
+
 const cache = new Map<string, { ts: number; data: POI[] }>();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -100,20 +118,7 @@ export async function buscarPOIs(
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
 
   const query = montarQueryOverpass(lat, lng, raioMetros, categorias);
-
-  let json: any = null;
-  let ultimoErro: unknown = null;
-  for (let i = 0; i < ENDPOINTS.length; i++) {
-    const idx = (endpointBomIdx + i) % ENDPOINTS.length;
-    try {
-      json = await postOverpass(ENDPOINTS[idx], query);
-      endpointBomIdx = idx;
-      break;
-    } catch (e) {
-      ultimoErro = e;
-    }
-  }
-  if (json === null) throw ultimoErro ?? new Error('Overpass indisponível');
+  const json = await comFallback(query);
 
   const vistos = new Set<string>();
   const pois: POI[] = [];
@@ -178,4 +183,56 @@ export function categoriaIcone(c: CategoriaPOI): 'parking' | 'pill' | 'trees' | 
 // Gera URL do Google Maps pra navegação até um ponto.
 export function urlRotaGoogleMaps(lat: number, lng: number): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}
+
+// === Vias com nome (Cartão S-12) ===
+//
+// Por que buscar isso em vez de confiar no rótulo de rua do próprio
+// basemap: a camada de nome de rua do style (OpenFreeMap) só aparece a
+// partir de um certo zoom E o texto vem pequeno — tentamos ajustar isso
+// (setLayerZoomRange/text-size) e não resolveu de verdade: a geometria
+// da rua às vezes nem está presente no tile naquele zoom (simplificação
+// do próprio tileset, fora do nosso controle), e o posicionamento do
+// texto sofre colisão com outras camadas do style. Buscando a via
+// (geometria + nome) direto da Overpass e desenhando NÓS MESMOS como
+// camada símbolo própria, o texto sempre aparece (garante-se
+// allow-overlap), no tamanho que a gente escolhe, sem depender do que o
+// tileset de terceiro decidiu incluir naquele zoom.
+
+export interface ViaComNome {
+  nome: string;
+  pontos: [number, number][]; // [lng, lat], na ordem da via
+}
+
+// bbox em graus (sul, oeste, norte, leste) — mesmo formato que a Overpass usa.
+export async function buscarViasComNome(bbox: {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}): Promise<ViaComNome[]> {
+  // `out geom` traz a geometria completa inline pra CADA way (evita um
+  // segundo passo de resolver nós) — suficiente pra desenhar a linha e
+  // ancorar o texto, sem pedir nó por nó.
+  const query = `[out:json][timeout:8];way["highway"]["name"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});out geom;`;
+  const json = await comFallback(query);
+
+  // Uma rua real quase sempre vira VÁRIOS ways no OSM (um por quadra/
+  // trecho) — sem deduplicar, o mesmo nome se repetiria várias vezes
+  // muito perto uma da outra, poluindo o cartão. Fica só o trecho mais
+  // longo (mais pontos, proxy simples de comprimento) de cada nome.
+  const porNome = new Map<string, ViaComNome>();
+  for (const el of json.elements ?? []) {
+    if (el.type !== 'way') continue;
+    const nome = el.tags?.name;
+    const geom = el.geometry;
+    if (!nome || !Array.isArray(geom) || geom.length < 2) continue;
+    const pontos: [number, number][] = geom
+      .filter((g: any) => typeof g?.lat === 'number' && typeof g?.lon === 'number')
+      .map((g: any) => [g.lon, g.lat] as [number, number]);
+    if (pontos.length < 2) continue;
+    const atual = porNome.get(nome);
+    if (!atual || pontos.length > atual.pontos.length) porNome.set(nome, { nome, pontos });
+  }
+  return [...porNome.values()];
 }
