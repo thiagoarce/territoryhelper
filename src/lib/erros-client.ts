@@ -22,14 +22,15 @@ async function reportar(publicadorId: string, mensagem: string, stack: string | 
   vistos.add(k);
   enviados++;
   try {
+    // slices casam com o constraint erros_client_tamanho (migration 089)
     await supabaseBrowser()
       .from('erros_client')
       .insert({
         publicador_id: publicadorId,
         mensagem: mensagem.slice(0, 2000),
         stack: stack?.slice(0, 4000) ?? null,
-        url: location.href,
-        user_agent: navigator.userAgent
+        url: location.href.slice(0, 1000),
+        user_agent: navigator.userAgent.slice(0, 500)
       });
   } catch {
     // telemetria não pode virar outra fonte de erro

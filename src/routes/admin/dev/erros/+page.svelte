@@ -32,6 +32,17 @@
   function fmt(iso: string): string {
     return new Date(iso).toLocaleString('pt-BR');
   }
+
+  // `url` vem do client (qualquer autenticado pode inserir via PostgREST
+  // com texto arbitrário) — `new URL()` direto no template lançava no
+  // render e UMA linha malformada derrubava a tela inteira de erros.
+  function pathDe(url: string): string {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return url.slice(0, 80);
+    }
+  }
 </script>
 
 <div class="p-4 space-y-3 max-w-4xl mx-auto">
@@ -68,7 +79,7 @@
                 <div class="text-sm font-medium text-red-700 truncate">{e.mensagem}</div>
                 <div class="text-xs text-slate-500 mt-0.5">
                   {fmt(e.criado_em)} · {e.publicador_nome ?? '(desconhecido)'}
-                  {#if e.url}· <span class="font-mono">{new URL(e.url).pathname}</span>{/if}
+                  {#if e.url}· <span class="font-mono">{pathDe(e.url)}</span>{/if}
                 </div>
               </div>
               <Icon nome={expandido === e.id ? 'chevron-down' : 'chevron-right'} size={14} />
