@@ -11,7 +11,7 @@
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { diasDesde } from '$lib/utils/data';
   import { centroidePoligono } from '$lib/utils/geo';
-  import { buscarViasComNome, pontoDoRotulo, abreviarLogradouro, type ViaComNome } from '$lib/utils/overpass';
+  import { buscarViasComNome, pontoDoRotulo, abreviarLogradouro, comprimentoMetros, type ViaComNome } from '$lib/utils/overpass';
 
   export interface QuadraContexto {
     id: string;
@@ -165,54 +165,36 @@
         // sempre aparece (allow-overlap), no tamanho que a gente escolhe.
         const vias = await viasPromise;
         const nomesStyle = ['highway-name-major', 'highway-name-minor', 'highway-name-path'];
-        // Cada via vira UM ponto rotacionado (não uma linha) — ver
-        // pontoDoRotulo em overpass.ts: `symbol-placement: line-center`
-        // do MapLibre só desenha o texto se ele COUBER no comprimento da
-        // via na tela, e no zoom de um território o nome (~300px) é bem
-        // maior que o trecho (~80px), então quase nada aparecia (as duas
-        // tentativas anteriores). Símbolo de PONTO com `text-rotate` não
-        // tem essa checagem: sempre renderiza, no ângulo real da rua.
-        const feats = vias
+        // Rótulo por TRECHO com nome (não mais "um por nome de rua"): a
+        // dedup global deixava rua sem nome entre quadras (queixa real:
+        // "entre B e C não apareceu a rua") — o rótulo único ficava em
+        // outro pedaço da mesma rua. Cada trecho >= 45m vira um ponto
+        // rotacionado (ver pontoDoRotulo: line-center só desenha texto
+        // que CABE na linha na tela — em zoom de território nunca cabe);
+        // a colisão do MapLibre + sort-key (trecho mais longo primeiro)
+        // controlam a repetição ao longo da mesma rua.
+        const rotulosVias = vias
+          .filter((v) => v.nome && comprimentoMetros(v.pontos) >= 45)
           .map((v) => {
             const p = pontoDoRotulo(v.pontos);
             return p
               ? {
                   type: 'Feature' as const,
                   geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-                  properties: { nome: abreviarLogradouro(v.nome), angulo: p.angulo }
+                  properties: {
+                    nome: abreviarLogradouro(v.nome!),
+                    angulo: p.angulo,
+                    ordem: Math.max(0, 10000 - Math.round(comprimentoMetros(v.pontos)))
+                  }
                 }
               : null;
           })
           .filter((f): f is NonNullable<typeof f> => f !== null);
-        if (feats.length > 0) {
+        if (vias.length > 0) {
           // Some com o rótulo do style pra não duplicar nome de rua.
           for (const layerId of nomesStyle) {
             try { map.setLayoutProperty(layerId, 'visibility', 'none'); } catch {}
           }
-          map.addSource('vias', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: feats }
-          });
-          map.addLayer({
-            id: 'vias-nome', type: 'symbol', source: 'vias',
-            layout: {
-              'text-field': ['get', 'nome'],
-              // Peso REGULAR (não bold) + tamanho e halo menores pra
-              // aproximar do cartão de referência do usuário: nome de rua
-              // lá é preto, fino, discreto ao longo da via — não "grita".
-              // A letra da quadra (vermelha, 30px, bold) é que domina.
-              'text-size': 16,
-              'text-font': ['Noto Sans Regular'],
-              'text-rotate': ['get', 'angulo'],
-              'text-rotation-alignment': 'map',
-              // Deixa o MapLibre esconder rótulos que colidem entre si —
-              // duas ruas cruzando com nomes um por cima do outro fica
-              // ilegível; melhor sumir com um do que empilhar.
-              'text-allow-overlap': false,
-              'text-padding': 2
-            },
-            paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 }
-          });
         } else {
           // Sem dado da Overpass (rede/serviço fora) — fallback: pelo
           // menos tenta destravar o rótulo nativo do style, melhor que
@@ -247,6 +229,60 @@
             'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
           }
         });
+
+        // DESENHO das ruas por cima do preenchimento das quadras
+        // ("dá pra desenhar as ruas?" — dá): o fill colorido cobria as
+        // ruas finas do basemap e o mapa virava um bloco de cor sem os
+        // corredores. Corredor branco com contorno cinza, como no cartão
+        // do app antigo — todas as vias de carro (com e sem nome), traçado
+        // real vindo da Overpass. Abaixo dos rótulos, acima do fill.
+        if (vias.length > 0) {
+          map.addSource('vias-linhas', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: vias.map((v) => ({
+                type: 'Feature' as const,
+                geometry: { type: 'LineString' as const, coordinates: v.pontos },
+                properties: {}
+              }))
+            }
+          });
+          map.addLayer({
+            id: 'vias-casing', type: 'line', source: 'vias-linhas',
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#94a3b8', 'line-width': 8 }
+          });
+          map.addLayer({
+            id: 'vias-corpo', type: 'line', source: 'vias-linhas',
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#ffffff', 'line-width': 6 }
+          });
+          map.addSource('vias', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: rotulosVias }
+          });
+          map.addLayer({
+            id: 'vias-nome', type: 'symbol', source: 'vias',
+            layout: {
+              'text-field': ['get', 'nome'],
+              // "deixa mais visível o nome da rua": Medium 17 com halo
+              // reforçado — mais presente que o Regular 16 anterior, mas
+              // ainda abaixo da letra vermelha da quadra na hierarquia.
+              'text-size': 17,
+              'text-font': ['Noto Sans Medium'],
+              'text-rotate': ['get', 'angulo'],
+              'text-rotation-alignment': 'map',
+              // Colisão controla a repetição do mesmo nome ao longo da
+              // rua (agora é um rótulo por TRECHO); trecho mais longo tem
+              // prioridade de aparecer.
+              'symbol-sort-key': ['get', 'ordem'],
+              'text-allow-overlap': false,
+              'text-padding': 2
+            },
+            paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
+          });
+        }
         // Rótulos (letra + ✕) ancorados em PONTOS de centroide calculados
         // por nós — não no polígono. Rotular polígono deixa o MapLibre
         // escolher a âncora POR TILE: quadra cortada pela borda de um

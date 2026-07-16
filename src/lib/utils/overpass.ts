@@ -200,7 +200,7 @@ export function urlRotaGoogleMaps(lat: number, lng: number): string {
 // tileset de terceiro decidiu incluir naquele zoom.
 
 export interface ViaComNome {
-  nome: string;
+  nome: string | null; // null = via sem nome (entra só no DESENHO, não no rótulo)
   pontos: [number, number][]; // [lng, lat], na ordem da via
 }
 
@@ -212,38 +212,49 @@ export interface BBoxGraus {
 }
 
 // bbox em graus (sul, oeste, norte, leste) — mesmo formato que a Overpass usa.
+// Devolve TODAS as vias "de carro" (com e sem nome), UMA entrada por way,
+// SEM dedup por nome: o cartão desenha o traçado de todas (corredor
+// branco por cima do preenchimento das quadras) e rotula cada TRECHO com
+// nome — a dedup antiga de "um rótulo por nome" deixava rua sem nome
+// entre quadras (queixa real: "entre a quadra B e C não apareceu a rua");
+// quem controla repetição agora é a colisão do MapLibre no cartão.
 export async function buscarViasComNome(bbox: BBoxGraus): Promise<ViaComNome[]> {
   // `out geom` traz a geometria completa inline pra CADA way (evita um
-  // segundo passo de resolver nós) — suficiente pra desenhar a linha e
-  // ancorar o texto, sem pedir nó por nó.
-  const query = `[out:json][timeout:8];way["highway"]["name"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});out geom;`;
+  // segundo passo de resolver nós). Caminho de pedestre/trilha/ciclovia
+  // fica fora — no cartão de território eles viram ruído.
+  const query =
+    `[out:json][timeout:8];` +
+    `way["highway"]["highway"!~"^(footway|path|steps|cycleway|track|corridor|bridleway|platform|construction|proposed)$"]` +
+    `(${bbox.south},${bbox.west},${bbox.north},${bbox.east});out geom 800;`;
   const json = await comFallback(query);
 
-  // Uma rua real quase sempre vira VÁRIOS ways no OSM (um por quadra/
-  // trecho) — sem deduplicar, o mesmo nome se repetiria várias vezes
-  // muito perto uma da outra, poluindo o cartão. Fica UM trecho por
-  // nome: o com mais pontos DENTRO do bbox (a way pode se estender
-  // quilômetros além do bbox pedido — a Overpass devolve a geometria
-  // inteira de qualquer way que TOQUE o bbox; escolher pelo tamanho
-  // total podia eleger um trecho longe do território e o rótulo cair
-  // fora do cartão).
-  const dentroDoBbox = ([lng, lat]: [number, number]) =>
-    lat >= bbox.south && lat <= bbox.north && lng >= bbox.west && lng <= bbox.east;
-  const porNome = new Map<string, { via: ViaComNome; placar: number }>();
+  const vias: ViaComNome[] = [];
   for (const el of json.elements ?? []) {
     if (el.type !== 'way') continue;
-    const nome = el.tags?.name;
     const geom = el.geometry;
-    if (!nome || !Array.isArray(geom) || geom.length < 2) continue;
+    if (!Array.isArray(geom) || geom.length < 2) continue;
     const pontos: [number, number][] = geom
       .filter((g: any) => typeof g?.lat === 'number' && typeof g?.lon === 'number')
       .map((g: any) => [g.lon, g.lat] as [number, number]);
     if (pontos.length < 2) continue;
-    const placar = pontos.filter(dentroDoBbox).length;
-    const atual = porNome.get(nome);
-    if (!atual || placar > atual.placar) porNome.set(nome, { via: { nome, pontos }, placar });
+    vias.push({ nome: el.tags?.name ?? null, pontos });
   }
-  return [...porNome.values()].map((v) => v.via);
+  return vias;
+}
+
+// Comprimento aproximado (metros) de uma polilinha [lng,lat] —
+// equiretangular local, suficiente pra decidir se um trecho de rua é
+// longo o bastante pra merecer rótulo. Puro e exportado pra teste.
+export function comprimentoMetros(pontos: [number, number][]): number {
+  if (pontos.length < 2) return 0;
+  const cosLat = Math.cos((pontos[0][1] * Math.PI) / 180);
+  let total = 0;
+  for (let i = 1; i < pontos.length; i++) {
+    const dx = (pontos[i][0] - pontos[i - 1][0]) * cosLat;
+    const dy = pontos[i][1] - pontos[i - 1][1];
+    total += Math.hypot(dx, dy);
+  }
+  return total * 111320; // 1 grau ≈ 111.32 km
 }
 
 // Ponto de ancoragem + ângulo do rótulo de uma via, pro texto ser

@@ -3,7 +3,13 @@
 // com `;` no meio, então o (around:...) só valia pro ÚLTIMO statement —
 // os outros pediam o PLANETA inteiro e o servidor devolvia 504 sempre.
 import { test, assertEq, assertTrue } from './harness';
-import { montarQueryOverpass, pontoDoRotulo, abreviarLogradouro } from '$lib/utils/overpass';
+import { montarQueryOverpass, pontoDoRotulo, abreviarLogradouro, comprimentoMetros } from '$lib/utils/overpass';
+
+test('comprimentoMetros: 0.001 grau de longitude no equador ≈ 111m', () => {
+  const m = comprimentoMetros([[0, 0], [0.001, 0]]);
+  assertTrue(Math.abs(m - 111.32) < 1, `esperava ~111m, veio ${m}`);
+  assertEq(comprimentoMetros([[0, 0]]), 0);
+});
 
 test('overpass: todo statement tem o próprio filtro (around:...)', () => {
   const q = montarQueryOverpass(-7.09, -34.84, 800, ['square', 'parking']);
