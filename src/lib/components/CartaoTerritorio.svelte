@@ -354,13 +354,134 @@
           },
           paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 }
         });
-        map.once('idle', () => {
+        // "Setinha" do cartão antigo: rua curta cujo nome foi 100%
+        // DESCARTADO pela colisão (os nomes das ruas vizinhas ocupam o
+        // espaço — queixa real da viela entre B e C) ganha uma segunda
+        // chance com o rótulo DESLOCADO pro lado mais livre + uma
+        // linha-guia fininha apontando pra rua. Só dá pra saber o que a
+        // colisão descartou DEPOIS do primeiro idle (o placement roda no
+        // render), por isso a captura vira duas fases: assenta → resgata
+        // → assenta de novo → captura.
+        function resgatarRotulosPerdidos(): boolean {
+          if (rotulosVias.length === 0 || !map.getLayer('vias-nome')) return false;
+          const renderizados = new Set(
+            map
+              .queryRenderedFeatures(undefined as any, { layers: ['vias-nome'] })
+              .map((f: any) => f.properties?.nome)
+          );
+          // Perdido = NOME sem nenhuma instância renderizada (rótulo de
+          // trecho repetido da mesma rua é descarte proposital da
+          // colisão, não conta). Resgata só o melhor trecho (mais longo)
+          // de cada nome, dentro da vista.
+          const bounds = map.getBounds();
+          const porNome = new Map<string, (typeof rotulosVias)[number]>();
+          for (const f of rotulosVias) {
+            const nome = f.properties.nome;
+            if (renderizados.has(nome)) continue;
+            const [lng, lat] = f.geometry.coordinates;
+            if (!bounds.contains([lng, lat] as any)) continue;
+            const atual = porNome.get(nome);
+            if (!atual || f.properties.ordem < atual.properties.ordem) porNome.set(nome, f);
+          }
+          // Muitos perdidos = zoom pequeno demais pra caber tudo; setinha
+          // em dúzia viraria poluição pior que a ausência. Prioriza as
+          // ruas mais CURTAS (ordem maior): a motivação do resgate é a
+          // viela espremida entre quadras — rua longa sem rótulo em
+          // nenhum trecho é caso raro e menos grave.
+          const perdidos = [...porNome.values()]
+            .sort((a, b) => b.properties.ordem - a.properties.ordem)
+            .slice(0, 10);
+          if (perdidos.length === 0) return false;
+
+          const ancoras = rotulosVias.map((f) => map.project(f.geometry.coordinates as [number, number]));
+          const resgates: any[] = [];
+          const guias: any[] = [];
+          for (const f of perdidos) {
+            const [lng, lat] = f.geometry.coordinates;
+            const p = map.project([lng, lat]);
+            // Perpendicular à via na TELA (angulo é horário, y cresce pra
+            // baixo): desloca pro lado cujo ponto fica mais LONGE de
+            // todos os outros rótulos (aproximação barata de "espaço
+            // livre" — geralmente o miolo de uma quadra vizinha).
+            const a = (f.properties.angulo * Math.PI) / 180;
+            const nx = -Math.sin(a);
+            const ny = Math.cos(a);
+            const OFF = 60;
+            const lados = [
+              { x: p.x + nx * OFF, y: p.y + ny * OFF },
+              { x: p.x - nx * OFF, y: p.y - ny * OFF }
+            ];
+            const folga = (q: { x: number; y: number }) =>
+              Math.min(...ancoras.map((c) => Math.hypot(c.x - q.x, c.y - q.y)));
+            const q = folga(lados[0]) >= folga(lados[1]) ? lados[0] : lados[1];
+            const ll = map.unproject([q.x, q.y] as any);
+            resgates.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
+              properties: { nome: f.properties.nome, angulo: f.properties.angulo }
+            });
+            guias.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: [[ll.lng, ll.lat], [lng, lat]] },
+              properties: {}
+            });
+          }
+          map.addSource('vias-resgate-guia', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: guias }
+          });
+          // beforeId 'cartao-rotulo': a letra vermelha da quadra continua
+          // por cima de tudo.
+          map.addLayer(
+            {
+              id: 'vias-resgate-guia', type: 'line', source: 'vias-resgate-guia',
+              paint: { 'line-color': '#334155', 'line-width': 1.5 }
+            },
+            'cartao-rotulo'
+          );
+          map.addSource('vias-resgate', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: resgates }
+          });
+          map.addLayer(
+            {
+              id: 'vias-resgate-nome', type: 'symbol', source: 'vias-resgate',
+              layout: {
+                'text-field': ['get', 'nome'],
+                'text-size': 17,
+                'text-font': ['Noto Sans Medium'],
+                'text-rotate': ['get', 'angulo'],
+                'text-rotation-alignment': 'map',
+                'text-max-width': 8,
+                // Forçado: o motivo de existir é a colisão ter descartado —
+                // aqui ele SEMPRE renderiza (halo forte segura a leitura).
+                'text-allow-overlap': true,
+                'text-ignore-placement': true
+              },
+              paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.2 }
+            },
+            'cartao-rotulo'
+          );
+          return true;
+        }
+
+        const capturar = () => {
           clearTimeout(timeout);
           try {
             acabar(map.getCanvas().toDataURL('image/png'));
           } catch {
             acabar(null);
           }
+        };
+        map.once('idle', () => {
+          let resgatou = false;
+          try {
+            resgatou = resgatarRotulosPerdidos();
+          } catch {
+            // resgate é acessório — falhou, captura como está
+          }
+          if (resgatou) map.once('idle', capturar);
+          else capturar();
         });
       });
     });
