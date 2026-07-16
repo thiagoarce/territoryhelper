@@ -10,6 +10,7 @@
   import maplibregl from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { diasDesde } from '$lib/utils/data';
+  import { centroidePoligono } from '$lib/utils/geo';
   import { buscarViasComNome, pontoDoRotulo, abreviarLogradouro, type ViaComNome } from '$lib/utils/overpass';
 
   export interface QuadraContexto {
@@ -72,7 +73,10 @@
   function rotuloQuadra(id: string, territorioId: string | null): string {
     if (territorioId && id.startsWith(territorioId)) {
       const resto = id.slice(territorioId.length);
-      if (resto) return resto;
+      // Só corta se o que sobra começa com NÃO-dígito ("1A"→"A"): uma
+      // quadra hipotética "10" no território "1" viraria "0" — nesses
+      // casos ambíguos fica o id inteiro, melhor verboso que errado.
+      if (resto && !/^\d/.test(resto)) return resto;
     }
     return id;
   }
@@ -243,8 +247,31 @@
             'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
           }
         });
+        // Rótulos (letra + ✕) ancorados em PONTOS de centroide calculados
+        // por nós — não no polígono. Rotular polígono deixa o MapLibre
+        // escolher a âncora POR TILE: quadra cortada pela borda de um
+        // tile ganhava a letra deslocada do centro (âncora do pedaço, não
+        // da quadra) ou até DUPLICADA (uma por tile, e o allow-overlap
+        // não deduplica). Com ponto próprio a letra fica cravada no meio,
+        // como no cartão de referência do app antigo.
+        const centros = features
+          .map((f) => {
+            const c = centroidePoligono(f.geometry);
+            return c
+              ? {
+                  type: 'Feature' as const,
+                  geometry: { type: 'Point' as const, coordinates: [c.lng, c.lat] },
+                  properties: f.properties
+                }
+              : null;
+          })
+          .filter((f): f is NonNullable<typeof f> => f !== null);
+        map.addSource('cartao-centros', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: centros }
+        });
         map.addLayer({
-          id: 'cartao-rotulo', type: 'symbol', source: 'cartao',
+          id: 'cartao-rotulo', type: 'symbol', source: 'cartao-centros',
           layout: {
             // SÓ a letra (rotulo, sem o número do território — ver
             // rotuloQuadra) e GRANDE, como no cartão do app antigo que o
@@ -253,24 +280,26 @@
             'text-field': ['get', 'rotulo'],
             'text-size': 30,
             'text-font': ['Noto Sans Bold'],
-            'text-allow-overlap': true
+            'text-allow-overlap': true,
+            'text-ignore-placement': true
           },
           // Vermelho como no cartão de referência — destaca a letra sobre
           // qualquer preenchimento; halo branco grosso garante contraste
           // até por cima da quadra vermelha (recente).
           paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 2.6 }
         });
-        // O ✕ das concluídas recentes mora no PRÓPRIO mapa (camada symbol
-        // deslocada pra baixo do rótulo) — escala e posiciona de graça.
+        // O ✕ das concluídas recentes: mesmo ponto de centroide, deslocado
+        // pra baixo da letra.
         map.addLayer({
-          id: 'cartao-x', type: 'symbol', source: 'cartao',
+          id: 'cartao-x', type: 'symbol', source: 'cartao-centros',
           filter: ['==', ['get', 'estado'], 'recente'],
           layout: {
             'text-field': '✕',
             'text-size': 38,
             'text-font': ['Noto Sans Bold'],
             'text-offset': [0, 0.9],
-            'text-allow-overlap': true
+            'text-allow-overlap': true,
+            'text-ignore-placement': true
           },
           paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 }
         });
