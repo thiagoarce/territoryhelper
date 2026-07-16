@@ -173,8 +173,12 @@
         // que CABE na linha na tela — em zoom de território nunca cabe);
         // a colisão do MapLibre + sort-key (trecho mais longo primeiro)
         // controlam a repetição ao longo da mesma rua.
+        // Piso de 25m: rua "bem pequena" entre duas quadras (queixa real)
+        // também merece nome — 45m cortava viela curta que existe de
+        // verdade no território. Abaixo de 25m é conector/rotatória, aí
+        // sim ruído.
         const rotulosVias = vias
-          .filter((v) => v.nome && comprimentoMetros(v.pontos) >= 45)
+          .filter((v) => v.nome && comprimentoMetros(v.pontos) >= 25)
           .map((v) => {
             const p = pontoDoRotulo(v.pontos);
             return p
@@ -278,7 +282,18 @@
               // prioridade de aparecer.
               'symbol-sort-key': ['get', 'ordem'],
               'text-allow-overlap': false,
-              'text-padding': 2
+              'text-padding': 2,
+              // Rua curta com nome comprido: no lugar da via o rótulo
+              // colide com os das ruas vizinhas e era DESCARTADO (rua
+              // sem nome entre B e C — queixa real). Com âncoras
+              // alternativas o MapLibre tenta deslocar o nome pro lado
+              // livre antes de desistir — o nome fica AO LADO da viela,
+              // no espírito da "setinha" do cartão antigo.
+              'text-variable-anchor': ['center', 'top', 'bottom', 'left', 'right'],
+              'text-radial-offset': 0.6,
+              // Quebra mais cedo (8em em vez do padrão 10em): caixa de
+              // colisão menor = menos rótulo descartado.
+              'text-max-width': 8
             },
             paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
           });
