@@ -192,6 +192,16 @@
         // também merece nome — 45m cortava viela curta que existe de
         // verdade no território. Abaixo de 25m é conector/rotatória, aí
         // sim ruído.
+        // Modo arquivo: nome de rua SÓ perto do território (bbox das
+        // quadras + 20%). O contain-fit abre área lateral grande quando o
+        // formato do território não casa com o do cartão, e os nomes
+        // dessa área (que nem é do território) só poluíam — queixa real.
+        // O TRAÇADO das ruas continua no cartão todo (contexto visual).
+        const margemRotLat = Math.max((maxLat - minLat) * 0.2, 0.0012);
+        const margemRotLng = Math.max((maxLng - minLng) * 0.2, 0.0012);
+        const pertoDoTerritorio = (lng: number, lat: number) =>
+          lng >= minLng - margemRotLng && lng <= maxLng + margemRotLng &&
+          lat >= minLat - margemRotLat && lat <= maxLat + margemRotLat;
         const rotulosVias = vias
           .filter((v) => v.nome && comprimentoMetros(v.pontos) >= 25)
           .map((v) => {
@@ -208,7 +218,8 @@
                 }
               : null;
           })
-          .filter((f): f is NonNullable<typeof f> => f !== null);
+          .filter((f): f is NonNullable<typeof f> => f !== null)
+          .filter((f) => modo === 'link' || pertoDoTerritorio(f.geometry.coordinates[0], f.geometry.coordinates[1]));
         if (vias.length > 0) {
           // Some com o rótulo do style pra não duplicar nome de rua.
           for (const layerId of nomesStyle) {
@@ -235,7 +246,7 @@
         map.addLayer({
           id: 'cartao-fill', type: 'fill', source: 'cartao',
           paint: modo === 'arquivo'
-            ? { 'fill-color': '#94a3b8', 'fill-opacity': 0.14 }
+            ? { 'fill-color': '#94a3b8', 'fill-opacity': 0.16 }
             : {
                 'fill-color': ['match', ['get', 'estado'],
                   'destaque', CORES.destaqueFill,
@@ -244,86 +255,21 @@
                 'fill-opacity': ['match', ['get', 'estado'], 'destaque', 0.5, 'recente', 0.28, 0.22]
               }
         });
-        map.addLayer({
-          id: 'cartao-linha', type: 'line', source: 'cartao',
-          paint: modo === 'arquivo'
-            ? { 'line-color': '#475569', 'line-width': 2 }
-            : {
-                'line-color': ['match', ['get', 'estado'],
-                  'destaque', CORES.destaqueLinha,
-                  'recente', CORES.recenteLinha,
-                  CORES.livreLinha],
-                'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
-              }
-        });
-
-        // Setas dos territórios LIMÍTROFES (modo arquivo): "↗ TERRITÓRIO 2"
-        // na borda do cartão apontando pra direção do vizinho — como o
-        // cartão do app antigo — em vez de desenhar os polígonos/letras
-        // dele (que poluíam o cartão de arquivo).
-        if (modo === 'arquivo') {
-          const cont = map.getContainer();
-          const W = cont.clientWidth, H = cont.clientHeight;
-          // margem 105: a âncora do texto é o CENTRO — "TERRITÓRIO 22 ↘"
-          // tem ~170px de largura, metade pra cada lado; com margem menor
-          // a ponta do rótulo cortava na borda do cartão.
-          const cx = W / 2, cy = H / 2, margem = 105;
-          const diag = Math.hypot(W, H);
-          const porVizinho = new Map<string, { x: number; y: number }>();
-          for (const q of quadras) {
-            if (destaque.has(q.id) || !q.territorio_id) continue;
-            const c = centroidePoligono(q.poly_geojson);
-            if (!c) continue;
-            const p = map.project([c.lng, c.lat]);
-            const d = Math.hypot(p.x - cx, p.y - cy);
-            const atual = porVizinho.get(q.territorio_id);
-            // ponto mais próximo do centro representa o vizinho
-            if (!atual || d < Math.hypot(atual.x - cx, atual.y - cy)) porVizinho.set(q.territorio_id, p);
-          }
-          const setasFeats: any[] = [];
-          for (const [tid, p] of porVizinho) {
-            const dx = p.x - cx, dy = p.y - cy;
-            const dist = Math.hypot(dx, dy);
-            if (dist === 0) continue;
-            // Longe demais não é limítrofe — sem seta (o critério é a
-            // quadra mais próxima do vizinho caber num raio de ~1 tela).
-            if (dist > diag * 0.75) continue;
-            // Interseção do raio centro→vizinho com o retângulo interno
-            // (margem pra seta não colar na borda). Vizinho DENTRO da
-            // vista fica no próprio ponto.
-            const tX = dx !== 0 ? ((dx > 0 ? W - margem : margem) - cx) / dx : Infinity;
-            const tY = dy !== 0 ? ((dy > 0 ? H - margem : margem) - cy) / dy : Infinity;
-            const t = Math.min(1, Math.min(tX, tY));
-            const ll = map.unproject([cx + dx * t, cy + dy * t] as any);
-            // Seta em 8 direções (tela: y cresce pra baixo → ângulo
-            // positivo = pra baixo)
-            const idx = Math.round((((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360) / 45) % 8;
-            const seta = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][idx];
-            const nome = nomesTerritorios[tid]?.trim() || tid;
-            const rotulo = dx >= 0 ? `TERRITÓRIO ${nome} ${seta}` : `${seta} TERRITÓRIO ${nome}`;
-            setasFeats.push({
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
-              properties: { rotulo }
-            });
-          }
-          if (setasFeats.length > 0) {
-            map.addSource('vizinhos', {
-              type: 'geojson',
-              data: { type: 'FeatureCollection', features: setasFeats }
-            });
-            map.addLayer({
-              id: 'vizinhos-seta', type: 'symbol', source: 'vizinhos',
-              layout: {
-                'text-field': ['get', 'rotulo'],
-                'text-size': 18,
-                'text-font': ['Noto Sans Bold'],
-                'text-allow-overlap': true,
-                'text-ignore-placement': true
-              },
-              paint: { 'text-color': '#334155', 'text-halo-color': '#ffffff', 'text-halo-width': 2.2 }
-            });
-          }
+        // No modo link a linha vem aqui (embaixo das ruas, comportamento
+        // original); no arquivo o contorno é adicionado DEPOIS das ruas
+        // (mais abaixo) — a borda do território corre junto das ruas, e
+        // desenhada antes o corredor branco engolia o traço.
+        if (modo === 'link') {
+          map.addLayer({
+            id: 'cartao-linha', type: 'line', source: 'cartao',
+            paint: {
+              'line-color': ['match', ['get', 'estado'],
+                'destaque', CORES.destaqueLinha,
+                'recente', CORES.recenteLinha,
+                CORES.livreLinha],
+              'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
+            }
+          });
         }
 
         // DESENHO das ruas por cima do preenchimento das quadras
@@ -389,6 +335,110 @@
             },
             paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
           });
+        }
+
+        // Modo arquivo: contorno do território POR CIMA das ruas, com
+        // CASING branco por baixo do traço escuro — o polígono salta do
+        // mapa ("desenhar melhor o polígono", queixa real: 2px slate
+        // sumia no meio das ruas; e a borda corre junto das ruas, então
+        // desenhada antes delas o corredor branco engolia o traço).
+        if (modo === 'arquivo') {
+          map.addLayer({
+            id: 'cartao-linha-casing', type: 'line', source: 'cartao',
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#ffffff', 'line-width': 7 }
+          });
+          map.addLayer({
+            id: 'cartao-linha', type: 'line', source: 'cartao',
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#1e293b', 'line-width': 3.5 }
+          });
+        }
+
+        // Setas dos territórios LIMÍTROFES (modo arquivo): "↗ TERRITÓRIO 2"
+        // na borda do cartão apontando pra direção do vizinho — como o
+        // cartão do app antigo — em vez de desenhar os polígonos/letras
+        // dele (que poluíam o cartão de arquivo). Depois das ruas: a seta
+        // fica POR CIMA de corredor/nome de rua ("deixar bem em destaque",
+        // queixa real: 18px slate se perdia no meio dos nomes).
+        if (modo === 'arquivo') {
+          const cont = map.getContainer();
+          const W = cont.clientWidth, H = cont.clientHeight;
+          // margem 110: a âncora do texto é o CENTRO — "TERRITÓRIO 22 ↘"
+          // tem ~200px de largura em 22px, metade pra cada lado; com
+          // margem menor a ponta do rótulo cortava na borda do cartão.
+          const cx = W / 2, cy = H / 2, margem = 110;
+          const diag = Math.hypot(W, H);
+          const porVizinho = new Map<string, { x: number; y: number }>();
+          for (const q of quadras) {
+            if (destaque.has(q.id) || !q.territorio_id) continue;
+            const c = centroidePoligono(q.poly_geojson);
+            if (!c) continue;
+            const p = map.project([c.lng, c.lat]);
+            const d = Math.hypot(p.x - cx, p.y - cy);
+            const atual = porVizinho.get(q.territorio_id);
+            // ponto mais próximo do centro representa o vizinho
+            if (!atual || d < Math.hypot(atual.x - cx, atual.y - cy)) porVizinho.set(q.territorio_id, p);
+          }
+          const setasFeats: any[] = [];
+          const colocadas: { x: number; y: number }[] = [];
+          for (const [tid, p] of porVizinho) {
+            const dx = p.x - cx, dy = p.y - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist === 0) continue;
+            // Longe demais não é limítrofe — sem seta (o critério é a
+            // quadra mais próxima do vizinho caber num raio de ~1 tela).
+            if (dist > diag * 0.75) continue;
+            // SEMPRE na borda: interseção do raio centro→vizinho com o
+            // retângulo interno — vizinho visível dentro da vista também
+            // vai pra borda (rótulo no meio do cartão, em cima do
+            // território, era o caso "TERRITÓRIO 3" poluindo o miolo).
+            const tX = dx !== 0 ? ((dx > 0 ? W - margem : margem) - cx) / dx : Infinity;
+            const tY = dy !== 0 ? ((dy > 0 ? H - margem : margem) - cy) / dy : Infinity;
+            const t = Math.min(tX, tY);
+            let px = cx + dx * t;
+            let py = cy + dy * t;
+            // Dois vizinhos na mesma direção empilhavam um rótulo em cima
+            // do outro — desce em degraus até achar vaga.
+            for (let tent = 0; tent < 5; tent++) {
+              const conflito = colocadas.some((c2) => Math.abs(c2.x - px) < 200 && Math.abs(c2.y - py) < 34);
+              if (!conflito) break;
+              py += 38;
+            }
+            colocadas.push({ x: px, y: py });
+            const ll = map.unproject([px, py] as any);
+            // Seta em 8 direções (tela: y cresce pra baixo → ângulo
+            // positivo = pra baixo)
+            const idx = Math.round((((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360) / 45) % 8;
+            const seta = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][idx];
+            const nome = nomesTerritorios[tid]?.trim() || tid;
+            const rotulo = dx >= 0 ? `TERRITÓRIO ${nome} ${seta}` : `${seta} TERRITÓRIO ${nome}`;
+            setasFeats.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
+              properties: { rotulo }
+            });
+          }
+          if (setasFeats.length > 0) {
+            map.addSource('vizinhos', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: setasFeats }
+            });
+            map.addLayer({
+              id: 'vizinhos-seta', type: 'symbol', source: 'vizinhos',
+              layout: {
+                'text-field': ['get', 'rotulo'],
+                // "deixar BEM em destaque": maior, azul, halo grosso —
+                // hierarquia acima dos nomes de rua, abaixo só da letra
+                // vermelha da quadra.
+                'text-size': 22,
+                'text-font': ['Noto Sans Bold'],
+                'text-allow-overlap': true,
+                'text-ignore-placement': true
+              },
+              paint: { 'text-color': '#1d4ed8', 'text-halo-color': '#ffffff', 'text-halo-width': 3 }
+            });
+          }
         }
         // Rótulos (letra + ✕) ancorados em PONTOS de centroide calculados
         // por nós — não no polígono. Rotular polígono deixa o MapLibre
