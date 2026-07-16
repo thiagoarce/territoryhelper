@@ -10,6 +10,7 @@
   import Button from '$lib/ui/Button.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import CartaoTerritorio from '$lib/components/CartaoTerritorio.svelte';
+  import { centroidePoligono } from '$lib/utils/geo';
   import type { TerritorioParaCartao } from './+page';
   import type { QuadraContexto } from '$lib/components/CartaoTerritorio.svelte';
 
@@ -38,6 +39,47 @@
   let regerandoId = $state<string | null>(null);
   const ocupado = $derived(gerando || regerandoId !== null);
 
+  // Localidade AUTO por território (queixa real: cartões do lote saíam
+  // com Localidade em branco — o preenchimento automático via Nominatim
+  // só existia no compartilhamento individual). Geocodificação reversa
+  // do centroide das quadras do território → bairro; cache por
+  // território (regerar não re-consulta); digitou localidade manual =
+  // vale pra todos os cartões. Nominatim é 1 req/s de fair use — a
+  // própria geração do cartão (~2-5s cada) já espaça as chamadas.
+  const localidadeCache = new Map<string, string>();
+  async function localidadeDoTerritorio(t: TerritorioParaCartao): Promise<string> {
+    if (localidade.trim()) return localidade.trim();
+    const cacheada = localidadeCache.get(t.id);
+    if (cacheada !== undefined) return cacheada;
+    let achada = '';
+    try {
+      const ids = new Set(t.quadraIds);
+      const centros = data.quadrasContexto
+        .filter((q) => ids.has(q.id))
+        .map((q) => centroidePoligono(q.poly_geojson))
+        .filter((c): c is NonNullable<typeof c> => c !== null);
+      if (centros.length > 0) {
+        const lat = centros.reduce((s, c) => s + c.lat, 0) / centros.length;
+        const lng = centros.reduce((s, c) => s + c.lng, 0) / centros.length;
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&accept-language=pt-BR`
+        );
+        if (res.ok) {
+          const a = (await res.json())?.address ?? {};
+          achada = a.suburb || a.neighbourhood || a.city_district || a.town || a.city || a.municipality || '';
+        }
+      }
+    } catch {
+      // sem geocoder o campo fica em branco — igual antes, nunca trava o lote
+    }
+    localidadeCache.set(t.id, achada);
+    return achada;
+  }
+
+  const nomesTerritorios = $derived(
+    Object.fromEntries(data.territorios.map((t) => [t.id, t.nome?.trim() || t.id]))
+  );
+
   async function gerarPara(t: TerritorioParaCartao): Promise<boolean> {
     if (!cartaoRef) return false;
     destaqueIds = t.quadraIds;
@@ -45,7 +87,7 @@
     // antes de gerar — o componente lê a prop na hora da chamada.
     await new Promise((r) => setTimeout(r, 30));
     const png = await cartaoRef.gerar({
-      localidade,
+      localidade: await localidadeDoTerritorio(t),
       terrNumeros: t.nome?.trim() || t.id,
       basemap,
       limiarDias
@@ -107,8 +149,8 @@
   <div class="flex items-center gap-3 flex-wrap">
     <input
       bind:value={localidade}
-      placeholder="Localidade (opcional)"
-      class="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      placeholder="Localidade (vazio = automática por território)"
+      class="rounded-lg border border-slate-300 px-3 py-2 text-sm w-72"
     />
     <label class="text-sm flex items-center gap-1">
       Feito há pouco (dias)
@@ -134,7 +176,7 @@
   {/if}
 </div>
 
-<CartaoTerritorio bind:this={cartaoRef} quadras={data.quadrasContexto} {destaqueIds} />
+<CartaoTerritorio bind:this={cartaoRef} quadras={data.quadrasContexto} {destaqueIds} modo="arquivo" {nomesTerritorios} />
 
 {#if totalGerados > 0 || falharam.size > 0}
   <div class="space-y-4 p-4">

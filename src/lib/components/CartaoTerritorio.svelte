@@ -22,10 +22,20 @@
 
   let {
     quadras,
-    destaqueIds
+    destaqueIds,
+    modo = 'link',
+    nomesTerritorios = {}
   }: {
     quadras: QuadraContexto[];
     destaqueIds: string[];
+    /** 'link' = compartilhamento efêmero do dirigente (estado do dia:
+     *  designadas/feitas há pouco/legenda — comportamento original).
+     *  'arquivo' = cartão S-12 físico do lote: só o território, neutro,
+     *  sem estado do dia; vizinhos viram SETA "TERRITÓRIO X →" na borda
+     *  (como o cartão do app antigo) em vez de polígonos/letras. */
+    modo?: 'link' | 'arquivo';
+    /** id do território → nome (pras setas de vizinho no modo arquivo) */
+    nomesTerritorios?: Record<string, string>;
   } = $props();
 
   // Mesmos estilos do resto do app (MapaAdmin) — redeclarado porque o
@@ -83,7 +93,12 @@
 
   async function renderizarMapa(basemap: string, limiarDias: number): Promise<string | null> {
     const destaque = new Set(destaqueIds);
-    const features = quadras
+    // Modo arquivo: só as quadras do PRÓPRIO território viram polígono/
+    // letra — o contexto (congregação inteira, no lote) poluía o cartão
+    // com letras e cores de estado dos vizinhos, que não dizem nada num
+    // cartão de arquivo. Vizinhos entram como seta na borda (ver abaixo).
+    const fonteQuadras = modo === 'arquivo' ? quadras.filter((q) => destaque.has(q.id)) : quadras;
+    const features = fonteQuadras
       .filter((q) => q.poly_geojson)
       .map((q) => ({
         type: 'Feature' as const,
@@ -213,26 +228,103 @@
         }
 
         map.addSource('cartao', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+        // Modo arquivo: quadra NEUTRA (fill leve + contorno escuro), como
+        // o cartão físico do app antigo — cor de estado (azul designada/
+        // vermelho recente) é informação do DIA, só faz sentido no link
+        // efêmero do dirigente.
         map.addLayer({
           id: 'cartao-fill', type: 'fill', source: 'cartao',
-          paint: {
-            'fill-color': ['match', ['get', 'estado'],
-              'destaque', CORES.destaqueFill,
-              'recente', CORES.recenteFill,
-              CORES.livreFill],
-            'fill-opacity': ['match', ['get', 'estado'], 'destaque', 0.5, 'recente', 0.28, 0.22]
-          }
+          paint: modo === 'arquivo'
+            ? { 'fill-color': '#94a3b8', 'fill-opacity': 0.14 }
+            : {
+                'fill-color': ['match', ['get', 'estado'],
+                  'destaque', CORES.destaqueFill,
+                  'recente', CORES.recenteFill,
+                  CORES.livreFill],
+                'fill-opacity': ['match', ['get', 'estado'], 'destaque', 0.5, 'recente', 0.28, 0.22]
+              }
         });
         map.addLayer({
           id: 'cartao-linha', type: 'line', source: 'cartao',
-          paint: {
-            'line-color': ['match', ['get', 'estado'],
-              'destaque', CORES.destaqueLinha,
-              'recente', CORES.recenteLinha,
-              CORES.livreLinha],
-            'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
-          }
+          paint: modo === 'arquivo'
+            ? { 'line-color': '#475569', 'line-width': 2 }
+            : {
+                'line-color': ['match', ['get', 'estado'],
+                  'destaque', CORES.destaqueLinha,
+                  'recente', CORES.recenteLinha,
+                  CORES.livreLinha],
+                'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
+              }
         });
+
+        // Setas dos territórios LIMÍTROFES (modo arquivo): "↗ TERRITÓRIO 2"
+        // na borda do cartão apontando pra direção do vizinho — como o
+        // cartão do app antigo — em vez de desenhar os polígonos/letras
+        // dele (que poluíam o cartão de arquivo).
+        if (modo === 'arquivo') {
+          const cont = map.getContainer();
+          const W = cont.clientWidth, H = cont.clientHeight;
+          // margem 105: a âncora do texto é o CENTRO — "TERRITÓRIO 22 ↘"
+          // tem ~170px de largura, metade pra cada lado; com margem menor
+          // a ponta do rótulo cortava na borda do cartão.
+          const cx = W / 2, cy = H / 2, margem = 105;
+          const diag = Math.hypot(W, H);
+          const porVizinho = new Map<string, { x: number; y: number }>();
+          for (const q of quadras) {
+            if (destaque.has(q.id) || !q.territorio_id) continue;
+            const c = centroidePoligono(q.poly_geojson);
+            if (!c) continue;
+            const p = map.project([c.lng, c.lat]);
+            const d = Math.hypot(p.x - cx, p.y - cy);
+            const atual = porVizinho.get(q.territorio_id);
+            // ponto mais próximo do centro representa o vizinho
+            if (!atual || d < Math.hypot(atual.x - cx, atual.y - cy)) porVizinho.set(q.territorio_id, p);
+          }
+          const setasFeats: any[] = [];
+          for (const [tid, p] of porVizinho) {
+            const dx = p.x - cx, dy = p.y - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist === 0) continue;
+            // Longe demais não é limítrofe — sem seta (o critério é a
+            // quadra mais próxima do vizinho caber num raio de ~1 tela).
+            if (dist > diag * 0.75) continue;
+            // Interseção do raio centro→vizinho com o retângulo interno
+            // (margem pra seta não colar na borda). Vizinho DENTRO da
+            // vista fica no próprio ponto.
+            const tX = dx !== 0 ? ((dx > 0 ? W - margem : margem) - cx) / dx : Infinity;
+            const tY = dy !== 0 ? ((dy > 0 ? H - margem : margem) - cy) / dy : Infinity;
+            const t = Math.min(1, Math.min(tX, tY));
+            const ll = map.unproject([cx + dx * t, cy + dy * t] as any);
+            // Seta em 8 direções (tela: y cresce pra baixo → ângulo
+            // positivo = pra baixo)
+            const idx = Math.round((((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360) / 45) % 8;
+            const seta = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][idx];
+            const nome = nomesTerritorios[tid]?.trim() || tid;
+            const rotulo = dx >= 0 ? `TERRITÓRIO ${nome} ${seta}` : `${seta} TERRITÓRIO ${nome}`;
+            setasFeats.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
+              properties: { rotulo }
+            });
+          }
+          if (setasFeats.length > 0) {
+            map.addSource('vizinhos', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: setasFeats }
+            });
+            map.addLayer({
+              id: 'vizinhos-seta', type: 'symbol', source: 'vizinhos',
+              layout: {
+                'text-field': ['get', 'rotulo'],
+                'text-size': 18,
+                'text-font': ['Noto Sans Bold'],
+                'text-allow-overlap': true,
+                'text-ignore-placement': true
+              },
+              paint: { 'text-color': '#334155', 'text-halo-color': '#ffffff', 'text-halo-width': 2.2 }
+            });
+          }
+        }
 
         // DESENHO das ruas por cima do preenchimento das quadras
         // ("dá pra desenhar as ruas?" — dá): o fill colorido cobria as
@@ -572,6 +664,9 @@
     // caixas de cor bem maiores (queixa real: legenda ilegível no cartão
     // impresso). `textBaseline = 'middle'` centraliza o texto na caixinha
     // de cor sem precisar calcular offset de baseline na mão.
+    // SÓ no modo link: designadas/feitas há pouco é estado do DIA — no
+    // cartão de arquivo (lote) não existe e a legenda só ocupava espaço.
+    if (modo === 'link') {
     const leg = [
       { cor: CORES.destaqueFill, rotulo: 'Designadas' },
       { cor: CORES.recenteFill, rotulo: 'Feitas há pouco (✕)' },
@@ -603,6 +698,7 @@
       cursor += legSwatch + 10 + ctx.measureText(l.rotulo).width + legGap;
     }
     ctx.textBaseline = 'alphabetic'; // reset — resto do desenho (rodapé) espera baseline padrão
+    }
 
     // Rodapé (texto clássico do S-12)
     ctx.fillStyle = '#000000';
