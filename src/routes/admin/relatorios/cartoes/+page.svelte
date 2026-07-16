@@ -29,28 +29,59 @@
   let gerando = $state(false);
   let progresso = $state(0);
   let pngsPorTerritorio = $state<Record<string, string>>({});
+  let falharam = $state<Set<string>>(new Set());
   let destaqueIds = $state<string[]>([]);
+  // Regeração INDIVIDUAL (pedido do usuário: "botão de reload caso não
+  // dê certo algum na geral") — mutuamente exclusiva com o lote: o
+  // CartaoTerritorio tem UM container de mapa oculto, duas gerações
+  // simultâneas competiriam por ele.
+  let regerandoId = $state<string | null>(null);
+  const ocupado = $derived(gerando || regerandoId !== null);
+
+  async function gerarPara(t: TerritorioParaCartao): Promise<boolean> {
+    if (!cartaoRef) return false;
+    destaqueIds = t.quadraIds;
+    // Espera o $effect/re-render do CartaoTerritorio pegar o novo destaqueIds
+    // antes de gerar — o componente lê a prop na hora da chamada.
+    await new Promise((r) => setTimeout(r, 30));
+    const png = await cartaoRef.gerar({
+      localidade,
+      terrNumeros: t.nome?.trim() || t.id,
+      basemap,
+      limiarDias
+    });
+    const novasFalhas = new Set(falharam);
+    if (png) {
+      pngsPorTerritorio = { ...pngsPorTerritorio, [t.id]: png };
+      novasFalhas.delete(t.id);
+    } else {
+      novasFalhas.add(t.id);
+    }
+    falharam = novasFalhas;
+    return !!png;
+  }
 
   async function gerarTodos() {
-    if (!cartaoRef) return;
+    if (ocupado) return;
     gerando = true;
     progresso = 0;
     pngsPorTerritorio = {};
+    falharam = new Set();
     for (const t of data.territorios) {
-      destaqueIds = t.quadraIds;
-      // Espera o $effect/re-render do CartaoTerritorio pegar o novo destaqueIds
-      // antes de gerar — o componente lê a prop na hora da chamada.
-      await new Promise((r) => setTimeout(r, 30));
-      const png = await cartaoRef.gerar({
-        localidade,
-        terrNumeros: t.nome?.trim() || t.id,
-        basemap,
-        limiarDias
-      });
-      if (png) pngsPorTerritorio = { ...pngsPorTerritorio, [t.id]: png };
+      await gerarPara(t);
       progresso++;
     }
     gerando = false;
+  }
+
+  async function regerarUm(t: TerritorioParaCartao) {
+    if (ocupado) return;
+    regerandoId = t.id;
+    try {
+      await gerarPara(t);
+    } finally {
+      regerandoId = null;
+    }
   }
 
   function baixar(terrId: string, png: string) {
@@ -88,10 +119,10 @@
       <option value="bright">Bright</option>
       <option value="liberty">Liberty</option>
     </select>
-    <Button variant="primary" loading={gerando} onclick={gerarTodos}>
+    <Button variant="primary" loading={gerando} disabled={ocupado} onclick={gerarTodos}>
       <Icon nome="clipboard" size={14} /> Gerar {data.territorios.length} cartão(ões)
     </Button>
-    {#if totalGerados > 0 && !gerando}
+    {#if totalGerados > 0 && !ocupado}
       <Button variant="secondary" onclick={() => window.print()}>
         <Icon nome="clipboard" size={14} /> Imprimir / Salvar PDF
       </Button>
@@ -105,12 +136,23 @@
 
 <CartaoTerritorio bind:this={cartaoRef} quadras={data.quadrasContexto} {destaqueIds} />
 
-{#if totalGerados > 0}
+{#if totalGerados > 0 || falharam.size > 0}
   <div class="space-y-4 p-4">
     {#each data.territorios as t}
       {#if pngsPorTerritorio[t.id]}
         <div class="folha-cartao">
-          <div class="no-print flex justify-end mb-1">
+          <div class="no-print flex items-center justify-end gap-2 mb-1">
+            <span class="text-xs text-slate-400 mr-auto">{t.nome?.trim() || `Território ${t.id}`}</span>
+            <button
+              type="button"
+              disabled={ocupado}
+              onclick={() => regerarUm(t)}
+              class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-40 inline-flex items-center gap-1"
+              title="Gera este cartão de novo (ex: rua sem nome, tile que não carregou)"
+            >
+              <Icon nome="refresh" size={12} spin={regerandoId === t.id} />
+              {regerandoId === t.id ? 'Regerando...' : 'Regerar'}
+            </button>
             <button
               type="button"
               onclick={() => baixar(t.id, pngsPorTerritorio[t.id])}
@@ -120,6 +162,24 @@
             </button>
           </div>
           <img src={pngsPorTerritorio[t.id]} alt="Cartão do território {t.nome ?? t.id}" class="w-full rounded border border-slate-200" />
+        </div>
+      {:else if falharam.has(t.id)}
+        <!-- Falhou no lote (rede/Overpass/tiles) — antes sumia SILENCIOSAMENTE
+             da lista e só dava pra notar contando os cartões na mão. -->
+        <div class="no-print rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-center gap-3">
+          <Icon nome="alert" size={16} class="text-amber-600 shrink-0" />
+          <span class="text-sm text-amber-800 flex-1">
+            Cartão de <strong>{t.nome?.trim() || `Território ${t.id}`}</strong> falhou ao gerar (rede/mapa).
+          </span>
+          <button
+            type="button"
+            disabled={ocupado}
+            onclick={() => regerarUm(t)}
+            class="text-xs px-2 py-1 rounded border border-amber-400 text-amber-800 hover:bg-amber-100 disabled:opacity-40 inline-flex items-center gap-1"
+          >
+            <Icon nome="refresh" size={12} spin={regerandoId === t.id} />
+            {regerandoId === t.id ? 'Tentando...' : 'Tentar de novo'}
+          </button>
         </div>
       {/if}
     {/each}
