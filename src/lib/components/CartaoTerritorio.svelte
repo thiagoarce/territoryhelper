@@ -153,7 +153,10 @@
         container: containerMapa,
         style: BASEMAPS[basemap] ?? BASEMAPS.positron,
         bounds: bbox,
-        fitBoundsOptions: { padding: 34 },
+        // Arquivo: gutter maior em volta do território — é NELE que os
+        // rótulos de vizinho limítrofe vivem ("sempre fora das quadras").
+        // Com 34px o rótulo não teria onde ficar sem invadir o polígono.
+        fitBoundsOptions: { padding: modo === 'arquivo' ? 70 : 34 },
         attributionControl: false,
         interactive: false,
         ...({ preserveDrawingBuffer: true } as any)
@@ -246,7 +249,9 @@
         map.addLayer({
           id: 'cartao-fill', type: 'fill', source: 'cartao',
           paint: modo === 'arquivo'
-            ? { 'fill-color': '#94a3b8', 'fill-opacity': 0.16 }
+            // 0.22: com 0.16 o corredor branco das ruas quase não
+            // contrastava com o fill e "as ruas desenhadas" sumiam
+            ? { 'fill-color': '#94a3b8', 'fill-opacity': 0.22 }
             : {
                 'fill-color': ['match', ['get', 'estado'],
                   'destaque', CORES.destaqueFill,
@@ -355,8 +360,8 @@
           });
         }
 
-        // Setas dos territórios LIMÍTROFES (modo arquivo): "↗ TERRITÓRIO 2"
-        // na borda do cartão apontando pra direção do vizinho — como o
+        // Setas dos territórios LIMÍTROFES (modo arquivo): "2 →" na
+        // borda do cartão apontando pra direção do vizinho — como o
         // cartão do app antigo — em vez de desenhar os polígonos/letras
         // dele (que poluíam o cartão de arquivo). Depois das ruas: a seta
         // fica POR CIMA de corredor/nome de rua ("deixar bem em destaque",
@@ -364,55 +369,67 @@
         if (modo === 'arquivo') {
           const cont = map.getContainer();
           const W = cont.clientWidth, H = cont.clientHeight;
-          // margem 110: a âncora do texto é o CENTRO — "TERRITÓRIO 22 ↘"
-          // tem ~200px de largura em 22px, metade pra cada lado; com
-          // margem menor a ponta do rótulo cortava na borda do cartão.
-          const cx = W / 2, cy = H / 2, margem = 110;
-          const diag = Math.hypot(W, H);
-          const porVizinho = new Map<string, { x: number; y: number }>();
+          const cx = W / 2, cy = H / 2;
+          // O rótulo vive no GUTTER (padding 70px do fitBounds, acima):
+          // centro a 36px da borda do cartão → sempre FORA do bbox do
+          // território, que começa a >= 70px de qualquer borda.
+          const margem = 36;
+          // Bbox do território em PIXELS, pro teste exato de "coube fora"
+          const bboxTL = map.project([minLng, maxLat] as any);
+          const bboxBR = map.project([maxLng, minLat] as any);
+          // LIMÍTROFE de verdade, em METROS: quadra do vizinho a até 200m
+          // da borda (bbox) do território. O critério anterior ("dentro
+          // de ~1 tela do centro") pegava território a 2-3 quarteirões e
+          // virava sopa de letrinhas (queixa real: cartão do T2 com 12
+          // rótulos, vários em cima do próprio território).
+          const cosLatT = Math.cos((((minLat + maxLat) / 2) * Math.PI) / 180);
+          const distAoBboxM = (lng: number, lat: number) => {
+            const dLng = Math.max(minLng - lng, 0, lng - maxLng) * cosLatT;
+            const dLat = Math.max(minLat - lat, 0, lat - maxLat);
+            return Math.hypot(dLng, dLat) * 111320;
+          };
+          const porVizinho = new Map<string, { c: { lng: number; lat: number }; distM: number }>();
           for (const q of quadras) {
             if (destaque.has(q.id) || !q.territorio_id) continue;
             const c = centroidePoligono(q.poly_geojson);
             if (!c) continue;
-            const p = map.project([c.lng, c.lat]);
-            const d = Math.hypot(p.x - cx, p.y - cy);
+            const distM = distAoBboxM(c.lng, c.lat);
             const atual = porVizinho.get(q.territorio_id);
-            // ponto mais próximo do centro representa o vizinho
-            if (!atual || d < Math.hypot(atual.x - cx, atual.y - cy)) porVizinho.set(q.territorio_id, p);
+            if (!atual || distM < atual.distM) porVizinho.set(q.territorio_id, { c, distM });
           }
           const setasFeats: any[] = [];
-          const colocadas: { x: number; y: number }[] = [];
-          for (const [tid, p] of porVizinho) {
+          const colocadas: { x: number; y: number; w: number }[] = [];
+          for (const [tid, v] of porVizinho) {
+            if (v.distM > 200) continue; // não é limítrofe
+            const p = map.project([v.c.lng, v.c.lat]);
             const dx = p.x - cx, dy = p.y - cy;
-            const dist = Math.hypot(dx, dy);
-            if (dist === 0) continue;
-            // Longe demais não é limítrofe — sem seta (o critério é a
-            // quadra mais próxima do vizinho caber num raio de ~1 tela).
-            if (dist > diag * 0.75) continue;
-            // SEMPRE na borda: interseção do raio centro→vizinho com o
-            // retângulo interno — vizinho visível dentro da vista também
-            // vai pra borda (rótulo no meio do cartão, em cima do
-            // território, era o caso "TERRITÓRIO 3" poluindo o miolo).
-            const tX = dx !== 0 ? ((dx > 0 ? W - margem : margem) - cx) / dx : Infinity;
-            const tY = dy !== 0 ? ((dy > 0 ? H - margem : margem) - cy) / dy : Infinity;
-            const t = Math.min(tX, tY);
-            let px = cx + dx * t;
-            let py = cy + dy * t;
-            // Dois vizinhos na mesma direção empilhavam um rótulo em cima
-            // do outro — desce em degraus até achar vaga.
-            for (let tent = 0; tent < 5; tent++) {
-              const conflito = colocadas.some((c2) => Math.abs(c2.x - px) < 200 && Math.abs(c2.y - py) < 34);
-              if (!conflito) break;
-              py += 38;
-            }
-            colocadas.push({ x: px, y: py });
-            const ll = map.unproject([px, py] as any);
+            if (dx === 0 && dy === 0) continue;
             // Seta em 8 direções (tela: y cresce pra baixo → ângulo
             // positivo = pra baixo)
             const idx = Math.round((((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360) / 45) % 8;
             const seta = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][idx];
-            const nome = nomesTerritorios[tid]?.trim() || tid;
-            const rotulo = dx >= 0 ? `TERRITÓRIO ${nome} ${seta}` : `${seta} TERRITÓRIO ${nome}`;
+            // Compacto, sem a palavra "TERRITÓRIO" (pedido): "24 →" já
+            // diz tudo com o halo-pílula branco por trás.
+            const nome = (nomesTerritorios[tid]?.trim() || tid).replace(/^territ[óo]rio\s*/i, '');
+            const rotulo = dx >= 0 ? `${nome} ${seta}` : `${seta} ${nome}`;
+            // Posição na borda do cartão, na direção do vizinho (raio
+            // centro→vizinho ∩ retângulo interno a `margem` px).
+            const tX = dx !== 0 ? ((dx > 0 ? W - margem : margem) - cx) / dx : Infinity;
+            const tY = dy !== 0 ? ((dy > 0 ? H - margem : margem) - cy) / dy : Infinity;
+            const t = Math.min(tX, tY);
+            // Caixa estimada do texto (24px bold ≈ 13px/char) — clampa
+            // pra dentro do cartão e depois testa se sobrou FORA do
+            // território; "se não couber não precisa colocar".
+            const wTxt = rotulo.length * 13 + 10, hTxt = 32;
+            const px = Math.min(Math.max(cx + dx * t, wTxt / 2 + 4), W - wTxt / 2 - 4);
+            const py = Math.min(Math.max(cy + dy * t, hTxt / 2 + 2), H - hTxt / 2 - 2);
+            const invadeTerritorio =
+              px + wTxt / 2 > bboxTL.x && px - wTxt / 2 < bboxBR.x &&
+              py + hTxt / 2 > bboxTL.y && py - hTxt / 2 < bboxBR.y;
+            if (invadeTerritorio) continue;
+            if (colocadas.some((c2) => Math.abs(c2.x - px) < (c2.w + wTxt) / 2 + 12 && Math.abs(c2.y - py) < 36)) continue;
+            colocadas.push({ x: px, y: py, w: wTxt });
+            const ll = map.unproject([px, py] as any);
             setasFeats.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
@@ -428,15 +445,13 @@
               id: 'vizinhos-seta', type: 'symbol', source: 'vizinhos',
               layout: {
                 'text-field': ['get', 'rotulo'],
-                // "deixar BEM em destaque": maior, azul, halo grosso —
-                // hierarquia acima dos nomes de rua, abaixo só da letra
-                // vermelha da quadra.
-                'text-size': 22,
+                'text-size': 24,
                 'text-font': ['Noto Sans Bold'],
                 'text-allow-overlap': true,
                 'text-ignore-placement': true
               },
-              paint: { 'text-color': '#1d4ed8', 'text-halo-color': '#ffffff', 'text-halo-width': 3 }
+              // Halo bem grosso vira a "pílula" branca em volta do número
+              paint: { 'text-color': '#1d4ed8', 'text-halo-color': '#ffffff', 'text-halo-width': 4 }
             });
           }
         }
