@@ -98,25 +98,11 @@
     // com letras e cores de estado dos vizinhos, que não dizem nada num
     // cartão de arquivo. Vizinhos entram como seta na borda (ver abaixo).
     const fonteQuadras = modo === 'arquivo' ? quadras.filter((q) => destaque.has(q.id)) : quadras;
-    // Arquivo: o contorno da quadra usa line-offset (inset — ver camada
-    // cartao-linha abaixo), e o LADO do offset depende do sentido do anel.
-    // PostGIS/terra-draw não garantem sentido — normaliza o anel externo
-    // pra CCW (shoelace > 0) numa CÓPIA (poly_geojson é prop compartilhada).
-    const anelCCW = (anel: number[][]) => {
-      let a = 0;
-      for (let i = 0; i < anel.length - 1; i++)
-        a += anel[i][0] * anel[i + 1][1] - anel[i + 1][0] * anel[i][1];
-      return a >= 0 ? anel : [...anel].reverse();
-    };
-    const geometriaNormalizada = (g: any) =>
-      modo === 'arquivo' && g?.type === 'Polygon' && g.coordinates?.[0]
-        ? { ...g, coordinates: [anelCCW(g.coordinates[0]), ...g.coordinates.slice(1)] }
-        : g;
     const features = fonteQuadras
       .filter((q) => q.poly_geojson)
       .map((q) => ({
         type: 'Feature' as const,
-        geometry: geometriaNormalizada(q.poly_geojson) as any,
+        geometry: q.poly_geojson as any,
         properties: {
           id: q.id,
           rotulo: rotuloQuadra(q.id, q.territorio_id),
@@ -209,17 +195,31 @@
         // também merece nome — 45m cortava viela curta que existe de
         // verdade no território. Abaixo de 25m é conector/rotatória, aí
         // sim ruído.
-        // Modo arquivo: nome de rua SÓ perto do território (bbox das
-        // quadras + 20%). O contain-fit abre área lateral grande quando o
-        // formato do território não casa com o do cartão, e os nomes
-        // dessa área (que nem é do território) só poluíam — queixa real.
-        // O TRAÇADO das ruas continua no cartão todo (contexto visual).
-        const margemRotLat = Math.max((maxLat - minLat) * 0.2, 0.0012);
-        const margemRotLng = Math.max((maxLng - minLng) * 0.2, 0.0012);
-        const pertoDoTerritorio = (lng: number, lat: number) =>
-          lng >= minLng - margemRotLng && lng <= maxLng + margemRotLng &&
-          lat >= minLat - margemRotLat && lat <= maxLat + margemRotLat;
-        const rotulosVias = vias
+        // Modo arquivo: rua SÓ se encosta no território — a até ~45m do
+        // bbox de ALGUMA quadra destacada, não do bbox GLOBAL (+20%, a
+        // versão anterior): num território comprido/irregular o bbox
+        // global cobre meio cartão e voltava rua "que nem no território
+        // tá" (queixa real do lote). Vale pro NOME e pro TRAÇADO — fora
+        // do território o basemap já desenha a rua; o corredor por cima
+        // dele era a "rua uma encima da outra".
+        const MARGEM_VIA = 0.0004; // ~45m em graus
+        const bboxesQuadras =
+          modo === 'arquivo'
+            ? featuresDestaque
+                .map((f) => bboxDeTudo([f]))
+                .filter((b): b is NonNullable<typeof b> => b !== null)
+            : [];
+        const pertoDeQuadra = (lng: number, lat: number) =>
+          bboxesQuadras.some(
+            ([[a, b], [c, d]]) =>
+              lng >= a - MARGEM_VIA && lng <= c + MARGEM_VIA &&
+              lat >= b - MARGEM_VIA && lat <= d + MARGEM_VIA
+          );
+        const viasDesenho =
+          modo === 'arquivo'
+            ? vias.filter((v) => v.pontos.some(([ln, la]) => pertoDeQuadra(ln, la)))
+            : vias;
+        const rotulosVias = viasDesenho
           .filter((v) => v.nome && comprimentoMetros(v.pontos) >= 25)
           .map((v) => {
             const p = pontoDoRotulo(v.pontos);
@@ -236,7 +236,28 @@
               : null;
           })
           .filter((f): f is NonNullable<typeof f> => f !== null)
-          .filter((f) => modo === 'link' || pertoDoTerritorio(f.geometry.coordinates[0], f.geometry.coordinates[1]));
+          .filter((f) => modo === 'link' || pertoDeQuadra(f.geometry.coordinates[0], f.geometry.coordinates[1]))
+          // Mesmo nome empilhado ("rua uma encima da outra", queixa real):
+          // a colisão do MapLibre é imprecisa com texto ROTACIONADO e
+          // deixava o mesmo nome passar várias vezes quase no mesmo
+          // lugar. Dedup nossa em PIXELS: trecho mais longo primeiro, e
+          // outro rótulo do MESMO nome só se ficar a >= 220px de todos os
+          // já mantidos (nome diferente não é afetado — a colisão nativa
+          // continua cuidando deles).
+          .sort((x, y) => x.properties.ordem - y.properties.ordem)
+          .filter(
+            (() => {
+              const mantidos = new Map<string, { x: number; y: number }[]>();
+              return (f: { geometry: { coordinates: number[] }; properties: { nome: string } }) => {
+                const p = map.project(f.geometry.coordinates as [number, number]);
+                const lista = mantidos.get(f.properties.nome) ?? [];
+                if (lista.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 220)) return false;
+                lista.push(p);
+                mantidos.set(f.properties.nome, lista);
+                return true;
+              };
+            })()
+          );
         if (vias.length > 0) {
           // Some com o rótulo do style pra não duplicar nome de rua.
           for (const layerId of nomesStyle) {
@@ -274,22 +295,28 @@
                 'fill-opacity': ['match', ['get', 'estado'], 'destaque', 0.5, 'recente', 0.28, 0.22]
               }
         });
-        // No modo link a linha vem aqui (embaixo das ruas, comportamento
-        // original); no arquivo o contorno é adicionado DEPOIS das ruas
-        // (mais abaixo) — a borda do território corre junto das ruas, e
-        // desenhada antes o corredor branco engolia o traço.
-        if (modo === 'link') {
-          map.addLayer({
-            id: 'cartao-linha', type: 'line', source: 'cartao',
-            paint: {
-              'line-color': ['match', ['get', 'estado'],
-                'destaque', CORES.destaqueLinha,
-                'recente', CORES.recenteLinha,
-                CORES.livreLinha],
-              'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
-            }
-          });
-        }
+        // Contorno EMBAIXO das ruas nos dois modos — mesma geometria do
+        // exportável do link ("o objetivo era só ficar como tá o
+        // exportável do mapa do dirigente"): onde a rua passa, o corredor
+        // branco cobre o traço e a rua fica branca; o que sobra do traço
+        // dá a definição do bloco. As duas tentativas de contorno POR
+        // CIMA das ruas (casing branco; depois traço recuado pra dentro
+        // via miter-inset) viraram linha escura em toda rua interna e
+        // "linhas cruzando" em quadra irregular — queixas reais do lote.
+        map.addLayer({
+          id: 'cartao-linha', type: 'line', source: 'cartao',
+          paint: modo === 'arquivo'
+            // neutro + peso de "destaque" do link (4px): é o que resta
+            // de ênfase do território além do fill e das letras
+            ? { 'line-color': '#334155', 'line-width': 4 }
+            : {
+                'line-color': ['match', ['get', 'estado'],
+                  'destaque', CORES.destaqueLinha,
+                  'recente', CORES.recenteLinha,
+                  CORES.livreLinha],
+                'line-width': ['match', ['get', 'estado'], 'destaque', 4, 1.5]
+              }
+        });
 
         // DESENHO das ruas por cima do preenchimento das quadras
         // ("dá pra desenhar as ruas?" — dá): o fill colorido cobria as
@@ -297,12 +324,12 @@
         // corredores. Corredor branco com contorno cinza, como no cartão
         // do app antigo — todas as vias de carro (com e sem nome), traçado
         // real vindo da Overpass. Abaixo dos rótulos, acima do fill.
-        if (vias.length > 0) {
+        if (viasDesenho.length > 0) {
           map.addSource('vias-linhas', {
             type: 'geojson',
             data: {
               type: 'FeatureCollection',
-              features: vias.map((v) => ({
+              features: viasDesenho.map((v) => ({
                 type: 'Feature' as const,
                 geometry: { type: 'LineString' as const, coordinates: v.pontos },
                 properties: {}
@@ -353,83 +380,6 @@
               'text-max-width': 8
             },
             paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
-          });
-        }
-
-        // Modo arquivo: contorno escuro RECUADO pra dentro do bloco. As
-        // quadras vão até o EIXO da rua — contorno desenhado em cima da
-        // borda cobria o corredor branco e as ruas internas do território
-        // viravam linhas escuras ("vamos deixar as ruas brancas como no
-        // outro tipo de exportação... gosto das quadras separadas pelas
-        // ruas"). Recuado 5px, o traço fica DENTRO do bloco e o corredor
-        // branco (±3px do eixo) fica livre — cada quadra vira um bloco
-        // contornado com rua branca em volta, como o cartão físico do
-        // app antigo, e o conjunto de blocos escuros ainda destaca o
-        // território do fundo. O recuo é calculado NO JS (projeta pra
-        // pixel, desloca cada aresta pra dentro com junta miter,
-        // desprojeta) — `line-offset` do MapLibre faria isso de graça,
-        // mas deixa uma farpinha em todo canto do polígono (artefato
-        // conhecido do offset nas juntas, visível no PNG impresso).
-        // Depende do anel normalizado CCW acima: CCW em lng/lat = horário
-        // na tela (y cresce pra baixo), interior à DIREITA da aresta.
-        if (modo === 'arquivo') {
-          const INSET = 5;
-          const anelRecuado = (anel: number[][]): number[][] | null => {
-            const brutos = anel.slice(0, -1).map(([lng, lat]) => map.project([lng, lat] as any));
-            // vértice duplicado (comum em geometria editada) degenera a
-            // normal da aresta — colapsa antes de deslocar
-            const pts = brutos.filter((p, i) =>
-              i === 0 || Math.hypot(p.x - brutos[i - 1].x, p.y - brutos[i - 1].y) > 0.5);
-            const n = pts.length;
-            if (n < 3) return null;
-            const saida: { x: number; y: number }[] = [];
-            for (let i = 0; i < n; i++) {
-              const a = pts[(i + n - 1) % n], b = pts[i], c = pts[(i + 1) % n];
-              const d1 = { x: b.x - a.x, y: b.y - a.y }, d2 = { x: c.x - b.x, y: c.y - b.y };
-              const l1 = Math.hypot(d1.x, d1.y), l2 = Math.hypot(d2.x, d2.y);
-              if (l1 === 0 || l2 === 0) return null;
-              const n1 = { x: -d1.y / l1, y: d1.x / l1 }, n2 = { x: -d2.y / l2, y: d2.x / l2 };
-              const p1 = { x: a.x + n1.x * INSET, y: a.y + n1.y * INSET };
-              const p2 = { x: b.x + n2.x * INSET, y: b.y + n2.y * INSET };
-              const cross = d1.x * d2.y - d1.y * d2.x;
-              let v: { x: number; y: number };
-              if (Math.abs(cross) < 1e-6) {
-                v = { x: b.x + n1.x * INSET, y: b.y + n1.y * INSET };
-              } else {
-                const t = ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / cross;
-                v = { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
-              }
-              // canto muito agudo estoura o miter — trava no bissetor
-              if (Math.hypot(v.x - b.x, v.y - b.y) > INSET * 4) {
-                const s = { x: n1.x + n2.x, y: n1.y + n2.y };
-                const ls = Math.hypot(s.x, s.y) || 1;
-                v = { x: b.x + (s.x / ls) * INSET, y: b.y + (s.y / ls) * INSET };
-              }
-              saida.push(v);
-            }
-            const anelNovo = saida.map((p) => {
-              const ll = map.unproject([p.x, p.y] as any);
-              return [ll.lng, ll.lat];
-            });
-            anelNovo.push(anelNovo[0]);
-            return anelNovo;
-          };
-          const contornos = features
-            .map((f) => (f.geometry?.type === 'Polygon' ? anelRecuado(f.geometry.coordinates[0]) : null))
-            .filter((a): a is number[][] => a !== null)
-            .map((anelNovo) => ({
-              type: 'Feature' as const,
-              geometry: { type: 'Polygon' as const, coordinates: [anelNovo] },
-              properties: {}
-            }));
-          map.addSource('cartao-contorno', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: contornos }
-          });
-          map.addLayer({
-            id: 'cartao-linha', type: 'line', source: 'cartao-contorno',
-            layout: { 'line-join': 'round' },
-            paint: { 'line-color': '#1e293b', 'line-width': 3 }
           });
         }
 
