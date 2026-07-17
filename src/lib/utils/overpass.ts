@@ -268,7 +268,8 @@ export function comprimentoMetros(pontos: [number, number][]): number {
 // vértice do meio) e o ângulo do segmento onde ele cai, normalizado pra
 // nunca ficar de cabeça pra baixo. Puro e exportado pra teste.
 export function pontoDoRotulo(
-  pontos: [number, number][]
+  pontos: [number, number][],
+  frac = 0.5
 ): { lng: number; lat: number; angulo: number } | null {
   if (pontos.length < 2) return null;
   // Equiretangular local: bom o bastante pra ângulo/distância de rua.
@@ -279,7 +280,9 @@ export function pontoDoRotulo(
   for (let i = 1; i < pontos.length; i++) total += dist(pontos[i - 1], pontos[i]);
   if (total === 0) return null;
   let acc = 0;
-  const alvo = total / 2;
+  // frac = fração do comprimento (default 0.5 = meio): a colocação de
+  // rótulos do cartão tenta VÁRIOS pontos ao longo da via, não só o meio.
+  const alvo = total * Math.min(Math.max(frac, 0.02), 0.98);
   for (let i = 1; i < pontos.length; i++) {
     const d = dist(pontos[i - 1], pontos[i]);
     if (acc + d >= alvo && d > 0) {
