@@ -98,11 +98,25 @@
     // com letras e cores de estado dos vizinhos, que não dizem nada num
     // cartão de arquivo. Vizinhos entram como seta na borda (ver abaixo).
     const fonteQuadras = modo === 'arquivo' ? quadras.filter((q) => destaque.has(q.id)) : quadras;
+    // Arquivo: o contorno da quadra usa line-offset (inset — ver camada
+    // cartao-linha abaixo), e o LADO do offset depende do sentido do anel.
+    // PostGIS/terra-draw não garantem sentido — normaliza o anel externo
+    // pra CCW (shoelace > 0) numa CÓPIA (poly_geojson é prop compartilhada).
+    const anelCCW = (anel: number[][]) => {
+      let a = 0;
+      for (let i = 0; i < anel.length - 1; i++)
+        a += anel[i][0] * anel[i + 1][1] - anel[i + 1][0] * anel[i][1];
+      return a >= 0 ? anel : [...anel].reverse();
+    };
+    const geometriaNormalizada = (g: any) =>
+      modo === 'arquivo' && g?.type === 'Polygon' && g.coordinates?.[0]
+        ? { ...g, coordinates: [anelCCW(g.coordinates[0]), ...g.coordinates.slice(1)] }
+        : g;
     const features = fonteQuadras
       .filter((q) => q.poly_geojson)
       .map((q) => ({
         type: 'Feature' as const,
-        geometry: q.poly_geojson as any,
+        geometry: geometriaNormalizada(q.poly_geojson) as any,
         properties: {
           id: q.id,
           rotulo: rotuloQuadra(q.id, q.territorio_id),
@@ -342,21 +356,80 @@
           });
         }
 
-        // Modo arquivo: contorno do território POR CIMA das ruas, com
-        // CASING branco por baixo do traço escuro — o polígono salta do
-        // mapa ("desenhar melhor o polígono", queixa real: 2px slate
-        // sumia no meio das ruas; e a borda corre junto das ruas, então
-        // desenhada antes delas o corredor branco engolia o traço).
+        // Modo arquivo: contorno escuro RECUADO pra dentro do bloco. As
+        // quadras vão até o EIXO da rua — contorno desenhado em cima da
+        // borda cobria o corredor branco e as ruas internas do território
+        // viravam linhas escuras ("vamos deixar as ruas brancas como no
+        // outro tipo de exportação... gosto das quadras separadas pelas
+        // ruas"). Recuado 5px, o traço fica DENTRO do bloco e o corredor
+        // branco (±3px do eixo) fica livre — cada quadra vira um bloco
+        // contornado com rua branca em volta, como o cartão físico do
+        // app antigo, e o conjunto de blocos escuros ainda destaca o
+        // território do fundo. O recuo é calculado NO JS (projeta pra
+        // pixel, desloca cada aresta pra dentro com junta miter,
+        // desprojeta) — `line-offset` do MapLibre faria isso de graça,
+        // mas deixa uma farpinha em todo canto do polígono (artefato
+        // conhecido do offset nas juntas, visível no PNG impresso).
+        // Depende do anel normalizado CCW acima: CCW em lng/lat = horário
+        // na tela (y cresce pra baixo), interior à DIREITA da aresta.
         if (modo === 'arquivo') {
-          map.addLayer({
-            id: 'cartao-linha-casing', type: 'line', source: 'cartao',
-            layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: { 'line-color': '#ffffff', 'line-width': 7 }
+          const INSET = 5;
+          const anelRecuado = (anel: number[][]): number[][] | null => {
+            const brutos = anel.slice(0, -1).map(([lng, lat]) => map.project([lng, lat] as any));
+            // vértice duplicado (comum em geometria editada) degenera a
+            // normal da aresta — colapsa antes de deslocar
+            const pts = brutos.filter((p, i) =>
+              i === 0 || Math.hypot(p.x - brutos[i - 1].x, p.y - brutos[i - 1].y) > 0.5);
+            const n = pts.length;
+            if (n < 3) return null;
+            const saida: { x: number; y: number }[] = [];
+            for (let i = 0; i < n; i++) {
+              const a = pts[(i + n - 1) % n], b = pts[i], c = pts[(i + 1) % n];
+              const d1 = { x: b.x - a.x, y: b.y - a.y }, d2 = { x: c.x - b.x, y: c.y - b.y };
+              const l1 = Math.hypot(d1.x, d1.y), l2 = Math.hypot(d2.x, d2.y);
+              if (l1 === 0 || l2 === 0) return null;
+              const n1 = { x: -d1.y / l1, y: d1.x / l1 }, n2 = { x: -d2.y / l2, y: d2.x / l2 };
+              const p1 = { x: a.x + n1.x * INSET, y: a.y + n1.y * INSET };
+              const p2 = { x: b.x + n2.x * INSET, y: b.y + n2.y * INSET };
+              const cross = d1.x * d2.y - d1.y * d2.x;
+              let v: { x: number; y: number };
+              if (Math.abs(cross) < 1e-6) {
+                v = { x: b.x + n1.x * INSET, y: b.y + n1.y * INSET };
+              } else {
+                const t = ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / cross;
+                v = { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
+              }
+              // canto muito agudo estoura o miter — trava no bissetor
+              if (Math.hypot(v.x - b.x, v.y - b.y) > INSET * 4) {
+                const s = { x: n1.x + n2.x, y: n1.y + n2.y };
+                const ls = Math.hypot(s.x, s.y) || 1;
+                v = { x: b.x + (s.x / ls) * INSET, y: b.y + (s.y / ls) * INSET };
+              }
+              saida.push(v);
+            }
+            const anelNovo = saida.map((p) => {
+              const ll = map.unproject([p.x, p.y] as any);
+              return [ll.lng, ll.lat];
+            });
+            anelNovo.push(anelNovo[0]);
+            return anelNovo;
+          };
+          const contornos = features
+            .map((f) => (f.geometry?.type === 'Polygon' ? anelRecuado(f.geometry.coordinates[0]) : null))
+            .filter((a): a is number[][] => a !== null)
+            .map((anelNovo) => ({
+              type: 'Feature' as const,
+              geometry: { type: 'Polygon' as const, coordinates: [anelNovo] },
+              properties: {}
+            }));
+          map.addSource('cartao-contorno', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: contornos }
           });
           map.addLayer({
-            id: 'cartao-linha', type: 'line', source: 'cartao',
-            layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: { 'line-color': '#1e293b', 'line-width': 3.5 }
+            id: 'cartao-linha', type: 'line', source: 'cartao-contorno',
+            layout: { 'line-join': 'round' },
+            paint: { 'line-color': '#1e293b', 'line-width': 3 }
           });
         }
 
