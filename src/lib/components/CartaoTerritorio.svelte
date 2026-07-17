@@ -219,45 +219,135 @@
           modo === 'arquivo'
             ? vias.filter((v) => v.pontos.some(([ln, la]) => pertoDeQuadra(ln, la)))
             : vias;
-        const rotulosVias = viasDesenho
+        // ===== Rótulos de rua: colocação FEITA POR NÓS, não pelo MapLibre =====
+        // A colisão nativa usa caixa SEM rotação pra texto rotacionado:
+        // em malha diagonal/vertical deixava nomes DIFERENTES um em cima
+        // do outro (cartões 1 e 9 do lote) e descartava nome com espaço
+        // de sobra — que aí ganhava setinha sem precisar (cartão 15).
+        // Aqui cada rótulo vira um retângulo ROTACIONADO estimado do
+        // texto; colocação gulosa (trecho mais longo primeiro) com teste
+        // de interseção exato (SAT); o layer desenha com allow-overlap —
+        // a decisão de colisão já foi tomada aqui.
+        const cantosRet = (cx: number, cy: number, w: number, h: number, angGraus: number) => {
+          const a = (angGraus * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+          const hw = w / 2, hh = h / 2;
+          return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => ({
+            x: cx + x * ca - y * sa,
+            y: cy + x * sa + y * ca
+          }));
+        };
+        type Caixa = ReturnType<typeof cantosRet>;
+        const caixasColidem = (A: Caixa, B: Caixa) => {
+          for (const poly of [A, B]) {
+            for (let i = 0; i < poly.length; i++) {
+              const p1 = poly[i], p2 = poly[(i + 1) % poly.length];
+              const nx = p2.y - p1.y, ny = p1.x - p2.x;
+              let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
+              for (const p of A) { const d = p.x * nx + p.y * ny; if (d < minA) minA = d; if (d > maxA) maxA = d; }
+              for (const p of B) { const d = p.x * nx + p.y * ny; if (d < minB) minB = d; if (d > maxB) maxB = d; }
+              if (maxA < minB || maxB < minA) return false; // eixo separador
+            }
+          }
+          return true;
+        };
+        // Caixa estimada do texto: ~8.6px/char no Medium 17, quebra de
+        // linha no max-width 8em (~140px), ~20px por linha, + folga de
+        // respiro. Estimativa GENEROSA de propósito: passar caixa justa
+        // devolve o empilhamento.
+        const caixaDoNome = (nome: string) => {
+          const larguraTotal = nome.length * 8.6;
+          const linhas = Math.max(1, Math.ceil(larguraTotal / 140));
+          return { w: Math.min(larguraTotal, 140) + 12, h: linhas * 20 + 8 };
+        };
+        // O mundo de colisão já NASCE com a letra vermelha de cada quadra
+        // (e o ✕ das recentes) — nome de rua não cobre a letra.
+        const caixasOcupadas: Caixa[] = [];
+        for (const f of features) {
+          const c = centroidePoligono(f.geometry);
+          if (!c) continue;
+          const pc = map.project([c.lng, c.lat] as [number, number]);
+          caixasOcupadas.push(cantosRet(pc.x, pc.y, 40, 40, 0));
+          if (f.properties.estado === 'recente') caixasOcupadas.push(cantosRet(pc.x, pc.y + 34, 38, 38, 0));
+        }
+        const candidatos = viasDesenho
           .filter((v) => v.nome && comprimentoMetros(v.pontos) >= 25)
           .map((v) => {
             const p = pontoDoRotulo(v.pontos);
             return p
-              ? {
-                  type: 'Feature' as const,
-                  geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-                  properties: {
-                    nome: abreviarLogradouro(v.nome!),
-                    angulo: p.angulo,
-                    ordem: Math.max(0, 10000 - Math.round(comprimentoMetros(v.pontos)))
-                  }
-                }
+              ? { nome: abreviarLogradouro(v.nome!), lng: p.lng, lat: p.lat, angulo: p.angulo, metros: comprimentoMetros(v.pontos) }
               : null;
           })
-          .filter((f): f is NonNullable<typeof f> => f !== null)
-          .filter((f) => modo === 'link' || pertoDeQuadra(f.geometry.coordinates[0], f.geometry.coordinates[1]))
-          // Mesmo nome empilhado ("rua uma encima da outra", queixa real):
-          // a colisão do MapLibre é imprecisa com texto ROTACIONADO e
-          // deixava o mesmo nome passar várias vezes quase no mesmo
-          // lugar. Dedup nossa em PIXELS: trecho mais longo primeiro, e
-          // outro rótulo do MESMO nome só se ficar a >= 220px de todos os
-          // já mantidos (nome diferente não é afetado — a colisão nativa
-          // continua cuidando deles).
-          .sort((x, y) => x.properties.ordem - y.properties.ordem)
-          .filter(
-            (() => {
-              const mantidos = new Map<string, { x: number; y: number }[]>();
-              return (f: { geometry: { coordinates: number[] }; properties: { nome: string } }) => {
-                const p = map.project(f.geometry.coordinates as [number, number]);
-                const lista = mantidos.get(f.properties.nome) ?? [];
-                if (lista.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 220)) return false;
-                lista.push(p);
-                mantidos.set(f.properties.nome, lista);
-                return true;
-              };
-            })()
-          );
+          .filter((c): c is NonNullable<typeof c> => c !== null)
+          .filter((c) => modo === 'link' || pertoDeQuadra(c.lng, c.lat))
+          .sort((a, b) => b.metros - a.metros);
+        const rotulosColocados: any[] = [];
+        const guiasResgate: any[] = [];
+        const posPorNome = new Map<string, { x: number; y: number }[]>();
+        for (const cand of candidatos) {
+          const p = map.project([cand.lng, cand.lat] as [number, number]);
+          // Mesmo nome de novo só bem longe (>= 220px) — repetição além
+          // disso era o "nome empilhado" do lote.
+          const lista = posPorNome.get(cand.nome) ?? [];
+          if (lista.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 220)) continue;
+          const { w, h } = caixaDoNome(cand.nome);
+          const caixa = cantosRet(p.x, p.y, w, h, cand.angulo);
+          if (caixasOcupadas.some((c) => caixasColidem(c, caixa))) continue;
+          caixasOcupadas.push(caixa);
+          lista.push({ x: p.x, y: p.y });
+          posPorNome.set(cand.nome, lista);
+          rotulosColocados.push({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [cand.lng, cand.lat] },
+            properties: { nome: cand.nome, angulo: cand.angulo }
+          });
+        }
+        // "Setinha" SÓ pra nome que não coube em NENHUM trecho da rua:
+        // tenta o rótulo deslocado pro lado (perpendicular à via, 60px)
+        // passando pela MESMA colisão — coube, entra com a linha-guia;
+        // não coube, fica de fora. Antes o resgate dependia do
+        // queryRenderedFeatures pós-idle (caro, e disparava pra nome que
+        // a colisão nativa descartou SEM motivo — a setinha "usada
+        // desnecessariamente" do cartão 15).
+        {
+          const contEl = map.getContainer();
+          const WEl = contEl.clientWidth, HEl = contEl.clientHeight;
+          let resgates = 0;
+          for (const cand of candidatos) {
+            if (resgates >= 8) break;
+            if (posPorNome.has(cand.nome)) continue;
+            const p = map.project([cand.lng, cand.lat] as [number, number]);
+            const a = (cand.angulo * Math.PI) / 180;
+            const nx = -Math.sin(a), ny = Math.cos(a);
+            const { w, h } = caixaDoNome(cand.nome);
+            // Vários pontos candidatos (2 lados × 3 distâncias): a viela
+            // espremida costuma ter os DOIS vizinhos imediatos ocupados —
+            // um pouco mais longe (com a guia mais comprida) ainda é
+            // melhor que rua sem nome.
+            busca: for (const dist of [50, 80, 110]) {
+              for (const lado of [1, -1]) {
+                const q = { x: p.x + nx * dist * lado, y: p.y + ny * dist * lado };
+                if (q.x < w / 2 || q.y < h / 2 || q.x > WEl - w / 2 || q.y > HEl - h / 2) continue;
+                const caixa = cantosRet(q.x, q.y, w, h, cand.angulo);
+                if (caixasOcupadas.some((c) => caixasColidem(c, caixa))) continue;
+                caixasOcupadas.push(caixa);
+                posPorNome.set(cand.nome, [q]);
+                const ll = map.unproject([q.x, q.y] as any);
+                rotulosColocados.push({
+                  type: 'Feature' as const,
+                  geometry: { type: 'Point' as const, coordinates: [ll.lng, ll.lat] },
+                  properties: { nome: cand.nome, angulo: cand.angulo }
+                });
+                guiasResgate.push({
+                  type: 'Feature' as const,
+                  geometry: { type: 'LineString' as const, coordinates: [[ll.lng, ll.lat], [cand.lng, cand.lat]] },
+                  properties: {}
+                });
+                resgates++;
+                break busca;
+              }
+            }
+          }
+        }
         if (vias.length > 0) {
           // Some com o rótulo do style pra não duplicar nome de rua.
           for (const layerId of nomesStyle) {
@@ -346,9 +436,19 @@
             layout: { 'line-cap': 'round', 'line-join': 'round' },
             paint: { 'line-color': '#ffffff', 'line-width': 6 }
           });
+          if (guiasResgate.length > 0) {
+            map.addSource('vias-resgate-guia', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: guiasResgate }
+            });
+            map.addLayer({
+              id: 'vias-resgate-guia', type: 'line', source: 'vias-resgate-guia',
+              paint: { 'line-color': '#334155', 'line-width': 1.5 }
+            });
+          }
           map.addSource('vias', {
             type: 'geojson',
-            data: { type: 'FeatureCollection', features: rotulosVias }
+            data: { type: 'FeatureCollection', features: rotulosColocados }
           });
           map.addLayer({
             id: 'vias-nome', type: 'symbol', source: 'vias',
@@ -361,23 +461,13 @@
               'text-font': ['Noto Sans Medium'],
               'text-rotate': ['get', 'angulo'],
               'text-rotation-alignment': 'map',
-              // Colisão controla a repetição do mesmo nome ao longo da
-              // rua (agora é um rótulo por TRECHO); trecho mais longo tem
-              // prioridade de aparecer.
-              'symbol-sort-key': ['get', 'ordem'],
-              'text-allow-overlap': false,
-              'text-padding': 2,
-              // Rua curta com nome comprido: no lugar da via o rótulo
-              // colide com os das ruas vizinhas e era DESCARTADO (rua
-              // sem nome entre B e C — queixa real). Com âncoras
-              // alternativas o MapLibre tenta deslocar o nome pro lado
-              // livre antes de desistir — o nome fica AO LADO da viela,
-              // no espírito da "setinha" do cartão antigo.
-              'text-variable-anchor': ['center', 'top', 'bottom', 'left', 'right'],
-              'text-radial-offset': 0.6,
-              // Quebra mais cedo (8em em vez do padrão 10em): caixa de
-              // colisão menor = menos rótulo descartado.
-              'text-max-width': 8
+              // Mesma largura de quebra usada na ESTIMATIVA da caixa
+              // (caixaDoNome, 8em ≈ 140px) — mudar um exige mudar o outro.
+              'text-max-width': 8,
+              // A colisão já foi decidida na colocação acima — aqui só
+              // desenha o que foi aprovado.
+              'text-allow-overlap': true,
+              'text-ignore-placement': true
             },
             paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }
           });
@@ -534,117 +624,8 @@
           },
           paint: { 'text-color': '#b91c1c', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 }
         });
-        // "Setinha" do cartão antigo: rua curta cujo nome foi 100%
-        // DESCARTADO pela colisão (os nomes das ruas vizinhas ocupam o
-        // espaço — queixa real da viela entre B e C) ganha uma segunda
-        // chance com o rótulo DESLOCADO pro lado mais livre + uma
-        // linha-guia fininha apontando pra rua. Só dá pra saber o que a
-        // colisão descartou DEPOIS do primeiro idle (o placement roda no
-        // render), por isso a captura vira duas fases: assenta → resgata
-        // → assenta de novo → captura.
-        function resgatarRotulosPerdidos(): boolean {
-          if (rotulosVias.length === 0 || !map.getLayer('vias-nome')) return false;
-          const renderizados = new Set(
-            map
-              .queryRenderedFeatures(undefined as any, { layers: ['vias-nome'] })
-              .map((f: any) => f.properties?.nome)
-          );
-          // Perdido = NOME sem nenhuma instância renderizada (rótulo de
-          // trecho repetido da mesma rua é descarte proposital da
-          // colisão, não conta). Resgata só o melhor trecho (mais longo)
-          // de cada nome, dentro da vista.
-          const bounds = map.getBounds();
-          const porNome = new Map<string, (typeof rotulosVias)[number]>();
-          for (const f of rotulosVias) {
-            const nome = f.properties.nome;
-            if (renderizados.has(nome)) continue;
-            const [lng, lat] = f.geometry.coordinates;
-            if (!bounds.contains([lng, lat] as any)) continue;
-            const atual = porNome.get(nome);
-            if (!atual || f.properties.ordem < atual.properties.ordem) porNome.set(nome, f);
-          }
-          // Muitos perdidos = zoom pequeno demais pra caber tudo; setinha
-          // em dúzia viraria poluição pior que a ausência. Prioriza as
-          // ruas mais CURTAS (ordem maior): a motivação do resgate é a
-          // viela espremida entre quadras — rua longa sem rótulo em
-          // nenhum trecho é caso raro e menos grave.
-          const perdidos = [...porNome.values()]
-            .sort((a, b) => b.properties.ordem - a.properties.ordem)
-            .slice(0, 10);
-          if (perdidos.length === 0) return false;
-
-          const ancoras = rotulosVias.map((f) => map.project(f.geometry.coordinates as [number, number]));
-          const resgates: any[] = [];
-          const guias: any[] = [];
-          for (const f of perdidos) {
-            const [lng, lat] = f.geometry.coordinates;
-            const p = map.project([lng, lat]);
-            // Perpendicular à via na TELA (angulo é horário, y cresce pra
-            // baixo): desloca pro lado cujo ponto fica mais LONGE de
-            // todos os outros rótulos (aproximação barata de "espaço
-            // livre" — geralmente o miolo de uma quadra vizinha).
-            const a = (f.properties.angulo * Math.PI) / 180;
-            const nx = -Math.sin(a);
-            const ny = Math.cos(a);
-            const OFF = 60;
-            const lados = [
-              { x: p.x + nx * OFF, y: p.y + ny * OFF },
-              { x: p.x - nx * OFF, y: p.y - ny * OFF }
-            ];
-            const folga = (q: { x: number; y: number }) =>
-              Math.min(...ancoras.map((c) => Math.hypot(c.x - q.x, c.y - q.y)));
-            const q = folga(lados[0]) >= folga(lados[1]) ? lados[0] : lados[1];
-            const ll = map.unproject([q.x, q.y] as any);
-            resgates.push({
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
-              properties: { nome: f.properties.nome, angulo: f.properties.angulo }
-            });
-            guias.push({
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates: [[ll.lng, ll.lat], [lng, lat]] },
-              properties: {}
-            });
-          }
-          map.addSource('vias-resgate-guia', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: guias }
-          });
-          // beforeId 'cartao-rotulo': a letra vermelha da quadra continua
-          // por cima de tudo.
-          map.addLayer(
-            {
-              id: 'vias-resgate-guia', type: 'line', source: 'vias-resgate-guia',
-              paint: { 'line-color': '#334155', 'line-width': 1.5 }
-            },
-            'cartao-rotulo'
-          );
-          map.addSource('vias-resgate', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: resgates }
-          });
-          map.addLayer(
-            {
-              id: 'vias-resgate-nome', type: 'symbol', source: 'vias-resgate',
-              layout: {
-                'text-field': ['get', 'nome'],
-                'text-size': 17,
-                'text-font': ['Noto Sans Medium'],
-                'text-rotate': ['get', 'angulo'],
-                'text-rotation-alignment': 'map',
-                'text-max-width': 8,
-                // Forçado: o motivo de existir é a colisão ter descartado —
-                // aqui ele SEMPRE renderiza (halo forte segura a leitura).
-                'text-allow-overlap': true,
-                'text-ignore-placement': true
-              },
-              paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.2 }
-            },
-            'cartao-rotulo'
-          );
-          return true;
-        }
-
+        // (o resgate com linha-guia agora acontece junto da colocação de
+        // rótulos, lá em cima — uma fase só, sem queryRenderedFeatures.)
         const capturar = () => {
           clearTimeout(timeout);
           try {
@@ -653,16 +634,7 @@
             acabar(null);
           }
         };
-        map.once('idle', () => {
-          let resgatou = false;
-          try {
-            resgatou = resgatarRotulosPerdidos();
-          } catch {
-            // resgate é acessório — falhou, captura como está
-          }
-          if (resgatou) map.once('idle', capturar);
-          else capturar();
-        });
+        map.once('idle', capturar);
       });
     });
   }
