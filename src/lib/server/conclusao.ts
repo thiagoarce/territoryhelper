@@ -48,11 +48,22 @@ export async function registrarConclusaoQuadra(
     .limit(1);
   const maiorData = max?.[0]?.data_conclusao ?? dataConclusao;
 
-  const { error: errUpd } = await supabase
+  // `count: 'exact'` NÃO é detalhe: UPDATE barrado por RLS não devolve
+  // erro — a policy filtra a linha pra fora e o PostgREST responde
+  // sucesso com 0 linhas afetadas. Foi exatamente assim que "marcar
+  // concluída" do dirigente passou meses dando toast verde sem mudar
+  // nada no mapa (só a migration 090 deu UPDATE de quadras pro
+  // dirigente). Sem permissão OU quadra inexistente = 0 linhas = erro
+  // visível, nunca mais silêncio.
+  const { error: errUpd, count } = await supabase
     .from('quadras')
-    .update({ data_conclusao: maiorData })
+    .update({ data_conclusao: maiorData }, { count: 'exact' })
     .eq('id', quadraId);
-  return { error: errUpd ? errUpd.message : null };
+  if (errUpd) return { error: errUpd.message };
+  if (count === 0) {
+    return { error: 'A conclusão foi registrada no histórico, mas a quadra não pôde ser atualizada (permissão ou quadra inexistente).' };
+  }
+  return { error: null };
 }
 
 // Desfaz a ÚLTIMA conclusão do histórico (remove a linha mais recente,
@@ -69,11 +80,23 @@ export async function desfazerConclusaoQuadra(
     .order('data_conclusao', { ascending: false })
     .order('id', { ascending: false });
   if (hist && hist[0]) {
-    await supabase.from('quadras_conclusoes').delete().eq('id', hist[0].id);
+    const { error: errDel, count: delCount } = await supabase
+      .from('quadras_conclusoes')
+      .delete({ count: 'exact' })
+      .eq('id', hist[0].id);
+    // DELETE barrado por RLS também é silencioso (0 linhas, sem erro) —
+    // deixar passar aqui punha quadra e histórico em estados
+    // diferentes: a data voltava pra penúltima no mapa e a linha mais
+    // recente continuava no histórico, pronta pra "ressuscitar" a data
+    // na próxima conclusão (que recalcula pelo MAIOR do histórico).
+    if (errDel) return { error: errDel.message };
+    if (delCount === 0) return { error: 'Sem permissão pra desfazer esta conclusão.' };
   }
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('quadras')
-    .update({ data_conclusao: hist?.[1]?.data_conclusao ?? null })
+    .update({ data_conclusao: hist?.[1]?.data_conclusao ?? null }, { count: 'exact' })
     .eq('id', quadraId);
-  return { error: error ? error.message : null };
+  if (error) return { error: error.message };
+  if (count === 0) return { error: 'Sem permissão pra alterar esta quadra.' };
+  return { error: null };
 }
