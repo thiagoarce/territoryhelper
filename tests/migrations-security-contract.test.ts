@@ -33,15 +33,15 @@ function containsSql(sql: string, fragment: string, message: string): void {
   assertTrue(executableSql(sql).includes(executableSql(fragment)), message);
 }
 
-test('histórico 001–091 é contínuo, exceto pela lacuna documentada 021', () => {
-  const numbers = migrationFiles.map(migrationNumber).filter((number) => number <= 91);
+test('histórico 001–092 é contínuo, exceto pela lacuna documentada 021', () => {
+  const numbers = migrationFiles.map(migrationNumber).filter((number) => number <= 92);
   const unique = [...new Set(numbers)];
-  const expected = Array.from({ length: 91 }, (_, index) => index + 1).filter(
+  const expected = Array.from({ length: 92 }, (_, index) => index + 1).filter(
     (number) => number !== 21
   );
 
-  assertEq(numbers, unique, 'não deve haver numeração duplicada até 091');
-  assertEq(unique, expected, 'a única lacuna histórica permitida até 091 é 021');
+  assertEq(numbers, unique, 'não deve haver numeração duplicada até 092');
+  assertEq(unique, expected, 'a única lacuna histórica permitida até 092 é 021');
 });
 
 test('083 impede enumeração anônima direta dos tokens públicos', () => {
@@ -64,7 +64,7 @@ test('083 impede enumeração anônima direta dos tokens públicos', () => {
   );
 });
 
-test('082 permanece como a última definição de territorio_publico até 091', () => {
+test('082 permanece como a última definição de territorio_publico até 092', () => {
   const sql082 = executableSql(readMigration(82));
   assertTrue(
     sql082.includes('create or replace function territorio_publico'),
@@ -75,7 +75,7 @@ test('082 permanece como a última definição de territorio_publico até 091', 
   const laterRedefinitions = migrationFiles
     .filter((file) => {
       const number = migrationNumber(file);
-      return number >= 83 && number <= 91;
+      return number >= 83 && number <= 92;
     })
     .filter((file) =>
       executableSql(readFileSync(path.join(migrationsDir, file), 'utf8')).includes(
@@ -83,7 +83,7 @@ test('082 permanece como a última definição de territorio_publico até 091', 
       )
     );
 
-  assertEq(laterRedefinitions, [], 'nenhuma migration 083–091 deve substituir territorio_publico');
+  assertEq(laterRedefinitions, [], 'nenhuma migration 083–092 deve substituir territorio_publico');
 });
 
 test('089 exige autoria própria e limita o payload de erros_client', () => {
@@ -144,5 +144,25 @@ test('091 protege todos os privilégios atuais de profiles sem usar current_user
   assertFalse(
     normalized.includes('current_user'),
     'a guarda final não pode inferir o chamador por current_user dentro de SECURITY DEFINER'
+  );
+});
+
+test('092 restringe INSERT no histórico de conclusões a dirigente ou admin', () => {
+  const sql = readMigration(92);
+  const normalized = executableSql(sql);
+
+  containsSql(
+    sql,
+    'drop policy if exists qc_insert_auth on quadras_conclusoes',
+    'a policy permissiva histórica deve ser removida'
+  );
+  containsSql(
+    sql,
+    'create policy qc_insert_dirigente on quadras_conclusoes for insert to authenticated with check (is_dirigente_or_admin())',
+    'o histórico deve aceitar INSERT somente de dirigente ou admin'
+  );
+  assertFalse(
+    normalized.includes('with check (true)'),
+    '092 não pode manter INSERT irrestrito para qualquer autenticado'
   );
 });
