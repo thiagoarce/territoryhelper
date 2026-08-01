@@ -67,7 +67,7 @@ A instalação nova deve usar uma baseline limpa e somente as migrations publica
 
 `supabase/migrations/001–090` é o histórico legado da instância original. O Installer não deve executar, copiar nem continuar essa sequência. Achados da auditoria entram diretamente na baseline separada, conforme o [`ADR 0005`](../adr/0005-separate-installation-baseline.md).
 
-Até `supabase/baseline/` existir e passar nos contratos de aceitação, o Installer deve informar que a preparação automática do banco ainda não está disponível, em vez de improvisar com o histórico legado.
+`supabase/baseline/` já existe como candidata do piloto. Enquanto ela não passar nos contratos executáveis em banco vazio, o Installer deve apresentá-la como experimental e exigir confirmação explícita, nunca improvisar com o histórico legado.
 
 A baseline não pode conter:
 

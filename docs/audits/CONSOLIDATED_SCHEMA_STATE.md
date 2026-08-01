@@ -616,9 +616,9 @@ supabase/seeds/
 
 Backfills históricos continuam em `supabase/migrations` para upgrades da instância original.
 
-## Decisões que bloqueiam o SQL final
+## Decisões que orientaram a baseline candidata
 
-A baseline ainda não deve ser codificada até implementar ou testar:
+A baseline piloto foi codificada depois desta auditoria. Os itens abaixo viraram requisitos de implementação e ainda precisam ser confirmados no smoke test e no piloto acompanhado:
 
 1. pertencimento canônico em designações, cobrindo líder e participante;
 2. arrays de IDs versus tabelas de junção;
@@ -636,9 +636,9 @@ A baseline ainda não deve ser codificada até implementar ou testar:
 14. compatibilidade do app com remoção de colunas e helpers legados;
 15. tradução de erros técnicos nas rotas e actions.
 
-## Próxima etapa técnica
+## Próxima etapa técnica após a auditoria
 
-A próxima etapa não é escrever imediatamente a baseline. É criar uma **especificação executável de equivalência**.
+A especificação executável e a baseline candidata agora existem. A próxima etapa é executar a **equivalência comportamental** em bancos descartáveis.
 
 ### Banco histórico
 
@@ -646,7 +646,7 @@ Aplicar a sequência histórica `001–090` num projeto Supabase vazio para cara
 
 ### Banco candidato
 
-Aplicar a futura baseline e os mesmos módulos habilitados.
+Aplicar a baseline candidata e os mesmos módulos habilitados.
 
 ### Comparar
 

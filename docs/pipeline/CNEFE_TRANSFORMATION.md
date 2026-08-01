@@ -20,14 +20,13 @@ Reproduzir de forma automática, testável e versionada o tratamento que antes e
 ## Artefatos
 
 ```text
-raw/
-  arquivo-original.csv
-
-normalized/
-  registros-normalizados.parquet
-  locais.json
-  unidades.json
-  relatorio.json
+manifest.json
+territorio.geojson
+enderecos.json
+enderecos-fora.json
+locais.json
+areas-trabalho.json
+pendencias.json
 ```
 
 ## Contrato de saída
@@ -78,4 +77,7 @@ A mesma entrada, versão de dicionário e versão do transformador devem produzi
 - extrair da planilha histórica a lista exata de colunas finais;
 - identificar renomeações e tipos;
 - documentar os joins do dicionário;
-- capturar amostras representativas de casa, prédio, comércio, coletivo e terreno.
+- capturar amostras representativas de casa, prédio, comércio, coletivo e terreno;
+- substituir as aliases provisórias pelas regras exatas do Power Query validado.
+
+Já existe uma fixture sintética em `tests/fixtures/installer/`. Ela valida o contrato técnico, mas não substitui a equivalência com a planilha real anonimizada.

@@ -307,7 +307,7 @@ Implementar a primeira suíte de contrato para:
 - links públicos e enumeração de tokens;
 - mensagens amigáveis em falhas de autorização, recurso ausente ou action desatualizada.
 
-O legado deve ser caracterizado, mas não precisa cumprir contratos novos que nunca implementou. A escrita da baseline começa quando seus testes de aceitação estiverem definidos e as diferenças deliberadas estiverem registradas.
+O legado foi caracterizado e não precisa cumprir contratos novos que nunca implementou. A baseline piloto está em `supabase/baseline/`; sua promoção para versão utilizável depende do smoke test em Supabase vazio, dos contratos de papel e da instalação acompanhada.
 
 ## Critério de aceite da fase de auditoria
 

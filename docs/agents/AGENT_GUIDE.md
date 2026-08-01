@@ -14,6 +14,8 @@ Antes de alterar código relacionado ao Installer ou pipeline, leia:
 8. ADRs aplicáveis;
 9. README, migrations e código atual afetado.
 
+`docs/installer/` preserva especificações detalhadas produzidas durante a descoberta. Em caso de divergência, este guia, `docs/README.md`, os ADRs aceitos e `supabase/baseline/README.md` são canônicos.
+
 ## Regras
 
 - Trabalhe somente no branch indicado pela tarefa.
@@ -32,6 +34,7 @@ Antes de alterar código relacionado ao Installer ou pipeline, leia:
 - Preserve a edição operacional imediata por publicadores e a curadoria posterior.
 - Considere designação pessoal ativa ao autorizar conclusão de quadra.
 - Não exponha `404`, `405`, mensagens SQL ou nomes de policies ao usuário final.
+- Não declare a baseline pronta sem aplicá-la duas vezes num Supabase vazio e executar os contratos de papel.
 
 ## Forma de execução
 

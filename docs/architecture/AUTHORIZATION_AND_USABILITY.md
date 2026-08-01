@@ -1,6 +1,6 @@
 # Autorização e usabilidade
 
-Este documento define o contrato de produto que a futura baseline deve implementar. Ele é canônico para novas instalações e prevalece sobre inferências feitas apenas a partir das policies históricas.
+Este documento define o contrato de produto implementado pela baseline piloto. Ele é canônico para novas instalações e prevalece sobre inferências feitas apenas a partir das policies históricas.
 
 ## Contexto
 

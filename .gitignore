@@ -13,4 +13,6 @@ supabase/.temp/
 supabase/.branches/
 # Dados reais da congregação (endereços, lat/lng, históricos) — nunca commitar
 migration-data/
+.territory-installer/
+installer-output/
 __pycache__/

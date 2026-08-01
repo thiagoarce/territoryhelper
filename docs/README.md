@@ -11,11 +11,19 @@ Há dois caminhos de banco distintos:
 | Caminho | Finalidade | Estado |
 |---|---|---|
 | `supabase/migrations/001–090` | histórico legado e manutenção da instância original | auditado; não usar para novas congregações |
-| `supabase/baseline/` | instalação curta e limpa de uma nova congregação | planejado; ainda não implementado |
+| `supabase/baseline/` | instalação curta e limpa de uma nova congregação | implementado para piloto; validação remota pendente |
 
-A lacuna histórica `021` é conhecida. Os números `091` e `092` não fazem parte do contrato deste branch: achados posteriores à auditoria foram preservados como requisitos da futura baseline.
+A lacuna histórica `021` é conhecida. Os números `091` e `092` não fazem parte do contrato deste branch: seus achados foram incorporados como requisitos e testes da baseline separada, sem continuar a sequência legada.
 
-Enquanto `supabase/baseline/` não existir e não passar pelos testes de equivalência, o repositório ainda não oferece instalação nova totalmente automatizada.
+O fluxo guiado já prepara e publica um pacote revisado, mas continua experimental até passar por um Supabase vazio descartável e por uma instalação acompanhada de outra congregação.
+
+## Entrada pública
+
+- [`../QUICKSTART.md`](../QUICKSTART.md): instalação do piloto;
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): contribuições e validação;
+- [`../SECURITY.md`](../SECURITY.md): relato responsável e responsabilidades;
+- [`UPGRADING.md`](UPGRADING.md): atualização sem misturar legado e baseline;
+- [`../supabase/baseline/README.md`](../supabase/baseline/README.md): sequência curta do banco.
 
 ## Ordem recomendada de leitura
 
@@ -41,7 +49,7 @@ Enquanto `supabase/baseline/` não existir e não passar pelos testes de equival
 - `domain/`: regras territoriais independentes de tecnologia;
 - `architecture/`: módulos, modelo de dados e contratos transversais;
 - `pipeline/`: transformação, geoprocessamento e orquestração do Installer;
-- `installer/`: especificações detalhadas e roadmap da instalação;
+- `installer/`: especificações históricas detalhadas; os documentos canônicos são os apontados neste índice;
 - `adr/`: decisões arquiteturais aceitas e suas consequências;
 - `audits/`: engenharia reversa do legado `001–090` e requisitos da baseline;
 - `development/`: execução local e testes;
@@ -68,4 +76,4 @@ A estratégia de separação foi registrada no [`ADR 0005`](adr/0005-separate-in
 
 O ambiente local e os contratos existentes estão descritos em [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md).
 
-Os testes atuais caracterizam o legado `001–090`. A futura baseline terá uma suíte própria de aceitação orientada ao contrato do produto; ela pode ser deliberadamente diferente do legado quando corrige segurança, usabilidade ou ideias substituídas.
+Os testes do legado continuam caracterizando `001–090`. A baseline possui contratos próprios e pode ser deliberadamente diferente quando corrige segurança, usabilidade ou ideias substituídas. A validação SQL real deve ocorrer num Supabase vazio antes de declarar uma versão pronta.

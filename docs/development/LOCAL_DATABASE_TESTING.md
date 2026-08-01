@@ -47,7 +47,7 @@ Os primeiros contratos cobrem:
 - trigger e policy de conclusão de quadras;
 - autoria e limites de telemetria.
 
-Esses contratos caracterizam o legado `001–090`. Requisitos novos da baseline, como a guarda corrigida de campos privilegiados, conclusão por designação pessoal e curadoria reversível, terão testes próprios quando `supabase/baseline/` existir.
+Esses contratos caracterizam o legado `001–090`. A baseline separada já possui contratos próprios para a guarda de campos privilegiados, conclusão por designação pessoal, curadoria reversível e suporte transversal; eles devem rodar junto com o smoke test SQL.
 
 ### `db:stop`
 
@@ -84,7 +84,7 @@ O workflow `.github/workflows/database-contract.yml` executa:
 5. contratos pgTAP;
 6. encerramento dos contêineres.
 
-A baseline futura só deve ser considerada equivalente quando esse pipeline puder executar contra dois caminhos:
+A baseline só deve ser considerada equivalente quando esse pipeline puder executar contra dois caminhos:
 
 ```text
 histórico legado 001–090

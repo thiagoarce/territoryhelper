@@ -35,7 +35,7 @@ Inclui propostas de rotas, localidades, áreas e pontos isolados.
 
 O usuário não deve precisar compreender Git, Node, Python, PostGIS ou bibliotecas GIS. O instalador deve apresentar linguagem operacional e mensagens acionáveis.
 
-O histórico legado `supabase/migrations/001–090` não é um caminho de instalação. Enquanto a baseline curta não estiver implementada e validada, o Installer deve declarar essa etapa como indisponível.
+O histórico legado `supabase/migrations/001–090` não é um caminho de instalação. A baseline piloto já está implementada em `supabase/baseline/`; o Installer só pode promovê-la como estável depois dos testes num Supabase vazio e da instalação acompanhada descritos no Quickstart.
 
 Erros técnicos ficam nos diagnósticos. A interface nunca deve apresentar `404`, `405`, SQL ou nomes de policies como orientação ao usuário.
 

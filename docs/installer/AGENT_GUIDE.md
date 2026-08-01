@@ -1,16 +1,16 @@
 # Guia para Agentes — Territory Installer
 
+> Documento preservado como referência histórica. O guia canônico é
+> [`../agents/AGENT_GUIDE.md`](../agents/AGENT_GUIDE.md) e prevalece em caso de divergência.
+
 ## Antes de alterar código
 
 Leia, nesta ordem:
 
-1. `docs/installer/VISION.md`;
-2. `docs/installer/INSTALLER_SPEC.md`;
-3. `docs/installer/GEOPROCESSING_PIPELINE.md`;
-4. `docs/installer/DATA_MODEL.md`;
-5. `docs/installer/ROADMAP.md`;
-6. README e migrations relevantes;
-7. implementação atual afetada pela tarefa.
+1. `docs/README.md`;
+2. `docs/agents/AGENT_GUIDE.md`;
+3. os documentos canônicos ali indicados;
+4. README, baseline e implementação atual afetada pela tarefa.
 
 Não implemente com base apenas no título da tarefa.
 
@@ -139,4 +139,4 @@ Auditar a instalação atual e produzir um relatório técnico sobre:
 
 Essa tarefa deve ser concluída antes da criação de novas tabelas ou de um instalador visual completo.
 
-A auditoria documental de `001–090` já foi concluída. A próxima tarefa de banco é escrever os contratos de aceitação da baseline separada e, depois, sua sequência curta; não é continuar a numeração histórica.
+A auditoria documental de `001–090` foi concluída e a baseline candidata está em `supabase/baseline/`. O trabalho de banco agora é validar, corrigir e versionar essa sequência curta num Supabase vazio; não é continuar a numeração histórica.

@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Provar que a futura baseline protege os limites estruturais sem bloquear o trabalho legítimo. O contrato canônico está em [`../architecture/AUTHORIZATION_AND_USABILITY.md`](../architecture/AUTHORIZATION_AND_USABILITY.md).
+Provar que a baseline piloto protege os limites estruturais sem bloquear o trabalho legítimo. O contrato canônico está em [`../architecture/AUTHORIZATION_AND_USABILITY.md`](../architecture/AUTHORIZATION_AND_USABILITY.md).
 
 O foco não é maximizar negações. O foco é evitar perda grave, exposição pública, elevação de privilégio e sucesso falso, preservando a usabilidade para uma instância congregacional pequena.
 
