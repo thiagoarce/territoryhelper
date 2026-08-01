@@ -14,8 +14,10 @@ Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura
 8. [`pipeline/INSTALLER.md`](pipeline/INSTALLER.md)
 9. [`architecture/DATA_MODEL.md`](architecture/DATA_MODEL.md)
 10. [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
-11. [`audits/RLS_TEST_PLAN.md`](audits/RLS_TEST_PLAN.md)
-12. [`agents/AGENT_GUIDE.md`](agents/AGENT_GUIDE.md)
+11. [`audits/MIGRATION_091_SECURITY_ADDENDUM.md`](audits/MIGRATION_091_SECURITY_ADDENDUM.md)
+12. [`audits/RLS_TEST_PLAN.md`](audits/RLS_TEST_PLAN.md)
+13. [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md)
+14. [`agents/AGENT_GUIDE.md`](agents/AGENT_GUIDE.md)
 
 ## Estrutura
 
@@ -25,18 +27,31 @@ Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura
 - `architecture/`: módulos e modelo de dados.
 - `adr/`: decisões arquiteturais registradas e justificadas.
 - `audits/`: engenharia reversa das migrations, estado consolidado do schema e contratos de segurança.
+- `development/`: execução local, testes e práticas de desenvolvimento.
 - `agents/`: instruções para agentes de desenvolvimento.
 - `installer/`: documentos históricos e especificações iniciais do branch.
 
 ## Auditoria do banco
 
-A auditoria cobre a sequência histórica `001–090` de `supabase/migrations`, com registro da ausência do número `021`.
+A engenharia reversa principal cobre a sequência histórica `001–090` de `supabase/migrations`, com registro da ausência do número `021`.
 
-O documento canônico de entrada é:
+O documento canônico desse levantamento é:
 
 - [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
 
+A migration corretiva `091`, criada como consequência direta dos testes de segurança, está documentada separadamente em:
+
+- [`audits/MIGRATION_091_SECURITY_ADDENDUM.md`](audits/MIGRATION_091_SECURITY_ADDENDUM.md)
+
 As matrizes por intervalo permanecem disponíveis em `audits/` como evidência detalhada da classificação migration por migration.
+
+## Testes do banco
+
+A configuração do Supabase local, os comandos de reconstrução e os contratos pgTAP estão descritos em:
+
+- [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md)
+
+Os testes estáticos das migrations ficam em `tests/`. Os testes comportamentais do PostgreSQL ficam em `supabase/tests/database/`.
 
 ## Documentos canônicos
 
