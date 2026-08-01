@@ -1,304 +1,144 @@
-# RLS Test Plan
+# Plano de testes de autorização e RLS
 
 ## Objetivo
 
-Definir testes reproduzíveis para provar que o estado final das políticas de Row Level Security protege os dados operacionais sem bloquear os fluxos legítimos de administrador, dirigente e publicador.
+Provar que a futura baseline protege os limites estruturais sem bloquear o trabalho legítimo. O contrato canônico está em [`../architecture/AUTHORIZATION_AND_USABILITY.md`](../architecture/AUTHORIZATION_AND_USABILITY.md).
 
-Este documento descreve o contrato esperado. A implementação dos testes deve ocorrer antes da criação da baseline consolidada, para que tanto o histórico completo de migrations quanto a futura baseline sejam validados pelo mesmo conjunto de cenários.
+O foco não é maximizar negações. O foco é evitar perda grave, exposição pública, elevação de privilégio e sucesso falso, preservando a usabilidade para uma instância congregacional pequena.
 
-## Escopo confirmado do repositório
+## Limite histórico
 
-No estado atualmente visível da `main` e do branch `feat/territory-installer`, a sequência documentada vai de `001` a `029`, com ausência intencional ou histórica de `021`.
+`supabase/migrations/001–090` é o legado da instância original, com a lacuna conhecida `021`. Os testes estáticos atuais caracterizam esse histórico.
 
-Não foi localizado um arquivo `030` nem uma sequência até `090`. Caso existam migrations adicionais fora dessas branches, em outro diretório ou ainda não enviadas ao GitHub, elas devem ser incorporadas à matriz antes de considerar a auditoria encerrada.
-
-## Princípios
-
-1. Cada teste deve executar com um papel realista: `anon`, `authenticated`, `service_role` ou usuário autenticado com perfil específico.
-2. Não basta testar `SELECT`; devem ser verificados `INSERT`, `UPDATE` e `DELETE`.
-3. Todo cenário permitido deve ter um cenário espelho negado.
-4. Funções `SECURITY DEFINER` devem ser testadas separadamente das policies das tabelas.
-5. Um teste não deve depender de dados de produção nem de IDs fixos.
-6. O conjunto deve rodar em banco descartável e ser repetível.
-7. O mesmo conjunto deve validar:
-   - histórico completo de migrations;
-   - baseline consolidada;
-   - migrations incrementais posteriores.
+A baseline será um caminho separado e curto. Achados que não devem ser corrigidos dentro do histórico legado viram requisitos e testes da baseline. Por isso, equivalência significa compatibilidade com o aplicativo e com o domínio, não reprodução literal de toda policy histórica.
 
 ## Perfis de teste
 
-### Administrador
-
-- perfil com `role = 'admin'`;
-- acesso integral aos fluxos administrativos;
-- pode criar, editar e remover dados operacionais conforme as regras do produto;
-- pode executar RPCs administrativas autorizadas.
-
-### Dirigente
-
-- perfil com `role = 'dirigente'`;
-- acesso às ações de campo e coordenação;
-- pode operar designações, arranjos e delegações dentro do contrato atual;
-- não deve receber poderes administrativos não previstos.
-
-### Publicador A
-
-- perfil com `role = 'publicador'`;
-- possui uma designação aberta sobre uma quadra;
-- possui eventualmente uma designação de cartas sobre um local;
-- pode receber delegação temporária ativa.
-
-### Publicador B
-
-- perfil com `role = 'publicador'`;
-- não possui vínculos com os objetos atribuídos ao Publicador A;
-- é usado como controle negativo para detectar vazamento de autorização.
-
-### Usuário autenticado sem perfil válido
-
-- sessão autenticada sem linha correspondente utilizável em `profiles`, ou com papel inválido em fixture controlada;
-- deve falhar de forma segura.
-
-### Anônimo
-
-- nenhuma sessão autenticada;
-- somente fluxos explicitamente públicos podem funcionar, como token público de cartas quando válido.
+- **Admin:** escopo global e manutenção estrutural.
+- **Dirigente:** escopo global de coordenação e conclusão, sem poderes de infraestrutura.
+- **Publicador líder:** líder de uma designação pessoal ativa com `Q-A`.
+- **Publicador participante:** participante da mesma designação por `designacao_publicadores`.
+- **Publicador sem vínculo:** usuário ativo sem designação para `Q-A`.
+- **Usuário inativo:** sessão existente com perfil desativado.
+- **Anônimo:** somente fluxos públicos por token.
+- **Service role/execução administrativa:** instalação, backup e manutenção controlada.
 
 ## Fixtures mínimas
 
-O banco de teste deve criar:
+- duas quadras, `Q-A` e `Q-B`;
+- locais e unidades nas duas quadras;
+- uma designação pessoal aberta contendo `Q-A`, com líder e participante;
+- uma designação encerrada contendo `Q-B`;
+- histórico de visitas;
+- fila de curadoria;
+- histórico de conclusões;
+- token público válido, expirado e inexistente;
+- perfis admin, dirigente, publicadores ativo/inativo.
 
-- um território;
-- duas quadras distintas: `Q-A` e `Q-B`;
-- um local em cada quadra;
-- pelo menos duas unidades por local;
-- uma designação aberta de `Q-A` para o Publicador A;
-- uma designação aberta de `Q-B` para o Publicador B;
-- uma designação de cartas de um local para o Publicador A;
-- uma delegação temporária ativa de `Q-B` para o Publicador A;
-- uma delegação expirada;
-- um arranjo ativo com lista de locais;
-- um arranjo inativo;
-- um local pendente criado pelo Publicador A;
-- um TCE com unidades associadas;
-- uma campanha ativa e outra encerrada;
-- token público válido, expirado e inexistente.
+## Matriz principal
 
-## Matriz de acesso principal
-
-Legenda:
-
-- `ALLOW`: operação deve funcionar;
-- `DENY`: operação deve ser rejeitada pela RLS, privilégio ou validação da RPC;
-- `CONTRACT`: depende de decisão explícita de produto e deve ser estabilizado antes da baseline.
-
-| Recurso/operação | Admin | Dirigente | Publicador atribuído | Outro publicador | Anon |
+| Operação | Admin | Dirigente | Publicador com designação ativa | Publicador sem vínculo | Anon |
 |---|---:|---:|---:|---:|---:|
-| Ler perfis necessários ao app | ALLOW | ALLOW limitado | ALLOW limitado | ALLOW limitado | DENY |
-| Alterar próprio perfil permitido | ALLOW | CONTRACT | CONTRACT | CONTRACT | DENY |
-| Alterar role de perfil | ALLOW | DENY | DENY | DENY | DENY |
-| Ler territórios/quadras operacionais | ALLOW | ALLOW | ALLOW | ALLOW conforme produto | DENY |
-| Criar/editar geometria de quadra | ALLOW | CONTRACT atual | DENY | DENY | DENY |
-| Editar local de quadra designada | ALLOW | ALLOW | ALLOW | DENY | DENY |
-| Editar unidade de local designado | ALLOW | ALLOW | ALLOW | DENY | DENY |
-| Criar local não pendente em quadra designada | ALLOW | ALLOW | ALLOW | DENY | DENY |
-| Criar local pendente próprio | ALLOW | ALLOW | ALLOW | ALLOW para o próprio registro | DENY |
-| Aprovar local pendente | ALLOW | CONTRACT | DENY | DENY | DENY |
-| Excluir local fora do próprio escopo | ALLOW | ALLOW conforme contrato | DENY | DENY | DENY |
-| Operar designação própria | ALLOW | ALLOW coordenação | ALLOW somente trabalho de campo | DENY em objeto alheio | DENY |
-| Editar local por designação de cartas | ALLOW | ALLOW | ALLOW | DENY | DENY |
-| Editar local por delegação ativa | ALLOW | ALLOW | ALLOW | DENY | DENY |
-| Editar local por delegação expirada | ALLOW | ALLOW | DENY | DENY | DENY |
-| Acessar token público de cartas válido | ALLOW | ALLOW | ALLOW | ALLOW | ALLOW limitado |
-| Acessar token expirado/inválido | DENY ou resposta vazia segura | DENY ou resposta vazia segura | DENY ou resposta vazia segura | DENY ou resposta vazia segura | DENY |
-| Executar `exec_sql` | service role apenas | DENY | DENY | DENY | DENY |
-| Criar TCE por RPC | ALLOW | DENY conforme implementação atual | DENY | DENY | DENY |
-| Salvar/juntar/dividir quadras por RPC | ALLOW | DENY conforme implementação atual | DENY | DENY | DENY |
+| Registrar visita/histórico operacional | ALLOW | ALLOW | ALLOW | ALLOW no fluxo operacional disponível | DENY |
+| Adicionar/editar/excluir dados operacionais | ALLOW | ALLOW global | ALLOW com efeito imediato e curadoria | ALLOW no fluxo operacional disponível | DENY |
+| Alterar geometria ou vínculo estrutural diretamente | ALLOW | DENY salvo fluxo específico | DENY | DENY | DENY |
+| Confirmar/reverter curadoria | ALLOW | CONTRACT futuro | DENY | DENY | DENY |
+| Concluir `Q-A` | ALLOW | ALLOW | ALLOW para líder e participante | DENY | DENY |
+| Concluir `Q-B` sem designação ativa | ALLOW | ALLOW | DENY | DENY | DENY |
+| Alterar role/estado/capacidade do próprio perfil | ALLOW por fluxo administrativo | DENY | DENY | DENY | DENY |
+| Enumerar tabelas de tokens | ALLOW administrativo | conforme necessidade interna | DENY direto | DENY direto | DENY |
 
-## Testes críticos por migration
+## Cenários obrigatórios
 
-### `001`, `009` e `010` — perfis, recursão e search path
+### Trabalho operacional e curadoria
 
-- usuário lê apenas o conjunto de perfis necessário ao aplicativo;
-- alteração de `role` por não administrador falha;
-- `is_admin()` não causa recursão de policy;
-- funções `SECURITY DEFINER` possuem `search_path` fixo;
-- objeto malicioso em schema alternativo não altera a resolução de nomes;
-- `service_role` executa somente o que é explicitamente necessário.
+- publicador cria local/unidade e o dado aparece imediatamente;
+- publicador edita informação operacional e a leitura seguinte retorna a mudança;
+- publicador exclui pelo fluxo de campo e a interface reflete o resultado;
+- cada operação relevante registra autoria, antes/depois e estado pendente em `curadoria_edicoes`;
+- admin confirma sem reaplicar a mudança;
+- admin reverte e restaura o estado anterior, inclusive após exclusão;
+- campo estrutural não pode ser alterado escondido no mesmo payload operacional;
+- falha de auditoria/curadoria não pode produzir sucesso silencioso com alteração parcial.
 
-### `008`, `026`, `027` e `029` — escopo de edição
+### Conclusão por contexto
 
-A função final `pode_editar_local` deve ser testada como composição de quatro caminhos independentes:
+- admin conclui qualquer quadra;
+- dirigente conclui qualquer quadra;
+- líder de designação pessoal aberta conclui `Q-A`;
+- participante da mesma designação também conclui `Q-A`;
+- publicador sem vínculo não conclui `Q-A`;
+- designação encerrada ou expirada deixa de autorizar conclusão;
+- trocar `quadra_id` no payload não amplia o escopo;
+- conclusão atualiza estado e histórico na mesma operação lógica;
+- `marcado_por` representa o usuário real;
+- update que afeta zero linhas não é tratado como sucesso;
+- desfazer conclusão permanece global para dirigente/admin até decisão específica.
 
-1. designação de quadra aberta;
-2. designação de cartas aberta;
-3. delegação temporária ativa;
-4. arranjo ativo aplicável.
+### Perfis privilegiados
 
-Para cada caminho:
+- usuário mantém campos comuns permitidos do próprio perfil;
+- usuário comum não muda `role`, `ativo`, `tp_aprovado` ou capacidade equivalente;
+- admin consegue realizar essas alterações;
+- execução administrativa controlada continua possível;
+- função `SECURITY DEFINER` usa `search_path` seguro;
+- a identificação do chamador não depende de `current_user` dentro da função;
+- uma coluna privilegiada nova exige atualização explícita do contrato e do teste.
 
-- acesso positivo isolado;
-- acesso negativo sem vínculo;
-- acesso negativo após encerramento/expiração;
-- acesso negativo ao local vizinho;
-- `UPDATE` do local;
-- `INSERT`, `UPDATE` e `DELETE` de unidade;
-- tentativa de trocar `local_id` ou `quadra_id` durante atualização para escapar do escopo.
+### Links públicos
 
-### `014` — link público de cartas
+- token válido expõe somente o payload previsto;
+- token inválido e expirado retornam resposta segura e uniforme;
+- anônimo não lê diretamente tabelas de tokens;
+- token de um contexto não altera recursos de outro;
+- RPC pública possui grants mínimos, validação interna e `search_path` seguro.
 
-- token válido retorna apenas o conteúdo necessário;
-- token inválido não revela se o recurso existe;
-- token expirado não permite leitura ou escrita;
-- operações públicas não expõem dados pessoais, perfis ou outros locais;
-- tentativa de enumerar tokens é mitigada pelo formato e pela resposta uniforme;
-- token não concede acesso às tabelas fora da função ou view pública prevista.
+### Campos estruturais e operações em massa
 
-### `015` e `025` — Storage
+- geometria inválida ou SRID incorreto é rejeitado sem alteração parcial;
+- associação a outra quadra só ocorre por fluxo controlado;
+- importação, divisão, união e correção espacial são transacionais;
+- arquivos e IDs manipulados não permitem acesso fora do escopo;
+- operações em massa produzem pré-visualização, confirmação e relatório.
 
-- leitura pública ocorre apenas nos buckets declarados públicos;
-- upload, atualização e remoção exigem o papel correto;
-- usuário não pode escrever em caminho de outro contexto por manipulação do nome do objeto;
-- MIME type e tamanho devem ser validados na aplicação ou política complementar;
-- bucket público não deve receber documentos sensíveis.
+## Experiência de erro
 
-### `019` — conclusões append-only
+Testes de rota/action devem cobrir a tradução de erros:
 
-- conclusão pode ser criada por papel autorizado;
-- registro histórico não pode ser alterado silenciosamente;
-- exclusão exige decisão explícita de produto;
-- usuário não pode atribuir conclusão a outro usuário ou quadra fora do escopo.
+- sessão expirada gera convite para entrar novamente;
+- mudança de designação entre load e action atualiza a tela e explica que a quadra não pertence mais ao usuário;
+- recurso removido não exibe `404` cru;
+- action ou método desatualizado não exibe `405` cru;
+- erro de policy, SQL ou PostgREST não é mostrado ao publicador;
+- falha inesperada gera mensagem curta e identificador técnico nos logs;
+- a interface não mantém estado otimista quando o banco rejeita a operação.
 
-### `022`, `023` e `024` — RPCs geográficas
+## Estratégia de execução
 
-- não administrador recebe erro de acesso;
-- geometria inválida é rejeitada;
-- SRID incorreto não é aceito silenciosamente;
-- `MultiPolygon`, linha ou ponto são tratados segundo o contrato;
-- IDs e nomes maliciosos não causam SQL injection;
-- união não adjacente falha sem alterar dados;
-- divisão inválida é transacional e não deixa a quadra parcialmente alterada;
-- reassociação de locais após divisão respeita fronteiras e não perde pontos.
+### 1. Caracterização do legado
 
-### `025` — arranjos
+Aplicar `001–090` em banco descartável e executar os contratos que descrevem o estado histórico. Esses testes servem como inventário e detecção de mudanças acidentais.
 
-- leitura segue o contrato de visibilidade;
-- somente papel autorizado cria ou altera modalidade;
-- publicador não injeta IDs de locais ou quadras para ampliar seu escopo;
-- arranjo inativo não concede edição;
-- dirigente nulo em `cartas_lista` não deve conceder edição indiscriminada sem decisão explícita.
+### 2. Aceitação da baseline
 
-### `027` — delegações temporárias
+Aplicar apenas `supabase/baseline/` e as migrations posteriores ao marco da baseline. Executar os cenários deste documento com usuários autenticados reais de fixture.
 
-- somente dirigente/admin cria delegação;
-- dirigente não delega quadra fora do próprio escopo, caso essa seja a regra desejada;
-- `data_fim` usa timezone da instância de forma previsível;
-- delegação expirada perde efeito imediatamente;
-- alteração do relógio da sessão não contorna a expiração;
-- arrays com IDs inexistentes ou duplicados são tratados.
+### 3. Comparação
 
-### `028` — local pendente
+Comparar tabelas, views, funções, triggers, grants, RLS e comportamento usado pelo aplicativo. Diferenças são permitidas quando:
 
-- publicador só cria pendente com `criado_por = auth.uid()`;
-- tentativa de criar registro pendente em nome de outro usuário falha;
-- publicador não transforma pendente próprio em aprovado;
-- publicador não altera `criado_por` depois da criação;
-- busca de proximidade não retorna pendentes;
-- função de proximidade limita raio e quantidade com valores seguros.
+- removem uma ideia obsoleta;
+- corrigem um risco documentado;
+- implementam o contrato de usabilidade e autorização aceito;
+- são registradas em ADR e cobertas por teste.
 
-## Testes de ataque e regressão
+## Critérios de aceite
 
-### Escalada por atualização de chave estrangeira
-
-Um usuário autorizado a editar uma unidade não pode mudar `local_id` para um local fora do escopo e continuar com acesso.
-
-Um usuário autorizado a editar um local não pode mudar `quadra_id` para obter associação indevida ou modificar outra área.
-
-### Escalada por arrays
-
-Campos como:
-
-- `quadras_ids`;
-- `cartas_locais_ids`;
-- listas de delegação;
-
-devem ser testados com IDs de objetos não autorizados, inexistentes, duplicados e arrays vazios.
-
-### Escalada por função `SECURITY DEFINER`
-
-Para cada função:
-
-- verificar `EXECUTE` concedido por papel;
-- verificar `search_path`;
-- garantir validação interna de autorização;
-- garantir que chamar a função não oferece acesso indireto a objetos não autorizados;
-- verificar atomicidade em erro.
-
-### Vazamento por views
-
-Views GeoJSON e outras views devem respeitar o contrato de acesso das tabelas ou usar barreiras equivalentes. O teste deve confirmar que uma view não contorna RLS por ser de proprietário privilegiado.
-
-### Realtime
-
-Quando Realtime estiver habilitado:
-
-- usuário recebe eventos apenas de linhas que poderia ler;
-- mudança de designação ou expiração remove o acesso esperado;
-- payload não revela colunas sensíveis.
-
-## Ferramenta recomendada
-
-Preferir testes SQL com `pgTAP` quando possível, complementados por testes de integração usando clientes Supabase autenticados com JWTs de usuários reais de fixture.
-
-Estrutura sugerida:
-
-```text
-supabase/tests/
-  helpers/
-    auth.sql
-    fixtures.sql
-  rls/
-    profiles.test.sql
-    locais_unidades.test.sql
-    designacoes.test.sql
-    cartas_publicas.test.sql
-    arranjos.test.sql
-    delegacoes.test.sql
-    storage.test.sql
-    rpc_geografia.test.sql
-  schema/
-    contract.test.sql
-```
-
-Os testes de integração que dependem de Auth, Storage ou Realtime podem ficar em:
-
-```text
-tests/integration/supabase/
-```
-
-## Contrato para a baseline
-
-A baseline consolidada só pode ser aceita quando:
-
-1. todos os testes passam após aplicar o histórico completo;
-2. todos os mesmos testes passam após aplicar apenas a baseline;
-3. não existem diferenças inesperadas em policies, grants, funções e triggers;
-4. `anon`, `authenticated` e `service_role` possuem exatamente os privilégios previstos;
-5. não há função `SECURITY DEFINER` sem `search_path` fixo e autorização interna adequada;
-6. cada fluxo positivo possui ao menos um teste negativo correspondente.
-
-## Pendências de decisão
-
-Antes da implementação final, precisam ser resolvidas:
-
-- visibilidade global ou limitada de territórios e quadras para publicadores;
-- quais alterações de próprio perfil são permitidas;
-- se dirigente pode aprovar local pendente;
-- se dirigente pode editar geometrias;
-- se dirigente pode delegar somente quadras sob sua responsabilidade;
-- efeito de arranjo com `dirigente_id` nulo sobre `pode_editar_local`;
-- política de exclusão de histórico de conclusões;
-- tratamento de pontos exatamente na fronteira de polígonos;
-- timezone canônico da instância.
-
-Essas decisões devem virar ADRs ou atualização da documentação de domínio antes de congelar a baseline.
+- todos os fluxos permitidos funcionam para o perfil e contexto corretos;
+- cenários negados falham sem vazar dados;
+- não existe sucesso visual com zero linhas alteradas;
+- alterações operacionais são imediatas, auditáveis e reversíveis;
+- conclusão pessoal funciona para líder e participante de designação ativa;
+- dirigente/admin mantêm escopo global;
+- campos privilegiados não permitem autoelevação;
+- `404`, `405` e mensagens internas não chegam crus ao usuário.

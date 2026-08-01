@@ -1,58 +1,71 @@
 # Documentação do Territory Helper
 
-Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura, o pipeline de instalação, as decisões técnicas e a engenharia reversa do banco atual.
+Esta documentação orienta a evolução do Territory Helper como projeto open source, self-hosted e reutilizável por outras congregações.
+
+## Estado atual
+
+O aplicativo operacional foi construído gradualmente para a instância original. O branch `feat/territory-installer` documenta e prepara um caminho de instalação genérico sem alterar a `main`.
+
+Há dois caminhos de banco distintos:
+
+| Caminho | Finalidade | Estado |
+|---|---|---|
+| `supabase/migrations/001–090` | histórico legado e manutenção da instância original | auditado; não usar para novas congregações |
+| `supabase/baseline/` | instalação curta e limpa de uma nova congregação | planejado; ainda não implementado |
+
+A lacuna histórica `021` é conhecida. Os números `091` e `092` não fazem parte do contrato deste branch: achados posteriores à auditoria foram preservados como requisitos da futura baseline.
+
+Enquanto `supabase/baseline/` não existir e não passar pelos testes de equivalência, o repositório ainda não oferece instalação nova totalmente automatizada.
 
 ## Ordem recomendada de leitura
 
 1. [`vision/VISION.md`](vision/VISION.md)
 2. [`vision/PRINCIPLES.md`](vision/PRINCIPLES.md)
-3. [`domain/CNEFE.md`](domain/CNEFE.md)
-4. [`domain/WORK_AREAS.md`](domain/WORK_AREAS.md)
-5. [`domain/DATA_QUALITY.md`](domain/DATA_QUALITY.md)
-6. [`pipeline/CNEFE_TRANSFORMATION.md`](pipeline/CNEFE_TRANSFORMATION.md)
-7. [`pipeline/GEOPROCESSING.md`](pipeline/GEOPROCESSING.md)
-8. [`pipeline/INSTALLER.md`](pipeline/INSTALLER.md)
-9. [`architecture/DATA_MODEL.md`](architecture/DATA_MODEL.md)
-10. [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
-11. [`audits/MIGRATION_091_SECURITY_ADDENDUM.md`](audits/MIGRATION_091_SECURITY_ADDENDUM.md)
-12. [`audits/RLS_TEST_PLAN.md`](audits/RLS_TEST_PLAN.md)
-13. [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md)
-14. [`agents/AGENT_GUIDE.md`](agents/AGENT_GUIDE.md)
+3. [`adr/0001-self-hosted-single-tenant.md`](adr/0001-self-hosted-single-tenant.md)
+4. [`adr/0005-separate-installation-baseline.md`](adr/0005-separate-installation-baseline.md)
+5. [`architecture/AUTHORIZATION_AND_USABILITY.md`](architecture/AUTHORIZATION_AND_USABILITY.md)
+6. [`installer/INSTALLER_SPEC.md`](installer/INSTALLER_SPEC.md)
+7. [`domain/CNEFE.md`](domain/CNEFE.md)
+8. [`domain/WORK_AREAS.md`](domain/WORK_AREAS.md)
+9. [`pipeline/CNEFE_TRANSFORMATION.md`](pipeline/CNEFE_TRANSFORMATION.md)
+10. [`pipeline/GEOPROCESSING.md`](pipeline/GEOPROCESSING.md)
+11. [`architecture/DATA_MODEL.md`](architecture/DATA_MODEL.md)
+12. [`audits/BASELINE_AUDIT.md`](audits/BASELINE_AUDIT.md)
+13. [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
+14. [`audits/RLS_TEST_PLAN.md`](audits/RLS_TEST_PLAN.md)
+15. [`agents/AGENT_GUIDE.md`](agents/AGENT_GUIDE.md)
 
 ## Estrutura
 
-- `vision/`: missão, objetivos de longo prazo, princípios e roadmap.
-- `domain/`: regras do domínio territorial, sem dependência de tecnologia.
-- `pipeline/`: transformação, geoprocessamento, revisão e publicação.
-- `architecture/`: módulos e modelo de dados.
-- `adr/`: decisões arquiteturais registradas e justificadas.
-- `audits/`: engenharia reversa das migrations, estado consolidado do schema e contratos de segurança.
-- `development/`: execução local, testes e práticas de desenvolvimento.
+- `vision/`: missão e princípios duradouros do produto;
+- `domain/`: regras territoriais independentes de tecnologia;
+- `architecture/`: módulos, modelo de dados e contratos transversais;
+- `pipeline/`: transformação, geoprocessamento e orquestração do Installer;
+- `installer/`: especificações detalhadas e roadmap da instalação;
+- `adr/`: decisões arquiteturais aceitas e suas consequências;
+- `audits/`: engenharia reversa do legado `001–090` e requisitos da baseline;
+- `development/`: execução local e testes;
 - `agents/`: instruções para agentes de desenvolvimento.
-- `installer/`: documentos históricos e especificações iniciais do branch.
 
-## Auditoria do banco
+## Princípios de reutilização
 
-A engenharia reversa principal cobre a sequência histórica `001–090` de `supabase/migrations`, com registro da ausência do número `021`.
+- uma instância independente por congregação;
+- configuração no lugar de forks divergentes sempre que possível;
+- schema separado de KML, CNEFE, seeds e dados locais;
+- alterações operacionais de campo com efeito imediato e curadoria posterior;
+- autorização contextual para designações pessoais;
+- dirigente/admin com escopo global de coordenação;
+- mensagens de domínio no lugar de erros técnicos crus;
+- revisão humana antes de importações e transformações em massa.
 
-O documento canônico desse levantamento é:
+## Auditoria e baseline
 
-- [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
+A engenharia reversa completa está em [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md). As matrizes por intervalo permanecem em `audits/` como evidência migration por migration.
 
-A migration corretiva `091`, criada como consequência direta dos testes de segurança, está documentada separadamente em:
-
-- [`audits/MIGRATION_091_SECURITY_ADDENDUM.md`](audits/MIGRATION_091_SECURITY_ADDENDUM.md)
-
-As matrizes por intervalo permanecem disponíveis em `audits/` como evidência detalhada da classificação migration por migration.
+A estratégia de separação foi registrada no [`ADR 0005`](adr/0005-separate-installation-baseline.md). O contrato de autorização e experiência do usuário foi registrado no [`ADR 0006`](adr/0006-usability-first-authorization.md).
 
 ## Testes do banco
 
-A configuração do Supabase local, os comandos de reconstrução e os contratos pgTAP estão descritos em:
+O ambiente local e os contratos existentes estão descritos em [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md).
 
-- [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md)
-
-Os testes estáticos das migrations ficam em `tests/`. Os testes comportamentais do PostgreSQL ficam em `supabase/tests/database/`.
-
-## Documentos canônicos
-
-Os documentos fora de `installer/` passam a ser a referência principal para novas decisões e implementações. Os arquivos em `installer/` permanecem como histórico e material de apoio até serem totalmente consolidados.
+Os testes atuais caracterizam o legado `001–090`. A futura baseline terá uma suíte própria de aceitação orientada ao contrato do produto; ela pode ser deliberadamente diferente do legado quando corrige segurança, usabilidade ou ideias substituídas.

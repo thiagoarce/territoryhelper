@@ -22,6 +22,8 @@ Todo arquivo CNEFE deve passar por uma camada explícita de inspeção, traduç�
 
 Geração de quadras, classificação de prédios, reconciliação de endereços e outras decisões ambíguas produzem propostas. O usuário confirma antes da publicação.
 
+Esse princípio se aplica a importações e transformações em massa. Ele não transforma a manutenção cotidiana de locais, unidades e históricos em uma fila de aprovação: alterações operacionais feitas em campo têm efeito imediato e entram em curadoria posterior.
+
 ## 6. Importações são idempotentes
 
 Executar novamente o mesmo pipeline com os mesmos arquivos e a mesma versão deve produzir o mesmo resultado, sem duplicações.
@@ -61,3 +63,19 @@ Novos módulos devem ser desenvolvidos no branch dedicado, com integração incr
 ## 15. Documentação é parte da implementação
 
 Mudanças relevantes de domínio, arquitetura ou pipeline devem atualizar a documentação e, quando necessário, registrar uma decisão arquitetural.
+
+## 16. Usabilidade precede restrições sem benefício proporcional
+
+A instância congregacional atende um grupo pequeno de usuários conhecidos. RLS e guards devem proteger limites reais, sem bloquear o trabalho legítimo por granularidade excessiva.
+
+## 17. Trabalho operacional é imediato e reversível
+
+Publicadores ativos podem adicionar, editar e excluir dados operacionais nos fluxos do aplicativo. A mudança aparece imediatamente, registra autoria e pode ser confirmada ou revertida pela curadoria administrativa.
+
+## 18. Autorização considera papel e contexto
+
+Admin e dirigente possuem escopo global de coordenação. Um publicador com designação pessoal ativa pode concluir as quadras dessa designação, seja líder ou participante.
+
+## 19. Erros técnicos não são mensagens de produto
+
+Códigos como `404` e `405`, nomes de policies e mensagens SQL ficam nos logs. A interface apresenta uma explicação curta, acionável e coerente com o domínio.

@@ -8,6 +8,8 @@ Não iniciar pela automação completa. Primeiro estabelecer contratos, importa�
 
 ## Fase 0 — Auditoria e baseline
 
+Status: auditoria documental `001–090` concluída; baseline separada ainda não implementada.
+
 Objetivos:
 
 - auditar migrations existentes;
@@ -16,6 +18,13 @@ Objetivos:
 - testar uma instalação vazia;
 - definir baseline limpa para novas instâncias;
 - documentar dependências e lacunas.
+
+Limite da fase:
+
+- `001–090` permanece como histórico legado da instância original;
+- não criar `091`, `092` e seguintes neste branch para materializar achados da auditoria;
+- transformar esses achados em requisitos e testes da baseline;
+- usar um fluxo separado de manutenção quando a instância original precisar de patch incremental.
 
 Critérios de aceite:
 
@@ -47,7 +56,7 @@ Objetivos:
 
 - testar credenciais;
 - validar PostGIS;
-- aplicar baseline e migrations;
+- aplicar a baseline separada e migrations posteriores ao seu marco;
 - criar ou orientar o primeiro administrador;
 - registrar versão instalada.
 
@@ -55,7 +64,8 @@ Critérios de aceite:
 
 - projeto Supabase vazio torna-se uma instância válida;
 - reexecução não duplica estrutura;
-- falhas deixam diagnóstico claro.
+- falhas deixam diagnóstico claro;
+- nenhuma instalação nova executa o histórico legado `001–090`.
 
 ## Fase 3 — KML e CNEFE
 

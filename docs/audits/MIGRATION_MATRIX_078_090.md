@@ -20,7 +20,7 @@ Este documento registra o bloco final das migrations atualmente existentes em `s
 | `087_hora_informada_backfill.sql` | Distingue hora real de hora estimada e preenche estimativas históricas. | Adiciona `quadras_conclusoes.hora_informada`; atualiza `marcado_em`. | **Coluna entra na baseline; backfill não.** | O backfill contém horários e UTC−3 específicos da instância original. Esses valores não podem entrar numa baseline genérica. O Installer deve configurar timezone e, se necessário, regras locais. |
 | `088_notificacoes_delete_propria.sql` | Permite ao usuário apagar as próprias notificações. | Policy DELETE em `notificacoes`. | **Absorver no estado final de RLS.** | Regra é por propriedade da linha; “apenas lidas” fica como UX, não segurança. Testar tentativa de apagar notificação de terceiro. |
 | `089_rls_saneamento.sql` | Saneia tabelas públicas sem RLS e endurece `erros_client`. | Varredura de `pg_tables`; policy e constraint em `erros_client`. | **Absorver resultados finais; não copiar cegamente a varredura para toda instalação.** | O loop pode habilitar RLS deny-all em tabelas esquecidas, o que é seguro mas pode mascarar falta de policy. A baseline deve declarar RLS explicitamente por tabela. Constraint `NOT VALID` precisa ser validada em banco novo. |
-| `090_dirigente_conclui_quadra.sql` | Corrige conclusão/desfazer de quadra por dirigente sem permitir alteração estrutural. | Cria `quadras_guard_nao_admin()`, trigger em `quadras`, policy UPDATE em `quadras`, policy DELETE em `quadras_conclusoes`. | **Obrigatória no estado final de autorização.** | Padrão policy ampla + trigger de guarda. A baseline deve testar alteração exclusiva de `data_conclusao`, proteção automática de colunas futuras, comportamento de `service_role` e divergência entre tabela atual e histórico. |
+| `090_dirigente_conclui_quadra.sql` | Corrige conclusão/desfazer de quadra por dirigente sem permitir alteração estrutural. | Cria `quadras_guard_nao_admin()`, trigger em `quadras`, policy UPDATE em `quadras`, policy DELETE em `quadras_conclusoes`. | **Canônica para caracterizar o legado; absorver parcialmente na baseline.** | Preservar a guarda estrutural e o escopo global de dirigente/admin. A baseline também deve autorizar líder e participante de designação pessoal ativa a concluir suas quadras, manter histórico consistente e impedir sucesso falso. |
 
 ## Cadeias de substituição identificadas
 
@@ -55,7 +55,7 @@ A baseline deve criar a tabela já com a policy e constraints finais.
 090 — corrige autorização do dirigente e desfazer
 ```
 
-Na baseline nova entram o schema e a autorização final. Os backfills `084` e a parte de dados de `087` permanecem migrations históricas para upgrades.
+Na baseline nova entram o schema, a guarda estrutural e a autorização contextual final. Os backfills `084` e a parte de dados de `087` permanecem migrations históricas para upgrades. A policy role-only da `090` não é suficiente para o produto futuro porque não cobre designação pessoal ativa.
 
 ## Achados para o Installer
 
@@ -66,11 +66,6 @@ Na baseline nova entram o schema e a autorização final. Os backfills `084` e a
 5. Funções redefinidas várias vezes devem aparecer uma única vez na baseline final.
 6. Backfills históricos não devem rodar automaticamente em uma congregação nova.
 
-## Próximos blocos
+## Continuidade
 
-A auditoria continuará pelos blocos intermediários, priorizando migrations que são referenciadas diretamente neste bloco:
-
-- `030` — tokens de território;
-- `057` — guarda de colunas em `locais`;
-- `067` — designações de TCE;
-- migrations que criam `arranjo_partes`, `notificacoes`, `designacao_tces` e a versão anterior de `territorio_publico`.
+Os blocos intermediários já foram auditados. A visão canônica está em [`CONSOLIDATED_SCHEMA_STATE.md`](./CONSOLIDATED_SCHEMA_STATE.md); esta matriz permanece como evidência do intervalo `078–090`.

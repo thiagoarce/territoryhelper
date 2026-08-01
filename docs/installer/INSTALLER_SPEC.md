@@ -63,7 +63,11 @@ O instalador deve interromper a publicação em caso de conexão inválida ou pr
 
 ### 4. Preparação do banco
 
-A instalação nova deve usar uma baseline limpa e migrations posteriores.
+A instalação nova deve usar uma baseline limpa e somente as migrations publicadas depois do marco dessa baseline.
+
+`supabase/migrations/001–090` é o histórico legado da instância original. O Installer não deve executar, copiar nem continuar essa sequência. Achados da auditoria entram diretamente na baseline separada, conforme o [`ADR 0005`](../adr/0005-separate-installation-baseline.md).
+
+Até `supabase/baseline/` existir e passar nos contratos de aceitação, o Installer deve informar que a preparação automática do banco ainda não está disponível, em vez de improvisar com o histórico legado.
 
 A baseline não pode conter:
 
@@ -75,6 +79,8 @@ A baseline não pode conter:
 - nomes de prédios particulares.
 
 O instalador deve registrar a versão do schema aplicada e permitir reexecução idempotente ou retomada segura.
+
+A baseline deve nascer com o contrato de autorização e usabilidade descrito em [`../architecture/AUTHORIZATION_AND_USABILITY.md`](../architecture/AUTHORIZATION_AND_USABILITY.md), sem reproduzir policies intermediárias apenas para corrigi-las depois.
 
 ### 5. Importação dos arquivos territoriais
 
@@ -197,10 +203,21 @@ O manifesto deve registrar versões, hashes dos arquivos de entrada, parâmetros
 - não enviar arquivos brutos a terceiros sem aviso explícito;
 - suportar retomada após falha;
 - manter logs técnicos e mensagens amigáveis separadamente;
+- nunca exibir `404`, `405`, mensagens SQL, nomes de policies ou respostas cruas do PostgREST como mensagem principal;
+- impedir sucesso visual quando uma escrita afetar zero linhas;
 - não carregar todos os polígonos ou endereços no navegador operacional de uma vez;
 - usar consultas espaciais e carregamento por viewport;
 - preservar identificadores de origem quando disponíveis;
 - tornar operações destrutivas explícitas e reversíveis antes da publicação.
+
+## Contrato operacional da instância criada
+
+- publicadores podem manter dados operacionais com efeito imediato e curadoria posterior;
+- exclusões operacionais preservam informação suficiente para reversão;
+- publicadores com designação pessoal ativa podem concluir as quadras designadas;
+- dirigente e admin possuem escopo global de conclusão;
+- campos estruturais, privilégios e operações em massa permanecem protegidos;
+- erros são traduzidos para linguagem de domínio, com detalhes técnicos apenas nos logs.
 
 ## Fora do escopo inicial
 

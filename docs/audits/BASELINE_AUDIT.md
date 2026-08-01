@@ -28,7 +28,7 @@ Foram revisados:
 - `scripts/migrate-from-csv.ts`;
 - documentação de instalação atual.
 
-A etapa de descoberta documental das migrations está concluída. A próxima fase é executável: testes de schema, RLS e equivalência.
+A etapa de descoberta documental das migrations está concluída. A próxima fase é executável: contratos de aceitação da baseline, testes de schema e caracterização do legado.
 
 ## Conclusão executiva
 
@@ -67,6 +67,8 @@ A estratégia adotada é:
 - preservar integralmente o histórico atual para a instância existente;
 - criar uma baseline separada para novas instalações;
 - manter migrations incrementais futuras após a baseline;
+- tratar `001–090` como o limite legado auditado, sem continuar essa numeração no branch do Installer;
+- registrar achados posteriores como requisitos e testes da baseline, salvo tarefa explícita de manutenção da instância original;
 - separar schema, RLS, Storage, seeds e backfills;
 - validar equivalência comportamental entre histórico e baseline;
 - não alterar o banco de produção durante a fase de auditoria.
@@ -91,6 +93,8 @@ A baseline mínima deve conter:
 - proteção de campos privilegiados;
 - RLS final, sem reproduzir versões vulneráveis intermediárias.
 
+A guarda de campos privilegiados deve identificar o chamador por contexto explícito, como `auth.uid()`, e nunca depender de `current_user` dentro de uma função `SECURITY DEFINER`. `role`, `ativo`, `tp_aprovado` e capacidades administrativas equivalentes não podem ser autoatribuídos.
+
 ### Domínio geográfico
 
 - `territorios`;
@@ -111,6 +115,8 @@ A baseline mínima deve conter:
 - histórico de conclusões;
 - auditoria;
 - triggers de proteção e curadoria em seu estado final.
+
+O contrato operacional não é admin-only: publicadores ativos mantêm locais, unidades e históricos com efeito imediato e curadoria posterior. Líderes e participantes de uma designação pessoal ativa podem concluir as quadras correspondentes. Dirigente e admin têm escopo global de conclusão.
 
 ## Módulos opcionais
 
@@ -189,21 +195,29 @@ Uma instalação nova deve começar diretamente pelo modelo final.
 
 O estado final resulta de `019`, `087` e `090`. Os backfills de `084` e da parte de dados de `087` não entram em banco vazio.
 
+A baseline não deve copiar apenas a policy global da `090`. Ela precisa centralizar a autorização contextual:
+
+- dirigente/admin concluem qualquer quadra;
+- publicador conclui quadra de designação pessoal ativa, como líder ou participante;
+- autoria do histórico corresponde ao usuário real;
+- estado atual e histórico são atualizados de forma consistente;
+- nenhuma escrita com zero linhas afetadas retorna sucesso ao usuário.
+
 ## Riscos que ainda bloqueiam a baseline SQL
 
-1. pertencimento duplicado entre `designacoes.publicador_id` e `designacao_publicadores`;
-2. autoridade global ou restrita de dirigentes;
-3. arrays de IDs sem integridade referencial;
-4. comportamento real de `profiles_guard_sensitive()`;
-5. segurança cumulativa de `pode_editar_local()`;
+1. implementação centralizada do pertencimento entre `designacoes.publicador_id` e `designacao_publicadores`;
+2. arrays de IDs sem integridade referencial;
+3. teste comportamental da guarda de campos privilegiados de `profiles`;
+4. separação entre edição operacional imediata e campos estruturais protegidos;
+5. reversão confiável de exclusões pela curadoria;
 6. dependência crítica dos triggers de guarda;
 7. acesso por token e response allowlist;
 8. fronteiras espaciais;
 9. timezone por instância;
 10. Storage policies historicamente amplas;
 11. concorrência em agendamentos e jobs;
-12. policies que permitem alterar colunas além da intenção da interface;
-13. compatibilidade do app com remoção de helpers e colunas legadas.
+12. compatibilidade do app com remoção de helpers e colunas legadas;
+13. tradução consistente de erros técnicos nas rotas e actions.
 
 ## Testes exigidos antes da baseline
 
@@ -225,6 +239,11 @@ A suíte deve cobrir:
 - tokens válidos, inválidos e expirados;
 - Storage;
 - conclusão de quadras;
+- conclusão por líder e participante de designação pessoal ativa;
+- edição operacional imediata com curadoria e reversão;
+- dirigente/admin com escopo global;
+- ausência de sucesso falso quando nenhuma linha é alterada;
+- tradução de `404`, `405` e erros SQL para mensagens de domínio;
 - correção de posição;
 - concorrência quando aplicável.
 
@@ -254,7 +273,7 @@ Aplicar a baseline consolidada e os mesmos módulos.
 - buckets e Storage policies;
 - comportamento dos perfis de teste.
 
-Equivalência não significa que o catálogo do banco precisa ser byte a byte idêntico. Significa que o contrato usado pelo aplicativo e pela segurança deve ser igual ou deliberadamente mais seguro.
+Equivalência não significa que o catálogo ou as policies precisam ser byte a byte idênticos. A baseline deve ser compatível com o aplicativo e implementar o contrato de produto aceito, podendo divergir deliberadamente do legado para corrigir segurança, usabilidade ou ideias substituídas.
 
 ## Estrutura recomendada
 
@@ -278,14 +297,17 @@ Seeds devem ficar em `supabase/seeds/`. Backfills históricos permanecem em `sup
 
 Implementar a primeira suíte de contrato para:
 
-- `profiles` e proteção de privilégios;
-- `quadras` e conclusão por dirigente;
-- `locais` e `unidades`;
-- `pode_editar_local()`;
+- `profiles` e proteção contra autoelevação;
+- `quadras` e conclusão global por dirigente/admin;
+- conclusão por líder e participante de designação pessoal ativa;
+- `locais` e `unidades` com edição operacional imediata;
+- `curadoria_edicoes`, inclusive reversão de exclusão;
+- separação entre campos operacionais e estruturais;
 - triggers de guarda;
-- links públicos e enumeração de tokens.
+- links públicos e enumeração de tokens;
+- mensagens amigáveis em falhas de autorização, recurso ausente ou action desatualizada.
 
-Somente depois dessa suíte passar no schema histórico deve começar a escrita da baseline SQL.
+O legado deve ser caracterizado, mas não precisa cumprir contratos novos que nunca implementou. A escrita da baseline começa quando seus testes de aceitação estiverem definidos e as diferenças deliberadas estiverem registradas.
 
 ## Critério de aceite da fase de auditoria
 

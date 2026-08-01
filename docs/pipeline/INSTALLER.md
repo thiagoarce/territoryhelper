@@ -8,7 +8,7 @@ O Installer coordena a criação de uma nova instância. Ele não deve concentra
 
 1. Verificar ambiente e conectividade.
 2. Configurar Supabase e Cloudflare.
-3. Aplicar baseline e migrations.
+3. Aplicar a baseline separada e somente as migrations posteriores ao seu marco.
 4. Criar administrador inicial.
 5. Receber KML e CSVs CNEFE.
 6. Executar o CNEFE Transformation Engine.
@@ -34,6 +34,10 @@ Inclui propostas de rotas, localidades, áreas e pontos isolados.
 ## Experiência do usuário
 
 O usuário não deve precisar compreender Git, Node, Python, PostGIS ou bibliotecas GIS. O instalador deve apresentar linguagem operacional e mensagens acionáveis.
+
+O histórico legado `supabase/migrations/001–090` não é um caminho de instalação. Enquanto a baseline curta não estiver implementada e validada, o Installer deve declarar essa etapa como indisponível.
+
+Erros técnicos ficam nos diagnósticos. A interface nunca deve apresentar `404`, `405`, SQL ou nomes de policies como orientação ao usuário.
 
 ## Segurança
 

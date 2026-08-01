@@ -20,14 +20,19 @@ Não implemente com base apenas no título da tarefa.
 2. Não altere `main` diretamente.
 3. Não misture dados específicos da congregação original com schema genérico.
 4. Não reescreva migrations já aplicadas sem plano de compatibilidade.
-5. Não introduza multi-tenancy; o modelo atual é single-tenant por instalação.
-6. Não faça refatoração ampla sem necessidade demonstrada.
-7. Não escolha biblioteca GIS por preferência. Registre os critérios e compare alternativas quando necessário.
-8. Não grave resultados geográficos automáticos como definitivos sem revisão.
-9. Não exponha service-role keys ou outros segredos ao cliente.
-10. Não carregue uma cidade inteira no mapa operacional sem viewport, paginação ou estratégia de tiles.
-11. Não represente idioma como propriedade permanente do imóvel.
-12. Não force territórios rurais ao modelo de quadra urbana.
+5. Trate `supabase/migrations/001–090` como histórico legado. O caminho de novas instalações é `supabase/baseline/`.
+6. Não crie `091`, `092` e seguintes neste branch para corrigir o legado; preserve o achado como requisito/teste da baseline, salvo tarefa explícita de manutenção da instância original.
+7. Não introduza multi-tenancy; o modelo atual é single-tenant por instalação.
+8. Não faça refatoração ampla sem necessidade demonstrada.
+9. Não escolha biblioteca GIS por preferência. Registre os critérios e compare alternativas quando necessário.
+10. Não grave resultados geográficos automáticos como definitivos sem revisão.
+11. Não exponha service-role keys ou outros segredos ao cliente.
+12. Não carregue uma cidade inteira no mapa operacional sem viewport, paginação ou estratégia de tiles.
+13. Não represente idioma como propriedade permanente do imóvel.
+14. Não force territórios rurais ao modelo de quadra urbana.
+15. Preserve o trabalho operacional imediato de publicadores, com curadoria posterior.
+16. Não reduza autorização contextual a papéis globais: designação pessoal ativa autoriza conclusão das quadras correspondentes.
+17. Não apresente `404`, `405` ou erros internos crus ao usuário.
 
 ## Forma das tarefas
 
@@ -133,3 +138,5 @@ Auditar a instalação atual e produzir um relatório técnico sobre:
 - caminho mínimo para uma baseline limpa.
 
 Essa tarefa deve ser concluída antes da criação de novas tabelas ou de um instalador visual completo.
+
+A auditoria documental de `001–090` já foi concluída. A próxima tarefa de banco é escrever os contratos de aceitação da baseline separada e, depois, sua sequência curta; não é continuar a numeração histórica.

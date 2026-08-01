@@ -15,6 +15,8 @@ A finalidade desta consolidação é responder quatro perguntas:
 
 As migrations históricas permanecem necessárias para compreender e atualizar a instância original. Este documento não autoriza apagar, renumerar ou reescrever o histórico.
 
+O limite auditado e preservado é `001–090`. Achados posteriores não devem virar `091`, `092` e seguintes no branch do Installer; eles entram como requisitos e testes da baseline separada, salvo um trabalho explicitamente voltado à manutenção da instância original.
+
 ## Fontes da consolidação
 
 - [`MIGRATION_MATRIX.md`](./MIGRATION_MATRIX.md) — `001–029`;
@@ -111,9 +113,11 @@ Uma instalação nova não deve nascer com um helper cujo nome diz “servo de p
 
 A coluna legada `profiles.servo_publicacoes` só deve ser mantida na baseline se o código atual ainda depender dela. Caso contrário, deve permanecer apenas na história da instância original.
 
-### Bloqueio de segurança
+### Requisito da baseline
 
-`profiles_guard_sensitive()` precisa de teste executável. Uma versão histórica utiliza `current_user` dentro de função `SECURITY DEFINER`; isso pode identificar o proprietário da função em vez do chamador e neutralizar a proteção esperada.
+`profiles_guard_sensitive()` precisa de teste executável. A versão histórica utiliza `current_user` dentro de função `SECURITY DEFINER`; isso pode identificar o proprietário da função em vez do chamador e neutralizar a proteção esperada.
+
+A baseline deve criar diretamente uma guarda que use contexto explícito do chamador, como `auth.uid()`, permita manutenção administrativa controlada e impeça que usuário comum altere `role`, `ativo`, `tp_aprovado` ou capacidade equivalente. Esse achado não amplia o histórico legado.
 
 ## 2. Núcleo geográfico
 
@@ -223,13 +227,16 @@ O estado final inclui:
 - `quadras.data_conclusao` como estado atual;
 - `quadras_conclusoes` como histórico append-only;
 - `hora_informada` para distinguir horário real e estimado;
-- dirigente autorizado a concluir/desfazer sem alterar estrutura;
+- dirigente/admin autorizados a concluir/desfazer qualquer quadra sem alterar estrutura;
+- líder ou participante de designação pessoal ativa autorizado a concluir as quadras designadas;
 - trigger de guarda em `quadras`.
 
 Entram na baseline o schema e as policies finais. Não entram:
 
 - o backfill da `084`;
 - horários históricos e UTC−3 da parte de dados da `087`.
+
+Autorização de conclusão deve usar um helper canônico de pertencimento. O histórico precisa registrar o usuário real, e a action não pode reportar sucesso quando nenhuma linha for alterada.
 
 ## 4. Arranjos e partes
 
@@ -266,9 +273,9 @@ A segunda opção é arquiteturalmente mais limpa, mas não deve ser aplicada si
 
 ### Autoridade de dirigente
 
-Policies históricas permitem que qualquer perfil com role `dirigente` gerencie partes de qualquer arranjo. É necessário decidir se dirigente é um gestor global da instância ou apenas dos arranjos sob sua condução.
+Dirigente é um coordenador global da instância para os fluxos operacionais definidos, inclusive conclusão de quadras. Admin mantém também infraestrutura, usuários, importações e curadoria estrutural.
 
-Essa decisão deve existir no domínio e no teste de RLS, não ficar implícita em SQL copiado.
+Esse escopo deve continuar explícito no domínio e nos testes, sem depender de uma policy histórica copiada incidentalmente.
 
 ## 5. Posse e edição de locais
 
@@ -291,6 +298,10 @@ A partir de `057`, as policies de UPDATE em `locais` e `unidades` tornam-se ampl
 
 `075` modifica novamente `guard_locais_update()` para permitir uma exceção transacional controlada ao corrigir posição.
 
+O contrato de produto é permissivo para trabalho operacional: publicadores ativos podem adicionar, editar e excluir locais/unidades e registrar históricos pelos fluxos do aplicativo, com efeito imediato e `curadoria_edicoes` posterior. Designação não deve virar uma barreira genérica a toda manutenção de campo.
+
+Campos estruturais continuam protegidos. Exclusões precisam preservar um caminho real de reversão, por marcação lógica ou snapshot suficiente.
+
 ### Consequência
 
 RLS isoladamente não descreve a segurança do sistema. A baseline e os testes precisam considerar o conjunto:
@@ -301,7 +312,8 @@ policy + trigger + helper + RPC + contexto transacional
 
 ### Contrato mínimo de teste
 
-- publicador sem posse não altera trabalho de cartas;
+- publicador ativo mantém dados operacionais e a mudança aparece imediatamente;
+- edição e exclusão geram curadoria reversível;
 - coparticipante de designação possui o mesmo acesso do líder conforme regra de negócio;
 - participante de parte acessa apenas o escopo permitido;
 - dirigente não altera colunas estruturais por UPDATE comum;
@@ -324,7 +336,9 @@ policy + trigger + helper + RPC + contexto transacional
 - definir retenção ou particionamento para grandes volumes;
 - verificar cobertura dos triggers de auditoria nas tabelas adicionadas após `007`;
 - não permitir que correções humanas substituam silenciosamente o único valor de origem;
-- registrar autoria, antes/depois e resolução em toda correção estrutural.
+- registrar autoria, antes/depois e resolução em toda correção estrutural;
+- não usar curadoria como bloqueio prévio do trabalho operacional;
+- garantir restauração após exclusão feita pelo fluxo de campo.
 
 ## 7. Links públicos e tokens
 
@@ -604,22 +618,23 @@ Backfills históricos continuam em `supabase/migrations` para upgrades da instâ
 
 ## Decisões que bloqueiam o SQL final
 
-A baseline ainda não deve ser codificada até resolver ou testar:
+A baseline ainda não deve ser codificada até implementar ou testar:
 
-1. pertencimento canônico em designações;
-2. autoridade global ou restrita de dirigentes;
-3. arrays de IDs versus tabelas de junção;
-4. comportamento real de `profiles_guard_sensitive()`;
-5. contrato final de `pode_editar_local()`;
-6. contrato final dos triggers de guarda;
-7. policy de conclusão de quadra e histórico;
+1. pertencimento canônico em designações, cobrindo líder e participante;
+2. arrays de IDs versus tabelas de junção;
+3. guarda segura dos campos privilegiados de `profiles`;
+4. edição operacional imediata com curadoria posterior;
+5. reversão de exclusões operacionais;
+6. contrato final dos triggers de guarda estrutural;
+7. conclusão contextual de quadra e histórico consistente;
 8. fronteiras espaciais;
 9. timezone configurável da instância;
 10. exposição exata dos RPCs públicos;
 11. policies de Storage;
 12. concorrência em agendamentos e jobs;
 13. módulos habilitados por padrão;
-14. compatibilidade do app com remoção de colunas e helpers legados.
+14. compatibilidade do app com remoção de colunas e helpers legados;
+15. tradução de erros técnicos nas rotas e actions.
 
 ## Próxima etapa técnica
 
@@ -627,7 +642,7 @@ A próxima etapa não é escrever imediatamente a baseline. É criar uma **espec
 
 ### Banco histórico
 
-Aplicar a sequência histórica completa num projeto Supabase vazio.
+Aplicar a sequência histórica `001–090` num projeto Supabase vazio para caracterização. O legado não precisa satisfazer contratos novos deliberadamente definidos para a baseline.
 
 ### Banco candidato
 
@@ -647,6 +662,8 @@ Aplicar a futura baseline e os mesmos módulos habilitados.
 - policies;
 - buckets e policies de Storage;
 - comportamento de usuários admin, dirigente, publicador, anônimo e service role.
+
+A baseline pode divergir deliberadamente de uma policy histórica quando a diferença implementa um requisito aceito de segurança ou usabilidade e possui teste próprio.
 
 ## Critério de conclusão da auditoria
 

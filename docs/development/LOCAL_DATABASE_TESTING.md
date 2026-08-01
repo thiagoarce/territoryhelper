@@ -45,8 +45,9 @@ Os primeiros contratos cobrem:
 - bloqueio de enumeração anônima de tokens;
 - versão final de `territorio_publico(uuid)`;
 - trigger e policy de conclusão de quadras;
-- autoria e limites de telemetria;
-- proteção comportamental dos campos privilegiados de `profiles`.
+- autoria e limites de telemetria.
+
+Esses contratos caracterizam o legado `001–090`. Requisitos novos da baseline, como a guarda corrigida de campos privilegiados, conclusão por designação pessoal e curadoria reversível, terão testes próprios quando `supabase/baseline/` existir.
 
 ### `db:stop`
 
@@ -62,8 +63,7 @@ O runner TypeScript não substitui o pgTAP. Ele valida propriedades do próprio 
 
 - sequência e duplicidade de números;
 - presença de hardenings obrigatórios;
-- ausência de redefinições posteriores inesperadas;
-- conteúdo mínimo da migration corretiva `091`.
+- ausência de redefinições posteriores inesperadas no histórico `001–090`.
 
 A combinação é deliberada:
 
@@ -87,11 +87,11 @@ O workflow `.github/workflows/database-contract.yml` executa:
 A baseline futura só deve ser considerada equivalente quando esse pipeline puder executar contra dois caminhos:
 
 ```text
-histórico completo
+histórico legado 001–090
 baseline consolidada + incrementais
 ```
 
-Os dois bancos devem produzir contratos funcionais e de autorização equivalentes.
+Os dois bancos devem ser compatíveis com o aplicativo. A baseline pode ser deliberadamente diferente quando corrige um risco, uma limitação de usabilidade ou uma ideia histórica substituída, desde que a diferença esteja documentada e testada.
 
 ## Diagnóstico de falhas
 

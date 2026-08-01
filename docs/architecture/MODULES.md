@@ -71,7 +71,7 @@ Responsável por orquestrar o fluxo completo:
 
 1. verificar ambiente;
 2. conectar Supabase;
-3. aplicar baseline e migrations;
+3. aplicar a baseline separada e migrations posteriores ao seu marco;
 4. receber arquivos;
 5. executar os módulos especializados;
 6. apresentar revisão;
