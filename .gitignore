@@ -8,6 +8,9 @@ build/
 *.log
 .vercel/
 .wrangler/
+# Estado local gerado pela Supabase CLI
+supabase/.temp/
+supabase/.branches/
 # Dados reais da congregação (endereços, lat/lng, históricos) — nunca commitar
 migration-data/
 __pycache__/
