@@ -15,7 +15,7 @@
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
   import { postComFila } from '$lib/offline';
 
-  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null>; arranjoHoraInicio: string | null; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
+  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; podeConcluirQuadra?: boolean; cicloCartasPorLocal: Record<number, string | null>; arranjoHoraInicio: string | null; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
 
   // W8 ("modo rua"): desfechos/carta resilientes a sinal ruim — mesmo
   // padrão de /predio/[id]: overlay otimista local + postComFila (sem
@@ -60,6 +60,7 @@
   let sheetEditar = $state(false);
   let sheetAdd = $state(false);
   const podeDirigir = $derived(['dirigente', 'admin'].includes(data.minhaRole ?? ''));
+  const podeConcluir = $derived(!!data.podeConcluirQuadra);
   let dataConclusao = $state(new Date().toISOString().substring(0, 10));
   // Hora que o trabalho foi feito de verdade (não "hora do registro") —
   // pré-preenche com a do arranjo vinculado, se houver (ver
@@ -316,8 +317,8 @@
   </div>
 </div>
 
-<!-- Ações de dirigente (marcar quadra concluída / desfazer) — só se role permite -->
-{#if podeDirigir}
+<!-- Conclusão contextual: designação pessoal conclui; desfazer continua global. -->
+{#if podeConcluir || podeDirigir}
   <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
     {#if quadraConcluidaEfetiva}
       <div class="flex items-center gap-2 flex-wrap">
@@ -325,7 +326,9 @@
           <Icon nome="check" size={14} />
           {#if data.quadra.data_conclusao}Concluída em <strong>{new Date(data.quadra.data_conclusao + 'T12:00:00').toLocaleDateString('pt-BR')}</strong>{:else}Concluída{/if}
         </span>
-        <Button type="button" variant="secondary" size="sm" onclick={desfazerConclusaoFila} loading={salvandoConclusao}>Desfazer</Button>
+        {#if podeDirigir}
+          <Button type="button" variant="secondary" size="sm" onclick={desfazerConclusaoFila} loading={salvandoConclusao}>Desfazer</Button>
+        {/if}
       </div>
     {:else}
       <div class="flex items-center gap-2 flex-wrap">
@@ -335,7 +338,9 @@
         <label for="hora-conc" class="text-sm text-slate-600">às</label>
         <input id="hora-conc" type="time" name="hora" bind:value={horaConclusao}
           class="rounded border border-slate-300 px-2 py-1 text-sm" />
-        <Button type="button" variant="success" size="sm" onclick={concluirQuadraFila} loading={salvandoConclusao}><Icon nome="check" size={14} /> Marcar concluída</Button>
+        {#if podeConcluir}
+          <Button type="button" variant="success" size="sm" onclick={concluirQuadraFila} loading={salvandoConclusao}><Icon nome="check" size={14} /> Marcar concluída</Button>
+        {/if}
       </div>
     {/if}
   </div>

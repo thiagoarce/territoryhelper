@@ -39,3 +39,30 @@ jobs:
       - name: Stop local Supabase
         if: always()
         run: npm run db:stop -- --no-backup
+
+  baseline-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare isolated baseline project
+        run: |
+          mkdir -p .baseline-smoke/supabase/migrations
+          cp supabase/config.toml .baseline-smoke/supabase/config.toml
+          cp supabase/baseline/[0-9][0-9][0-9]_*.sql .baseline-smoke/supabase/migrations/
+
+      - name: Start Supabase and apply baseline
+        working-directory: .baseline-smoke
+        run: npx --yes supabase@2.110.0 start
+
+      - name: Reapply baseline from an empty database
+        working-directory: .baseline-smoke
+        run: npx --yes supabase@2.110.0 db reset
+
+      - name: Stop baseline Supabase
+        if: always()
+        working-directory: .baseline-smoke
+        run: npx --yes supabase@2.110.0 stop --no-backup

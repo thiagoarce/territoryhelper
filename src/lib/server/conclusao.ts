@@ -1,3 +1,5 @@
+import { friendlyMessage } from '$lib/erros-usuario';
+
 // Registra uma conclusão de quadra no histórico append-only
 // (quadras_conclusoes) E sincroniza quadras.data_conclusao.
 //
@@ -26,19 +28,33 @@
 // 087) marca esse caso como HORA REAL — protege contra o backfill de
 // estimativa (por dia da semana) rodar de novo e sobrescrever dado real.
 export async function registrarConclusaoQuadra(
-  supabase: { from: (t: string) => any },
+  supabase: { from: (t: string) => any; rpc?: (name: string, params: Record<string, unknown>) => PromiseLike<any> },
   quadraId: string,
   dataConclusao: string,
   marcadoPor: string | null,
   marcadoEm?: string | null
 ): Promise<{ error: string | null }> {
+  // Instalações criadas pela baseline usam a RPC transacional, que concentra
+  // a mesma autorização consumida pela RLS. O fallback mantém a instância
+  // original compatível até ela receber uma atualização própria.
+  if (supabase.rpc) {
+    const { error: rpcError } = await supabase.rpc('registrar_conclusao_quadra', {
+      p_quadra_id: quadraId,
+      p_data: dataConclusao,
+      p_marcado_em: marcadoEm ?? null
+    });
+    if (!rpcError) return { error: null };
+    const missingFunction = rpcError.code === 'PGRST202' || /could not find.*registrar_conclusao_quadra/i.test(rpcError.message ?? '');
+    if (!missingFunction) return { error: friendlyMessage(rpcError) };
+  }
+
   const linha: Record<string, unknown> = { quadra_id: quadraId, data_conclusao: dataConclusao, marcado_por: marcadoPor };
   if (marcadoEm) {
     linha.marcado_em = marcadoEm;
     linha.hora_informada = true;
   }
   const { error: errIns } = await supabase.from('quadras_conclusoes').insert(linha);
-  if (errIns) return { error: errIns.message };
+  if (errIns) return { error: friendlyMessage(errIns) };
 
   const { data: max } = await supabase
     .from('quadras_conclusoes')
@@ -59,7 +75,7 @@ export async function registrarConclusaoQuadra(
     .from('quadras')
     .update({ data_conclusao: maiorData }, { count: 'exact' })
     .eq('id', quadraId);
-  if (errUpd) return { error: errUpd.message };
+  if (errUpd) return { error: friendlyMessage(errUpd) };
   if (count === 0) {
     return { error: 'A conclusão foi registrada no histórico, mas a quadra não pôde ser atualizada (permissão ou quadra inexistente).' };
   }
@@ -89,14 +105,14 @@ export async function desfazerConclusaoQuadra(
     // diferentes: a data voltava pra penúltima no mapa e a linha mais
     // recente continuava no histórico, pronta pra "ressuscitar" a data
     // na próxima conclusão (que recalcula pelo MAIOR do histórico).
-    if (errDel) return { error: errDel.message };
+    if (errDel) return { error: friendlyMessage(errDel) };
     if (delCount === 0) return { error: 'Sem permissão pra desfazer esta conclusão.' };
   }
   const { error, count } = await supabase
     .from('quadras')
     .update({ data_conclusao: hist?.[1]?.data_conclusao ?? null }, { count: 'exact' })
     .eq('id', quadraId);
-  if (error) return { error: error.message };
+  if (error) return { error: friendlyMessage(error) };
   if (count === 0) return { error: 'Sem permissão pra alterar esta quadra.' };
   return { error: null };
 }

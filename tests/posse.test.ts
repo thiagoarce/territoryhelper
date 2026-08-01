@@ -3,7 +3,7 @@
 // (RLS) — ver comentário no topo de posse.ts. Guard exigirQuadraDesignada
 // só junta os booleans (via queries reais) e delega a decisão pra cá.
 import { test, assertTrue, assertFalse } from './harness';
-import { podeTrabalharQuadra, type PosseQuadraInput } from '../src/lib/server/posse';
+import { podeConcluirQuadra, podeTrabalharQuadra, type PosseQuadraInput } from '../src/lib/server/posse';
 
 const NINGUEM: PosseQuadraInput = {
   ehAdminOuDirigente: false,
@@ -39,4 +39,27 @@ test('colega com parte no mesmo arranjo passa em qualquer quadra da saída', () 
 
 test('qualquer combinação com pelo menos 1 vínculo verdadeiro passa', () => {
   assertTrue(podeTrabalharQuadra({ ...NINGUEM, ehLiderDeDesignacaoAberta: true, quadraEmArranjoAtivo: true }));
+});
+
+test('conclusão contextual aceita dirigente, líder e participante de designação pessoal', () => {
+  assertTrue(podeConcluirQuadra({
+    ehAdminOuDirigente: true,
+    ehLiderDeDesignacaoPessoalAtiva: false,
+    ehParticipanteDeDesignacaoPessoalAtiva: false
+  }));
+  assertTrue(podeConcluirQuadra({
+    ehAdminOuDirigente: false,
+    ehLiderDeDesignacaoPessoalAtiva: true,
+    ehParticipanteDeDesignacaoPessoalAtiva: false
+  }));
+  assertTrue(podeConcluirQuadra({
+    ehAdminOuDirigente: false,
+    ehLiderDeDesignacaoPessoalAtiva: false,
+    ehParticipanteDeDesignacaoPessoalAtiva: true
+  }));
+  assertFalse(podeConcluirQuadra({
+    ehAdminOuDirigente: false,
+    ehLiderDeDesignacaoPessoalAtiva: false,
+    ehParticipanteDeDesignacaoPessoalAtiva: false
+  }));
 });

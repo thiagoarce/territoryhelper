@@ -81,26 +81,28 @@ export function chaveHomeCampo(userId: string): string {
 }
 
 export const load: PageLoad = async ({ parent }) => {
-  const { profile } = await parent();
+  const { profile, modules } = await parent();
   if (!profile) throw redirect(303, '/login');
-  const r = await comCache(chaveHomeCampo(profile.id), () => carregarHomeCampo(profile.id, profile.role ?? ''));
+  const r = await comCache(chaveHomeCampo(profile.id), () => carregarHomeCampo(profile.id, profile.role ?? '', modules));
   return { ...r.valor, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };
 };
 
 // Exportada pra ser reusada pelo "Baixar tudo agora" em /perfil (W12) —
 // MESMA função que o load usa, garante os mesmos ids de quadras/TCEs/
 // prédios que a home calcularia.
-export async function carregarHomeCampo(minhaId: string, role: string) {
+export async function carregarHomeCampo(minhaId: string, role: string, modules: Record<string, boolean> = {}) {
   const supabase = supabaseBrowser();
   const hoje = hojeIsoBrasil();
   const ontem = hojeIsoBrasil(-1);
   const em7dias = hojeIsoBrasil(7);
   const ha60dias = hojeIsoBrasil(-60);
 
+  const emptyMany = Promise.resolve({ data: [], error: null });
+  const emptyOne = Promise.resolve({ data: null, error: null });
   const [designacoes, quadras, campanhaRes, partesRes, dirijoRes, profRes, meusTurnosRes, participacoesRes, meusPedidosRes, catalogoRes, necessidadeRes, revistasRes] = await Promise.all([
     listarDesignacoes(supabase),
     listarQuadrasComGeo(supabase),
-    supabase
+    modules.campaigns === false ? emptyOne : supabase
       .from('campanhas')
       .select('id, nome, data_inicio, data_alvo, meta_semanal, ativa, publicacao_id, publicacoes(imagem_url)')
       .eq('ativa', true)
@@ -127,7 +129,7 @@ export async function carregarHomeCampo(minhaId: string, role: string) {
       .limit(50),
     supabase.from('profiles').select('id, nome'),
     // Meus agendamentos de TP nos próximos 7 dias — seção "Seus turnos de TP" no home
-    supabase
+    modules.publicWitnessing === false ? emptyMany : supabase
       .from('tp_agendamento_participantes')
       .select('agendamento_id, data, tp_agendamentos!inner(hora_inicio, hora_fim, ponto_avulso, tp_pontos(nome))')
       .eq('publicador_id', minhaId)
@@ -138,7 +140,7 @@ export async function carregarHomeCampo(minhaId: string, role: string) {
     // sem isso a carteira só aparecia pra quem criou a designação
     supabase.from('designacao_publicadores').select('designacao_id').eq('publicador_id', minhaId),
     // Meus pedidos de publicação (P-A) — pra ver o status mudar quando o servo atender
-    supabase
+    modules.publications === false ? emptyMany : supabase
       .from('pedidos_publicacao')
       .select('id, descricao, qtd, status, criado_em, publicacoes(nome)')
       .eq('publicador_id', minhaId)
@@ -146,13 +148,13 @@ export async function carregarHomeCampo(minhaId: string, role: string) {
       .limit(10),
     // A12b: revistas mensais (periodicidade='mensal') saem do catálogo de
     // pedido especial avulso — têm o fluxo próprio de necessidade regular.
-    supabase.from('publicacoes').select('id, nome, categoria, qtd_estoque, imagem_url').eq('ativo', true).is('periodicidade', null).order('categoria').order('nome'),
+    modules.publications === false ? emptyMany : supabase.from('publicacoes').select('id, nome, categoria, qtd_estoque, imagem_url').eq('ativo', true).is('periodicidade', null).order('categoria').order('nome'),
     // Necessidade regular de revistas (Despertai/Sentinela) — preferência informativa, sem status
-    supabase
+    modules.publications === false ? emptyMany : supabase
       .from('publicador_necessidade_regular')
       .select('publicacao_id, variante, qtd, letras_grandes')
       .eq('publicador_id', minhaId),
-    supabase.from('publicacoes').select('id, nome, imagem_url').eq('ativo', true).eq('periodicidade', 'mensal').order('nome')
+    modules.publications === false ? emptyMany : supabase.from('publicacoes').select('id, nome, imagem_url').eq('ativo', true).eq('periodicidade', 'mensal').order('nome')
   ]);
   // Home = CARTEIRA PESSOAL, mesmo pra dirigente/admin (que são publicadores
   // no campo). A visão de todas as designações mora no mapa estratégico e

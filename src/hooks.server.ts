@@ -1,9 +1,10 @@
 import { createServerClient } from '@supabase/ssr';
 import { sequence } from '@sveltejs/kit/hooks';
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
 import type { Profile } from '$lib/types';
 import { talvezRodarLembretesDiarios } from '$lib/server/lembretes';
+import { friendlyError } from '$lib/erros-usuario';
 
 // 1. Cria client Supabase com cookies da sessão. Anexa em event.locals.
 const supabase: Handle = async ({ event, resolve }) => {
@@ -93,3 +94,14 @@ const lembretesDiarios: Handle = async ({ event, resolve }) => {
 };
 
 export const handle = sequence(supabase, profile, lembretesDiarios);
+
+export const handleError: HandleServerError = ({ error, status, event }) => {
+  const friendly = friendlyError(error, status);
+  console.error('[request error]', {
+    path: event.url.pathname,
+    status,
+    diagnosticCode: friendly.diagnosticCode,
+    error
+  });
+  return { message: friendly.message, diagnosticCode: friendly.diagnosticCode };
+};

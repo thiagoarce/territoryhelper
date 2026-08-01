@@ -293,13 +293,11 @@ export const actions: Actions = {
     return { ok: true, msg: 'Local excluído' };
   },
 
-  // Marca a quadra atual como concluída (só dirigente/admin). Poder de
-  // dirigente no modo campo — publicador comum não pode.
+  // A autorização contextual vive em pode_concluir_quadra()/registrar_conclusao_quadra().
+  // Assim dirigente/admin têm escopo global e líder/participante de uma
+  // designação pessoal ativa concluem somente as próprias quadras.
   concluirQuadra: async ({ request, locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin pode marcar conclusão' });
-    }
     const fd = await request.formData();
     const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
     const hora = String(fd.get('hora') ?? '').trim();

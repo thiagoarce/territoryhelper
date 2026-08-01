@@ -413,7 +413,7 @@ export const actions: Actions = {
 
     const { data: linha, error: errBusca } = await locals.supabase
       .from('curadoria_edicoes')
-      .select('id, local_id, unidade_id, tipo, antes')
+      .select('id, local_id, unidade_id, tipo, entidade, antes')
       .eq('id', id)
       .single();
     if (errBusca || !linha) return fail(404, { erro: 'Registro de curadoria não encontrado' });
@@ -424,6 +424,31 @@ export const actions: Actions = {
       const { error } = await locals.supabase.from('locais').delete().eq('id', linha.local_id);
       if (error) return fail(400, { erro: error.message });
       return { ok: true, msg: 'Criação revertida (endereço excluído)' };
+    }
+
+    if (linha.tipo === 'exclusao') {
+      const snapshot = linha.antes as Record<string, any> | null;
+      if (!snapshot) return fail(400, { erro: 'Sem cópia de segurança para restaurar' });
+      if (linha.entidade === 'local') {
+        const local = snapshot.local as Record<string, unknown> | undefined;
+        const unidades = Array.isArray(snapshot.unidades) ? snapshot.unidades : [];
+        if (!local) return fail(400, { erro: 'Cópia do endereço incompleta' });
+        const { error: errLocal } = await locals.supabase.from('locais').insert(local);
+        if (errLocal) return fail(400, { erro: errLocal.message });
+        if (unidades.length > 0) {
+          const { error: errUnidades } = await locals.supabase.from('unidades').insert(unidades);
+          if (errUnidades) return fail(400, { erro: 'Endereço restaurado, mas faltaram unidades: ' + errUnidades.message });
+        }
+      } else {
+        const { error: errUnidade } = await locals.supabase.from('unidades').insert(snapshot);
+        if (errUnidade) return fail(400, { erro: errUnidade.message });
+      }
+      const { error: errResolvida } = await locals.supabase
+        .from('curadoria_edicoes')
+        .update({ status: 'revertido', resolvido_por: locals.user.id, resolvido_em: new Date().toISOString() })
+        .eq('id', id);
+      if (errResolvida) return fail(400, { erro: errResolvida.message });
+      return { ok: true, msg: 'Exclusão desfeita e dados restaurados' };
     }
 
     if (!linha.antes || Object.keys(linha.antes).length === 0) {

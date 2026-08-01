@@ -18,6 +18,7 @@ import {
 } from './queue';
 import { processarLote, resolverUrlDaAcao, pertenceAoUsuario } from './fila-logica';
 import { lerUidAtual } from './status';
+import { domainMessage } from '$lib/erros-usuario';
 
 export type ResultadoEscrita =
   | { ok: true; offline: false; data: any }
@@ -35,7 +36,7 @@ export async function postComFila(url: string, formData: FormData, descricao: st
     const res = await fetch(url, { method: 'POST', body: formData });
     const parsed = deserialize(await res.text()) as any;
     if (parsed.type === 'success') return { ok: true, offline: false, data: parsed.data };
-    return { ok: false, offline: false, erro: String(parsed.data?.erro || 'Falhou') };
+    return { ok: false, offline: false, erro: domainMessage(parsed.data?.erro || 'Falhou', res.status) };
   } catch {
     // fetch rejeitou = sem rede de verdade (não é erro do servidor, que
     // chegaria como response válida acima). Enfileira pra reenviar depois.
@@ -87,7 +88,7 @@ async function tentarReenviar(item: ItemFila): Promise<'sucesso' | 'erro' | 'sem
       await removerDaFila(item.id);
       return 'sucesso';
     }
-    await marcarErro(item.id, String(parsed.data?.erro || 'Recusado pelo servidor'));
+    await marcarErro(item.id, domainMessage(parsed.data?.erro || 'Recusado pelo servidor', res.status));
     return 'erro';
   } catch {
     return 'sem_rede'; // fetch rejeitou de verdade — tenta de novo depois
