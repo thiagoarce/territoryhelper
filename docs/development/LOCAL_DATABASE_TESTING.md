@@ -75,23 +75,21 @@ contrato comportamental no PostgreSQL
 
 ## Integração contínua
 
-O workflow `.github/workflows/database-contract.yml` executa:
+O workflow `.github/workflows/database-contract.yml` mantém dois caminhos separados:
 
-1. `npm ci`;
-2. `npm test`;
-3. inicialização do Supabase local;
-4. reconstrução pelas migrations;
-5. contratos pgTAP;
-6. encerramento dos contêineres.
+1. `baseline-smoke (required)` aplica a baseline num Supabase vazio e repete a aplicação após um reset completo. Esse é o contrato obrigatório para novas instalações;
+2. `legacy-history-characterization` tenta reconstruir `001–090` apenas como evidência histórica e pode falhar sem bloquear o Installer.
 
-A baseline só deve ser considerada equivalente quando esse pipeline puder executar contra dois caminhos:
+O legado possui uma falha reproduzível em `020_quadras_ativa.sql`: o PostgreSQL não aceita a troca de posição das colunas feita por `create or replace view quadras_geo`. Essa falha é anterior à baseline, não deve ser corrigida reescrevendo migrations já aplicadas e é mais uma razão para nunca orientar uma congregação nova a executar `001–090`.
+
+A comparação futura poderá usar um bootstrap legado isolado, sem alterar os arquivos históricos:
 
 ```text
 histórico legado 001–090
 baseline consolidada + incrementais
 ```
 
-Os dois bancos devem ser compatíveis com o aplicativo. A baseline pode ser deliberadamente diferente quando corrige um risco, uma limitação de usabilidade ou uma ideia histórica substituída, desde que a diferença esteja documentada e testada.
+Os dois bancos devem ser compatíveis com o aplicativo. A baseline pode ser deliberadamente diferente quando corrige um risco, uma limitação de usabilidade ou uma ideia histórica substituída, desde que a diferença esteja documentada e testada. Até esse bootstrap existir, o smoke test da baseline e seus contratos próprios são a validação oficial de novas instalações.
 
 ## Diagnóstico de falhas
 
@@ -121,4 +119,4 @@ Nunca usar:
 
 ## Estado atual
 
-A configuração, os testes e o workflow estão versionados. A execução bem-sucedida ainda precisa ser observada num runner com Docker e acesso às imagens necessárias; até isso ocorrer, os contratos são considerados implementados, mas não homologados.
+A baseline foi aplicada e reaplicada com sucesso num Supabase vazio no GitHub Actions. O caminho legado continua registrado como caracterização não bloqueante devido à falha conhecida da migration `020`; os contratos pgTAP que dependem da reconstrução completa do legado permanecem pendentes até existir um bootstrap isolado.

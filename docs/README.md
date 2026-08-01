@@ -76,4 +76,4 @@ A estratégia de separação foi registrada no [`ADR 0005`](adr/0005-separate-in
 
 O ambiente local e os contratos existentes estão descritos em [`development/LOCAL_DATABASE_TESTING.md`](development/LOCAL_DATABASE_TESTING.md).
 
-Os testes do legado continuam caracterizando `001–090`. A baseline possui contratos próprios e pode ser deliberadamente diferente quando corrige segurança, usabilidade ou ideias substituídas. A validação SQL real deve ocorrer num Supabase vazio antes de declarar uma versão pronta.
+Os testes do legado continuam caracterizando `001–090`; a falha conhecida da migration `020` é não bloqueante porque esse histórico não é um instalador. A baseline possui contratos próprios, foi aplicada e reaplicada num Supabase vazio e pode ser deliberadamente diferente quando corrige segurança, usabilidade ou ideias substituídas. A versão permanece piloto até a equivalência com o Power Query e uma instalação acompanhada por outra congregação.

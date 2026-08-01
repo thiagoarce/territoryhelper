@@ -8,7 +8,7 @@ Não iniciar pela automação completa. Primeiro estabelecer contratos, importa�
 
 ## Fase 0 — Auditoria e baseline
 
-Status: auditoria documental `001–090` concluída; baseline piloto e pipeline local implementados, aguardando validação num Supabase vazio e equivalência com o Power Query.
+Status: auditoria documental `001–090` concluída; baseline piloto aplicada e reaplicada com sucesso num Supabase vazio; pipeline local implementado. Permanecem pendentes a equivalência com o Power Query e o piloto acompanhado por outra congregação.
 
 Objetivos:
 
