@@ -4,6 +4,8 @@
 
 Avaliar o estado atual do schema, das migrations e dos scripts de importação para definir uma baseline reutilizável pelo Installer sem carregar dados ou suposições específicas da instância original.
 
+A classificação individual e completa das migrations está em [`MIGRATION_MATRIX.md`](./MIGRATION_MATRIX.md).
+
 ## Escopo analisado
 
 - `README.md`
@@ -12,9 +14,9 @@ Avaliar o estado atual do schema, das migrations e dos scripts de importação p
 - `supabase/migrations/002_geografia.sql`
 - `supabase/migrations/011_exec_sql.sql`
 - `scripts/migrate-from-csv.ts`
-- sequência de migrations documentada até `029`
+- migrations `001..029`, com registro da ausência do número `021`
 
-A auditoria é inicial. Ela cobre a estrutura e os principais pontos de acoplamento já identificados. A leitura individual de todas as migrations posteriores deve continuar antes da primeira baseline consolidada.
+A auditoria estrutural inicial está concluída. A próxima etapa é validar a equivalência entre o histórico completo e uma baseline consolidada aplicada em banco vazio.
 
 ## Conclusão executiva
 
@@ -71,7 +73,7 @@ Essa parte deve ser reaproveitada, mas evoluída para suportar a abstração de 
 
 #### Migrations funcionais posteriores
 
-Pela sequência documentada no README, há funcionalidades genericamente reutilizáveis:
+A leitura individual de `001..029` confirmou módulos genericamente reutilizáveis:
 
 - auditoria;
 - RLS;
@@ -79,12 +81,14 @@ Pela sequência documentada no README, há funcionalidades genericamente reutili
 - auto-vinculação via PostGIS;
 - armazenamento de fotos;
 - histórico de conclusões;
-- edição e divisão de geometria;
+- edição, união e divisão de geometria;
+- campanhas;
 - arranjos;
 - delegações;
-- criação de locais pendentes por publicadores.
+- criação de locais pendentes por publicadores;
+- designações de locais para cartas.
 
-Essas migrations devem ser auditadas individualmente e consolidadas no estado final da baseline.
+O destino exato de cada migration está documentado na matriz detalhada.
 
 ### Reaproveitar com refatoração
 
@@ -203,6 +207,24 @@ A classificação baseada em `Tipo`, `Nota IBGE`, quantidade de unidades e overl
 
 Ela deve virar regra de domínio versionada, testada e explicável.
 
+### 6. Pertencimento duplicado em designações
+
+O schema possui `designacoes.publicador_id` e `designacao_publicadores`. Algumas funções e policies posteriores verificam apenas `publicador_id`.
+
+A baseline precisa de uma função canônica de pertencimento à designação, utilizada por RLS, consultas e autorização de edição.
+
+### 7. Autorização cumulativa em `pode_editar_local`
+
+A função é redefinida nas migrations 026, 027 e 029. Cada redefinição precisa repetir todos os casos anteriores, o que cria risco de regressão.
+
+A baseline deve criar uma única versão final testada ou decompor a autorização em helpers menores.
+
+### 8. Fronteiras e timezone
+
+`ST_Contains` não inclui pontos exatamente na fronteira. Além disso, a expiração de delegações no fim do dia depende do timezone do banco.
+
+O Installer deve definir uma regra espacial canônica e registrar o timezone operacional da instância.
+
 ## Baseline proposta
 
 A baseline para novas instalações deve conter:
@@ -239,7 +261,7 @@ A baseline para novas instalações deve conter:
 - índices GiST;
 - views GeoJSON;
 - associação espacial;
-- funções de criação, atualização e divisão de geometria.
+- funções de criação, atualização, união e divisão de geometria.
 
 ### Metadados do Installer
 
@@ -255,19 +277,9 @@ Novas tabelas ou estruturas devem registrar:
 
 ## Plano de ação recomendado
 
-### Etapa A — auditoria completa das migrations
+### Etapa A — concluída: matriz das migrations
 
-Ler `001..029` individualmente e produzir uma matriz com:
-
-```text
-migration
-responsabilidade
-objetos criados/alterados
-correções posteriores
-reutilizável?
-entra consolidada na baseline?
-risco
-```
+A matriz `001..029` foi criada com responsabilidade, dependências, destino na baseline e riscos.
 
 ### Etapa B — testes de equivalência
 
