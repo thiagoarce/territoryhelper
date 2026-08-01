@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document><name>Território fictício</name><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>
+    -34.81,-7.11 -34.79,-7.11 -34.79,-7.09 -34.81,-7.09 -34.81,-7.11
+  </coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></Document>
+</kml>

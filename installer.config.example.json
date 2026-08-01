@@ -1,0 +1,15 @@
+{
+  "congregation": {
+    "name": "Congregação Exemplo",
+    "timezone": "America/Sao_Paulo",
+    "mode": "territorial"
+  },
+  "territory": {
+    "id": "principal",
+    "name": "Território da congregação",
+    "color": "#3388ff"
+  },
+  "cnefe": {
+    "edition": "CNEFE-2022"
+  }
+}

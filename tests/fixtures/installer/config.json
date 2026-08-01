@@ -1,0 +1,24 @@
+{
+  "congregation": {
+    "name": "Congregação Fictícia",
+    "timezone": "America/Sao_Paulo",
+    "mode": "territorial"
+  },
+  "territory": {
+    "id": "PILOTO-001",
+    "name": "Território fictício",
+    "color": "#3388ff"
+  },
+  "cnefe": {
+    "edition": "fixture-2022",
+    "delimiter": ";",
+    "aliases": {
+      "sourceId": ["ID"],
+      "street": ["LOGRADOURO"],
+      "number": ["NUMERO"],
+      "complement": ["COMPLEMENTO"],
+      "latitude": ["LATITUDE"],
+      "longitude": ["LONGITUDE"]
+    }
+  }
+}
