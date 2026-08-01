@@ -1,6 +1,6 @@
 # Documentação do Territory Helper
 
-Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura, o pipeline de instalação e as decisões técnicas do projeto.
+Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura, o pipeline de instalação, as decisões técnicas e a engenharia reversa do banco atual.
 
 ## Ordem recomendada de leitura
 
@@ -13,7 +13,9 @@ Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura
 7. [`pipeline/GEOPROCESSING.md`](pipeline/GEOPROCESSING.md)
 8. [`pipeline/INSTALLER.md`](pipeline/INSTALLER.md)
 9. [`architecture/DATA_MODEL.md`](architecture/DATA_MODEL.md)
-10. [`agents/AGENT_GUIDE.md`](agents/AGENT_GUIDE.md)
+10. [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
+11. [`audits/RLS_TEST_PLAN.md`](audits/RLS_TEST_PLAN.md)
+12. [`agents/AGENT_GUIDE.md`](agents/AGENT_GUIDE.md)
 
 ## Estrutura
 
@@ -22,8 +24,19 @@ Esta pasta reúne a visão do produto, o conhecimento do domínio, a arquitetura
 - `pipeline/`: transformação, geoprocessamento, revisão e publicação.
 - `architecture/`: módulos e modelo de dados.
 - `adr/`: decisões arquiteturais registradas e justificadas.
+- `audits/`: engenharia reversa das migrations, estado consolidado do schema e contratos de segurança.
 - `agents/`: instruções para agentes de desenvolvimento.
 - `installer/`: documentos históricos e especificações iniciais do branch.
+
+## Auditoria do banco
+
+A auditoria cobre a sequência histórica `001–090` de `supabase/migrations`, com registro da ausência do número `021`.
+
+O documento canônico de entrada é:
+
+- [`audits/CONSOLIDATED_SCHEMA_STATE.md`](audits/CONSOLIDATED_SCHEMA_STATE.md)
+
+As matrizes por intervalo permanecem disponíveis em `audits/` como evidência detalhada da classificação migration por migration.
 
 ## Documentos canônicos
 
