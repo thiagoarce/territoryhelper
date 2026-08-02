@@ -11,7 +11,7 @@ const sql = files.map((file) => readFileSync(join(baseline, file), 'utf8')).join
 test('baseline curta tem sequência própria e não reproduz 001–090', () => {
   assertEq(files, [
     '000_extensions.sql', '010_schema_metadata.sql', '020_identity.sql',
-    '030_geographic_core.sql', '040_operational_core.sql', '045_platform_support.sql',
+    '030_geographic_core.sql', '035_work_area_metadata.sql', '040_operational_core.sql', '045_platform_support.sql',
     '050_views_and_indexes.sql', '060_functions_and_triggers.sql',
     '065_spatial_and_public_functions.sql', '070_rls.sql', '080_storage.sql'
   ]);

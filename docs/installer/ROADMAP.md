@@ -35,6 +35,8 @@ Critérios de aceite:
 
 ## Fase 1 — Fundação do instalador
 
+Status: CLI retomável e estado local ignorado pelo Git implementados; interface local no navegador permanece pendente.
+
 Objetivos:
 
 - criar estrutura isolada para o instalador;
@@ -51,6 +53,8 @@ Critérios de aceite:
 - nenhum segredo é versionado.
 
 ## Fase 2 — Supabase e schema
+
+Status: pré-voo de API, Auth Admin, PostgreSQL/PostGIS e aplicação idempotente da baseline implementados; criação guiada do primeiro administrador permanece pendente.
 
 Objetivos:
 
@@ -73,6 +77,7 @@ Objetivos:
 
 - importar e validar KML;
 - importar múltiplos CSVs;
+- descobrir municípios pelo KML e baixar seus CSVs oficiais com confirmação e cache;
 - detectar versão/colunas;
 - filtrar endereços dentro do território;
 - produzir pacote intermediário e relatório.
@@ -162,6 +167,8 @@ Critérios de aceite:
 - endereços isolados permanecem visíveis.
 
 ## Fase 9 — Publicação e deploy guiado
+
+Status: publicação retomável, configuração Cloudflare, build, envio de secrets e deploy confirmado implementados no CLI; ensaio real numa conta descartável e integração à futura interface local permanecem pendentes.
 
 Objetivos:
 

@@ -2,7 +2,7 @@
 // nas queries do Supabase. Quando o schema mudar, atualize aqui também
 // (ou gere automatic com `supabase gen types`).
 
-export type Role = 'admin' | 'dirigente' | 'publicador';
+export type Role = "admin" | "dirigente" | "publicador";
 
 export interface Profile {
   id: string; // uuid (auth.users.id)
@@ -10,7 +10,7 @@ export interface Profile {
   role: Role;
   ativo: boolean;
   servo_publicacoes: boolean;
-  pref_basemap: 'positron' | 'liberty' | 'bright';
+  pref_basemap: "positron" | "liberty" | "bright";
   tp_aprovado: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -29,7 +29,7 @@ export interface Territorio {
   nome: string;
   cor: string;
   label_pos: { lat: number; lng: number } | null;
-  label_type: 'point' | 'center' | null;
+  label_type: "point" | "center" | null;
   status: string;
   data_conclusao: string | null;
   criado_em: string;
@@ -49,9 +49,24 @@ export interface Quadra {
   criado_em: string;
   atualizado_em: string;
   reservada_campanha_id: number | null;
+  tipo_area:
+    | "urban-block"
+    | "rural-area"
+    | "route"
+    | "locality"
+    | "condominium"
+    | "isolated-point";
+  finalidade: "regular-preaching" | "language-census";
+  origem_geografica:
+    | "imported"
+    | "osm-generated"
+    | "cnefe-suggested"
+    | "manual";
+  revisao_status: "suggested" | "approved";
+  confianca: "high" | "medium" | "low";
 }
 
-export type LocalTipo = 'predio' | 'casa' | 'comercio' | 'coletivo' | 'terreno';
+export type LocalTipo = "predio" | "casa" | "comercio" | "coletivo" | "terreno";
 
 export interface Local {
   id: number;
@@ -68,7 +83,7 @@ export interface Local {
   nome_irmao: string | null;
   notas: string | null;
   foto_url: string | null;
-  tipo_entrada: 'porteiro' | 'eletronica' | 'sem' | null;
+  tipo_entrada: "porteiro" | "eletronica" | "sem" | null;
   acesso_caixas: boolean;
   acesso_interfones: boolean;
   nao_visitar: boolean;
@@ -79,7 +94,7 @@ export interface Local {
   marcado_por: string | null;
   marcado_em: string | null;
   ordem_na_quadra: number | null;
-  geo_geojson?: { type: 'Point'; coordinates: [number, number] } | null;
+  geo_geojson?: { type: "Point"; coordinates: [number, number] } | null;
 }
 
 export interface Unidade {
@@ -140,8 +155,8 @@ export interface Designacao {
   publicador_id: string | null;
   criada_em: string;
   prazo: string | null;
-  status: 'aberta' | 'concluida' | 'cancelada';
-  tipo: 'pessoal' | 'cartas';
+  status: "aberta" | "concluida" | "cancelada";
+  tipo: "pessoal" | "cartas";
   notas: string | null;
   criado_por: string | null;
   atualizado_em: string;
@@ -154,7 +169,7 @@ export interface Tce {
   poly: unknown;
   publicador_id: string | null;
   prazo: string | null;
-  status: 'aberto' | 'concluido' | 'cancelado';
+  status: "aberto" | "concluido" | "cancelado";
   criado_em: string;
   data_conclusao: string | null;
   notas: string | null;
@@ -166,15 +181,15 @@ export interface Tce {
 // ----------------------------------------------------------------------------
 
 export type TipoRegistro =
-  | 'conversou'
-  | 'naoAtendeu'
-  | 'semConversa'
-  | 'carta'
-  | 'carta_undo'
-  | 'interfone'
-  | 'manual'
-  | 'auto'
-  | 'desfeito';
+  | "conversou"
+  | "naoAtendeu"
+  | "semConversa"
+  | "carta"
+  | "carta_undo"
+  | "interfone"
+  | "manual"
+  | "auto"
+  | "desfeito";
 
 export interface Registro {
   id: number;
@@ -191,8 +206,14 @@ export interface Registro {
 
 export interface Campanha {
   id: number;
-  tipo: 'geral' | 'semana';
-  modalidade: 'casa' | 'comercial' | 'rural' | 'cartas' | 'telefone' | 'publico';
+  tipo: "geral" | "semana";
+  modalidade:
+    | "casa"
+    | "comercial"
+    | "rural"
+    | "cartas"
+    | "telefone"
+    | "publico";
   titulo: string;
   descricao: string | null;
   link: string | null;
@@ -212,7 +233,7 @@ export interface AuditLog {
   id: number;
   tabela: string;
   registro_id: string;
-  acao: 'INSERT' | 'UPDATE' | 'DELETE';
+  acao: "INSERT" | "UPDATE" | "DELETE";
   antes: Record<string, unknown> | null;
   depois: Record<string, unknown> | null;
   autor_id: string | null;

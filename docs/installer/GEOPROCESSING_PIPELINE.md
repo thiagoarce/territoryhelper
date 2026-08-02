@@ -66,8 +66,10 @@ O uso de APIs deve respeitar limites, políticas de uso e cache. Processamentos 
 - converter KML para GeoJSON/GeoPackage interno;
 - validar geometria;
 - calcular bounding box e área;
-- identificar municípios prováveis;
+- cruzar o KML com malhas oficiais e identificar de forma determinística todos os municípios interceptados;
 - produzir pré-visualização do limite.
+
+Antes da ingestão, o instalador deve resolver os arquivos municipais no diretório oficial do IBGE, apresentar a lista e o volume estimado, exigir confirmação para downloads, validar o código municipal do CSV extraído e persistir cache com hashes. Arquivos fornecidos manualmente continuam aceitos como alternativa.
 
 ### 3. Ingestão do CNEFE
 
@@ -131,7 +133,8 @@ O resultado rural deve ser apresentado como proposta de unidade operacional, nã
 
 ### 9. Associação endereço–área
 
-- associar cada endereço a no máximo uma área principal;
+- associar cada endereço a no máximo uma área principal de `regular-preaching` aprovada;
+- permitir que uma área de `language-census` se sobreponha à quadra regular sem criar ambiguidade;
 - sinalizar pontos em sobreposição;
 - sinalizar pontos sem área;
 - permitir associação manual;
@@ -174,6 +177,7 @@ Cada feature deve conter ao menos:
 
 - `temp_id`;
 - `tipo`;
+- `purpose` (`regular-preaching` ou `language-census`);
 - `status_revisao`;
 - `confidence`;
 - `source`;

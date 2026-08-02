@@ -142,7 +142,15 @@
   // Cor padrão = território (quando colorirPorTerritorio) ou cor da quadra.
   function buildFillExpr(): any {
     const sel = [...selecionadasQuadras];
-    const base: any = colorirPorTerritorio ? ['get', 'terr_color'] : ['get', 'color'];
+    const base: any = colorirPorTerritorio
+      ? ['get', 'terr_color']
+      : [
+          'case',
+          ['==', ['get', 'review_status'], 'suggested'], '#f59e0b',
+          ['==', ['get', 'purpose'], 'language-census'], '#7c3aed',
+          ['==', ['get', 'area_type'], 'rural-area'], '#16a34a',
+          ['get', 'color']
+        ];
     let expr: any = base;
     if (sel.length > 0) {
       expr = ['case', ['in', ['get', 'id'], ['literal', sel]], '#4f46e5', base];
@@ -281,6 +289,10 @@
             color: q.color,
             terr_color: q.territorio_id ? q.color : '#cbd5e1',
             status: q.status,
+            area_type: q.tipo_area,
+            purpose: q.finalidade,
+            review_status: q.revisao_status,
+            confidence: q.confianca,
             territorio_id: q.territorio_id ?? ''
           }
         }))
@@ -441,7 +453,8 @@
       mapa.on('mouseenter', 'quadras-fill', () => { mapa.getCanvas().style.cursor = 'pointer'; });
       mapa.on('mouseleave', 'quadras-fill', () => { mapa.getCanvas().style.cursor = ''; });
 
-      // Fit bounds nas quadras
+      // Enquadra as quadras. Numa instalação nova ainda não há quadras, então
+      // usa os endereços importados em vez de cair no centro legado do mapa.
       try {
         let bounds: any = null;
         for (const q of quadras) {
@@ -452,7 +465,21 @@
             else bounds.extend(c);
           }
         }
-        if (bounds) mapa.fitBounds(bounds, { padding: 30, duration: 0 });
+        if (!bounds) {
+          for (const local of locais) {
+            if (local.lat == null || local.lng == null) continue;
+            const coordinate: [number, number] = [local.lng, local.lat];
+            if (!bounds)
+              bounds = new maplibre.LngLatBounds(coordinate, coordinate);
+            else bounds.extend(coordinate);
+          }
+        }
+        if (bounds)
+          mapa.fitBounds(bounds, {
+            padding: 30,
+            maxZoom: 17,
+            duration: 0,
+          });
       } catch {}
 
       // Inicializa terra-draw (lazy) pra desenho/edição de polígonos

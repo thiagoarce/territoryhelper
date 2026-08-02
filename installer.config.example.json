@@ -7,9 +7,12 @@
   "territory": {
     "id": "principal",
     "name": "Território da congregação",
-    "color": "#3388ff"
+    "color": "#3388ff",
+    "areaBoundaryToleranceMeters": 15
   },
   "cnefe": {
-    "edition": "CNEFE-2022"
+    "edition": "CNEFE-2022",
+    "encoding": "windows-1252",
+    "outsideSampleLimit": 100
   }
 }

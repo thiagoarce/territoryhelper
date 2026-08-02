@@ -35,6 +35,64 @@ alter table public.erros_client enable row level security;
 alter table public.job_execucoes enable row level security;
 alter table public.lembretes_enviados enable row level security;
 
+do $$
+declare policy_record record;
+begin
+  for policy_record in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public' and policyname = any(array[
+      'profiles_read_authenticated', 'profiles_update_own_or_admin',
+      'metadata_read_admin', 'metadata_manage_admin',
+      'config_read_authenticated', 'config_manage_admin',
+      'imports_read_admin', 'imports_manage_admin',
+      'territorios_read_authenticated', 'territorios_manage_admin',
+      'limites_read_authenticated', 'limites_manage_admin',
+      'quadras_read_authenticated', 'quadras_insert_admin',
+      'quadras_update_contextual', 'quadras_delete_admin',
+      'locais_read_authenticated', 'locais_insert_authenticated',
+      'locais_update_authenticated', 'locais_delete_authenticated',
+      'unidades_read_authenticated', 'unidades_insert_authenticated',
+      'unidades_update_authenticated', 'unidades_delete_authenticated',
+      'convites_manage_admin', 'designacoes_read_authenticated',
+      'designacoes_manage_global', 'designacao_quadras_read_authenticated',
+      'designacao_quadras_manage_global', 'designacao_publicadores_read_authenticated',
+      'designacao_publicadores_manage_global', 'designacao_locais_read_authenticated',
+      'designacao_locais_manage_global', 'tces_read_authenticated',
+      'tces_manage_global', 'tce_unidades_read_authenticated',
+      'tce_unidades_manage_global', 'designacao_tces_read_authenticated',
+      'designacao_tces_manage_global', 'arranjo_modalidades_read_authenticated',
+      'arranjo_modalidades_manage_global', 'arranjos_read_authenticated',
+      'arranjos_manage_global', 'arranjo_partes_read_authenticated',
+      'arranjo_partes_manage_global', 'registros_read_authenticated',
+      'registros_insert_own', 'registros_update_own_or_global',
+      'registros_delete_own_or_global', 'conclusoes_read_authenticated',
+      'conclusoes_insert_contextual', 'conclusoes_delete_global',
+      'curadoria_read_own_or_admin', 'curadoria_insert_own',
+      'curadoria_resolve_admin', 'curadoria_delete_admin',
+      'audit_read_admin', 'cartas_ciclos_read_authenticated',
+      'cartas_ciclos_insert_authenticated', 'cartas_ciclos_manage_global',
+      'cartas_ciclos_delete_global', 'campanhas_read_authenticated',
+      'campanhas_manage_global', 'territorio_tokens_read_authenticated',
+      'territorio_tokens_insert_contextual', 'territorio_tokens_delete_own_or_global',
+      'cartas_tokens_read_authenticated', 'cartas_tokens_manage_global',
+      'notificacoes_read_own', 'notificacoes_update_own',
+      'notificacoes_delete_own', 'notificacoes_insert_global',
+      'push_subscriptions_read_own', 'push_subscriptions_insert_own',
+      'push_subscriptions_delete_own', 'erros_client_insert_own',
+      'erros_client_read_admin', 'erros_client_delete_admin',
+      'job_execucoes_service_only', 'lembretes_enviados_service_only'
+    ])
+  loop
+    execute format(
+      'drop policy if exists %I on %I.%I',
+      policy_record.policyname,
+      policy_record.schemaname,
+      policy_record.tablename
+    );
+  end loop;
+end $$;
+
 create policy "profiles_read_authenticated" on public.profiles for select to authenticated using (true);
 create policy "profiles_update_own_or_admin" on public.profiles for update to authenticated
   using (id = auth.uid() or public.is_admin()) with check (id = auth.uid() or public.is_admin());

@@ -11,7 +11,9 @@ begin
   with atualizados as (
     update public.locais l set quadra_id = q.id
     from public.quadras q
-    where l.quadra_id is null and l.geo is not null and q.ativa and ST_Covers(q.poly, l.geo)
+    where l.quadra_id is null and l.geo is not null and q.ativa
+      and q.finalidade = 'regular-preaching' and q.revisao_status = 'approved'
+      and ST_Covers(q.poly, l.geo)
     returning l.id
   ) select count(*)::integer into v_vinculados from atualizados;
   return query select v_total, v_vinculados, v_total - v_vinculados;

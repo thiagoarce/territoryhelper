@@ -207,16 +207,12 @@ Correções humanas nunca devem ser sobrescritas silenciosamente por uma reimpor
 - O usuário revisa classificações ambíguas antes da publicação.
 - O resultado pode ser reprocessado sem duplicação ou perda de correções manuais.
 
-## Pendência para auditoria
+## Auditoria concluída para o piloto CNEFE 2022
 
-Recuperar e documentar o Power Query original, ou uma amostra da tabela final gerada por ele, para registrar com precisão:
+O Power Query, o dicionário XLS, a planilha operacional, os dois CSVs municipais e o KML foram comparados localmente em 2026-08-01. As regras reproduzíveis foram incorporadas ao transformador e a uma fixture anônima de 34 colunas.
 
-- colunas removidas;
-- colunas renomeadas;
-- joins com tabelas do dicionário;
-- traduções aplicadas;
-- tipos de dados definidos;
-- filtros adicionais;
-- ordem e formato final das colunas.
+O filtro retangular do Power Query antigo não foi mantido: ele processava somente parte de Cabedelo e não representava o território conurbado. O KML é a autoridade espacial. Colunas de operação adicionadas posteriormente na planilha também não fazem parte da transformação CNEFE.
 
-Essa comparação será a referência funcional da primeira implementação do transformador CNEFE.
+Resultado da rodada de referência: 465.105 linhas lidas, 19.236 dentro do KML, nenhuma rejeitada, nenhum código desconhecido, 2.988 locais e 19.236 unidades. A geografia histórica contém 27 territórios e 242 quadras; 2.964 locais foram associados a exatamente uma quadra, 24 ficaram sem quadra e nenhum ficou ambíguo por sobreposição.
+
+As 22 linhas de diferença para a tabela operacional histórica foram confirmadas pelo responsável como cadastros legítimos posteriores no sistema antigo e não são mais uma pendência. A aprovação continua dependente de revisar as classificações sugeridas, os 24 locais sem quadra, os 111 grupos com espécies CNEFE mistas e os 15 grupos com mais de 100 unidades.

@@ -1,5 +1,10 @@
 # CLAUDE.md — Guia para agentes IA neste repo
 
+> **Trabalho ativo — Territory Installer:** antes de continuar no branch
+> `feat/territory-installer`, leia
+> `docs/agents/TERRITORY_INSTALLER_HANDOFF.md`. Ele registra o estado local,
+> o piloto Monte Castelo já publicado e o próximo passo ainda não publicado.
+
 App PWA de gestão de territórios JW. **SvelteKit 2 + Svelte 5 (runes)**,
 **Tailwind 3**, **Supabase** (Postgres + Auth + RLS + Storage + Realtime),
 **MapLibre GL + OpenFreeMap** (tiles vetoriais grátis), deploy em

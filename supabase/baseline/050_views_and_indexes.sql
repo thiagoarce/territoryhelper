@@ -1,7 +1,8 @@
 create or replace view public.quadras_geo with (security_invoker = on) as
 select q.id, q.color, q.territorio_id, q.status, q.ativa, q.data_conclusao,
        q.notas, q.criado_em, q.atualizado_em,
-       ST_AsGeoJSON(q.poly)::jsonb as poly_geojson, q.reservada_campanha_id
+       ST_AsGeoJSON(q.poly)::jsonb as poly_geojson, q.reservada_campanha_id,
+       q.tipo_area, q.finalidade, q.origem_geografica, q.revisao_status, q.confianca
 from public.quadras q;
 
 create or replace view public.locais_geo with (security_invoker = on) as

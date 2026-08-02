@@ -14,7 +14,7 @@ Fluxo esperado para o usuário:
 2. configurar e testar Supabase;
 3. informar os dados da congregação;
 4. escolher o modo de operação;
-5. enviar KML e CSVs CNEFE;
+5. enviar o KML e permitir a obtenção automática dos CSVs CNEFE, ou fornecê-los manualmente;
 6. processar território, endereços e áreas;
 7. revisar pendências no mapa;
 8. completar dados específicos;
@@ -84,10 +84,10 @@ A baseline deve nascer com o contrato de autorização e usabilidade descrito em
 
 ### 5. Importação dos arquivos territoriais
 
-Arquivos obrigatórios:
+Entradas obrigatórias:
 
 - um KML oficial;
-- um ou mais CSVs CNEFE/IBGE.
+- acesso aos CSVs CNEFE/IBGE, obtidos automaticamente do diretório oficial ou fornecidos manualmente.
 
 Validações mínimas:
 
@@ -96,6 +96,8 @@ Validações mínimas:
 - CSV com colunas mínimas identificáveis;
 - latitude e longitude válidas;
 - detecção de arquivos duplicados;
+- cruzamento do KML com a malha municipal antes do download;
+- confirmação explícita, cache, validação do município e hash dos arquivos baixados;
 - relatório de linhas descartadas ou corrigidas.
 
 ### 6. Processamento geoespacial
@@ -108,6 +110,7 @@ O pipeline deve:
 - obter dados viários e geográficos auxiliares;
 - propor áreas de trabalho;
 - gerar quadras urbanas quando a topologia permitir;
+- preservar finalidades independentes para pregação regular e censo de idioma;
 - associar endereços às áreas;
 - identificar exceções.
 
@@ -127,6 +130,8 @@ O mapa deve permitir, progressivamente:
 - revisar alertas de sobreposição e geometrias suspeitas.
 
 A primeira versão pode oferecer somente aprovação, exclusão e correções básicas, desde que as pendências sejam claramente exportáveis.
+
+Áreas sugeridas não participam de designações nem recebem endereços. A aprovação de uma área de censo de idioma também não a transforma em quadra de pregação regular; as duas malhas podem coexistir e se sobrepor.
 
 ### 8A. Complementação territorial
 
@@ -171,7 +176,7 @@ A publicação deve ocorrer em lotes, com transações ou estratégia de retomad
 
 ### 10. Deploy
 
-O instalador pode inicialmente gerar instruções e arquivos de configuração. Em fase posterior, poderá:
+O piloto já gera uma configuração local isolada, valida o token Cloudflare e pode executar build, envio de secrets e deploy após confirmação. O fluxo deve evoluir para uma interface local que também permita:
 
 - configurar variáveis de ambiente;
 - criar secrets;
@@ -179,6 +184,8 @@ O instalador pode inicialmente gerar instruções e arquivos de configuração. 
 - publicar na Cloudflare;
 - exibir a URL final;
 - testar a tela de login e a leitura básica do banco.
+
+O usuário continua responsável por criar as próprias contas e o projeto Supabase vazio. O instalador não recebe credenciais do mantenedor e não centraliza dados. Segredos não são aceitos em argumentos do assistente guiado; o token Cloudflare e a connection string permanecem apenas no ambiente local, enquanto a chave administrativa do Supabase é configurada como secret de runtime do Worker.
 
 ## Artefatos intermediários
 
