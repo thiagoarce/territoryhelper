@@ -5,56 +5,36 @@
 import type { Actions } from "./$types";
 import { hojeIsoBrasil } from "$lib/utils/data";
 import { exigirAdminAction } from "$lib/server/guards";
+import {
+  alterarRevisaoArea,
+  aprovarAreasConfiaveis,
+} from "$lib/server/revisao-areas";
 import { fail } from "@sveltejs/kit";
+
+// Este editor é o domínio da PREGAÇÃO REGULAR (urbana e rural). A malha de
+// idioma tem tela própria (/admin/censo) — as actions de revisão daqui
+// fixam a finalidade pra que nenhum id de censo seja aprovado por aqui.
+const FINALIDADE = "regular-preaching" as const;
 
 export const actions: Actions = {
   alterarRevisaoArea: async ({ request, locals }) => {
     const guard = exigirAdminAction(locals);
     if (guard) return guard;
     const fd = await request.formData();
-    const id = String(fd.get("id") ?? "");
-    const revisaoStatus = String(fd.get("revisao_status") ?? "");
-    if (!id || !["suggested", "approved"].includes(revisaoStatus))
-      return fail(400, { erro: "Área ou revisão inválida" });
-    const { error } = await locals.supabase
-      .from("quadras")
-      .update({
-        revisao_status: revisaoStatus,
-        ativa: revisaoStatus === "approved",
-      })
-      .eq("id", id);
-    if (error) return fail(400, { erro: error.message });
-    return {
-      ok: true,
-      msg:
-        revisaoStatus === "approved"
-          ? `${id} aprovada`
-          : `${id} voltou para revisão`,
-    };
+    const r = await alterarRevisaoArea(
+      locals.supabase,
+      String(fd.get("id") ?? ""),
+      String(fd.get("revisao_status") ?? ""),
+      FINALIDADE,
+    );
+    return r.ok ? { ok: true, msg: r.msg } : fail(400, { erro: r.erro });
   },
 
-  aprovarAreasConfiaveis: async ({ request, locals }) => {
+  aprovarAreasConfiaveis: async ({ locals }) => {
     const guard = exigirAdminAction(locals);
     if (guard) return guard;
-    const fd = await request.formData();
-    const finalidade = String(fd.get('finalidade') ?? '');
-    if (!['regular-preaching', 'language-census'].includes(finalidade))
-      return fail(400, { erro: 'Finalidade inválida' });
-    const { count, error: countError } = await locals.supabase
-      .from('quadras')
-      .select('id', { count: 'exact', head: true })
-      .eq('finalidade', finalidade)
-      .eq('confianca', 'high')
-      .eq('revisao_status', 'suggested');
-    if (countError) return fail(400, { erro: countError.message });
-    const { error } = await locals.supabase
-      .from('quadras')
-      .update({ revisao_status: 'approved', ativa: true })
-      .eq('finalidade', finalidade)
-      .eq('confianca', 'high')
-      .eq('revisao_status', 'suggested');
-    if (error) return fail(400, { erro: error.message });
-    return { ok: true, msg: `${count ?? 0} área(s) confiável(is) aprovada(s)` };
+    const r = await aprovarAreasConfiaveis(locals.supabase, FINALIDADE);
+    return r.ok ? { ok: true, msg: r.msg } : fail(400, { erro: r.erro });
   },
 
   autoVincular: async ({ locals }) => {

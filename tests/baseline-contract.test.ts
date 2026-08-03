@@ -46,6 +46,16 @@ test('RLS mantém edição operacional livre e protege estrutura por trigger', (
   assertTrue(sql.includes("auth.uid(), 'exclusao'"));
 });
 
+test('baseline isola a malha de idioma das operações de território', () => {
+  // Vínculo automático de endereço do CNEFE: só pregação regular aprovada.
+  assertTrue(sql.includes("q.finalidade = 'regular-preaching' and q.revisao_status = 'approved'"));
+  // Dividir uma área herda os metadados: sem isso a metade nova nascia
+  // 'urban-block'/'regular-preaching' e passava a receber endereço do CNEFE.
+  assertTrue(sql.includes('v_original.tipo_area, v_original.finalidade, v_original.origem_geografica'));
+  // Juntar áreas de finalidades diferentes criaria área ambígua.
+  assertTrue(sql.includes('não é possível juntar áreas de finalidades diferentes'));
+});
+
 test('baseline registra versão, configuração e importações idempotentes', () => {
   assertTrue(sql.includes('create table if not exists public.schema_versions'));
   assertTrue(sql.includes('create table if not exists public.installation_config'));

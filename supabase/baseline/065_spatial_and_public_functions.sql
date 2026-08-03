@@ -90,6 +90,12 @@ begin
   if auth.uid() is not null and not public.is_admin() then raise exception 'ADMIN_REQUIRED'; end if;
   if coalesce(array_length(p_ids, 1), 0) < 2 then raise exception 'Selecione ao menos duas quadras'; end if;
   v_keep := p_ids[1]; v_others := p_ids[2:array_length(p_ids, 1)];
+  -- Pregação regular e censo de idioma são malhas independentes (podem até
+  -- se sobrepor no mapa). Unir uma na outra criaria uma área com finalidade
+  -- ambígua — e a metade errada herdaria vínculo automático de endereço.
+  if (select count(distinct finalidade) from public.quadras where id = any(p_ids)) > 1 then
+    raise exception 'Não é possível juntar áreas de finalidades diferentes';
+  end if;
   select ST_Union(poly) into v_poly from public.quadras where id = any(p_ids);
   if v_poly is null then raise exception 'QUADRA_NOT_FOUND'; end if;
   if ST_GeometryType(v_poly) <> 'ST_Polygon' then raise exception 'As quadras precisam ser adjacentes'; end if;
@@ -116,8 +122,18 @@ begin
   select array_agg(geom) into v_parts from ST_Dump(v_split) where ST_GeometryType(geom) = 'ST_Polygon';
   if coalesce(array_length(v_parts, 1), 0) <> 2 then raise exception 'A linha precisa cortar a quadra de lado a lado'; end if;
   update public.quadras set poly = v_parts[1] where id = p_id;
-  insert into public.quadras(id, poly, color, territorio_id, status, ativa)
-    values (p_novo_id, v_parts[2], v_original.color, v_original.territorio_id, v_original.status, v_original.ativa);
+  -- A metade nova herda os METADADOS de área da original. Sem isso ela
+  -- nascia com os defaults da coluna ('urban-block'/'regular-preaching'):
+  -- dividir uma área rural virava quadra urbana e — pior — dividir uma
+  -- área de censo de idioma criava uma área de pregação regular, que o
+  -- auto_vincular_enderecos passaria a encher de endereços do CNEFE.
+  insert into public.quadras(
+      id, poly, color, territorio_id, status, ativa,
+      tipo_area, finalidade, origem_geografica, revisao_status, confianca)
+    values (
+      p_novo_id, v_parts[2], v_original.color, v_original.territorio_id, v_original.status, v_original.ativa,
+      v_original.tipo_area, v_original.finalidade, v_original.origem_geografica,
+      v_original.revisao_status, v_original.confianca);
   update public.locais set quadra_id = p_novo_id
     where quadra_id = p_id and geo is not null and ST_Covers(v_parts[2], geo);
   insert into public.designacao_quadras(designacao_id, quadra_id)

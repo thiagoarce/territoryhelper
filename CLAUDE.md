@@ -382,6 +382,45 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   agora"/"limpar dados offline" — só mexe no cache de LEITURA,
   NUNCA na fila de escrita).
 
+### Duas malhas de área (`quadras.finalidade`) — domínios separados
+
+`quadras` guarda DUAS malhas que nunca se misturam (metadados na baseline
+`035_work_area_metadata.sql`, tipos em `$lib/types.ts::FinalidadeArea`):
+
+- **`regular-preaching`** — território operacional, urbano (`tipo_area=
+  'urban-block'`) E rural (`'rural-area'`). Único que o CNEFE/IBGE
+  alimenta, único que aparece em designação/arranjo/carteira/mapa e o
+  único que `auto_vincular_enderecos()` enxerga (o filtro é no SQL).
+- **`language-census`** — malha do grupo/congregação de idioma. Existe pra
+  dar contexto visual e registrar o censo; pode se sobrepor livremente às
+  áreas regulares. **Endereço do CNEFE nunca é vinculado, copiado ou
+  atribuído a ela** — dentro do idioma só entra endereço criado
+  explicitamente pelo publicador do idioma, e idioma não se infere pela
+  localização do imóvel. Aprovar uma área de censo não a torna
+  operacional: só a torna visível na própria malha de censo.
+
+Consequências práticas:
+
+- `listarQuadrasComGeo(supabase, { finalidade, incluirSugeridas,
+  comContagens })` filtra por finalidade EXPLÍCITA — o default é
+  `regular-preaching` + só aprovadas. Não existe mais "trazer todas as
+  finalidades": `/admin/poligonos` pede regular (com sugestões),
+  `/admin/censo` pede idioma. Regressão coberta por
+  `tests/areas-finalidade.test.ts`.
+- Revisão (`revisao_status`) é a MESMA regra pras duas malhas, então mora
+  em `$lib/server/revisao-areas.ts`; cada tela passa a sua finalidade e o
+  helper filtra por ela no UPDATE (`count:'exact'` — UPDATE que não casa
+  o filtro responde sucesso com 0 linhas). É o que impede o editor
+  territorial de aprovar área de idioma e vice-versa.
+- Isso também é a correção de DESEMPENHO: no piloto Monte Castelo são 361
+  áreas regulares contra 6.763 de censo. Carregar as duas juntas fazia
+  `/admin/poligonos` levar ~37s pra abrir no celular.
+- `dividir_quadra` propaga `tipo_area`/`finalidade`/origem/revisão/
+  confiança pra metade nova (senão ela nasce urbana+regular pelos
+  defaults da coluna — dividir área de censo criava área de pregação que
+  o auto-vínculo passaria a encher de endereços). `quadras_join` recusa
+  unir finalidades diferentes.
+
 ### Backend (`+page.server.ts`)
 - `locals.supabase` = client com sessão; **RLS** faz o controle de acesso.
   Guards em `$lib/server/guards.ts` — usar **`exigirQuadraDesignada`** em
@@ -473,6 +512,21 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
     setor/quadra_ibge pro cluster majoritário — + aponta quadras que já
     têm esse mesmo cluster minoritário, candidatas a "dono de verdade"),
     quadras órfãs sem território
+  - Carrega **só `finalidade='regular-preaching'`** (urbana E rural),
+    aprovadas + sugeridas — a malha de idioma nunca é baixada aqui (ver
+    "Duas malhas de área" em Convenções). Sugestões do Installer aparecem
+    em laranja; aprovar em lote só alta confiança, média/baixa é olho
+    humano no mapa.
+- **Censo de idioma** (`/admin/censo`) — consumidor EXCLUSIVO da malha
+  `finalidade='language-census'`: mapa + filtro (pendentes/revisão
+  manual/todas) + aprovar uma área ou o lote de alta confiança. Reusa
+  `MapaPoligonos` com `locais={[]}` (endereço do CNEFE não entra nessa
+  malha). Só aparece no drawer se `installation_config.modules
+  .languageCensus` — o Installer liga quando o KML traz malha de idioma;
+  instalação publicada antes dessa chave existir cai num `limit(1)` em
+  `quadras` pra descobrir (root layout, só admin). Se um dia essa tela
+  ficar pesada, a otimização é dela (viewport/tiles) — nunca voltar a
+  limitar silenciosamente a 1.000 linhas.
 - **Prédios** (`/admin/predios`) — lista + filtros + modal inline + WhatsApp +
   **📍 Proximidade GPS** + ▶ trabalhar (→ `/predio/[id]`) +
   ⏳ **Validar pendente** + 🎯 **Designar cartas** + 📅 Anexar arranjo

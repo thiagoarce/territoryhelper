@@ -59,7 +59,10 @@ export const load: PageLoad = async ({ parent }) => {
   const { profile } = await parent();
   // W5: network-first com fallback pro cache (offline abre com o último
   // estado; edições continuam pedindo rede — são actions).
-  const r = await comCache(`admin:poligonos:${profile?.id ?? "anon"}`, () =>
+  // Chave v2: a partir da separação de finalidades este load não traz mais
+  // a malha de idioma. Reaproveitar o snapshot v1 offline devolveria as
+  // áreas de censo pra uma tela que não sabe mais revisá-las.
+  const r = await comCache(`admin:poligonos:v2:${profile?.id ?? "anon"}`, () =>
     carregar(),
   );
   return {
@@ -89,7 +92,11 @@ async function carregar() {
         .not("geo_geojson", "is", null)
         .order("id"),
     ),
-    listarQuadrasComGeo(supabase, true),
+    // Editor territorial = SÓ pregação regular (urbana e rural), aprovadas
+    // e sugeridas. A malha `language-census` nunca é baixada aqui: ela é
+    // outro domínio e mora em /admin/censo. No piloto Monte Castelo isso é
+    // a diferença entre 361 e 7.124 geometrias na abertura da tela.
+    listarQuadrasComGeo(supabase, { incluirSugeridas: true }),
     supabase.from("territorios").select("id, nome, cor").order("nome"),
     supabase
       .from("tces_geo")

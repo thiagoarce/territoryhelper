@@ -36,6 +36,14 @@ export interface Territorio {
   atualizado_em: string;
 }
 
+/**
+ * Finalidade da área. `regular-preaching` (inclui `tipo_area='rural-area'`)
+ * é o território operacional — único que recebe endereço do CNEFE/IBGE e
+ * aparece nos fluxos de pregação. `language-census` é a malha do grupo de
+ * idioma: contexto visual e censo, nunca vínculo automático de endereço.
+ */
+export type FinalidadeArea = "regular-preaching" | "language-census";
+
 export interface Quadra {
   id: string;
   poly: unknown; // PostGIS geometry — chega como GeoJSON ou WKT dependendo da query
@@ -56,7 +64,7 @@ export interface Quadra {
     | "locality"
     | "condominium"
     | "isolated-point";
-  finalidade: "regular-preaching" | "language-census";
+  finalidade: FinalidadeArea;
   origem_geografica:
     | "imported"
     | "osm-generated"

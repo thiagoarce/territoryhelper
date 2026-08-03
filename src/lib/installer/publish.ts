@@ -157,6 +157,12 @@ export async function publishInstallerPackage(
     const territoryById = new Map(
       territories.map((territory) => [territory.id, territory]),
     );
+    // O módulo de censo de idioma só existe pra quem realmente tem uma
+    // malha de idioma no KML — congregação puramente urbana/rural não
+    // ganha um menu vazio. É a única coisa que liga /admin/censo.
+    const temMalhaDeIdioma = workAreas.some(
+      (area) => area.purpose === "language-census",
+    );
     await requireSuccess(
       client.from("installation_config").upsert(
         {
@@ -169,6 +175,7 @@ export async function publishInstallerPackage(
             campaigns: false,
             publicWitnessing: false,
             publications: false,
+            languageCensus: temMalhaDeIdioma,
           },
         },
         { onConflict: "singleton" },

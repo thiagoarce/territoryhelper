@@ -1,6 +1,7 @@
 # Handoff — Territory Installer
 
-Atualizado em 2026-08-01 para continuação no Claude Code.
+Atualizado em 2026-08-02 (Claude Code). O registro anterior é de 2026-08-01
+(Codex).
 
 ## Comece aqui
 
@@ -80,9 +81,9 @@ O último Apps Script fornecido pelo usuário é semanticamente igual à segunda
 
 A baseline ganhou `supabase/baseline/035_work_area_metadata.sql` e os metadados `tipo_area`, `finalidade`, `origem_geografica`, `revisao_status` e `confianca` em `quadras`.
 
-A tela `/admin/poligonos` mostra sugestões em laranja, censo em roxo e rural em verde; permite aprovar/reabrir uma área; e permite aprovar em lote apenas alta confiança, separando regular e censo. Média/baixa confiança fica para revisão manual.
+A tela `/admin/poligonos` mostra sugestões em laranja e rural em verde; permite aprovar/reabrir uma área; e permite aprovar em lote apenas alta confiança. Média/baixa confiança fica para revisão manual. A malha de idioma (roxo) migrou para `/admin/censo` — ver "Separação de finalidades" abaixo.
 
-As consultas operacionais escondem censo e sugestões; somente o editor administrativo pede todas as finalidades. A implementação futura do cadastro de endereços do idioma deve exigir criação explícita pelo publicador e jamais reutilizar automaticamente o CNEFE.
+As consultas operacionais escondem censo e sugestões. Nenhuma tela pede "todas as finalidades": cada uma declara a malha que consome. A implementação futura do cadastro de endereços do idioma deve exigir criação explícita pelo publicador e jamais reutilizar automaticamente o CNEFE.
 
 ## Piloto Monte Castelo já publicado
 
@@ -128,16 +129,102 @@ Portanto, não tentar resolver a lentidão mantendo as 7.124 geometrias na abert
 
 Essa última otimização passou em `npm run check` (0 erros, 20 avisos preexistentes), mas ainda não teve `npm test` repetido, ainda não foi publicada e ainda não teve o tempo real medido.
 
-Próximo passo imediato:
+## Separação de finalidades — implementada (2026-08-02, ainda não publicada)
 
-1. rodar `npm test`;
-2. se passar, executar `npm run installer -- deploy --confirm`;
-3. recarregar `/admin/poligonos`, medir o tempo até o mapa ficar utilizável e abrir `Quadras`;
-4. confirmar 358 / 6.726 / 40 e ausência de erros no console;
-5. alterar `/admin/poligonos` para carregar apenas `regular-preaching` e confirmar que a abertura não transfere a malha `language-census`;
-6. deixar o módulo/tela de censo como consumidor exclusivo da malha `language-census`; se essa tela dedicada ainda ficar lenta, carregar por viewport/tiles. Não voltar a limitar silenciosamente a 1.000 linhas.
+Os passos 5 e 6 do plano acima estão feitos no worktree. O passo 2/3/4
+(deploy e medição do tempo real) continua pendente e agora deve ser medido
+já com a separação, não com o paralelismo sozinho.
 
-As duas malhas devem continuar revisáveis, mas em módulos independentes: território regular/rural no editor territorial e idioma na futura tela de censo.
+O que mudou:
+
+- `listarQuadrasComGeo(supabase, opcoes)` trocou o booleano
+  `incluirTodasFinalidades` por `{ finalidade, incluirSugeridas,
+  comContagens }`. O default continua `regular-preaching` + só aprovadas, e
+  **deixou de existir** a opção "todas as finalidades" — cada tela declara
+  a malha que consome.
+- `/admin/poligonos` carrega `regular-preaching` com sugestões. A malha de
+  idioma não é mais baixada, contada, renderizada nem aprovada ali; o lote
+  "Aprovar censo confiável" saiu da tela. A chave do cache offline virou
+  `admin:poligonos:v2:` para não reidratar o snapshot antigo com censo.
+- `/admin/censo` (novo) é o consumidor exclusivo de `language-census`:
+  mapa (`MapaPoligonos` com `locais={[]}`), filtro pendentes/revisão
+  manual/todas, aprovar área a área ou o lote de alta confiança. Sem
+  endereço, sem contagem de CNEFE, sem vínculo.
+- `$lib/server/revisao-areas.ts` concentra a revisão das duas telas; cada
+  action fixa a sua finalidade e o UPDATE filtra por ela com
+  `count:'exact'` — id de censo enviado à action do editor territorial
+  falha em vez de aprovar em silêncio.
+- Módulo `languageCensus` em `installation_config.modules`: o Installer
+  liga quando o KML traz malha de idioma (`publish.ts`); o drawer e o
+  guard de rota respeitam. Instalação publicada antes da chave existir —
+  **o caso do piloto Monte Castelo** — cai num `limit(1)` em `quadras`
+  feito só para admin, então a tela aparece no piloto sem republicar o
+  pacote.
+- Baseline `065`: `dividir_quadra` passou a herdar
+  `tipo_area`/`finalidade`/`origem_geografica`/`revisao_status`/
+  `confianca` da área original (antes a metade nova nascia
+  urbana + regular pelos defaults da coluna: dividir área de censo criava
+  área de pregação que o auto-vínculo encheria de endereços do CNEFE), e
+  `quadras_join` recusa unir finalidades diferentes. **Reaplicar a
+  baseline no deploy** para essas duas funções chegarem ao piloto.
+- Testes novos: `tests/areas-finalidade.test.ts` (dublê do client Supabase
+  garante os filtros de cada tela) e três asserções no
+  `tests/baseline-contract.test.ts` para as regras SQL acima.
+
+Verificado localmente: `npm test` 176 passaram / 0 falharam;
+`npm run check` 0 erros e 20 avisos preexistentes; `npm run build` OK.
+
+### Publicado em 2026-08-02
+
+`baseline` e `deploy` são comandos SEPARADOS do Installer — `deploy` só
+faz build + Worker, não toca no banco. Foram executados os dois, nesta
+ordem:
+
+1. `npm run installer -- baseline --confirm` — reaplicada inteira, sem
+   erro (os avisos de privilégio em `spatial_ref_sys`/`geometry_columns`
+   são do PostGIS e já apareciam antes);
+2. `npm run installer -- deploy --confirm` — publicado em
+   `https://territorios-congregacao.othiagoarce.workers.dev`.
+
+Verificado direto no banco depois: `dividir_quadra` já contém
+`v_original.finalidade` e `quadras_join` já recusa finalidades
+diferentes. Contagem por finalidade hoje:
+
+| finalidade | revisão | confiança | qtd |
+|---|---|---|---|
+| language-census | suggested | high | 6.726 |
+| language-census | suggested | medium/low | 37 |
+| regular-preaching | **approved** | high | 358 |
+| regular-preaching | suggested | medium/low | 3 |
+
+As 358 áreas regulares de alta confiança já estão **aprovadas** no banco —
+no handoff anterior as 7.124 estavam todas sugeridas. Foi o próprio
+usuário quem rodou o lote "Aprovar regulares confiáveis" em 02/08,
+decisão dele e esperada. As 3 regulares de média/baixa confiança
+continuam sugeridas, para revisão visual no mapa.
+
+O módulo `languageCensus` ainda NÃO está em `installation_config.modules`
+(a instalação é anterior à chave), então o piloto está usando o caminho
+de descoberta por `limit(1)` do root layout. Republicar o pacote grava a
+chave e dispensa essa query.
+
+### Próximo passo imediato
+
+Falta a medição com sessão real (exige login do usuário):
+
+1. abrir `/admin/poligonos`, medir o tempo até o mapa ficar utilizável e
+   conferir na aba de rede que **nenhuma** geometria `language-census`
+   trafega;
+2. conferir os números do editor territorial: 361 áreas regulares e o
+   aviso de revisão manual contando só as 3 regulares (não mais 40);
+3. abrir `/admin/censo` (entrada nova no drawer) e conferir 6.763 áreas,
+   6.726 confiáveis. Se a abertura dessa tela for lenta demais no
+   celular, a otimização é dela — carregamento por viewport/tiles. Não
+   voltar a limitar silenciosamente a 1.000 linhas;
+4. não aprovar nada em lote sem decisão visual do usuário.
+
+As duas malhas seguem revisáveis, mas em módulos independentes: território
+regular/rural no editor territorial e idioma em `/admin/censo`.
 
 ## Verificações já realizadas
 

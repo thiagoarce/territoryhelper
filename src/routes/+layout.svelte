@@ -140,6 +140,9 @@
         { href: '/admin/dashboard', label: 'Dashboard', icon: 'zap' },
         { href: '/admin/designacoes', label: 'Designações', icon: 'clipboard' },
         { href: '/admin/poligonos', label: 'Polígonos', icon: 'shapes' },
+        // Malha de idioma: domínio separado da pregação regular, só aparece
+        // pra instalação que tem grupo/congregação de idioma.
+        ...(data.modules?.languageCensus ? [{ href: '/admin/censo', label: 'Censo de idioma', icon: 'users' as NomeIcone }] : []),
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
         ...(data.modules?.campaigns === false ? [] : [{ href: '/admin/campanha', label: 'Campanha', icon: 'chart' as NomeIcone }]),
         { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' },

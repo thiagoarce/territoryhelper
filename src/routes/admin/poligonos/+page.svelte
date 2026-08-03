@@ -90,9 +90,10 @@
   const colorirPorTerritorio = $derived(modo === 'territorios');
   // No TCE o filtro é sempre comércio
   const filtroTipoEfetivo = $derived(modo === 'tce' ? 'com' : filtroTipo);
+  // Só pregação regular: o load desta tela não traz mais `language-census`
+  // (essa malha se revisa em /admin/censo).
   const areasSugeridasStats = $derived.by(() => ({
-    regulares: data.quadras.filter((q) => q.revisao_status === 'suggested' && q.confianca === 'high' && q.finalidade === 'regular-preaching').length,
-    censo: data.quadras.filter((q) => q.revisao_status === 'suggested' && q.confianca === 'high' && q.finalidade === 'language-census').length,
+    regulares: data.quadras.filter((q) => q.revisao_status === 'suggested' && q.confianca === 'high').length,
     revisaoManual: data.quadras.filter((q) => q.revisao_status === 'suggested' && q.confianca !== 'high').length
   }));
 
@@ -793,38 +794,32 @@
         class:text-primary-700={juntarAtivo}
         class:border-slate-300={!juntarAtivo}
       ><Icon nome="link" size={14} /> Juntar quadras</button>
-      {#each [
-        { finalidade: 'regular-preaching', quantidade: areasSugeridasStats.regulares, rotulo: 'Aprovar regulares confiáveis' },
-        { finalidade: 'language-census', quantidade: areasSugeridasStats.censo, rotulo: 'Aprovar censo confiável' }
-      ] as lote}
-        {#if lote.quantidade > 0}
-          <form
-            method="POST"
-            action="?/aprovarAreasConfiaveis"
-            use:enhance={() => {
-              aprovandoLote = true;
-              return async ({ result, update }) => {
-                await update();
-                aprovandoLote = false;
-                if (result.type === 'success') {
-                  toast.success((result.data as any)?.msg || 'Áreas aprovadas');
-                  await invalidateAll();
-                } else if (result.type === 'failure') {
-                  toast.error(String((result.data as any)?.erro || 'Falhou'));
-                }
-              };
-            }}
-            onsubmit={(e) => {
-              if (!confirm(`Aprovar ${lote.quantidade} áreas de alta confiança?`)) e.preventDefault();
-            }}
-          >
-            <input type="hidden" name="finalidade" value={lote.finalidade} />
-            <Button variant="secondary" size="sm" type="submit" loading={aprovandoLote}>
-              {lote.rotulo} ({lote.quantidade})
-            </Button>
-          </form>
-        {/if}
-      {/each}
+      {#if areasSugeridasStats.regulares > 0}
+        <form
+          method="POST"
+          action="?/aprovarAreasConfiaveis"
+          use:enhance={() => {
+            aprovandoLote = true;
+            return async ({ result, update }) => {
+              await update();
+              aprovandoLote = false;
+              if (result.type === 'success') {
+                toast.success((result.data as any)?.msg || 'Áreas aprovadas');
+                await invalidateAll();
+              } else if (result.type === 'failure') {
+                toast.error(String((result.data as any)?.erro || 'Falhou'));
+              }
+            };
+          }}
+          onsubmit={(e) => {
+            if (!confirm(`Aprovar ${areasSugeridasStats.regulares} áreas de alta confiança?`)) e.preventDefault();
+          }}
+        >
+          <Button variant="secondary" size="sm" type="submit" loading={aprovandoLote}>
+            Aprovar regulares confiáveis ({areasSugeridasStats.regulares})
+          </Button>
+        </form>
+      {/if}
       {#if areasSugeridasStats.revisaoManual > 0}
         <span class="text-xs font-medium text-amber-700">{areasSugeridasStats.revisaoManual} área(s) exigem revisão manual</span>
       {/if}

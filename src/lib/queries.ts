@@ -7,6 +7,7 @@ import type {
   Territorio,
   Profile,
   Designacao,
+  FinalidadeArea,
   Local,
   Unidade,
   TipoRegistro,
@@ -139,22 +140,49 @@ export interface QuadraGeo extends QuadraEnriquecida {
   poly_geojson: unknown | null;
 }
 
+// A malha de idioma (`language-census`) é um domínio SEPARADO: existe só
+// pra dar contexto visual/censo ao grupo daquele idioma e nunca participa
+// da pregação regular. Misturar as duas finalidades numa consulta só é
+// caro (no piloto Monte Castelo são 361 áreas regulares contra 6.763 de
+// censo — 19x mais geometria) e semanticamente errado. Por isso o filtro
+// é por finalidade EXPLÍCITA, uma malha por vez, nunca "todas".
+export interface OpcoesQuadrasGeo {
+  /** Default 'regular-preaching' — censo só quando a tela de censo pedir. */
+  finalidade?: FinalidadeArea;
+  /** Editor de revisão precisa ver sugestões; fluxo operacional, nunca. */
+  incluirSugeridas?: boolean;
+  /**
+   * Contagem de endereços/residências por área. A malha de censo não tem
+   * endereços do CNEFE por definição — pedir a contagem lá é rede à toa.
+   */
+  comContagens?: boolean;
+}
+
+const SEM_CONTAGENS = {
+  locais: new Map<string, number>(),
+  unidades: new Map<string, number>(),
+};
+
 export async function listarQuadrasComGeo(
   supabase: SupabaseClient,
-  incluirTodasFinalidades = false,
+  opcoes: OpcoesQuadrasGeo = {},
 ): Promise<QuadraGeo[]> {
+  const {
+    finalidade = "regular-preaching",
+    incluirSugeridas = false,
+    comContagens = true,
+  } = opcoes;
   let quadrasQuery = supabase
     .from("quadras_geo")
     .select(
       "id, color, territorio_id, status, ativa, data_conclusao, notas, reservada_campanha_id, tipo_area, finalidade, origem_geografica, revisao_status, confianca, poly_geojson",
-    );
-  if (!incluirTodasFinalidades)
-    quadrasQuery = quadrasQuery
-      .eq("finalidade", "regular-preaching")
-      .eq("revisao_status", "approved");
+    )
+    .eq("finalidade", finalidade);
+  if (!incluirSugeridas)
+    quadrasQuery = quadrasQuery.eq("revisao_status", "approved");
   const [quadras, contagens, terrRes] = await Promise.all([
     selectAll<any>(quadrasQuery.order("id")),
-    contarPorQuadra(supabase),
+    comContagens ? contarPorQuadra(supabase) : Promise.resolve(SEM_CONTAGENS),
     supabase.from("territorios").select("id, nome"),
   ]);
   if (terrRes.error) throw terrRes.error;
