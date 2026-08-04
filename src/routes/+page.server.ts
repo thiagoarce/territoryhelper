@@ -9,8 +9,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   switch (locals.profile.role) {
     case 'admin':
       throw redirect(303, '/admin');
+    // Dirigente vai DIRETO pra /publicador (modo campo é único). Mandar
+    // pra /dirigente dava 404: aquela pasta só tem +layout.server.ts, e
+    // diretório sem +page.svelte não é rota — o SvelteKit nem chega a
+    // rodar o layout, responde 404 antes. Era o 404 que o dirigente
+    // levava ao entrar pelo link de convite (a action manda pra `/`) e
+    // em qualquer entrada pelo start_url do PWA.
     case 'dirigente':
-      throw redirect(303, '/dirigente');
     case 'publicador':
       throw redirect(303, '/publicador');
   }

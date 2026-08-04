@@ -48,6 +48,10 @@ export const actions: Actions = {
 
     // Login automático
     await locals.supabase.auth.signInWithPassword({ email: convite.email, password: senha });
-    throw redirect(303, '/');
+    // Direto na home do role, sem passar por `/` (que redireciona de
+    // novo): um salto a menos logo depois de criar a conta, e menos
+    // chance de esbarrar na regra do Safari/WebKit que rejeita resposta
+    // com redirect encadeado servida pelo service worker.
+    throw redirect(303, convite.role === 'admin' ? '/admin' : '/publicador');
   }
 };

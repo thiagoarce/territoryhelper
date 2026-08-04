@@ -43,8 +43,13 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     migrou de `arranjo` + `/perfil`),
     `campanha` (sem ícone na bottom nav — acessível pelo banner na home),
     `tce/[id]`
-  - `dirigente/` — só um `+layout.server.ts` que redireciona pra
-    `/publicador/*` (URLs antigas)
+  - `dirigente/[...resto]` — rota rest que só redireciona pra
+    `/publicador/*` (URLs antigas). Era um `+layout.server.ts` solto em
+    `dirigente/` e **não funcionava**: pasta só com layout NÃO é rota, o
+    SvelteKit devolvia 404 sem nem rodar o layout — e como `/` mandava
+    dirigente pra `/dirigente`, todo dirigente levava 404 ao entrar
+    (pelo link de convite ou pelo start_url do PWA). Hoje `/` manda
+    dirigente direto pra `/publicador`
   - `predio/[id]` — **tela ÚNICA de trabalhar prédio**, toggle
     🚪 casa-em-casa vs ✉ cartas + edit + WhatsApp share
   - públicas (sem auth): `cartas/[token]`, `t/[token]` (território/arranjo
