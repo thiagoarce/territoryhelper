@@ -48,10 +48,10 @@ export const actions: Actions = {
 
     // Login automático
     await locals.supabase.auth.signInWithPassword({ email: convite.email, password: senha });
-    // Direto na home do role, sem passar por `/` (que redireciona de
-    // novo): um salto a menos logo depois de criar a conta, e menos
-    // chance de esbarrar na regra do Safari/WebKit que rejeita resposta
-    // com redirect encadeado servida pelo service worker.
-    throw redirect(303, convite.role === 'admin' ? '/admin' : '/publicador');
+    // Manda pra `/` e deixa a raiz decidir a home do role — mesmo padrão
+    // do /login, roteamento por role num lugar só. Só é seguro porque a
+    // raiz agora resolve dirigente de verdade (antes ela mandava pra
+    // /dirigente, rota que não existia, e o convite terminava em 404).
+    throw redirect(303, '/');
   }
 };
