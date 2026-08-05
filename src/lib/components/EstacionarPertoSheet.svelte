@@ -32,6 +32,7 @@
     type POI
   } from '$lib/utils/overpass';
   import type { NomeIcone } from '$lib/ui/Icon.svelte';
+  import { sugerirParadas, type CandidatoParada, type SugestaoParada } from '$lib/paradas';
 
   interface PoiMarcador {
     id: string;
@@ -57,6 +58,7 @@
     centro,
     pois = $bindable<PoiMarcador[]>([]),
     pontosSalvos = [],
+    centrosQuadras = [],
     podeSalvar = false,
     onSalvarPonto
   }: {
@@ -64,6 +66,9 @@
     centro: { lat: number; lng: number } | null;
     pois?: PoiMarcador[];
     pontosSalvos?: PontoSalvo[];
+    /** centroides das quadras do território — quantas paradas sugerir
+     *  escala com isso (1 quadra = 1 sugestão; bairro inteiro = até 5) */
+    centrosQuadras?: { lat: number; lng: number }[];
     /** dirigente/admin: mostra o botão de salvar o ponto com nome nosso */
     podeSalvar?: boolean;
     onSalvarPonto?: (p: { nome: string; lat: number; lng: number; osmId: string }) => void;
@@ -87,6 +92,33 @@
     return [...pontosSalvos].sort(
       (a, b) => distanciaMetros(centro, a) - distanciaMetros(centro, b)
     );
+  });
+
+  // Sugestão de "pare aqui": junta o que a congregação salvou com o que
+  // veio do OSM e deixa a heurística pura decidir (ver $lib/paradas.ts).
+  // Recalcula sozinha quando os achados mudam — não guarda estado.
+  const sugestoes = $derived.by<SugestaoParada[]>(() => {
+    const centros = centrosQuadras.length > 0 ? centrosQuadras : centro ? [centro] : [];
+    if (centros.length === 0) return [];
+    const candidatos: CandidatoParada[] = [
+      ...pontosSalvos.map((p) => ({
+        id: `salvo-${p.id}`,
+        nome: p.nome,
+        lat: p.lat,
+        lng: p.lng,
+        fonte: 'salvo' as const,
+        categoria: p.tipo
+      })),
+      ...achados.map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        lat: p.lat,
+        lng: p.lng,
+        fonte: 'osm' as const,
+        categoria: p.categoria
+      }))
+    ];
+    return sugerirParadas({ centrosQuadras: centros, candidatos });
   });
 
   function metrosLegivel(m: number): string {
@@ -224,6 +256,35 @@
         <button type="button" class="block mt-2 underline text-amber-900" onclick={() => buscar(PARADA)}>
           Tentar de novo
         </button>
+      </div>
+    {/if}
+
+    {#if sugestoes.length > 0}
+      <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+        <h3 class="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-2">
+          {sugestoes.length === 1 ? 'Sugestão de parada' : `${sugestoes.length} sugestões de parada`}
+        </h3>
+        <ul class="space-y-2">
+          {#each sugestoes as s, i}
+            <li class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center shrink-0">
+                {i + 1}
+              </span>
+              <span class="text-sm flex-1 min-w-0">
+                <span class="truncate block font-medium">{s.nome}</span>
+                <span class="text-xs text-emerald-700">
+                  {s.fonte === 'salvo' ? 'ponto da congregação' : 'do mapa'} · {metrosLegivel(s.distanciaMetros)} do território
+                </span>
+              </span>
+              <a
+                href={urlRotaGoogleMaps(s.lat, s.lng)}
+                target="_blank"
+                rel="noopener"
+                class="text-xs text-emerald-800 underline shrink-0"
+              >Rota</a>
+            </li>
+          {/each}
+        </ul>
       </div>
     {/if}
 

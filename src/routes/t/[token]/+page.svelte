@@ -71,8 +71,40 @@
       lng: pontos.reduce((s, p) => s + p[0], 0) / pontos.length
     };
   })();
+  // Um centro por quadra/TCE (não a média de tudo): é o que permite
+  // sugerir mais de uma parada num território grande, e uma só num
+  // pequeno. Prédio/comércio solto também entra — num link só de cartas
+  // não há quadra nenhuma.
+  const centrosQuadrasToken = ((): { lat: number; lng: number }[] => {
+    const centros: { lat: number; lng: number }[] = [];
+    const doAnel = (anel?: [number, number][]) => {
+      if (!anel?.length) return;
+      centros.push({
+        lat: anel.reduce((s, p) => s + p[1], 0) / anel.length,
+        lng: anel.reduce((s, p) => s + p[0], 0) / anel.length
+      });
+    };
+    for (const q of (t.quadras ?? []) as any[]) doAnel(q.poly_geojson?.coordinates?.[0]);
+    for (const tc of (t.tces ?? []) as any[]) doAnel(tc.poly_geojson?.coordinates?.[0]);
+    if (centros.length === 0) {
+      for (const p of poisPredios) centros.push({ lat: p.lat, lng: p.lng });
+      for (const c of poisTceComercios) centros.push({ lat: c.lat, lng: c.lng });
+    }
+    return centros;
+  })();
+  // Pontos de referência da congregação que vieram na RPC (migration
+  // 093). Aparecem no mapa e alimentam a sugestão de parada — quem
+  // recebe o link no WhatsApp já abre sabendo onde encontrar o grupo.
+  const pontosSalvosToken = ((t.pontos ?? []) as any[])
+    .map((p) => {
+      const c = p.geo_geojson?.coordinates;
+      if (!Array.isArray(c) || c.length < 2) return null;
+      return { id: p.id as number, nome: p.nome as string, lat: c[1] as number, lng: c[0] as number, tipo: p.tipo as string };
+    })
+    .filter((p): p is { id: number; nome: string; lat: number; lng: number; tipo: string } => p !== null);
+
   let sheetEstacionar = $state(false);
-  let poisEstacionar = $state<{ id: string; lat: number; lng: number; nome: string; icone: any; url?: string }[]>([]);
+  let poisEstacionar = $state<{ id: string; lat: number; lng: number; nome: string; icone: any; cor?: string; url?: string }[]>([]);
 
   let mapaRef: { exportarPng: () => Promise<string | null> } | null = $state(null);
 
@@ -309,7 +341,13 @@
   <CartaoTerritorio bind:this={cartaoRef} quadras={contextoQuadras} {destaqueIds} />
 {/if}
 
-<EstacionarPertoSheet bind:open={sheetEstacionar} centro={centroEstacionar} bind:pois={poisEstacionar} />
+<EstacionarPertoSheet
+  bind:open={sheetEstacionar}
+  centro={centroEstacionar}
+  bind:pois={poisEstacionar}
+  centrosQuadras={centrosQuadrasToken}
+  pontosSalvos={pontosSalvosToken}
+/>
 
 <BottomSheet bind:open={sheetCartao} title="Cartão de território">
   <div class="space-y-3">

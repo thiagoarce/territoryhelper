@@ -147,9 +147,17 @@
     };
   }
 
+  // Centroides de CADA quadra (não só a média): é o que faz a sugestão
+  // de parada escalar — território grande em dois blocos ganha um ponto
+  // por bloco, quadra única ganha um só.
+  let centrosEstacionar = $state<{ lat: number; lng: number }[]>([]);
+
   function abrirEstacionar(secao: 'grupo' | 'pessoal', quadras: { poly_geojson: unknown }[]) {
     secaoEstacionar = secao;
     centroEstacionar = centroDeQuadras(quadras);
+    centrosEstacionar = quadras
+      .map((q) => centroidePoligono(q.poly_geojson))
+      .filter(Boolean) as { lat: number; lng: number }[];
     poisEstacionar = [];
     sheetEstacionar = true;
   }
@@ -472,7 +480,12 @@
 
 <!-- Modal "todas as designações" — detalhe completo, o card acima já mostra só o próximo -->
 <!-- A2: "Finalizar designação" com conferência por quadra -->
-<EstacionarPertoSheet bind:open={sheetEstacionar} centro={centroEstacionar} bind:pois={poisEstacionar} />
+<EstacionarPertoSheet
+  bind:open={sheetEstacionar}
+  centro={centroEstacionar}
+  bind:pois={poisEstacionar}
+  centrosQuadras={centrosEstacionar}
+/>
 
 <BottomSheet bind:open={sheetFinalizar} title={finalizarAlvo ? `Finalizar — ${finalizarAlvo.nome}` : ''}>
   {#if finalizarAlvo}
