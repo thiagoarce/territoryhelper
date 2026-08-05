@@ -12,6 +12,7 @@
   import { hojeIsoLocal } from '$lib/utils/data';
   import { centroidePoligono } from '$lib/utils/geo';
   import type { QuadraGeo } from '$lib/server/queries';
+  import { BASEMAP_CAMPO } from '$lib/mapa-estilos';
 
   interface ArranjoQueDirijo {
     id: number;
@@ -314,7 +315,7 @@
           </div>
           {#if a.quadrasGeo.length > 0}
             <Card padding="sm" class="mt-1.5">
-              <AdminMapa quadras={a.quadrasGeo} altura={220} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
+              <AdminMapa quadras={a.quadrasGeo} altura={220} destacarIds={a.quadras_ids} basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO} onQuadraClick={abrirQuadra} />
             </Card>
           {/if}
           <div class="flex flex-wrap gap-1.5 mt-1.5">
@@ -353,7 +354,7 @@
             quadras={a.quadrasGeo}
             altura={300}
             destacarIds={a.quadras_ids}
-            basemap={data.profile?.pref_basemap ?? 'positron'}
+            basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO}
             onQuadraClick={(q) => abrirAcaoQuadra(q, a)}
             pois={secaoEstacionar === 'grupo' ? poisEstacionar : []}
           />
@@ -414,7 +415,7 @@
       <h2 class="text-xs uppercase tracking-wider font-bold text-amber-900 mb-2 flex items-center gap-2"><Icon nome="walk" size={14} /> Sua parte — {p.arranjo_nome}</h2>
       {#if p.quadrasGeo.length > 0}
         <Card padding="sm">
-          <AdminMapa quadras={p.quadrasGeo} altura={300} destacarIds={p.quadras_ids} basemap={data.profile?.pref_basemap ?? 'positron'} onQuadraClick={abrirQuadra} />
+          <AdminMapa quadras={p.quadrasGeo} altura={300} destacarIds={p.quadras_ids} basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO} onQuadraClick={abrirQuadra} />
         </Card>
       {/if}
       <div class="flex flex-wrap gap-1.5 mt-2">
@@ -441,7 +442,7 @@
             quadras={data.territorioPessoal}
             altura={300}
             destacarIds={data.territorioPessoal.map((q) => q.id)}
-            basemap={data.profile?.pref_basemap ?? 'positron'}
+            basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO}
             onQuadraClick={abrirQuadra}
             pois={secaoEstacionar === 'pessoal' ? poisEstacionar : []}
           />
@@ -599,7 +600,7 @@
           quadras={arranjoRep.quadrasGeo}
           selecionadasIds={[...quadrasSel]}
           altura={280}
-          basemap={data.profile?.pref_basemap ?? 'positron'}
+          basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO}
           onQuadraClick={(q) => toggleQuadra(q.id)}
           legenda={false}
         />

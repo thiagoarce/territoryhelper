@@ -5,13 +5,30 @@
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import type { LocalComUnidades } from '$lib/server/queries';
   import Icon, { type NomeIcone } from '$lib/ui/Icon.svelte';
+  import { urlBasemap, trocarBasemap, BASEMAP_CAMPO } from '$lib/mapa-estilos';
+  import { instalarToqueLongo } from '$lib/mapa-toque-longo';
+
+  /** Pino avulso desenhado por cima (estacionamento, referência, ponto salvo) */
+  export interface PoiQuadraMap {
+    id: string;
+    lat: number;
+    lng: number;
+    nome: string;
+    icone: NomeIcone;
+    /** cor da borda — distingue estacionamento (azul) de ponto salvo (âmbar) */
+    cor?: string;
+    url?: string;
+  }
 
   let {
     quadraGeo,
     quadraColor,
     locais,
     numeroPorLocal = new Map(),
-    altura = 280
+    altura = 280,
+    basemap = BASEMAP_CAMPO,
+    pois = [],
+    onToqueLongo
   }: {
     quadraGeo: unknown | null;
     quadraColor: string;
@@ -19,6 +36,10 @@
     /** id do local → posição na lista, pra correlacionar pino do mapa com o card da lista */
     numeroPorLocal?: Map<number, number>;
     altura?: number;
+    basemap?: string;
+    pois?: PoiQuadraMap[];
+    /** toque longo no mapa (dirigente cadastrando ponto de referência) */
+    onToqueLongo?: (lngLat: { lng: number; lat: number }) => void;
   } = $props();
 
   let container: HTMLDivElement;
@@ -29,6 +50,7 @@
   let localMarkers: any[] = [];
   let watchId: number | null = null;
   let mapaPronto = $state(false);
+  let desinstalarToqueLongo: (() => void) | null = null;
 
   function iconePorTipo(tipo: string): NomeIcone {
     if (tipo === 'predio') return 'building';
@@ -139,6 +161,55 @@
     if (mapaPronto) desenharPinos();
   });
 
+  // Pinos avulsos (estacionamento/referência/ponto salvo). Mesma máquina
+  // de markers do AdminMapa: teardown + rebuild a cada mudança.
+  // ⚠️ deps LIDAS antes do guard — com o `return` primeiro o $effect não
+  // registra dependência nenhuma e nunca mais roda (bug já cometido aqui
+  // no AdminMapa: os pinos de POI simplesmente não apareciam).
+  let poiMarkers: any[] = [];
+  $effect(() => {
+    const lista = pois;
+    const pronto = mapaPronto;
+    if (!pronto || !mapa || !maplibreRef) return;
+    for (const m of poiMarkers) { try { m.remove(); } catch {} }
+    poiMarkers = [];
+    for (const p of lista) {
+      const cor = p.cor ?? '#2563eb';
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = p.nome;
+      el.style.cssText = `
+        cursor:pointer;background:white;border:2px solid ${cor};border-radius:50%;
+        width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+        color:${cor};box-shadow:0 2px 6px rgba(0,0,0,.2);padding:0;
+      `;
+      mount(Icon, { target: el, props: { nome: p.icone, size: 18 } });
+      if (p.url) {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          window.open(p.url, '_blank', 'noopener');
+        };
+      }
+      const popup = new maplibreRef.Popup({ offset: 18, closeButton: false })
+        .setHTML(`<div style="font-size:13px"><strong>${p.nome}</strong></div>`);
+      poiMarkers.push(
+        new maplibreRef.Marker({ element: el }).setLngLat([p.lng, p.lat]).setPopup(popup).addTo(mapa)
+      );
+    }
+  });
+
+  // Troca de fundo ao vivo (mesma sentinela dos outros mapas: o primeiro
+  // valor já foi usado na construção, não recria o estilo à toa).
+  let basemapAtual: string | null = null;
+  $effect(() => {
+    const b = basemap;
+    if (!mapa) return;
+    if (basemapAtual === null) { basemapAtual = b; return; }
+    if (basemapAtual === b) return;
+    basemapAtual = b;
+    trocarBasemap(mapa, b);
+  });
+
   onMount(async () => {
     // OpenFreeMap — vector tiles 100% free, sem API key, sem limites.
     // E4: offline com o mapa do município baixado, criarMapaBase troca
@@ -148,13 +219,14 @@
     // registrar outro aqui (addProtocol é global, o último ganha).
     const { maplibre, mapa: m } = await criarMapaBase({
       container,
-      styleUrl: 'https://tiles.openfreemap.org/styles/positron',
+      styleUrl: urlBasemap(basemap),
       zoom: 15,
       navControl: { visualizePitch: false }
     });
     maplibreRef = maplibre;
     mapa = m;
     carregamento = estadoCarregamentoMapa(mapa);
+    if (onToqueLongo) desinstalarToqueLongo = instalarToqueLongo(mapa, onToqueLongo);
 
     mapa.on('load', () => {
       // Polígono da quadra
@@ -250,6 +322,7 @@
     if (watchId != null) {
       try { navigator.geolocation.clearWatch(watchId); } catch {}
     }
+    desinstalarToqueLongo?.();
     carregamento?.destruir();
     if (mapa) {
       try { mapa.remove(); } catch {}

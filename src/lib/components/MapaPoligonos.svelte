@@ -1,18 +1,12 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import { urlBasemap, trocarBasemap, type Basemap } from '$lib/mapa-estilos';
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import type { LocalComGeo } from '../../routes/admin/poligonos/+page';
 
-  type Basemap = 'positron' | 'liberty' | 'bright';
-
-  const BASEMAPS: Record<Basemap, string> = {
-    positron: 'https://tiles.openfreemap.org/styles/positron',
-    liberty: 'https://tiles.openfreemap.org/styles/liberty',
-    bright: 'https://tiles.openfreemap.org/styles/bright'
-  };
 
   type FaceCluster = { key: string; lat: number; lng: number; qtd: number; selecionada: boolean };
   type TceGeo = { id: string; nome: string; status: string; poly_geojson: unknown | null };
@@ -217,7 +211,7 @@
     if (!mapa) return;
     if (basemapAtual === b) return;
     basemapAtual = b;
-    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+    trocarBasemap(mapa, b);
   });
 
   // Atualiza GeoJSON quando dados mudam
@@ -290,7 +284,7 @@
   onMount(async () => {
     const { maplibre: ml, mapa: m } = await criarMapaBase({
       container,
-      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
+      styleUrl: urlBasemap(basemap),
       zoom: 14
     });
     maplibre = ml;

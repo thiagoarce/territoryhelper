@@ -7,6 +7,7 @@
   import Toaster from '$lib/ui/Toaster.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
+  import { BASEMAP_CAMPO } from '$lib/mapa-estilos';
 
   let { data }: { data: { territorio: any; token: string } } = $props();
 
@@ -238,7 +239,7 @@
   <div class="p-4 space-y-4 max-w-3xl mx-auto">
     <!-- Mapa -->
     {#if quadrasMapa.length > 0 || poisPredios.length > 0 || poisTceComercios.length > 0 || poisEstacionar.length > 0}
-      <AdminMapa bind:this={mapaRef} quadras={quadrasMapa} pois={[...poisPredios, ...poisTceComercios, ...poisEstacionar]} altura={420} />
+      <AdminMapa bind:this={mapaRef} quadras={quadrasMapa} pois={[...poisPredios, ...poisTceComercios, ...poisEstacionar]} altura={420} basemap={BASEMAP_CAMPO} />
     {/if}
 
     <!-- Compartilhar -->

@@ -1,6 +1,8 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import { urlBasemap, trocarBasemap, type Basemap } from '$lib/mapa-estilos';
+  import { instalarToqueLongo } from '$lib/mapa-toque-longo';
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy, mount } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
@@ -13,15 +15,11 @@
     lng: number;
     nome: string;
     icone: NomeIcone;
+    /** cor da borda — separa POI do OSM (azul) de ponto salvo (âmbar) */
+    cor?: string;
     url?: string;
   }
 
-  type Basemap = 'positron' | 'liberty' | 'bright';
-  const BASEMAPS: Record<Basemap, string> = {
-    positron: 'https://tiles.openfreemap.org/styles/positron',
-    liberty: 'https://tiles.openfreemap.org/styles/liberty',
-    bright: 'https://tiles.openfreemap.org/styles/bright'
-  };
 
   let {
     quadras,
@@ -33,7 +31,8 @@
     pois = [],
     legenda = true,
     basemap = 'positron',
-    popupDetalhe = false
+    popupDetalhe = false,
+    onToqueLongo
   }: {
     quadras: QuadraGeo[];
     altura?: number;
@@ -56,6 +55,8 @@
     // conclusão/contagens) em vez de disparar onQuadraClick — visão geral
     // do dirigente não tem ação nenhuma no mapa.
     popupDetalhe?: boolean;
+    /** toque longo no mapa (dirigente cadastrando ponto de referência) */
+    onToqueLongo?: (lngLat: { lng: number; lat: number }) => void;
   } = $props();
 
   // Itens da legenda batendo com o fillColor calculado mais abaixo.
@@ -91,6 +92,7 @@
   let userMarker: any = null;
   let watchId: number | null = null;
   let poiMarkers: any[] = [];
+  let desinstalarToqueLongo: (() => void) | null = null;
   let maplibreRef: any = null;
   let basemapAtual: Basemap | null = null;
 
@@ -101,7 +103,7 @@
     if (basemapAtual === null) { basemapAtual = b; return; } // já nasceu com esse estilo
     if (basemapAtual === b) return;
     basemapAtual = b;
-    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+    trocarBasemap(mapa, b);
   });
 
   // Bucket de recência calculado em JS (MapLibre não faz date-diff)
@@ -176,7 +178,13 @@
   // Regra dos runes (ver CLAUDE.md): deps reativas SEMPRE antes do guard
   // + `carregado` como gatilho de "mapa pronto" (padrão dos outros
   // effects deste arquivo).
-  let qtdPoisDesenhados = -1; // -1 = primeiro draw (fit inicial do load já cobre)
+  // `fitInicialFeito` liga no fitBounds do 'load'. A sentinela anterior
+  // (contagem = -1 no primeiro draw) errava quando os pinos chegavam
+  // ANTES do mapa carregar: o primeiro draw era descartado como "o load
+  // já enquadrou", mas o load tinha enquadrado sem eles — buscava e
+  // "não aparecia nada".
+  let fitInicialFeito = false;
+  let qtdPoisDesenhados = 0;
   $effect(() => {
     const lista = pois;
     const ok = carregado;
@@ -189,7 +197,8 @@
       el.type = 'button';
       el.title = p.nome;
       el.setAttribute('aria-label', p.nome);
-      el.style.cssText = 'width:32px;height:32px;border-radius:50%;background:white;border:2px solid #2563eb;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;color:#2563eb;display:flex;align-items:center;justify-content:center;padding:0;';
+      const cor = p.cor ?? '#2563eb';
+      el.style.cssText = `width:32px;height:32px;border-radius:50%;background:white;border:2px solid ${cor};box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;color:${cor};display:flex;align-items:center;justify-content:center;padding:0;`;
       mount(Icon, { target: el, props: { nome: p.icone, size: 18 } });
       if (p.url) {
         el.addEventListener('click', (e) => {
@@ -205,7 +214,7 @@
     // fora da vista ajustada ao território, e sem isso "buscou mas não
     // apareceu nada". No primeiro draw não mexe (o fitBounds do load já
     // considerou os pois iniciais).
-    if (qtdPoisDesenhados !== -1 && lista.length > 0 && lista.length !== qtdPoisDesenhados) {
+    if (fitInicialFeito && lista.length > 0 && lista.length !== qtdPoisDesenhados) {
       try {
         const bounds = mapa.getBounds();
         for (const p of lista) bounds.extend([p.lng, p.lat]);
@@ -266,7 +275,7 @@
   onMount(async () => {
     const { maplibre, mapa: m } = await criarMapaBase({
       container,
-      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
+      styleUrl: urlBasemap(basemap),
       zoom: 14,
       // habilita screenshot via toDataURL (perf negligível pra este uso)
       extra: { preserveDrawingBuffer: true }
@@ -274,6 +283,7 @@
     maplibreRef = maplibre;
     mapa = m;
     carregamento = estadoCarregamentoMapa(mapa);
+    if (onToqueLongo) desinstalarToqueLongo = instalarToqueLongo(mapa, onToqueLongo);
 
     mapa.on('load', () => {
       // Aglutina todas as quadras como uma FeatureCollection
@@ -401,6 +411,7 @@
         }
         if (bounds) mapa.fitBounds(bounds, { padding: 40, duration: 0, maxZoom: 16 });
       } catch {}
+      fitInicialFeito = true;
 
       // GPS
       if (navigator.geolocation) {
@@ -420,6 +431,7 @@
 
   onDestroy(() => {
     if (watchId != null) try { navigator.geolocation.clearWatch(watchId); } catch {}
+    desinstalarToqueLongo?.();
     carregamento?.destruir();
     if (mapa) try { mapa.remove(); } catch {}
   });
