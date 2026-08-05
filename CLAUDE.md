@@ -65,7 +65,22 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   "Limpar lidas" apaga as PRÓPRIAS notificações já lidas via
   `POST /api/notificacoes {limparLidas:true}` — RLS de DELETE própria,
   migration 088; não-lida nunca é apagada por aqui),
-  `EstacionarPertoSheet.svelte` ("Estacionar perto" do app antigo,
+  `EstacionarPertoSheet.svelte` — "Onde parar / referências". Reescrito
+  depois da queixa "nem sempre funciona": agora LISTA os resultados com
+  distância e rota (antes só jogava pino no mapa e FECHAVA, então quem
+  não visse o mapa mexer achava que nada aconteceu), raio ajustável,
+  distingue "não tem nada aqui" de "servidor ocupado", e mostra os
+  pontos salvos da congregação ANTES dos do OSM (não dependem de rede).
+  Transporte em `$lib/utils/overpass.ts`: CORRIDA em paralelo entre os
+  espelhos (era série com abort de 13s cada = até 39s de espera), espelho
+  bom lembrado em localStorage, `out center 200` + ordenação por
+  distância no client (o limite de 60 cortava os mais PERTO, já que a
+  Overpass não ordena) e refaz a busca com o dobro do raio quando não
+  acha nada. Categorias de orientação (banco/escola/igreja/hospital)
+  além de estacionamento/praça/posto/mercado/padaria. Sugere onde parar
+  via `$lib/paradas.ts`. Usado em `/t/[token]`, `/publicador/casa-a-casa`
+  e `/publicador/quadra/[id]`. Descrição original —
+  ("Estacionar perto" do app antigo,
   reconstruído — `$lib/utils/overpass.ts` já existia pronto mas órfão,
   nenhuma tela usava; busca POIs via Overpass/OSM num raio de 800m de
   um centro, categorias estacionamento/praça/farmácia/padaria/posto/
@@ -202,6 +217,36 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   sem isso a abertura com rede lenta parecia "mapa quebrado" em vez de
   "carregando"). Cada componente ainda é dono das PRÓPRIAS camadas
   (fill/line/source) — só a criação da instância é compartilhada.
+- `src/lib/mapa-estilos.ts` — `BASEMAPS`/`urlBasemap`/`trocarBasemap` num
+  lugar só (a constante estava duplicada em 4 componentes + literal no
+  QuadraMap). `BASEMAP_CAMPO = 'liberty'`: as telas de campo nascem com
+  fundo que NOMEIA comércio/banco/escola — o Positron cinza escondia
+  justamente as referências que a congregação usa pra se orientar; a
+  preferência de `/perfil` continua mandando. `trocarBasemap` passa pelo
+  `estiloDoMapa` (o `setStyle` com URL crua perdia o fallback offline).
+- `src/lib/mapa-toque-longo.ts` — segurar o dedo no mapa devolve a
+  coordenada (é assim que o dirigente cadastra ponto de referência em
+  campo). Guarda de arrasto + cancelamento em pan/zoom, mais o
+  `contextmenu` do MapLibre no desktop — no toque ele varia por
+  navegador (iOS costuma não emitir dentro do canvas).
+- `src/lib/paradas.ts` — sugestão de "pare aqui" (PURA, testada):
+  `quantasParadas` escala por nº de quadras E por área (12 quadras num
+  quarteirão continuam merecendo 1 ponto); âncoras por farthest-point
+  sampling DETERMINÍSTICO (mesma entrada = mesma saída em qualquer ordem
+  de array, senão a sugestão "dança" a cada recarga); score = bônus por
+  fonte/categoria menos distância/100, com os pesos calibrados em
+  "metros equivalentes" (ponto salvo +3 ≈ tolera 300m a mais, e NÃO
+  vence um estacionamento na esquina). Âncora sem candidato dentro do
+  raio é pulada: devolver menos (ou nenhuma) sugestão é resposta honesta.
+- `src/lib/lados.ts` — "um lado = uma rua" (PURO, testado). `chaveLado`
+  normaliza acento e abreviação (`R. José` = `RUA JOSE`) mas NÃO
+  descarta o tipo (`Travessa João` ≠ `Rua João`). `ladoFeitoNoCiclo`
+  ignora marca anterior à última conclusão cheia (senão a quadra
+  reaberta ficaria com os lados verdes); `todosLadosFeitos` é false em
+  quadra SEM endereço (nada a concluir não é "tudo concluído").
+  ⚠️ O agrupamento por rua em `/publicador/quadra/[id]` e o `moverLocal`
+  (reordenar ▲▼) usam a MESMA chave — mudar uma sem a outra quebra a
+  reordenação em silêncio.
 - `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
@@ -330,6 +375,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacao_controle` | Lista de controle por publicação — servo escolhe uma publicação em `/publicacoes` e confirma, publicador a publicador, `qtd_pedida`/`qtd_entregue` (contador +/-). Diferente de `pedidos_publicacao` (fila de pedido especial avulso com status): aqui é registro manual sem fluxo, 1 linha por (publicação, publicador). Gate por `is_servo_pub()`, mesma capacidade de sempre |
 | `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
 | `notificacoes` / `push_subscriptions` | PUSH-A — sino no header (`NotificacoesBell.svelte`, fallback universal, funciona sem push) + Web Push real (JWT VAPID assinado via WebCrypto, tickle sem payload — SW busca o conteúdo em `/api/notificacoes`). Disparado por `$lib/server/push.ts::criarNotificacao()` em: designação criada, cartas designadas, `designarParticipante` (TP-F), status de `pedidos_publicacao` mudou (P-A), saída de agendamento em <48h. Ativar em `/perfil` (botão, exige gesto do usuário) |
+| `pontos_referencia` | Pontos NOMEADOS pela congregação ("Banco do Brasil da Fernando") — nome/tipo (estacionamento/referencia/entrada/atencao)/geo/notas + vínculo OPCIONAL com quadra ou território + `osm_id` (quando nasceu de um POI do OSM salvo com nosso apelido; índice único PARCIAL). Migration 091, view `pontos_referencia_geo`. RLS: leitura de qualquer autenticado, escrita de `is_dirigente_or_admin()`. Nasce por TOQUE LONGO no mapa (`$lib/mapa-toque-longo.ts`), por "salvar" um POI achado no Estacionar perto, ou por GPS. Entra no payload cacheado da quadra → funciona no modo rua. Vai também pro `/t/<token>` (migration 093 acrescenta a chave `pontos` na RPC `territorio_publico`: ponto da quadra/território ou a até 300m da união dos polígonos) |
+| `quadra_lados_conclusoes` | Conclusão POR LADO da quadra ("só fizemos o lado da Rua X"). **Lado = RUA** (`locais.logradouro` normalizado por `$lib/lados.ts::chaveLado`), NÃO `face_ibge` (texto livre, quase sempre NULL, "Face 3" não diz nada pro publicador). Migration 092. **Marcar lado é PROGRESSO do ciclo, não fecha ciclo**: não escreve em `quadras.data_conclusao`, então nenhum consumidor binário (S-13, dashboard, campanha, cor do mapa, cartão S-12, cobertura, lembretes, fechamento de designação) enxerga diferença. Quando o ÚLTIMO lado é marcado, `registrarConclusaoLado` chama `registrarConclusaoQuadra` — a conclusão cheia continua sendo o único caminho de escrita. Índice único (quadra, lado, data) + upsert `ignoreDuplicates`: a tela grava por `postComFila` e o replay reenviaria o mesmo POST. Nenhuma coluna nova em `quadras` (o trigger da 090 barraria o dirigente) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
