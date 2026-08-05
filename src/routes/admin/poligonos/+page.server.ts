@@ -6,6 +6,7 @@ import type { Actions } from './$types';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import { exigirAdminAction } from '$lib/server/guards';
 import { fail } from '@sveltejs/kit';
+import { criarPontoReferencia, atualizarPontoReferencia, excluirPontoReferencia } from '$lib/server/pontos';
 
 export const actions: Actions = {
   autoVincular: async ({ locals }) => {
@@ -217,6 +218,60 @@ export const actions: Actions = {
 
   // ===== Geometria (terra-draw) =====
   // Salva polígono: cria quadra nova ou edita forma de existente
+  // ── Pontos de referência (catálogo global) ────────────────────────
+  // Ficam AQUI e não na tela da quadra: o local de encontro é
+  // característica do território (às vezes de VÁRIOS — encontro de
+  // territórios costuma ter um bom ponto), não da quadra.
+  salvarPonto: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0) || null;
+    const territorios = fd.getAll('territorios').map((v) => String(v)).filter(Boolean);
+    const dados = {
+      nome: String(fd.get('nome') ?? ''),
+      tipo: fd.get('tipo'),
+      lat: fd.get('lat'),
+      lng: fd.get('lng'),
+      notas: String(fd.get('notas') ?? '') || null,
+      endereco: String(fd.get('endereco') ?? '') || null,
+      mapsUrl: String(fd.get('maps_url') ?? '') || null,
+      osmId: String(fd.get('osm_id') ?? '') || null,
+      criadoPor: locals.user?.id ?? null
+    };
+    const r = id
+      ? await atualizarPontoReferencia(locals.supabase, id, dados, territorios)
+      : await criarPontoReferencia(locals.supabase, { ...dados, territorios });
+    if (r.error) return fail(400, { erro: r.error });
+    return { ok: true, msg: id ? 'Ponto atualizado' : 'Ponto salvo' };
+  },
+
+  validarPonto: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error, count } = await locals.supabase
+      .from('pontos_referencia')
+      .update({ status: 'validado' }, { count: 'exact' })
+      .eq('id', id);
+    if (error) return fail(400, { erro: error.message });
+    if (count === 0) return fail(403, { erro: 'Sem permissão' });
+    return { ok: true, msg: 'Ponto validado' };
+  },
+
+  excluirPonto: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error: err } = await excluirPontoReferencia(locals.supabase, id);
+    if (err) return fail(400, { erro: err });
+    return { ok: true, msg: 'Ponto excluído' };
+  },
+
   salvarPoligonoQuadra: async ({ request, locals }) => {
     const guard = exigirAdminAction(locals);
     if (guard) return guard;

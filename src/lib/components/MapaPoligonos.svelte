@@ -30,6 +30,7 @@
     onClickQuadra,
     onClickLocal,
     onClickFace,
+    onClickMapa,
     onDesenhoPronto
   }: {
     quadras: QuadraGeo[];
@@ -49,6 +50,8 @@
     basemap?: Basemap;
     onClickQuadra?: (q: QuadraGeo) => void;
     onClickLocal?: (l: LocalComGeo) => void;
+    /** clique em QUALQUER lugar do mapa (modo Pontos: marcar coordenada) */
+    onClickMapa?: (lngLat: { lng: number; lat: number }) => void;
     onClickFace?: (key: string) => void;
     onDesenhoPronto?: () => void;
   } = $props();
@@ -420,6 +423,18 @@
         if (!props) return;
         const q = (quadras ?? []).find((x) => x.id === props.id);
         if (q && onClickQuadra) onClickQuadra(q);
+      });
+
+      // Clique no mapa "vazio" — só quando o modo pede (Pontos). Vem
+      // DEPOIS dos handlers de camada e checa defaultPrevented pra um
+      // clique em endereço/quadra não virar ponto novo sem querer.
+      mapa.on('click', (e: any) => {
+        if (!onClickMapa || e.defaultPrevented) return;
+        const emCamada = mapa.queryRenderedFeatures(e.point, {
+          layers: ['locais-points', 'quadras-fill', 'faces-cluster'].filter((l) => mapa.getLayer(l))
+        });
+        if (emCamada.length > 0) return;
+        onClickMapa({ lng: e.lngLat.lng, lat: e.lngLat.lat });
       });
 
       mapa.on('click', 'faces-cluster', (e: any) => {

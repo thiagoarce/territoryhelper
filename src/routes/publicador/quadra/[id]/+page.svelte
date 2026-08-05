@@ -37,14 +37,10 @@
   let pontoOsmId = $state<string | null>(null);
   const pontosSalvos = $derived(data.pontosReferencia ?? []);
 
-  function abrirCadastroPonto(lngLat: { lng: number; lat: number }) {
-    if (!podeDirigir) return; // publicador comum não cadastra
-    pontoLat = lngLat.lat;
-    pontoLng = lngLat.lng;
-    pontoNome = '';
-    pontoOsmId = null;
-    sheetPonto = true;
-  }
+  // Sem toque longo aqui de propósito: o ponto de encontro é
+  // característica do TERRITÓRIO (às vezes de vários) e se cadastra em
+  // /admin/poligonos. Em campo o dirigente só SUGERE, a partir de um
+  // lugar que o app achou.
   function salvarPoiComoPonto(p: { nome: string; lat: number; lng: number; osmId: string }) {
     pontoLat = p.lat;
     pontoLng = p.lng;
@@ -445,13 +441,7 @@
       {numeroPorLocal}
       altura={240}
       pois={poisMapa}
-      onToqueLongo={podeDirigir ? abrirCadastroPonto : undefined}
     />
-    {#if podeDirigir}
-      <p class="mt-1 text-xs text-slate-400">
-        Segure o dedo no mapa pra salvar um ponto (ex: onde dá pra estacionar).
-      </p>
-    {/if}
     <button
       type="button"
       onclick={() => (sheetEstacionar = true)}
@@ -476,8 +466,8 @@
   bind:lng={pontoLng}
   nomeInicial={pontoNome}
   osmId={pontoOsmId}
-  quadraId={data.quadra.id}
-  territorioId={data.quadra.territorio_id}
+  modo="sugestao"
+  action="?/sugerirPontoReferencia"
 />
 
 <!-- Filtros -->

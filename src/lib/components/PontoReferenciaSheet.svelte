@@ -19,18 +19,19 @@
     lat = $bindable<number | null>(null),
     lng = $bindable<number | null>(null),
     nomeInicial = '',
+    enderecoInicial = null,
     osmId = null,
-    quadraId = null,
-    territorioId = null,
+    modo = 'cadastro',
     action = '?/salvarPontoReferencia'
   }: {
     open?: boolean;
     lat?: number | null;
     lng?: number | null;
     nomeInicial?: string;
+    enderecoInicial?: string | null;
     osmId?: string | null;
-    quadraId?: string | null;
-    territorioId?: string | null;
+    /** 'sugestao' = dirigente em campo; o servo valida depois */
+    modo?: 'cadastro' | 'sugestao';
     action?: string;
   } = $props();
 
@@ -78,13 +79,12 @@
     fd.append('lng', String(v.lng));
     if (notas.trim()) fd.append('notas', notas.trim());
     if (osmId) fd.append('osm_id', osmId);
-    if (quadraId) fd.append('quadra_id', quadraId);
-    if (territorioId) fd.append('territorio_id', territorioId);
+    if (enderecoInicial) fd.append('endereco', enderecoInicial);
 
-    const r = await postComFila(action, fd, `Salvar ponto "${v.nome}"`);
+    const r = await postComFila(action, fd, `Ponto "${v.nome}"`);
     salvando = false;
     if (r.ok) {
-      toast.success('Ponto salvo');
+      toast.success(modo === 'sugestao' ? 'Sugestão enviada pro servo de território' : 'Ponto salvo');
       open = false;
       await invalidateAll();
     } else if (r.offline) {
@@ -96,9 +96,12 @@
   }
 </script>
 
-<BottomSheet bind:open title="Salvar ponto">
+<BottomSheet bind:open title={modo === 'sugestao' ? 'Sugerir ponto' : 'Salvar ponto'}>
   <p class="text-sm text-slate-500 mb-3">
     Dê o nome que a congregação usa — é isso que vai aparecer pra todo mundo.
+    {#if modo === 'sugestao'}
+      O servo de território confere e valida antes do ponto virar sugestão de parada.
+    {/if}
   </p>
 
   <label for="ponto-nome" class="block text-sm font-medium mb-1">Nome</label>
@@ -145,6 +148,6 @@
   </div>
 
   <Button variant="primary" class="w-full" loading={salvando} onclick={salvar}>
-    <Icon nome="check" size={14} /> Salvar ponto
+    <Icon nome="check" size={14} /> {modo === 'sugestao' ? 'Enviar sugestão' : 'Salvar ponto'}
   </Button>
 </BottomSheet>

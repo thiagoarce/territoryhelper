@@ -7,7 +7,7 @@ import { hojeIsoBrasil, horaBrasilParaIso } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 import { registrarConclusaoQuadra, desfazerConclusaoQuadra, registrarConclusaoLado, desfazerConclusaoLado } from '$lib/server/conclusao';
-import { criarPontoReferencia, excluirPontoReferencia } from '$lib/server/pontos';
+import { criarPontoReferencia } from '$lib/server/pontos';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
@@ -338,13 +338,15 @@ export const actions: Actions = {
     return { ok: true, msg: 'Marca do lado removida' };
   },
 
-  // Ponto de referência nomeado ("Banco do Brasil da Fernando"). Poder
-  // de dirigente/admin, igual concluir quadra — o nome vira vocabulário
-  // da congregação inteira, não é anotação pessoal.
-  salvarPontoReferencia: async ({ request, locals, params }) => {
+  // SUGESTÃO de ponto de referência, a partir de um lugar que o app
+  // achou em campo. O cadastro de verdade mora em /admin/poligonos: o
+  // ponto de encontro é característica do TERRITÓRIO (às vezes de
+  // vários), não da quadra — por isso aqui o dirigente só sugere e o
+  // admin valida. Admin sugerindo já entra validado.
+  sugerirPontoReferencia: async ({ request, locals }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin pode salvar ponto' });
+      return fail(403, { erro: 'Só dirigente/admin pode sugerir ponto' });
     }
     const fd = await request.formData();
     const { error: err } = await criarPontoReferencia(locals.supabase, {
@@ -353,28 +355,16 @@ export const actions: Actions = {
       lat: fd.get('lat'),
       lng: fd.get('lng'),
       notas: String(fd.get('notas') ?? '') || null,
-      // Vincula à quadra que está aberta — o ponto aparece de novo pra
-      // quem trabalhar essa quadra depois.
-      quadraId: String(fd.get('quadra_id') ?? '') || params.id,
-      territorioId: String(fd.get('territorio_id') ?? '') || null,
+      endereco: String(fd.get('endereco') ?? '') || null,
       osmId: String(fd.get('osm_id') ?? '') || null,
+      status: locals.profile?.role === 'admin' ? 'validado' : 'sugerido',
       criadoPor: locals.user.id
     });
     if (err) return fail(400, { erro: err });
-    return { ok: true, msg: 'Ponto salvo' };
-  },
-
-  excluirPontoReferencia: async ({ request, locals }) => {
-    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
-    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
-      return fail(403, { erro: 'Só dirigente/admin' });
-    }
-    const fd = await request.formData();
-    const id = Number(fd.get('id') ?? 0);
-    if (!id) return fail(400, { erro: 'id obrigatório' });
-    const { error: err } = await excluirPontoReferencia(locals.supabase, id);
-    if (err) return fail(400, { erro: err });
-    return { ok: true, msg: 'Ponto excluído' };
+    return {
+      ok: true,
+      msg: locals.profile?.role === 'admin' ? 'Ponto salvo' : 'Sugestão enviada pro servo de território'
+    };
   },
 
   // Marca a quadra atual como concluída (só dirigente/admin). Poder de
