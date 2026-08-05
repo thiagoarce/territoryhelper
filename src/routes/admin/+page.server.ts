@@ -14,6 +14,8 @@ import {
   msgConflitoReserva
 } from '$lib/server/queries';
 import { criarNotificacao } from '$lib/server/push';
+import { registrarConclusaoLado, desfazerConclusaoLado } from '$lib/server/conclusao';
+import { ladosDaQuadra } from '$lib/lados';
 
 export const actions: Actions = {
   // Admin designa TERRITÓRIO PESSOAL direto da Geral (sempre pessoal —
@@ -456,6 +458,75 @@ export const actions: Actions = {
   },
 
   // Histórico de conclusões de uma quadra (pro long-press / detalhe)
+  // Lados da quadra (migration 092) pro admin: "as pessoas informam e
+  // ele tem que botar no sistema". Devolve os lados derivados dos
+  // endereços + o que já foi marcado no ciclo atual.
+  ladosDaQuadra: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const id = String(fd.get('id') ?? '');
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const [locaisRes, ladosRes, quadraRes] = await Promise.all([
+      locals.supabase.from('locais').select('id, logradouro, marcado_nao_existe').eq('quadra_id', id),
+      locals.supabase
+        .from('quadra_lados_conclusoes')
+        .select('lado_chave, data_conclusao, marcado_em')
+        .eq('quadra_id', id),
+      locals.supabase.from('quadras').select('data_conclusao').eq('id', id).maybeSingle()
+    ]);
+    if (locaisRes.error) return fail(400, { erro: locaisRes.error.message });
+    if (ladosRes.error) return fail(400, { erro: ladosRes.error.message });
+    return {
+      ok: true,
+      lados: ladosDaQuadra(
+        locaisRes.data ?? [],
+        ladosRes.data ?? [],
+        quadraRes.data?.data_conclusao ?? null
+      )
+    };
+  },
+
+  concluirLadoAdmin: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    const fd = await request.formData();
+    const quadraId = String(fd.get('quadra_id') ?? '');
+    const chave = String(fd.get('lado_chave') ?? '');
+    const rotulo = String(fd.get('lado_rotulo') ?? '');
+    if (!quadraId || !chave || !rotulo) return fail(400, { erro: 'quadra e lado obrigatórios' });
+    const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
+    const hora = String(fd.get('hora') ?? '').trim();
+    const marcadoEm = hora ? horaBrasilParaIso(data, hora) : null;
+    const r = await registrarConclusaoLado(
+      locals.supabase,
+      quadraId,
+      { chave, rotulo },
+      data,
+      locals.user.id,
+      marcadoEm
+    );
+    if (r.error) return fail(400, { erro: r.error });
+    return {
+      ok: true,
+      quadraConcluida: r.quadraConcluida,
+      msg: r.quadraConcluida ? 'Último lado — quadra concluída' : `Lado "${rotulo}" marcado`
+    };
+  },
+
+  desfazerLadoAdmin: async ({ request, locals }) => {
+    const guard = exigirAdminAction(locals);
+    if (guard) return guard;
+    const fd = await request.formData();
+    const quadraId = String(fd.get('quadra_id') ?? '');
+    const chave = String(fd.get('lado_chave') ?? '');
+    if (!quadraId || !chave) return fail(400, { erro: 'quadra e lado obrigatórios' });
+    const { error: err } = await desfazerConclusaoLado(locals.supabase, quadraId, chave);
+    if (err) return fail(400, { erro: err });
+    return { ok: true, msg: 'Marca do lado removida' };
+  },
+
   historico: async ({ request, locals }) => {
     const guard = exigirAdminAction(locals);
     if (guard) return guard;

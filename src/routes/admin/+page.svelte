@@ -81,6 +81,48 @@
   let sheetDetalheQuadra = $state(false);
   let quadraDetalhe = $state<QuadraGeo | null>(null);
   let historicoQuadra = $state<{ data_conclusao: string; marcado_em: string; nome: string | null }[]>([]);
+  // Lados da quadra (migration 092): o servo de território recebe a
+  // informação de boca ("fizemos só o lado da Rua X") e precisa lançar.
+  let ladosQuadra = $state<{ chave: string; rotulo: string; localIds: number[]; feitoEm: string | null }[]>([]);
+  let carregandoLados = $state(false);
+  let salvandoLado = $state<string | null>(null);
+
+  async function carregarLados(quadraId: string) {
+    carregandoLados = true;
+    ladosQuadra = [];
+    try {
+      const fd = new FormData();
+      fd.append('id', quadraId);
+      const res = await fetch('?/ladosDaQuadra', { method: 'POST', body: fd });
+      const parsed = deserialize(await res.text()) as any;
+      if (parsed.type === 'success') ladosQuadra = parsed.data?.lados ?? [];
+    } finally {
+      carregandoLados = false;
+    }
+  }
+
+  async function marcarLadoAdmin(chave: string, rotulo: string, desfazer = false) {
+    if (!quadraDetalhe) return;
+    salvandoLado = chave;
+    const fd = new FormData();
+    fd.append('quadra_id', quadraDetalhe.id);
+    fd.append('lado_chave', chave);
+    fd.append('lado_rotulo', rotulo);
+    if (!desfazer) {
+      fd.append('data', dataConclusao);
+      fd.append('hora', horaConclusao);
+    }
+    const res = await fetch(desfazer ? '?/desfazerLadoAdmin' : '?/concluirLadoAdmin', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoLado = null;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg ?? 'Feito'));
+      await carregarLados(quadraDetalhe.id);
+      if (parsed.data?.quadraConcluida) await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro ?? 'Falhou'));
+    }
+  }
   let carregandoHistorico = $state(false);
 
   async function onLongPressQuadra(q: QuadraGeo) {
@@ -88,6 +130,7 @@
     historicoQuadra = [];
     sheetDetalheQuadra = true;
     carregandoHistorico = true;
+    carregarLados(q.id); // em paralelo com o histórico
     try {
       const fd = new FormData();
       fd.append('id', q.id);
@@ -857,6 +900,52 @@
           <span class="text-xs text-slate-400 ml-1">({dias}d atrás)</span>
         {:else}
           <span class="font-medium text-slate-400">nunca</span>
+        {/if}
+      </div>
+
+      <!-- Conclusão POR LADO: o servo recebe a informação de boca
+           ("fizemos só o lado da Rua X") e precisa conseguir lançar. -->
+      <div class="mt-3 border-t border-slate-100 pt-2">
+        <div class="text-xs font-semibold text-slate-600 mb-1">
+          Lados da quadra
+          {#if ladosQuadra.length > 0}
+            <span class="font-normal text-slate-400">
+              · {ladosQuadra.filter((l) => l.feitoEm).length} de {ladosQuadra.length} feitos
+            </span>
+          {/if}
+        </div>
+        {#if carregandoLados}
+          <div class="text-xs text-slate-400">carregando...</div>
+        {:else if ladosQuadra.length === 0}
+          <div class="text-xs text-slate-400">Esta quadra não tem endereço cadastrado.</div>
+        {:else}
+          <div class="space-y-1">
+            {#each ladosQuadra as l (l.chave)}
+              <div class="flex items-center gap-2 text-xs">
+                <span class="flex-1 min-w-0 truncate">{l.rotulo}</span>
+                <span class="text-slate-400">{l.localIds.length}</span>
+                {#if l.feitoEm}
+                  <button
+                    type="button"
+                    disabled={salvandoLado === l.chave}
+                    onclick={() => marcarLadoAdmin(l.chave, l.rotulo, true)}
+                    class="px-2 py-0.5 rounded-full bg-green-100 text-green-800 hover:bg-green-200 disabled:opacity-40"
+                    title="Desmarcar"
+                  >feito {new Date(l.feitoEm + 'T12:00:00').toLocaleDateString('pt-BR')}</button>
+                {:else}
+                  <button
+                    type="button"
+                    disabled={salvandoLado === l.chave}
+                    onclick={() => marcarLadoAdmin(l.chave, l.rotulo)}
+                    class="px-2 py-0.5 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  >marcar feito</button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            Usa a data e a hora escolhidas na barra de conclusão. Marcando o último lado, a quadra fecha sozinha.
+          </p>
         {/if}
       </div>
 
