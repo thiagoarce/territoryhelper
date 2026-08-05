@@ -238,6 +238,25 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   "metros equivalentes" (ponto salvo +3 ≈ tolera 300m a mais, e NÃO
   vence um estacionamento na esquina). Âncora sem candidato dentro do
   raio é pulada: devolver menos (ou nenhuma) sugestão é resposta honesta.
+- `src/lib/distribuicao.ts` — sugestão de COMO REPARTIR o território
+  entre os grupos do dia (PURA, testada): agrupa as quadras em FILAS
+  (faixas perpendiculares ao eixo comprido, com o limiar de corte
+  derivado do PRÓPRIO espaçamento das quadras — um valor fixo de 130m
+  fundia fileiras de quarteirão de ~110m), percorre em SERPENTINA
+  (a primeira fila começa pela ponta mais perto de onde o grupo parou)
+  e corta em N blocos contíguos. Devolve a frase pronta pro dirigente
+  falar ("Comecem pela 10A e sigam em linha reta mais 2 — pela R. X").
+  Usada no sheet de Repartir território (Casa a casa): o dirigente
+  informa quantos grupos vieram, vê a proposta e carrega cada parte pra
+  escolher quem vai nela.
+- `src/lib/maps-link.ts` — link do Google Maps → local (PURA, testada) +
+  `POST /api/maps-link` (server, segue o redirect que o browser não
+  segue por CORS). **O link curto NÃO traz coordenada** (verificado com
+  link real): resolve pra `?q=Nome - Endereço`. Quando falta coordenada
+  o endpoint geocodifica pelo NOME no Nominatim (o endereço com número
+  erra a rua) e devolve `confianca: 'aproximada'` — a tela obriga o
+  admin a conferir o pino. O link original fica salvo em
+  `pontos_referencia.maps_url` e é ele que a gente compartilha.
 - `src/lib/lados.ts` — "um lado = uma rua" (PURO, testado). `chaveLado`
   normaliza acento e abreviação (`R. José` = `RUA JOSE`) mas NÃO
   descarta o tipo (`Travessa João` ≠ `Rua João`). `ladoFeitoNoCiclo`
@@ -375,7 +394,7 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacao_controle` | Lista de controle por publicação — servo escolhe uma publicação em `/publicacoes` e confirma, publicador a publicador, `qtd_pedida`/`qtd_entregue` (contador +/-). Diferente de `pedidos_publicacao` (fila de pedido especial avulso com status): aqui é registro manual sem fluxo, 1 linha por (publicação, publicador). Gate por `is_servo_pub()`, mesma capacidade de sempre |
 | `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
 | `notificacoes` / `push_subscriptions` | PUSH-A — sino no header (`NotificacoesBell.svelte`, fallback universal, funciona sem push) + Web Push real (JWT VAPID assinado via WebCrypto, tickle sem payload — SW busca o conteúdo em `/api/notificacoes`). Disparado por `$lib/server/push.ts::criarNotificacao()` em: designação criada, cartas designadas, `designarParticipante` (TP-F), status de `pedidos_publicacao` mudou (P-A), saída de agendamento em <48h. Ativar em `/perfil` (botão, exige gesto do usuário) |
-| `pontos_referencia` | Pontos NOMEADOS pela congregação ("Banco do Brasil da Fernando") — nome/tipo (estacionamento/referencia/entrada/atencao)/geo/notas + vínculo OPCIONAL com quadra ou território + `osm_id` (quando nasceu de um POI do OSM salvo com nosso apelido; índice único PARCIAL). Migration 091, view `pontos_referencia_geo`. RLS: leitura de qualquer autenticado, escrita de `is_dirigente_or_admin()`. Nasce por TOQUE LONGO no mapa (`$lib/mapa-toque-longo.ts`), por "salvar" um POI achado no Estacionar perto, ou por GPS. Entra no payload cacheado da quadra → funciona no modo rua. Vai também pro `/t/<token>` (migration 093 acrescenta a chave `pontos` na RPC `territorio_publico`: ponto da quadra/território ou a até 300m da união dos polígonos) |
+| `pontos_referencia` + `ponto_referencia_territorios` | Pontos NOMEADOS pela congregação ("Banco do Brasil da Fernando") — nome/tipo (estacionamento/referencia/entrada/atencao)/geo/notas + vínculo OPCIONAL com quadra ou território + `osm_id` (quando nasceu de um POI do OSM salvo com nosso apelido; índice único PARCIAL). Migration 091, view `pontos_referencia_geo`. RLS: leitura de qualquer autenticado, escrita de `is_dirigente_or_admin()`. **Migration 094** mudou o dono: gestão é do ADMIN, na aba **Pontos** de `/admin/poligonos` (o ponto de encontro é característica do TERRITÓRIO — e um bom ponto serve a VÁRIOS, daí o N:N em `ponto_referencia_territorios`; cadastrar na tela da quadra era péssimo). Dirigente só SUGERE (`status='sugerido'`, policy própria de INSERT) a partir do "Onde parar/referências"; admin valida/edita/recusa. Nasce por clique no mapa em Polígonos, por link do Google Maps colado (ver `$lib/maps-link.ts`) ou por "salvar" um POI achado. Entra no payload cacheado da quadra → funciona no modo rua. Vai também pro `/t/<token>` (migration 093 acrescenta a chave `pontos` na RPC `territorio_publico`: ponto da quadra/território ou a até 300m da união dos polígonos) |
 | `quadra_lados_conclusoes` | Conclusão POR LADO da quadra ("só fizemos o lado da Rua X"). **Lado = RUA** (`locais.logradouro` normalizado por `$lib/lados.ts::chaveLado`), NÃO `face_ibge` (texto livre, quase sempre NULL, "Face 3" não diz nada pro publicador). Migration 092. **Marcar lado é PROGRESSO do ciclo, não fecha ciclo**: não escreve em `quadras.data_conclusao`, então nenhum consumidor binário (S-13, dashboard, campanha, cor do mapa, cartão S-12, cobertura, lembretes, fechamento de designação) enxerga diferença. Quando o ÚLTIMO lado é marcado, `registrarConclusaoLado` chama `registrarConclusaoQuadra` — a conclusão cheia continua sendo o único caminho de escrita. Índice único (quadra, lado, data) + upsert `ignoreDuplicates`: a tela grava por `postComFila` e o replay reenviaria o mesmo POST. Nenhuma coluna nova em `quadras` (o trigger da 090 barraria o dirigente) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 

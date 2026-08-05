@@ -11,6 +11,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { hojeIsoLocal } from '$lib/utils/data';
   import { centroidePoligono } from '$lib/utils/geo';
+  import { sugerirDistribuicao, type ParteSugerida } from '$lib/distribuicao';
   import type { QuadraGeo } from '$lib/server/queries';
   import { BASEMAP_CAMPO } from '$lib/mapa-estilos';
 
@@ -255,6 +256,8 @@
 
   function abrirRepartir(a: ArranjoQueDirijo) {
     arranjoRep = a;
+    sugestaoPartes = [];
+    parteSugeridaAtiva = null;
     pubsSel = new Set();
     quadrasSel = new Set();
     locaisSel = new Set();
@@ -262,6 +265,42 @@
     notasParte = '';
     sheetRepartir = true;
   }
+  // ── Sugestão de DIVISÃO do território ────────────────────────────
+  // A cena: o grupo chegou, parou, e o dirigente precisa dizer "vocês
+  // pegam essa e seguem em linha reta mais três". O sistema propõe as
+  // partes contíguas e as frases; ele escolhe quem vai em cada uma.
+  let nGrupos = $state(2);
+  let sugestaoPartes = $state<ParteSugerida[]>([]);
+  let parteSugeridaAtiva = $state<number | null>(null);
+
+  function quadrasDoArranjoParaDistribuir(a: ArranjoQueDirijo) {
+    return a.quadrasGeo
+      .map((q) => {
+        const c = centroidePoligono(q.poly_geojson);
+        return c ? { id: q.id, lat: c.lat, lng: c.lng, ruas: [] as string[] } : null;
+      })
+      .filter((q): q is { id: string; lat: number; lng: number; ruas: string[] } => q !== null);
+  }
+
+  function gerarSugestao() {
+    if (!arranjoRep) return;
+    const quadras = quadrasDoArranjoParaDistribuir(arranjoRep);
+    // Ponto de parada = o ponto salvo mais perto (quando existe): é de
+    // onde o grupo de fato começa a andar.
+    const parada = centroDeQuadras(arranjoRep.quadrasGeo);
+    sugestaoPartes = sugerirDistribuicao(quadras, nGrupos, parada);
+    parteSugeridaAtiva = null;
+    if (sugestaoPartes.length === 0) toast.info('Sem quadras com mapa pra dividir');
+  }
+
+  /** Carrega uma parte sugerida na seleção, pra escolher quem vai nela */
+  function usarParteSugerida(p: ParteSugerida) {
+    quadrasSel = new Set(p.quadraIds);
+    parteSugeridaAtiva = p.indice;
+    pubsSel = new Set();
+    notasParte = p.descricao;
+  }
+
   function togglePub(id: string) { if (pubsSel.has(id)) pubsSel.delete(id); else pubsSel.add(id); pubsSel = new Set(pubsSel); }
   function toggleQuadra(id: string) { if (quadrasSel.has(id)) quadrasSel.delete(id); else quadrasSel.add(id); quadrasSel = new Set(quadrasSel); }
   function toggleLocal(id: number) { if (locaisSel.has(id)) locaisSel.delete(id); else locaisSel.add(id); locaisSel = new Set(locaisSel); }
@@ -571,6 +610,47 @@
 <!-- Sheet repartir: subconjunto do território → 1+ publicadores (mesma parte) -->
 <BottomSheet bind:open={sheetRepartir} title="Repartir território">
   {#if arranjoRep}
+    <!-- Proposta de divisão: o dirigente diz quantos grupos vieram e o
+         sistema desenha as partes contíguas, com a frase pronta. -->
+    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-sm font-medium text-emerald-900">Dividir entre</span>
+        <div class="inline-flex items-center gap-1">
+          <button type="button" class="w-7 h-7 rounded-full border border-emerald-300 text-emerald-800" onclick={() => (nGrupos = Math.max(1, nGrupos - 1))}>−</button>
+          <span class="w-6 text-center font-semibold text-emerald-900">{nGrupos}</span>
+          <button type="button" class="w-7 h-7 rounded-full border border-emerald-300 text-emerald-800" onclick={() => (nGrupos = Math.min(8, nGrupos + 1))}>+</button>
+        </div>
+        <span class="text-sm text-emerald-900">grupo(s)</span>
+        <Button variant="secondary" size="sm" onclick={gerarSugestao}>
+          <Icon nome="shapes" size={14} /> Sugerir divisão
+        </Button>
+      </div>
+
+      {#if sugestaoPartes.length > 0}
+        <ul class="mt-2 space-y-1.5">
+          {#each sugestaoPartes as p (p.indice)}
+            <li class="rounded-lg bg-white border {parteSugeridaAtiva === p.indice ? 'border-emerald-500' : 'border-emerald-100'} p-2">
+              <div class="flex items-start gap-2">
+                <span class="w-5 h-5 shrink-0 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center">{p.indice}</span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm text-slate-800">{p.descricao}</p>
+                  <p class="text-xs text-slate-400 mt-0.5">{p.quadraIds.join(', ')}</p>
+                </div>
+                <button
+                  type="button"
+                  onclick={() => usarParteSugerida(p)}
+                  class="text-xs px-2 py-1 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-100 shrink-0"
+                >Usar</button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+        <p class="text-xs text-emerald-800 mt-2">
+          Toque em <strong>Usar</strong> pra carregar a parte aqui embaixo e escolher quem vai nela.
+        </p>
+      {/if}
+    </div>
+
     <form
       method="POST"
       action="?/criarParte"
