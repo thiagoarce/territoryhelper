@@ -174,6 +174,16 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   250m do compartilhamento individual (não precisa de RPC nova — já tem
   tudo carregado), `destaqueIds` troca por território a cada iteração.
   "Imprimir/Salvar PDF" = `window.print()`, mesmo padrão do S-13.
+  `/admin/relatorios/arranjos` = **escala de saídas de campo**
+  imprimível (tabela Data | Saída | Horário | Ponto de encontro |
+  Dirigente), navegável por SEMANA ou MÊS (`rangeEscala` em
+  `$lib/arranjos.ts`, pura e testada; a expansão de ocorrências reusa
+  `ocorrenciasEntre`). Inclui arranjo INATIVO cujo calendário já passou
+  (saída que aconteceu e foi finalizada — sem isso a folha de um mês
+  fechado sai vazia) e exclui o inativo que ainda venceria (cancelado
+  antes da hora) — mesma derivação concluída vs cancelada de
+  `/admin/designacoes`. Coluna "Saída" cai no nome da MODALIDADE quando
+  `arranjos.nome` está vazio.
   `/admin/dashboard` (E5) = saúde
   do território, incluindo fim de semana vs meio de semana POR
   território (taxa por dia, não bruto). Ideia futura (não
