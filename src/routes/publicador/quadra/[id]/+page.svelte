@@ -15,6 +15,7 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
   import { postComFila } from '$lib/offline';
+  import { chaveLado, ladosDaQuadra } from '$lib/lados';
   import EstacionarPertoSheet from '$lib/components/EstacionarPertoSheet.svelte';
   import PontoReferenciaSheet from '$lib/components/PontoReferenciaSheet.svelte';
 
@@ -227,22 +228,73 @@
   }
 
   // Agrupa locais por face IBGE pra mostrar separados (cada face é um trecho da quadra)
+  // Agrupa por RUA (chave normalizada, ver $lib/lados.ts) em vez do
+  // número de face do IBGE: "Face 3" não diz nada pro publicador, o
+  // campo vem vazio em boa parte dos endereços, e é a rua que ele usa
+  // pra falar do trabalho ("fizemos o lado da Napoleão Abdon").
+  // ⚠️ moverLocal (reordenar ▲▼) usa ESTA MESMA chave — mudar aqui sem
+  // mudar lá quebra a reordenação em silêncio.
   const porFace = $derived.by(() => {
     const grupos = new Map<string, LocalComUnidades[]>();
     for (const l of locaisOrdenados) {
-      const f = l.face_ibge || '—';
-      const arr = grupos.get(f) ?? [];
+      const k = chaveLado(l.logradouro) || '—';
+      const arr = grupos.get(k) ?? [];
       arr.push(l);
-      grupos.set(f, arr);
+      grupos.set(k, arr);
     }
-    return [...grupos.entries()].sort(([a], [b]) => {
-      const na = parseInt(a, 10), nb = parseInt(b, 10);
-      if (isNaN(na) && isNaN(nb)) return a.localeCompare(b);
-      if (isNaN(na)) return 1;
-      if (isNaN(nb)) return -1;
-      return na - nb;
-    });
+    return [...grupos.entries()].sort(([, a], [, b]) =>
+      (a[0]?.logradouro ?? '').localeCompare(b[0]?.logradouro ?? '', 'pt-BR')
+    );
   });
+
+  // Estado de cada lado (feito/não feito NESTE ciclo da quadra)
+  const ladosDaTela = $derived(
+    ladosDaQuadra(data.locais, data.ladosConclusoes ?? [], data.quadra.data_conclusao)
+  );
+  const ladosFeitos = $derived(ladosDaTela.filter((l) => l.feitoEm !== null).length);
+  const overrideLados = $state<Record<string, string | null>>({});
+  function ladoFeitoEm(chave: string): string | null {
+    if (chave in overrideLados) return overrideLados[chave];
+    return ladosDaTela.find((l) => l.chave === chave)?.feitoEm ?? null;
+  }
+
+  let salvandoLado = $state<string | null>(null);
+  async function marcarLado(chave: string, rotulo: string) {
+    salvandoLado = chave;
+    overrideLados[chave] = dataConclusao; // otimista: o campo já fica verde
+    const fd = new FormData();
+    fd.append('lado_chave', chave);
+    fd.append('lado_rotulo', rotulo);
+    fd.append('data', dataConclusao);
+    fd.append('hora', horaConclusao);
+    const r = await postComFila('?/concluirLado', fd, `Lado ${rotulo} da quadra ${data.quadra.id}`);
+    salvandoLado = null;
+    if (r.ok) {
+      delete overrideLados[chave];
+      toast.success('Lado marcado');
+      await invalidateAll();
+    } else if (r.offline) {
+      toast.info('Sem rede — salvo no aparelho. A quadra fecha sozinha quando a rede voltar.');
+    } else {
+      delete overrideLados[chave];
+      toast.error(r.erro);
+    }
+  }
+  async function desfazerLado(chave: string, rotulo: string) {
+    salvandoLado = chave;
+    overrideLados[chave] = null;
+    const fd = new FormData();
+    fd.append('lado_chave', chave);
+    const r = await postComFila('?/desfazerLado', fd, `Desfazer lado ${rotulo} da quadra ${data.quadra.id}`);
+    salvandoLado = null;
+    if (r.ok) {
+      delete overrideLados[chave];
+      await invalidateAll();
+    } else if (!r.offline) {
+      delete overrideLados[chave];
+      toast.error(r.erro);
+    }
+  }
 
   // Estado de expansão dos prédios (default fechado)
   let abertos = $state<Set<number>>(new Set());
@@ -364,6 +416,12 @@
         <Button type="button" variant="secondary" size="sm" onclick={desfazerConclusaoFila} loading={salvandoConclusao}>Desfazer</Button>
       </div>
     {:else}
+      {#if ladosDaTela.length > 1}
+        <p class="text-xs text-slate-500 mb-2">
+          {ladosFeitos} de {ladosDaTela.length} lados feitos
+          {#if ladosFeitos > 0}· a quadra fecha sozinha quando marcar o último{/if}
+        </p>
+      {/if}
       <div class="flex items-center gap-2 flex-wrap">
         <label for="data-conc" class="text-sm text-slate-600">Concluir em</label>
         <input id="data-conc" type="date" name="data" bind:value={dataConclusao}
@@ -457,10 +515,36 @@
   {#each porFace as [face, locaisDaFace]}
     {@const visiveis = locaisDaFace.filter(localPassaFiltro)}
     {#if visiveis.length > 0}
+      {@const rotuloLado = locaisDaFace[0]?.logradouro ?? '—'}
+      {@const feitoEm = ladoFeitoEm(face)}
       <div>
-        <div class="text-xs uppercase font-semibold text-slate-500 mb-1">
-          Face {face === '—' ? '—' : face}
-          <span class="text-slate-400 font-normal">· {visiveis.length} local(is)</span>
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <div class="text-xs uppercase font-semibold text-slate-500 flex-1 min-w-0">
+            {rotuloLado}
+            <span class="text-slate-400 font-normal normal-case">· {visiveis.length} endereço(s)</span>
+          </div>
+          {#if podeDirigir && !quadraConcluidaEfetiva}
+            {#if feitoEm}
+              <button
+                type="button"
+                disabled={salvandoLado === face}
+                onclick={() => desfazerLado(face, rotuloLado)}
+                class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 hover:bg-green-200 disabled:opacity-40"
+                title="Desmarcar este lado"
+              >
+                <Icon nome="check" size={12} /> lado feito
+              </button>
+            {:else}
+              <button
+                type="button"
+                disabled={salvandoLado === face}
+                onclick={() => marcarLado(face, rotuloLado)}
+                class="text-xs px-2 py-1 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Marcar lado feito
+              </button>
+            {/if}
+          {/if}
         </div>
         <div class="space-y-2">
           {#each visiveis as l (l.id)}

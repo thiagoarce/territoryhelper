@@ -19,6 +19,8 @@ export const TABELAS_BACKUP: TabelaBackup[] = [
   { nome: 'territorios', pk: 'id' },
   { nome: 'quadras', pk: 'id' },
   { nome: 'quadras_conclusoes', pk: 'id', serial: true },
+  // conclusão por LADO da quadra (migration 092)
+  { nome: 'quadra_lados_conclusoes', pk: 'id', serial: true },
   { nome: 'locais', pk: 'id', serial: true },
   { nome: 'unidades', pk: 'id', serial: true },
   { nome: 'registros', pk: 'id', serial: true },

@@ -14,6 +14,7 @@ import { arranjoAindaVale } from '$lib/arranjos';
 import { podeTrabalharQuadra } from '$lib/posse';
 import { hojeIsoBrasil } from '$lib/utils/data';
 import type { PontoReferencia } from '$lib/pontos-referencia';
+import type { ConclusaoLado } from '$lib/lados';
 
 export function chaveQuadraCampo(quadraId: string, userId: string): string {
   return `campo:quadra:${quadraId}:${userId}`;
@@ -101,6 +102,8 @@ export type DadosQuadraCampo = DadosQuadraTrabalho & {
    *  revalidar. Todo consumo usa `?? []` — nunca bumpar a chave de
    *  cache por causa disso (invalidaria o offline de quem está na rua). */
   pontosReferencia?: PontoReferencia[];
+  /** também opcional: cache gravado antes da feature de lados não tem */
+  ladosConclusoes?: ConclusaoLado[];
 };
 
 export async function carregarQuadraCampo(quadraId: string): Promise<DadosQuadraCampo> {
@@ -128,12 +131,21 @@ export async function carregarQuadraCampo(quadraId: string): Promise<DadosQuadra
   // território dela ("Banco do Brasil da Fernando"). Não dependem de
   // rede na hora do uso: entram no payload cacheado, então funcionam
   // no modo rua mesmo com a Overpass fora do ar.
-  const pontos = await pontosDaQuadra(supabase, quadraId, dados.quadra.territorio_id ?? null);
+  const [pontos, ladosRes] = await Promise.all([
+    pontosDaQuadra(supabase, quadraId, dados.quadra.territorio_id ?? null),
+    // Conclusões por LADO (migration 092) — progresso do ciclo atual.
+    supabase
+      .from('quadra_lados_conclusoes')
+      .select('lado_chave, lado_rotulo, data_conclusao, marcado_em')
+      .eq('quadra_id', quadraId)
+  ]);
+  if (ladosRes.error) throw ladosRes.error;
   return {
     ...dados,
     cicloCartasPorLocal: cicloCartasPorLocalMap,
     arranjoHoraInicio: arr?.hora_inicio ?? null,
-    pontosReferencia: pontos
+    pontosReferencia: pontos,
+    ladosConclusoes: (ladosRes.data ?? []) as ConclusaoLado[]
   };
 }
 
