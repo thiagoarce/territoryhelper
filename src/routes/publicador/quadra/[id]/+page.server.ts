@@ -7,6 +7,7 @@ import { hojeIsoBrasil, horaBrasilParaIso } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
 import { registrarConclusaoQuadra, desfazerConclusaoQuadra } from '$lib/server/conclusao';
+import { criarPontoReferencia, excluirPontoReferencia } from '$lib/server/pontos';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
@@ -291,6 +292,45 @@ export const actions: Actions = {
     const { error } = await locals.supabase.from('locais').delete().eq('id', id);
     if (error) return fail(400, { erro: error.message });
     return { ok: true, msg: 'Local excluído' };
+  },
+
+  // Ponto de referência nomeado ("Banco do Brasil da Fernando"). Poder
+  // de dirigente/admin, igual concluir quadra — o nome vira vocabulário
+  // da congregação inteira, não é anotação pessoal.
+  salvarPontoReferencia: async ({ request, locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode salvar ponto' });
+    }
+    const fd = await request.formData();
+    const { error: err } = await criarPontoReferencia(locals.supabase, {
+      nome: String(fd.get('nome') ?? ''),
+      tipo: fd.get('tipo'),
+      lat: fd.get('lat'),
+      lng: fd.get('lng'),
+      notas: String(fd.get('notas') ?? '') || null,
+      // Vincula à quadra que está aberta — o ponto aparece de novo pra
+      // quem trabalhar essa quadra depois.
+      quadraId: String(fd.get('quadra_id') ?? '') || params.id,
+      territorioId: String(fd.get('territorio_id') ?? '') || null,
+      osmId: String(fd.get('osm_id') ?? '') || null,
+      criadoPor: locals.user.id
+    });
+    if (err) return fail(400, { erro: err });
+    return { ok: true, msg: 'Ponto salvo' };
+  },
+
+  excluirPontoReferencia: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const id = Number(fd.get('id') ?? 0);
+    if (!id) return fail(400, { erro: 'id obrigatório' });
+    const { error: err } = await excluirPontoReferencia(locals.supabase, id);
+    if (err) return fail(400, { erro: err });
+    return { ok: true, msg: 'Ponto excluído' };
   },
 
   // Marca a quadra atual como concluída (só dirigente/admin). Poder de

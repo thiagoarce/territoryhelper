@@ -17,6 +17,10 @@
 -- pontos de TP, necessidade de revistas, preferência/disponibilidade
 -- fixa dos publicadores).
 --
+-- `pontos_referencia` (migration 091) também FICA: é conhecimento da
+-- congregação sobre a cidade ("Banco do Brasil da Fernando"), não dado
+-- de uma rodada de teste — apagar obrigaria a recadastrar tudo à mão.
+--
 -- MANTÉM TAMBÉM o registro de quadras feitas (decisão do usuário):
 -- `quadras_conclusoes` (histórico de conclusões) e
 -- `quadras.data_conclusao` NÃO são tocados — o ciclo do casa em casa

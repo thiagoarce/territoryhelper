@@ -44,6 +44,9 @@ export const TABELAS_BACKUP: TabelaBackup[] = [
   { nome: 'tp_pecas_catalogo', pk: 'id', serial: true },
   { nome: 'tp_carrinhos', pk: 'id', serial: true },
   { nome: 'tp_pontos', pk: 'id', serial: true },
+  // pontos de referência nomeados pela congregação (migration 091) —
+  // depois de quadras/territorios/profiles, que ele referencia
+  { nome: 'pontos_referencia', pk: 'id', serial: true },
   { nome: 'tp_meses', pk: 'mes' },
   { nome: 'tp_agendamentos', pk: 'id', serial: true },
   { nome: 'tp_agendamento_excecoes', pk: 'id', serial: true },

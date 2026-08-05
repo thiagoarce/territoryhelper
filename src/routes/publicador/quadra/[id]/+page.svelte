@@ -5,7 +5,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { supabaseBrowser } from '$lib/supabase-browser';
-  import type { DadosQuadraTrabalho, LocalComUnidades, UnidadeEnriquecida } from '$lib/queries';
+  import type { LocalComUnidades, UnidadeEnriquecida } from '$lib/queries';
+  import type { DadosQuadraCampo } from '$lib/campo-fetchers';
   import QuadraMap from '$lib/components/QuadraMap.svelte';
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import EditarLocalSheet from '$lib/components/EditarLocalSheet.svelte';
@@ -15,8 +16,9 @@
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
   import { postComFila } from '$lib/offline';
   import EstacionarPertoSheet from '$lib/components/EstacionarPertoSheet.svelte';
+  import PontoReferenciaSheet from '$lib/components/PontoReferenciaSheet.svelte';
 
-  let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null>; arranjoHoraInicio: string | null; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
+  let { data }: { data: DadosQuadraCampo & { minhaRole?: string; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
 
   // "Onde parar / referências" na PRÓPRIA tela da quadra: é aqui que o
   // publicador está quando não reconhece o lugar. Centro = centroide da
@@ -26,6 +28,30 @@
   // percurso dos endereços — reusado aqui como centro da busca)
   let sheetEstacionar = $state(false);
   let poisMapa = $state<any[]>([]);
+  // Cadastro de ponto (toque longo no mapa ou "salvar" num POI achado)
+  let sheetPonto = $state(false);
+  let pontoLat = $state<number | null>(null);
+  let pontoLng = $state<number | null>(null);
+  let pontoNome = $state('');
+  let pontoOsmId = $state<string | null>(null);
+  const pontosSalvos = $derived(data.pontosReferencia ?? []);
+
+  function abrirCadastroPonto(lngLat: { lng: number; lat: number }) {
+    if (!podeDirigir) return; // publicador comum não cadastra
+    pontoLat = lngLat.lat;
+    pontoLng = lngLat.lng;
+    pontoNome = '';
+    pontoOsmId = null;
+    sheetPonto = true;
+  }
+  function salvarPoiComoPonto(p: { nome: string; lat: number; lng: number; osmId: string }) {
+    pontoLat = p.lat;
+    pontoLng = p.lng;
+    pontoNome = p.nome;
+    pontoOsmId = p.osmId;
+    sheetEstacionar = false;
+    sheetPonto = true;
+  }
 
   // W8 ("modo rua"): desfechos/carta resilientes a sinal ruim — mesmo
   // padrão de /predio/[id]: overlay otimista local + postComFila (sem
@@ -361,7 +387,13 @@
       {numeroPorLocal}
       altura={240}
       pois={poisMapa}
+      onToqueLongo={podeDirigir ? abrirCadastroPonto : undefined}
     />
+    {#if podeDirigir}
+      <p class="mt-1 text-xs text-slate-400">
+        Segure o dedo no mapa pra salvar um ponto (ex: onde dá pra estacionar).
+      </p>
+    {/if}
     <button
       type="button"
       onclick={() => (sheetEstacionar = true)}
@@ -372,7 +404,23 @@
   </div>
 {/if}
 
-<EstacionarPertoSheet bind:open={sheetEstacionar} centro={centroQuadra} bind:pois={poisMapa} />
+<EstacionarPertoSheet
+  bind:open={sheetEstacionar}
+  centro={centroQuadra}
+  bind:pois={poisMapa}
+  pontosSalvos={pontosSalvos}
+  podeSalvar={podeDirigir}
+  onSalvarPonto={salvarPoiComoPonto}
+/>
+<PontoReferenciaSheet
+  bind:open={sheetPonto}
+  bind:lat={pontoLat}
+  bind:lng={pontoLng}
+  nomeInicial={pontoNome}
+  osmId={pontoOsmId}
+  quadraId={data.quadra.id}
+  territorioId={data.quadra.territorio_id}
+/>
 
 <!-- Filtros -->
 <div class="mt-4 flex gap-2 flex-wrap">
