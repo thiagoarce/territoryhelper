@@ -1,7 +1,15 @@
 // Helper pra Overpass API (OSM) — busca POIs perto de um centro.
 // Free, sem chave, mas tem rate limit. Cache simples in-memory.
 
-export type CategoriaPOI = 'parking' | 'pharmacy' | 'square' | 'fuel' | 'supermarket' | 'bakery';
+export type CategoriaPOI =
+  | 'parking' | 'pharmacy' | 'square' | 'fuel' | 'supermarket' | 'bakery'
+  // Referências de ORIENTAÇÃO (queixa real: "não sei onde esse mapa
+  // fica") — é assim que a congregação se localiza: "é no Banco do
+  // Brasil da Fernando", "atrás da escola", "perto da igreja".
+  | 'bank' | 'school' | 'church' | 'hospital';
+
+/** As categorias que o botão "Referências" liga de uma vez. */
+export const REFERENCIAS: CategoriaPOI[] = ['bank', 'school', 'church', 'hospital', 'supermarket'];
 
 export interface POI {
   id: string;
@@ -24,7 +32,11 @@ const seletoresPorCategoria: Record<CategoriaPOI, string[]> = {
   square: ['["leisure"="park"]', '["leisure"="garden"]', '["place"="square"]'],
   fuel: ['["amenity"="fuel"]'],
   supermarket: ['["shop"="supermarket"]'],
-  bakery: ['["shop"="bakery"]']
+  bakery: ['["shop"="bakery"]'],
+  bank: ['["amenity"="bank"]'],
+  school: ['["amenity"="school"]'],
+  church: ['["amenity"="place_of_worship"]'],
+  hospital: ['["amenity"="hospital"]', '["amenity"="clinic"]']
 };
 
 // Exportada só pra teste (tests/overpass.test.ts) — a regressão que já
@@ -45,12 +57,16 @@ export function montarQueryOverpass(
     // limite) e POI de bairro como relation é raridade.
     .map((sel) => `nw${sel}(around:${raioMetros},${lat},${lng});`)
     .join('');
-  // `out center 60`: way não tem lat/lon próprio — `center` manda o
-  // centroide; 60 limita o tamanho da resposta. `timeout:8` MENOR que o
-  // abort do fetch (13s) de propósito: o servidor desiste antes do
-  // client, então resposta lenta-mas-viva ainda chega em vez de ser
-  // abortada no meio.
-  return `[out:json][timeout:8];(${blocos});out center 60;`;
+  // `out center 200`: way não tem lat/lon próprio — `center` manda o
+  // centroide. O limite era 60 e é do TOTAL da resposta: em área densa
+  // (praça tem 3 seletores) o corte caía antes dos POIs mais PERTO do
+  // centro, porque a Overpass não ordena por distância — dava "nada
+  // encontrado" com estacionamento na esquina. 200 continua uma resposta
+  // pequena e quem ordena/corta por distância somos nós.
+  // `timeout:6` MENOR que o abort do fetch (8s) de propósito: o servidor
+  // desiste antes do client, então resposta lenta-mas-viva ainda chega
+  // em vez de ser abortada no meio.
+  return `[out:json][timeout:6];(${blocos});out center 200;`;
 }
 
 // O overpass-api.de (instância pública principal) vive sobrecarregado e
@@ -59,21 +75,64 @@ export function montarQueryOverpass(
 // espelho quando um falha, e LEMBRA qual funcionou pra começar por ele
 // na próxima busca da sessão. Todos mandam Access-Control-Allow-Origin:*
 // (verificado — o fetch roda no browser, sem CORS nada funciona).
+// Ordem importa: o kumi.systems foi o mais confiável no diagnóstico, o
+// overpass-api.de é o que mais devolve 504 "server too busy", e o
+// maps.mail.ru é o mais distante/instável — ficam nessa ordem como
+// desempate quando não há memória de qual funcionou.
 const ENDPOINTS = [
+  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter'
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
-let endpointBomIdx = 0;
+const CHAVE_ENDPOINT = 'th:overpass-endpoint';
 
-async function postOverpass(endpoint: string, query: string): Promise<any> {
-  // Timeout no fetch em si (o `[timeout:8]` da query só limita a
-  // execução DENTRO do servidor — conexão travada precisa de abort).
-  // 13s > 8s da query: dá tempo da resposta lenta chegar inteira.
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 13000);
+// Memória do espelho bom. Era só variável de módulo: recarregar o app
+// (ou navegar com reload) zerava e a próxima busca recomeçava pelo
+// espelho ruim. Persistir em localStorage faz a 2ª sessão já nascer
+// certa. Leitura defensiva — SSR e modo privado não têm localStorage.
+let endpointBomIdx = (() => {
   try {
-    const resp = await fetch(endpoint, {
+    const v = parseInt(localStorage.getItem(CHAVE_ENDPOINT) ?? '', 10);
+    return Number.isFinite(v) && v >= 0 && v < ENDPOINTS.length ? v : 0;
+  } catch {
+    return 0;
+  }
+})();
+
+function lembrarEndpoint(idx: number) {
+  endpointBomIdx = idx;
+  try { localStorage.setItem(CHAVE_ENDPOINT, String(idx)); } catch {}
+}
+
+/** Falha da Overpass, com o motivo separado — a UI diz coisas diferentes
+ *  pra "você está sem internet" e "os servidores do OSM estão ocupados",
+ *  e antes as duas viravam o mesmo toast genérico. */
+export class OverpassIndisponivel extends Error {
+  motivo: 'sem_rede' | 'servidores';
+  constructor(motivo: 'sem_rede' | 'servidores', causa?: unknown) {
+    super(motivo === 'sem_rede' ? 'Sem conexão' : 'Servidores do OpenStreetMap indisponíveis');
+    this.name = 'OverpassIndisponivel';
+    this.motivo = motivo;
+    if (causa) (this as any).cause = causa;
+  }
+}
+
+async function postOverpass(
+  endpoint: string,
+  query: string,
+  sinalExterno?: AbortSignal,
+  fetchImpl: typeof fetch = globalThis.fetch
+): Promise<any> {
+  // Timeout no fetch em si (o `[timeout:6]` da query só limita a
+  // execução DENTRO do servidor — conexão travada precisa de abort).
+  // 8s > 6s da query: dá tempo da resposta lenta chegar inteira, mas o
+  // usuário não fica 13s no escuro como antes.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  const abortarPorFora = () => ctrl.abort();
+  sinalExterno?.addEventListener('abort', abortarPorFora);
+  try {
+    const resp = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'data=' + encodeURIComponent(query),
@@ -83,42 +142,107 @@ async function postOverpass(endpoint: string, query: string): Promise<any> {
     return await resp.json();
   } finally {
     clearTimeout(timer);
+    sinalExterno?.removeEventListener('abort', abortarPorFora);
   }
 }
 
-// Cadeia de fallback compartilhada por qualquer chamador (POIs, vias) —
-// tenta cada espelho, lembra qual funcionou pra começar por ele na
-// próxima chamada da sessão (endpointBomIdx é módulo, compartilhado).
-async function comFallback(query: string): Promise<any> {
-  let ultimoErro: unknown = null;
-  for (let i = 0; i < ENDPOINTS.length; i++) {
-    const idx = (endpointBomIdx + i) % ENDPOINTS.length;
-    try {
-      const json = await postOverpass(ENDPOINTS[idx], query);
-      endpointBomIdx = idx;
-      return json;
-    } catch (e) {
-      ultimoErro = e;
+/**
+ * Dispara os espelhos EM PARALELO e fica com o primeiro que responder,
+ * abortando os outros. Antes era em série: com o primeiro espelho fora
+ * do ar (o caso comum), o publicador esperava 13s + 13s antes de ver
+ * qualquer coisa e desistia achando que "não funciona" — a queixa real.
+ * O espelho vencedor é lembrado, então a busca seguinte tenta ele
+ * sozinho primeiro (1 request, não 3).
+ */
+export async function comFallback(
+  query: string,
+  fetchImpl: typeof fetch = globalThis.fetch
+): Promise<any> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new OverpassIndisponivel('sem_rede');
+  }
+  // 1ª tentativa: só o espelho lembrado (barato, e é o caso comum)
+  try {
+    return await postOverpass(ENDPOINTS[endpointBomIdx], query, undefined, fetchImpl);
+  } catch (e) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new OverpassIndisponivel('sem_rede', e);
     }
   }
-  throw ultimoErro ?? new Error('Overpass indisponível');
+  // 2ª tentativa: corrida entre TODOS (inclusive o que acabou de falhar —
+  // 504 do Overpass é intermitente e pode passar no retry)
+  const ctrl = new AbortController();
+  let ultimoErro: unknown = null;
+  const tentativas = ENDPOINTS.map((url, idx) =>
+    postOverpass(url, query, ctrl.signal, fetchImpl).then(
+      (json) => ({ json, idx }),
+      (e) => {
+        ultimoErro = e;
+        throw e;
+      }
+    )
+  );
+  try {
+    const vencedor = await (Promise as any).any(tentativas);
+    lembrarEndpoint(vencedor.idx);
+    return vencedor.json;
+  } catch {
+    throw new OverpassIndisponivel('servidores', ultimoErro);
+  } finally {
+    ctrl.abort(); // corta os perdedores (não deixa request órfã no celular)
+  }
+}
+
+/** Distância aproximada em metros (equiretangular local — sobra pra
+ *  distância de bairro e não precisa de trigonometria de esfera). */
+export function distanciaMetros(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const cosLat = Math.cos(((a.lat + b.lat) / 2 * Math.PI) / 180);
+  return Math.hypot((b.lng - a.lng) * cosLat, b.lat - a.lat) * 111320;
+}
+
+/** Mais perto primeiro. Pura — a Overpass devolve em ordem de id. */
+export function ordenarPorDistancia<T extends { lat: number; lng: number }>(
+  itens: T[],
+  centro: { lat: number; lng: number }
+): T[] {
+  return [...itens].sort((x, y) => distanciaMetros(centro, x) - distanciaMetros(centro, y));
 }
 
 const cache = new Map<string, { ts: number; data: POI[] }>();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
-export async function buscarPOIs(
+export interface ResultadoPOIs {
+  pois: POI[];
+  /** raio que de fato produziu o resultado (pode ser o dobro do pedido) */
+  raioUsado: number;
+  /** true quando o raio pedido não achou nada e o dobro achou */
+  ampliado: boolean;
+  deCache: boolean;
+}
+
+async function buscarPOIsUmRaio(
   lat: number,
   lng: number,
   raioMetros: number,
   categorias: CategoriaPOI[]
-): Promise<POI[]> {
+): Promise<{ pois: POI[]; deCache: boolean }> {
   const chave = `${lat.toFixed(4)},${lng.toFixed(4)},${raioMetros},${[...categorias].sort().join(',')}`;
   const cached = cache.get(chave);
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return { pois: cached.data, deCache: true };
 
   const query = montarQueryOverpass(lat, lng, raioMetros, categorias);
-  const json = await comFallback(query);
+  let json: any;
+  try {
+    json = await comFallback(query);
+  } catch (e) {
+    // Sem rede/servidor fora: devolve o que estiver guardado (mesmo
+    // vencido) em vez de deixar o publicador na mão no meio da rua.
+    if (cached) return { pois: cached.data, deCache: true };
+    throw e;
+  }
 
   const vistos = new Set<string>();
   const pois: POI[] = [];
@@ -131,17 +255,46 @@ export async function buscarPOIs(
     const id = `${e.type}/${e.id}`;
     if (vistos.has(id)) continue;
     vistos.add(id);
+    const cat = detectarCategoria(e.tags) ?? categorias[0] ?? 'parking';
     pois.push({
       id,
       lat: pLat,
       lng: pLng,
-      nome: e.tags?.name || categoriaLabel(detectarCategoria(e.tags) ?? 'parking'),
-      categoria: detectarCategoria(e.tags) ?? 'parking'
+      nome: e.tags?.name || categoriaLabel(cat),
+      categoria: cat
     });
   }
 
-  cache.set(chave, { ts: Date.now(), data: pois });
-  return pois;
+  const ordenados = ordenarPorDistancia(pois, { lat, lng });
+  cache.set(chave, { ts: Date.now(), data: ordenados });
+  return { pois: ordenados, deCache: false };
+}
+
+/**
+ * Busca POIs por perto, já ordenados do mais perto pro mais longe.
+ * Se o raio pedido não achar NADA, tenta uma vez com o dobro (teto de
+ * 2km): o centro é a média das quadras e num território comprido ele
+ * cai no meio do nada — dava "nenhum estacionamento" com estacionamento
+ * a 900m.
+ */
+export async function buscarPOIs(
+  lat: number,
+  lng: number,
+  raioMetros: number,
+  categorias: CategoriaPOI[]
+): Promise<ResultadoPOIs> {
+  const r1 = await buscarPOIsUmRaio(lat, lng, raioMetros, categorias);
+  if (r1.pois.length > 0 || raioMetros >= 2000) {
+    return { pois: r1.pois, raioUsado: raioMetros, ampliado: false, deCache: r1.deCache };
+  }
+  const raioMaior = Math.min(raioMetros * 2, 2000);
+  const r2 = await buscarPOIsUmRaio(lat, lng, raioMaior, categorias);
+  return {
+    pois: r2.pois,
+    raioUsado: raioMaior,
+    ampliado: r2.pois.length > 0,
+    deCache: r2.deCache
+  };
 }
 
 function detectarCategoria(tags: any): CategoriaPOI | null {
@@ -152,6 +305,10 @@ function detectarCategoria(tags: any): CategoriaPOI | null {
   if (tags.shop === 'supermarket') return 'supermarket';
   if (tags.shop === 'bakery') return 'bakery';
   if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.place === 'square') return 'square';
+  if (tags.amenity === 'bank') return 'bank';
+  if (tags.amenity === 'school') return 'school';
+  if (tags.amenity === 'place_of_worship') return 'church';
+  if (tags.amenity === 'hospital' || tags.amenity === 'clinic') return 'hospital';
   return null;
 }
 
@@ -162,7 +319,11 @@ export function categoriaLabel(c: CategoriaPOI): string {
     square: 'Praça',
     fuel: 'Posto',
     supermarket: 'Mercado',
-    bakery: 'Padaria'
+    bakery: 'Padaria',
+    bank: 'Banco',
+    school: 'Escola',
+    church: 'Igreja',
+    hospital: 'Hospital'
   }[c];
 }
 
@@ -173,10 +334,14 @@ const ICONE_POR_CATEGORIA = {
   square: 'trees',
   fuel: 'fuel',
   supermarket: 'cart',
-  bakery: 'croissant'
+  bakery: 'croissant',
+  bank: 'banco',
+  school: 'escola',
+  church: 'igreja',
+  hospital: 'hospital'
 } as const;
 
-export function categoriaIcone(c: CategoriaPOI): 'parking' | 'pill' | 'trees' | 'fuel' | 'cart' | 'croissant' {
+export function categoriaIcone(c: CategoriaPOI): (typeof ICONE_POR_CATEGORIA)[CategoriaPOI] {
   return ICONE_POR_CATEGORIA[c];
 }
 

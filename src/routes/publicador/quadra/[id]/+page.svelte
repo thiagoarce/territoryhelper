@@ -14,8 +14,18 @@
   import { toast } from '$lib/ui/toast.svelte';
   import { centroidePoligono, ordenarPorCaminho } from '$lib/utils/geo';
   import { postComFila } from '$lib/offline';
+  import EstacionarPertoSheet from '$lib/components/EstacionarPertoSheet.svelte';
 
   let { data }: { data: DadosQuadraTrabalho & { minhaRole?: string; cicloCartasPorLocal: Record<number, string | null>; arranjoHoraInicio: string | null; cacheInfo?: { deCache: boolean; gravadoEm: number } } } = $props();
+
+  // "Onde parar / referências" na PRÓPRIA tela da quadra: é aqui que o
+  // publicador está quando não reconhece o lugar. Centro = centroide da
+  // quadra (não a média do território, que num território comprido cai
+  // no meio do nada).
+  // (o centroide da quadra já é calculado mais abaixo, pra ordenar o
+  // percurso dos endereços — reusado aqui como centro da busca)
+  let sheetEstacionar = $state(false);
+  let poisMapa = $state<any[]>([]);
 
   // W8 ("modo rua"): desfechos/carta resilientes a sinal ruim — mesmo
   // padrão de /predio/[id]: overlay otimista local + postComFila (sem
@@ -350,9 +360,19 @@
       locais={locaisOrdenados}
       {numeroPorLocal}
       altura={240}
+      pois={poisMapa}
     />
+    <button
+      type="button"
+      onclick={() => (sheetEstacionar = true)}
+      class="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50 text-sm font-medium"
+    >
+      <Icon nome="parking" size={16} /> Onde parar / referências
+    </button>
   </div>
 {/if}
+
+<EstacionarPertoSheet bind:open={sheetEstacionar} centro={centroQuadra} bind:pois={poisMapa} />
 
 <!-- Filtros -->
 <div class="mt-4 flex gap-2 flex-wrap">
