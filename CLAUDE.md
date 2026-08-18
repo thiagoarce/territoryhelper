@@ -683,6 +683,15 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   snapshot offline bom. Todo fetcher de load convertido lança em erro
   (helpers de `$lib/queries.ts` já lançam; query crua precisa do
   `if (res.error) throw res.error` explícito).
+- Tabela com policy `for all using (is_admin())` + ação de DIRIGENTE na
+  UI = bug silencioso garantido. Já aconteceu DUAS vezes: `quadras`
+  (concluir quadra, migration 090) e `arranjos` (Finalizar designação /
+  Assumir dirigência, migration 095 — o dirigente pedia socorro no
+  WhatsApp com a home cheia de saídas de meses atrás, e o app dizia
+  "Designação finalizada" toda vez). Ao criar ação de dirigente, checar
+  a policy da tabela ANTES; o padrão de correção é policy de UPDATE pra
+  `is_dirigente_or_admin()` + trigger `*_guard_nao_admin` limitando as
+  colunas (diff via `to_jsonb`).
 - `UPDATE`/`DELETE` barrado por RLS **não devolve erro**: a policy filtra
   a linha pra fora e o PostgREST responde sucesso com 0 linhas afetadas
   (erro só quando a linha passa no `using` e falha no `with check`). Foi

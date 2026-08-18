@@ -153,8 +153,22 @@ export const actions: Actions = {
       return fail(403, { erro: 'Você não é o dirigente desse arranjo' });
     }
 
-    const { error: errUp } = await locals.supabase.from('arranjos').update({ ativo: false }).eq('id', arranjoId);
+    // `count: 'exact'` não é detalhe: UPDATE barrado por RLS devolve
+    // SUCESSO com 0 linhas (a policy filtra a linha pra fora). Foi assim
+    // que "Finalizar designação" passou meses dando toast verde sem
+    // fazer nada — o dirigente pedia socorro no WhatsApp com a home
+    // cheia de saídas de meses atrás (corrigido na migration 095, que
+    // deu UPDATE de `arranjos` pro dirigente).
+    const { error: errUp, count } = await locals.supabase
+      .from('arranjos')
+      .update({ ativo: false }, { count: 'exact' })
+      .eq('id', arranjoId);
     if (errUp) return fail(400, { erro: errUp.message });
+    if (count === 0) {
+      return fail(403, {
+        erro: 'Não consegui finalizar (sem permissão no banco). Avise o servo de território: falta rodar a migration 095.'
+      });
+    }
     await locals.supabase.from('arranjo_partes').delete().eq('arranjo_id', arranjoId);
 
     return { ok: true, msg: 'Designação finalizada' };
