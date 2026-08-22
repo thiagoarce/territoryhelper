@@ -13,6 +13,7 @@
   import CacheInfoBadge from '$lib/components/CacheInfoBadge.svelte';
   import { postComFila } from '$lib/offline';
   import type { DesignacaoEnriquecida, QuadraGeo, CoberturaQuadra } from '$lib/queries';
+  import { BASEMAP_CAMPO } from '$lib/mapa-estilos';
 
   interface CampanhaAtiva {
     id: number;
@@ -566,7 +567,7 @@
     <AdminMapa
       quadras={quadrasMapa}
       altura={220}
-      basemap={data.profile?.pref_basemap ?? 'positron'}
+      basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO}
       onQuadraClick={(q) => (window.location.href = '/publicador/quadra/' + encodeURIComponent(q.id))}
     />
   </div>

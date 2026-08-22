@@ -147,6 +147,51 @@ export function agruparPorData<A extends ArranjoBase>(ocs: Ocorrencia<A>[]): Rec
   return m;
 }
 
+export const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+];
+
+// yyyy-mm-dd a partir dos componentes LOCAIS (não `toISOString`, que
+// converte pra UTC e pode pular um dia dependendo do fuso).
+function isoLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Janela navegável da escala imprimível: semana (seg→dom) ou mês do
+// calendário, deslocada por `offset` (-1 = anterior, +1 = próxima).
+// Recebe a data base pra ser PURA e testável (default = hoje).
+export function rangeEscala(
+  tipo: 'semana' | 'mes',
+  offset = 0,
+  baseIso?: string
+): { isoIni: string; isoFim: string; label: string } {
+  const base = baseIso ? new Date(baseIso + 'T12:00:00') : new Date();
+  base.setHours(12, 0, 0, 0);
+  if (tipo === 'semana') {
+    const d = new Date(base);
+    d.setDate(d.getDate() + offset * 7);
+    const diaSem = d.getDay();
+    const ini = new Date(d);
+    ini.setDate(d.getDate() + (diaSem === 0 ? -6 : 1 - diaSem)); // segunda
+    const fim = new Date(ini);
+    fim.setDate(ini.getDate() + 6);
+    const dm = (x: Date) => `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}`;
+    return {
+      isoIni: isoLocal(ini),
+      isoFim: isoLocal(fim),
+      label: `Semana de ${dm(ini)} a ${dm(fim)} de ${fim.getFullYear()}`
+    };
+  }
+  const ini = new Date(base.getFullYear(), base.getMonth() + offset, 1, 12, 0, 0);
+  const fim = new Date(base.getFullYear(), base.getMonth() + offset + 1, 0, 12, 0, 0);
+  return {
+    isoIni: isoLocal(ini),
+    isoFim: isoLocal(fim),
+    label: `${MESES[ini.getMonth()][0].toUpperCase()}${MESES[ini.getMonth()].slice(1)} de ${ini.getFullYear()}`
+  };
+}
+
 export type Periodo = 'semana' | 'mes' | 'tres_meses' | 'ano';
 
 export function rangeDoPeriodo(p: Periodo): { isoIni: string; isoFim: string; label: string } {

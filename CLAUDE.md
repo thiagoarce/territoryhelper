@@ -48,8 +48,13 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
     migrou de `arranjo` + `/perfil`),
     `campanha` (sem ícone na bottom nav — acessível pelo banner na home),
     `tce/[id]`
-  - `dirigente/` — só um `+layout.server.ts` que redireciona pra
-    `/publicador/*` (URLs antigas)
+  - `dirigente/[...resto]` — rota rest que só redireciona pra
+    `/publicador/*` (URLs antigas). Era um `+layout.server.ts` solto em
+    `dirigente/` e **não funcionava**: pasta só com layout NÃO é rota, o
+    SvelteKit devolvia 404 sem nem rodar o layout — e como `/` mandava
+    dirigente pra `/dirigente`, todo dirigente levava 404 ao entrar
+    (pelo link de convite ou pelo start_url do PWA). Hoje `/` manda
+    dirigente direto pra `/publicador`
   - `predio/[id]` — **tela ÚNICA de trabalhar prédio**, toggle
     🚪 casa-em-casa vs ✉ cartas + edit + WhatsApp share
   - públicas (sem auth): `cartas/[token]`, `t/[token]` (território/arranjo
@@ -65,7 +70,22 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   "Limpar lidas" apaga as PRÓPRIAS notificações já lidas via
   `POST /api/notificacoes {limparLidas:true}` — RLS de DELETE própria,
   migration 088; não-lida nunca é apagada por aqui),
-  `EstacionarPertoSheet.svelte` ("Estacionar perto" do app antigo,
+  `EstacionarPertoSheet.svelte` — "Onde parar / referências". Reescrito
+  depois da queixa "nem sempre funciona": agora LISTA os resultados com
+  distância e rota (antes só jogava pino no mapa e FECHAVA, então quem
+  não visse o mapa mexer achava que nada aconteceu), raio ajustável,
+  distingue "não tem nada aqui" de "servidor ocupado", e mostra os
+  pontos salvos da congregação ANTES dos do OSM (não dependem de rede).
+  Transporte em `$lib/utils/overpass.ts`: CORRIDA em paralelo entre os
+  espelhos (era série com abort de 13s cada = até 39s de espera), espelho
+  bom lembrado em localStorage, `out center 200` + ordenação por
+  distância no client (o limite de 60 cortava os mais PERTO, já que a
+  Overpass não ordena) e refaz a busca com o dobro do raio quando não
+  acha nada. Categorias de orientação (banco/escola/igreja/hospital)
+  além de estacionamento/praça/posto/mercado/padaria. Sugere onde parar
+  via `$lib/paradas.ts`. Usado em `/t/[token]`, `/publicador/casa-a-casa`
+  e `/publicador/quadra/[id]`. Descrição original —
+  ("Estacionar perto" do app antigo,
   reconstruído — `$lib/utils/overpass.ts` já existia pronto mas órfão,
   nenhuma tela usava; busca POIs via Overpass/OSM num raio de 800m de
   um centro, categorias estacionamento/praça/farmácia/padaria/posto/
@@ -174,6 +194,16 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   250m do compartilhamento individual (não precisa de RPC nova — já tem
   tudo carregado), `destaqueIds` troca por território a cada iteração.
   "Imprimir/Salvar PDF" = `window.print()`, mesmo padrão do S-13.
+  `/admin/relatorios/arranjos` = **escala de saídas de campo**
+  imprimível (tabela Data | Saída | Horário | Ponto de encontro |
+  Dirigente), navegável por SEMANA ou MÊS (`rangeEscala` em
+  `$lib/arranjos.ts`, pura e testada; a expansão de ocorrências reusa
+  `ocorrenciasEntre`). Inclui arranjo INATIVO cujo calendário já passou
+  (saída que aconteceu e foi finalizada — sem isso a folha de um mês
+  fechado sai vazia) e exclui o inativo que ainda venceria (cancelado
+  antes da hora) — mesma derivação concluída vs cancelada de
+  `/admin/designacoes`. Coluna "Saída" cai no nome da MODALIDADE quando
+  `arranjos.nome` está vazio.
   `/admin/dashboard` (E5) = saúde
   do território, incluindo fim de semana vs meio de semana POR
   território (taxa por dia, não bruto). Ideia futura (não
@@ -192,6 +222,55 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   sem isso a abertura com rede lenta parecia "mapa quebrado" em vez de
   "carregando"). Cada componente ainda é dono das PRÓPRIAS camadas
   (fill/line/source) — só a criação da instância é compartilhada.
+- `src/lib/mapa-estilos.ts` — `BASEMAPS`/`urlBasemap`/`trocarBasemap` num
+  lugar só (a constante estava duplicada em 4 componentes + literal no
+  QuadraMap). `BASEMAP_CAMPO = 'liberty'`: as telas de campo nascem com
+  fundo que NOMEIA comércio/banco/escola — o Positron cinza escondia
+  justamente as referências que a congregação usa pra se orientar; a
+  preferência de `/perfil` continua mandando. `trocarBasemap` passa pelo
+  `estiloDoMapa` (o `setStyle` com URL crua perdia o fallback offline).
+- `src/lib/mapa-toque-longo.ts` — segurar o dedo no mapa devolve a
+  coordenada (é assim que o dirigente cadastra ponto de referência em
+  campo). Guarda de arrasto + cancelamento em pan/zoom, mais o
+  `contextmenu` do MapLibre no desktop — no toque ele varia por
+  navegador (iOS costuma não emitir dentro do canvas).
+- `src/lib/paradas.ts` — sugestão de "pare aqui" (PURA, testada):
+  `quantasParadas` escala por nº de quadras E por área (12 quadras num
+  quarteirão continuam merecendo 1 ponto); âncoras por farthest-point
+  sampling DETERMINÍSTICO (mesma entrada = mesma saída em qualquer ordem
+  de array, senão a sugestão "dança" a cada recarga); score = bônus por
+  fonte/categoria menos distância/100, com os pesos calibrados em
+  "metros equivalentes" (ponto salvo +3 ≈ tolera 300m a mais, e NÃO
+  vence um estacionamento na esquina). Âncora sem candidato dentro do
+  raio é pulada: devolver menos (ou nenhuma) sugestão é resposta honesta.
+- `src/lib/distribuicao.ts` — sugestão de COMO REPARTIR o território
+  entre os grupos do dia (PURA, testada): agrupa as quadras em FILAS
+  (faixas perpendiculares ao eixo comprido, com o limiar de corte
+  derivado do PRÓPRIO espaçamento das quadras — um valor fixo de 130m
+  fundia fileiras de quarteirão de ~110m), percorre em SERPENTINA
+  (a primeira fila começa pela ponta mais perto de onde o grupo parou)
+  e corta em N blocos contíguos. Devolve a frase pronta pro dirigente
+  falar ("Comecem pela 10A e sigam em linha reta mais 2 — pela R. X").
+  Usada no sheet de Repartir território (Casa a casa): o dirigente
+  informa quantos grupos vieram, vê a proposta e carrega cada parte pra
+  escolher quem vai nela.
+- `src/lib/maps-link.ts` — link do Google Maps → local (PURA, testada) +
+  `POST /api/maps-link` (server, segue o redirect que o browser não
+  segue por CORS). **O link curto NÃO traz coordenada** (verificado com
+  link real): resolve pra `?q=Nome - Endereço`. Quando falta coordenada
+  o endpoint geocodifica pelo NOME no Nominatim (o endereço com número
+  erra a rua) e devolve `confianca: 'aproximada'` — a tela obriga o
+  admin a conferir o pino. O link original fica salvo em
+  `pontos_referencia.maps_url` e é ele que a gente compartilha.
+- `src/lib/lados.ts` — "um lado = uma rua" (PURO, testado). `chaveLado`
+  normaliza acento e abreviação (`R. José` = `RUA JOSE`) mas NÃO
+  descarta o tipo (`Travessa João` ≠ `Rua João`). `ladoFeitoNoCiclo`
+  ignora marca anterior à última conclusão cheia (senão a quadra
+  reaberta ficaria com os lados verdes); `todosLadosFeitos` é false em
+  quadra SEM endereço (nada a concluir não é "tudo concluído").
+  ⚠️ O agrupamento por rua em `/publicador/quadra/[id]` e o `moverLocal`
+  (reordenar ▲▼) usam a MESMA chave — mudar uma sem a outra quebra a
+  reordenação em silêncio.
 - `src/lib/mapa-offline.ts` — fundo de mapa OFFLINE via PMTiles (E4/W11):
   extract do município no bucket público `mapa-offline` (migration 079,
   gerado pelo admin — `scripts/gerar-mapa-offline.md`), baixado uma vez
@@ -320,6 +399,8 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
 | `publicacao_controle` | Lista de controle por publicação — servo escolhe uma publicação em `/publicacoes` e confirma, publicador a publicador, `qtd_pedida`/`qtd_entregue` (contador +/-). Diferente de `pedidos_publicacao` (fila de pedido especial avulso com status): aqui é registro manual sem fluxo, 1 linha por (publicação, publicador). Gate por `is_servo_pub()`, mesma capacidade de sempre |
 | `tp_relatorios` / `tp_relatorio_itens` | Relatório de fim de agendamento — TP-D, botão "Relatório do turno" em `/publicador/arranjo` (1 por ocorrência, checklist do tipo do carrinho + publicação da campanha ativa como item extra); fila de Reposição (itens != ok não resolvidos) + tendência de colocações em `/publicacoes` |
 | `notificacoes` / `push_subscriptions` | PUSH-A — sino no header (`NotificacoesBell.svelte`, fallback universal, funciona sem push) + Web Push real (JWT VAPID assinado via WebCrypto, tickle sem payload — SW busca o conteúdo em `/api/notificacoes`). Disparado por `$lib/server/push.ts::criarNotificacao()` em: designação criada, cartas designadas, `designarParticipante` (TP-F), status de `pedidos_publicacao` mudou (P-A), saída de agendamento em <48h. Ativar em `/perfil` (botão, exige gesto do usuário) |
+| `pontos_referencia` + `ponto_referencia_territorios` | Pontos NOMEADOS pela congregação ("Banco do Brasil da Fernando") — nome/tipo (estacionamento/referencia/entrada/atencao)/geo/notas + vínculo OPCIONAL com quadra ou território + `osm_id` (quando nasceu de um POI do OSM salvo com nosso apelido; índice único PARCIAL). Migration 091, view `pontos_referencia_geo`. RLS: leitura de qualquer autenticado, escrita de `is_dirigente_or_admin()`. **Migration 094** mudou o dono: gestão é do ADMIN, na aba **Pontos** de `/admin/poligonos` (o ponto de encontro é característica do TERRITÓRIO — e um bom ponto serve a VÁRIOS, daí o N:N em `ponto_referencia_territorios`; cadastrar na tela da quadra era péssimo). Dirigente só SUGERE (`status='sugerido'`, policy própria de INSERT) a partir do "Onde parar/referências"; admin valida/edita/recusa. Nasce por clique no mapa em Polígonos, por link do Google Maps colado (ver `$lib/maps-link.ts`) ou por "salvar" um POI achado. Entra no payload cacheado da quadra → funciona no modo rua. Vai também pro `/t/<token>` (migration 093 acrescenta a chave `pontos` na RPC `territorio_publico`: ponto da quadra/território ou a até 300m da união dos polígonos) |
+| `quadra_lados_conclusoes` | Conclusão POR LADO da quadra ("só fizemos o lado da Rua X"). **Lado = RUA** (`locais.logradouro` normalizado por `$lib/lados.ts::chaveLado`), NÃO `face_ibge` (texto livre, quase sempre NULL, "Face 3" não diz nada pro publicador). Migration 092. **Marcar lado é PROGRESSO do ciclo, não fecha ciclo**: não escreve em `quadras.data_conclusao`, então nenhum consumidor binário (S-13, dashboard, campanha, cor do mapa, cartão S-12, cobertura, lembretes, fechamento de designação) enxerga diferença. Quando o ÚLTIMO lado é marcado, `registrarConclusaoLado` chama `registrarConclusaoQuadra` — a conclusão cheia continua sendo o único caminho de escrita. Índice único (quadra, lado, data) + upsert `ignoreDuplicates`: a tela grava por `postComFila` e o replay reenviaria o mesmo POST. Nenhuma coluna nova em `quadras` (o trigger da 090 barraria o dirigente) |
 | views `*_geo` | expõem geometria como GeoJSON (`poly_geojson` / `geo_geojson`) |
 
 **Status de quadra = só `ativa` (boolean).** "Concluída/pendente" são
@@ -661,6 +742,15 @@ Consequências práticas:
   snapshot offline bom. Todo fetcher de load convertido lança em erro
   (helpers de `$lib/queries.ts` já lançam; query crua precisa do
   `if (res.error) throw res.error` explícito).
+- Tabela com policy `for all using (is_admin())` + ação de DIRIGENTE na
+  UI = bug silencioso garantido. Já aconteceu DUAS vezes: `quadras`
+  (concluir quadra, migration 090) e `arranjos` (Finalizar designação /
+  Assumir dirigência, migration 095 — o dirigente pedia socorro no
+  WhatsApp com a home cheia de saídas de meses atrás, e o app dizia
+  "Designação finalizada" toda vez). Ao criar ação de dirigente, checar
+  a policy da tabela ANTES; o padrão de correção é policy de UPDATE pra
+  `is_dirigente_or_admin()` + trigger `*_guard_nao_admin` limitando as
+  colunas (diff via `to_jsonb`).
 - `UPDATE`/`DELETE` barrado por RLS **não devolve erro**: a policy filtra
   a linha pra fora e o PostgREST responde sucesso com 0 linhas afetadas
   (erro só quando a linha passa no `using` e falha no `with check`). Foi

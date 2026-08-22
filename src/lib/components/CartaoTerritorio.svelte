@@ -12,6 +12,7 @@
   import { diasDesde } from '$lib/utils/data';
   import { centroidePoligono } from '$lib/utils/geo';
   import { buscarViasComNome, pontoDoRotulo, abreviarLogradouro, comprimentoMetros, type ViaComNome } from '$lib/utils/overpass';
+  import { urlBasemap } from '$lib/mapa-estilos';
 
   export interface QuadraContexto {
     id: string;
@@ -38,13 +39,6 @@
     nomesTerritorios?: Record<string, string>;
   } = $props();
 
-  // Mesmos estilos do resto do app (MapaAdmin) — redeclarado porque o
-  // MapaAdmin não exporta a const.
-  const BASEMAPS: Record<string, string> = {
-    positron: 'https://tiles.openfreemap.org/styles/positron',
-    liberty: 'https://tiles.openfreemap.org/styles/liberty',
-    bright: 'https://tiles.openfreemap.org/styles/bright'
-  };
 
   const CORES = {
     destaqueFill: '#4f46e5',
@@ -151,7 +145,7 @@
     return new Promise((resolve) => {
       const map = new maplibregl.Map({
         container: containerMapa,
-        style: BASEMAPS[basemap] ?? BASEMAPS.positron,
+        style: urlBasemap(basemap),
         bounds: bbox,
         // Arquivo: gutter maior em volta do território — é NELE que os
         // rótulos de vizinho limítrofe vivem ("sempre fora das quadras").

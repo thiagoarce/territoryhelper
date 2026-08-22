@@ -13,6 +13,8 @@ import { gravarCache } from '$lib/offline/cache-leitura';
 import { arranjoAindaVale } from '$lib/arranjos';
 import { podeTrabalharQuadra } from '$lib/posse';
 import { hojeIsoBrasil } from '$lib/utils/data';
+import type { PontoReferencia } from '$lib/pontos-referencia';
+import type { ConclusaoLado } from '$lib/lados';
 
 export function chaveQuadraCampo(quadraId: string, userId: string): string {
   return `campo:quadra:${quadraId}:${userId}`;
@@ -95,6 +97,13 @@ export async function verificarPosseQuadra(
 export type DadosQuadraCampo = DadosQuadraTrabalho & {
   cicloCartasPorLocal: Record<number, string | null>;
   arranjoHoraInicio: string | null;
+  /** OPCIONAL de propósito: um payload gravado no cache ANTES desta
+   *  feature não tem o campo, e o comCache devolve o valor antigo sem
+   *  revalidar. Todo consumo usa `?? []` — nunca bumpar a chave de
+   *  cache por causa disso (invalidaria o offline de quem está na rua). */
+  pontosReferencia?: PontoReferencia[];
+  /** também opcional: cache gravado antes da feature de lados não tem */
+  ladosConclusoes?: ConclusaoLado[];
 };
 
 export async function carregarQuadraCampo(quadraId: string): Promise<DadosQuadraCampo> {
@@ -118,7 +127,62 @@ export async function carregarQuadraCampo(quadraId: string): Promise<DadosQuadra
     .order('data', { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
-  return { ...dados, cicloCartasPorLocal: cicloCartasPorLocalMap, arranjoHoraInicio: arr?.hora_inicio ?? null };
+  // Pontos de referência nomeados pela congregação, dessa quadra ou do
+  // território dela ("Banco do Brasil da Fernando"). Não dependem de
+  // rede na hora do uso: entram no payload cacheado, então funcionam
+  // no modo rua mesmo com a Overpass fora do ar.
+  const [pontos, ladosRes] = await Promise.all([
+    pontosDaQuadra(supabase, quadraId, dados.quadra.territorio_id ?? null),
+    // Conclusões por LADO (migration 092) — progresso do ciclo atual.
+    supabase
+      .from('quadra_lados_conclusoes')
+      .select('lado_chave, lado_rotulo, data_conclusao, marcado_em')
+      .eq('quadra_id', quadraId)
+  ]);
+  if (ladosRes.error) throw ladosRes.error;
+  return {
+    ...dados,
+    cicloCartasPorLocal: cicloCartasPorLocalMap,
+    arranjoHoraInicio: arr?.hora_inicio ?? null,
+    pontosReferencia: pontos,
+    ladosConclusoes: (ladosRes.data ?? []) as ConclusaoLado[]
+  };
+}
+
+/** Pontos da quadra + os do território (que servem pra quadra vizinha). */
+export async function pontosDaQuadra(
+  supabase: ReturnType<typeof supabaseBrowser>,
+  quadraId: string,
+  territorioId: string | null
+): Promise<PontoReferencia[]> {
+  let q = supabase
+    .from('pontos_referencia_geo')
+    .select('id, nome, tipo, notas, quadra_id, territorio_id, osm_id, geo_geojson')
+    .eq('ativo', true);
+  q = territorioId
+    ? q.or(`quadra_id.eq.${quadraId},territorio_id.eq.${territorioId}`)
+    : q.eq('quadra_id', quadraId);
+  const res = await q;
+  // Query crua do supabase-js NÃO lança em erro de rede — sem este
+  // check o comCache gravaria a tela sem pontos por cima do snapshot bom.
+  if (res.error) throw res.error;
+  return (res.data ?? [])
+    .map((p: any) => {
+      const c = p.geo_geojson?.coordinates;
+      if (!Array.isArray(c) || c.length < 2) return null;
+      return {
+        id: p.id as number,
+        nome: p.nome as string,
+        tipo: p.tipo as PontoReferencia['tipo'],
+        lat: c[1] as number,
+        lng: c[0] as number,
+        notas: p.notas ?? null,
+        quadra_id: p.quadra_id ?? null,
+        territorio_id: p.territorio_id ?? null,
+        osm_id: p.osm_id ?? null
+      } satisfies PontoReferencia;
+    })
+    .filter((p): p is PontoReferencia => p !== null);
 }
 
 export interface TceEndereco {

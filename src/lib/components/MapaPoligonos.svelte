@@ -1,18 +1,12 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import { urlBasemap, trocarBasemap, type Basemap } from '$lib/mapa-estilos';
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import type { LocalComGeo } from '../../routes/admin/poligonos/+page';
 
-  type Basemap = 'positron' | 'liberty' | 'bright';
-
-  const BASEMAPS: Record<Basemap, string> = {
-    positron: 'https://tiles.openfreemap.org/styles/positron',
-    liberty: 'https://tiles.openfreemap.org/styles/liberty',
-    bright: 'https://tiles.openfreemap.org/styles/bright'
-  };
 
   type FaceCluster = { key: string; lat: number; lng: number; qtd: number; selecionada: boolean };
   type TceGeo = { id: string; nome: string; status: string; poly_geojson: unknown | null };
@@ -37,6 +31,7 @@
     onClickQuadra,
     onClickLocal,
     onClickFace,
+    onClickMapa,
     onDesenhoPronto,
     onViewportChange
   }: {
@@ -58,6 +53,8 @@
     boundsIniciais?: [[number, number], [number, number]] | null;
     onClickQuadra?: (q: QuadraGeo) => void;
     onClickLocal?: (l: LocalComGeo) => void;
+    /** clique em QUALQUER lugar do mapa (modo Pontos: marcar coordenada) */
+    onClickMapa?: (lngLat: { lng: number; lat: number }) => void;
     onClickFace?: (key: string) => void;
     onDesenhoPronto?: () => void;
     onViewportChange?: (viewport: {
@@ -231,7 +228,7 @@
     if (!mapa) return;
     if (basemapAtual === b) return;
     basemapAtual = b;
-    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+    trocarBasemap(mapa, b);
   });
 
   // Atualiza GeoJSON quando dados mudam
@@ -308,7 +305,7 @@
   onMount(async () => {
     const { maplibre: ml, mapa: m } = await criarMapaBase({
       container,
-      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
+      styleUrl: urlBasemap(basemap),
       zoom: 14
     });
     maplibre = ml;
@@ -454,6 +451,18 @@
         if (!props) return;
         const q = (quadras ?? []).find((x) => x.id === props.id);
         if (q && onClickQuadra) onClickQuadra(q);
+      });
+
+      // Clique no mapa "vazio" — só quando o modo pede (Pontos). Vem
+      // DEPOIS dos handlers de camada e checa defaultPrevented pra um
+      // clique em endereço/quadra não virar ponto novo sem querer.
+      mapa.on('click', (e: any) => {
+        if (!onClickMapa || e.defaultPrevented) return;
+        const emCamada = mapa.queryRenderedFeatures(e.point, {
+          layers: ['locais-points', 'quadras-fill', 'faces-cluster'].filter((l) => mapa.getLayer(l))
+        });
+        if (emCamada.length > 0) return;
+        onClickMapa({ lng: e.lngLat.lng, lat: e.lngLat.lat });
       });
 
       mapa.on('click', 'faces-cluster', (e: any) => {

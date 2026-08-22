@@ -257,7 +257,7 @@ export async function publishInstallerPackage(
         {
           congregation: manifest.configuration.congregation,
           territories: territories.map((territory) => territory.id),
-          baselineVersion: "1.0.0",
+          baselineVersion: "1.1.0",
           packageVersion: manifest.packageVersion,
           manifestHash,
           counts: manifest.counts,

@@ -48,6 +48,10 @@ export const actions: Actions = {
 
     // Login automático
     await locals.supabase.auth.signInWithPassword({ email: convite.email, password: senha });
+    // Manda pra `/` e deixa a raiz decidir a home do role — mesmo padrão
+    // do /login, roteamento por role num lugar só. Só é seguro porque a
+    // raiz agora resolve dirigente de verdade (antes ela mandava pra
+    // /dirigente, rota que não existia, e o convite terminava em 404).
     throw redirect(303, '/');
   }
 };

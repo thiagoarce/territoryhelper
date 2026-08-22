@@ -13,7 +13,8 @@ test('baseline curta tem sequência própria e não reproduz 001–090', () => {
     '000_extensions.sql', '010_schema_metadata.sql', '020_identity.sql',
     '030_geographic_core.sql', '035_work_area_metadata.sql', '040_operational_core.sql', '045_platform_support.sql',
     '050_views_and_indexes.sql', '060_functions_and_triggers.sql',
-    '065_spatial_and_public_functions.sql', '070_rls.sql', '080_storage.sql'
+    '065_spatial_and_public_functions.sql', '070_rls.sql',
+    '075_field_guidance.sql', '080_storage.sql'
   ]);
   assertFalse(sql.includes('truncate '));
   assertFalse(/\bdelete from public\.\w+\s*;/.test(sql));
@@ -69,4 +70,15 @@ test('baseline registra versão, configuração e importações idempotentes', (
   assertTrue(sql.includes('create table if not exists public.schema_versions'));
   assertTrue(sql.includes('create table if not exists public.installation_config'));
   assertTrue(sql.includes('manifest_hash text not null unique'));
+});
+
+test('baseline inclui orientação em campo e permissões atuais da main', () => {
+  for (const table of ['pontos_referencia', 'ponto_referencia_territorios', 'quadra_lados_conclusoes']) {
+    assertTrue(sql.includes(`create table if not exists public.${table}`), `faltou ${table}`);
+  }
+  assertTrue(sql.includes('function public.arranjos_guard_nao_admin'));
+  assertTrue(sql.includes('policy "arranjos_update_dirigente"'));
+  assertTrue(sql.includes("pr.status = 'validado'"));
+  assertTrue(sql.includes("'tce_comercios'"));
+  assertTrue(sql.includes("'contexto'"));
 });

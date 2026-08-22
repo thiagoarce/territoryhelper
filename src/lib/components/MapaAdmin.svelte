@@ -1,19 +1,13 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
+  import { urlBasemap, trocarBasemap, type Basemap } from '$lib/mapa-estilos';
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
   import { diasDesde } from '$lib/utils/data';
 
   type ColorirPor = 'conclusao' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'campanha';
-  type Basemap = 'positron' | 'liberty' | 'bright';
-
-  const BASEMAPS: Record<Basemap, string> = {
-    positron: 'https://tiles.openfreemap.org/styles/positron',
-    liberty: 'https://tiles.openfreemap.org/styles/liberty',
-    bright: 'https://tiles.openfreemap.org/styles/bright'
-  };
 
   let {
     quadras,
@@ -87,7 +81,7 @@
     if (!mapa) return;
     if (basemapAtual === b) return;
     basemapAtual = b;
-    try { mapa.setStyle(BASEMAPS[b]); } catch {}
+    trocarBasemap(mapa, b);
   });
 
   // Quando os dados (quadras / alocadas) mudam, atualiza a fonte GeoJSON.
@@ -222,7 +216,7 @@
   onMount(async () => {
     const { maplibre, mapa: m } = await criarMapaBase({
       container,
-      styleUrl: BASEMAPS[basemap] ?? BASEMAPS.positron,
+      styleUrl: urlBasemap(basemap),
       zoom: 14,
       extra: { preserveDrawingBuffer: true }
     });

@@ -1,4 +1,5 @@
 import { friendlyMessage } from '$lib/erros-usuario';
+import { ladosDaQuadra, todosLadosFeitos, dataConclusaoCheiaAutomatica } from '$lib/lados';
 
 // Registra uma conclusão de quadra no histórico append-only
 // (quadras_conclusoes) E sincroniza quadras.data_conclusao.
@@ -79,6 +80,98 @@ export async function registrarConclusaoQuadra(
   if (count === 0) {
     return { error: 'A conclusão foi registrada no histórico, mas a quadra não pôde ser atualizada (permissão ou quadra inexistente).' };
   }
+  return { error: null };
+}
+
+// ─── Conclusão por LADO (migration 092) ──────────────────────────────
+//
+// Marcar um lado é PROGRESSO do ciclo atual — não escreve em
+// quadras.data_conclusao e não fecha ciclo nenhum, então nenhum dos
+// consumidores binários (S-13, dashboard, campanha, cor do mapa, cartão
+// S-12, cobertura, lembretes) enxerga diferença. A quadra só fecha
+// quando o ÚLTIMO lado é marcado, e aí pelo caminho canônico de sempre
+// (registrarConclusaoQuadra).
+export async function registrarConclusaoLado(
+  supabase: { from: (t: string) => any },
+  quadraId: string,
+  lado: { chave: string; rotulo: string },
+  dataConclusao: string,
+  marcadoPor: string | null,
+  marcadoEm?: string | null
+): Promise<{ error: string | null; quadraConcluida: boolean }> {
+  const linha: Record<string, unknown> = {
+    quadra_id: quadraId,
+    lado_chave: lado.chave,
+    lado_rotulo: lado.rotulo,
+    data_conclusao: dataConclusao,
+    marcado_por: marcadoPor
+  };
+  if (marcadoEm) {
+    linha.marcado_em = marcadoEm;
+    linha.hora_informada = true;
+  }
+  // upsert + ignoreDuplicates: a tela de campo grava por postComFila e
+  // o MESMO POST é reenviado quando a rede volta — sem isso, o replay
+  // criaria uma segunda linha do mesmo lado no mesmo dia.
+  const { error: errIns } = await supabase
+    .from('quadra_lados_conclusoes')
+    .upsert(linha, { onConflict: 'quadra_id,lado_chave,data_conclusao', ignoreDuplicates: true });
+  if (errIns) return { error: errIns.message, quadraConcluida: false };
+
+  // Todos os lados feitos? Precisa dos endereços da quadra (pra saber
+  // QUANTOS lados existem) e do histórico de lados.
+  const [locaisRes, ladosRes, quadraRes] = await Promise.all([
+    supabase.from('locais').select('id, logradouro, marcado_nao_existe').eq('quadra_id', quadraId),
+    supabase
+      .from('quadra_lados_conclusoes')
+      .select('lado_chave, data_conclusao, marcado_em')
+      .eq('quadra_id', quadraId),
+    supabase.from('quadras').select('data_conclusao').eq('id', quadraId).maybeSingle()
+  ]);
+  if (locaisRes.error) return { error: locaisRes.error.message, quadraConcluida: false };
+  if (ladosRes.error) return { error: ladosRes.error.message, quadraConcluida: false };
+
+  const lados = ladosDaQuadra(
+    locaisRes.data ?? [],
+    ladosRes.data ?? [],
+    quadraRes.data?.data_conclusao ?? null
+  );
+  if (!todosLadosFeitos(lados)) return { error: null, quadraConcluida: false };
+
+  const dataCheia = dataConclusaoCheiaAutomatica(lados) ?? dataConclusao;
+  const { error: errCheia } = await registrarConclusaoQuadra(
+    supabase,
+    quadraId,
+    dataCheia,
+    marcadoPor,
+    marcadoEm
+  );
+  // Falha ao FECHAR a quadra não desfaz a marca do lado: o trabalho foi
+  // registrado, e a tela avisa que a quadra não pôde ser fechada.
+  if (errCheia) return { error: errCheia, quadraConcluida: false };
+  return { error: null, quadraConcluida: true };
+}
+
+export async function desfazerConclusaoLado(
+  supabase: { from: (t: string) => any },
+  quadraId: string,
+  ladoChave: string
+): Promise<{ error: string | null }> {
+  const { data: hist } = await supabase
+    .from('quadra_lados_conclusoes')
+    .select('id')
+    .eq('quadra_id', quadraId)
+    .eq('lado_chave', ladoChave)
+    .order('data_conclusao', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1);
+  if (!hist?.[0]) return { error: null }; // já não havia marca — nada a fazer
+  const { error, count } = await supabase
+    .from('quadra_lados_conclusoes')
+    .delete({ count: 'exact' })
+    .eq('id', hist[0].id);
+  if (error) return { error: error.message };
+  if (count === 0) return { error: 'Sem permissão pra desfazer (só dirigente ou admin).' };
   return { error: null };
 }
 

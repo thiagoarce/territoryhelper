@@ -367,7 +367,7 @@ async function applyBaseline(): Promise<number> {
     await sql.end({ timeout: 5 });
   }
   console.log(
-    "✓ Baseline aplicada. Crie o primeiro usuário pelo painel Auth e promova-o conforme QUICKSTART.md.",
+    "✓ Baseline aplicada. No assistente visual, continue até a etapa de criar o primeiro administrador.",
   );
   return 0;
 }

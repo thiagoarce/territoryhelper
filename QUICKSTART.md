@@ -78,7 +78,7 @@ Obtenha a connection string do banco no Supabase e execute:
 npm run installer -- baseline --confirm
 ```
 
-Esse comando aplica somente `supabase/baseline/000–080`. Ele pode ser repetido com segurança. **Não execute `supabase/migrations/001–090`.**
+Esse comando aplica somente a sequência curta `supabase/baseline/000–080`, incluindo o módulo consolidado `075_field_guidance.sql`. Ele pode ser repetido com segurança. **Não execute manualmente o histórico de `supabase/migrations`.**
 
 ## 4. Criar o primeiro administrador
 

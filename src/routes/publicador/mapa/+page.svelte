@@ -1,6 +1,7 @@
 <script lang="ts">
   import AdminMapa from '$lib/components/AdminMapa.svelte';
   import type { PageData } from './$types';
+  import { BASEMAP_CAMPO } from '$lib/mapa-estilos';
 
   let { data }: { data: PageData } = $props();
 
@@ -26,5 +27,5 @@
 </div>
 
 <div class="mt-3">
-  <AdminMapa quadras={data.quadras} altura={620} {colorirPor} popupDetalhe basemap={data.profile?.pref_basemap ?? 'positron'} />
+  <AdminMapa quadras={data.quadras} altura={620} {colorirPor} popupDetalhe basemap={data.profile?.pref_basemap ?? BASEMAP_CAMPO} />
 </div>

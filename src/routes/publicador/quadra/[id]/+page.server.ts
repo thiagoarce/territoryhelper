@@ -6,7 +6,8 @@ import type { Actions } from './$types';
 import { hojeIsoBrasil, horaBrasilParaIso } from '$lib/utils/data';
 import { fail } from '@sveltejs/kit';
 import { registrarCuradoria, snapshotAntes } from '$lib/server/curadoria';
-import { registrarConclusaoQuadra, desfazerConclusaoQuadra } from '$lib/server/conclusao';
+import { registrarConclusaoQuadra, desfazerConclusaoQuadra, registrarConclusaoLado, desfazerConclusaoLado } from '$lib/server/conclusao';
+import { criarPontoReferencia } from '$lib/server/pontos';
 
 const DESFECHOS_VALIDOS = ['conversou', 'semConversa', 'naoAtendeu', ''] as const;
 
@@ -293,9 +294,83 @@ export const actions: Actions = {
     return { ok: true, msg: 'Local excluído' };
   },
 
-  // A autorização contextual vive em pode_concluir_quadra()/registrar_conclusao_quadra().
-  // Assim dirigente/admin têm escopo global e líder/participante de uma
-  // designação pessoal ativa concluem somente as próprias quadras.
+  // Concluir um LADO da quadra ("só fizemos o lado da Rua X"). Mesmo
+  // poder de concluir a quadra inteira: dirigente/admin. Marcar o
+  // ÚLTIMO lado fecha a quadra sozinha, pelo caminho canônico.
+  concluirLado: async ({ request, locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode marcar conclusão' });
+    }
+    const fd = await request.formData();
+    const chave = String(fd.get('lado_chave') ?? '').trim();
+    const rotulo = String(fd.get('lado_rotulo') ?? '').trim();
+    if (!chave || !rotulo) return fail(400, { erro: 'lado obrigatório' });
+    const data = String(fd.get('data') ?? '').trim() || hojeIsoBrasil();
+    const hora = String(fd.get('hora') ?? '').trim();
+    const marcadoEm = hora ? horaBrasilParaIso(data, hora) : null;
+    const r = await registrarConclusaoLado(
+      locals.supabase,
+      params.id,
+      { chave, rotulo },
+      data,
+      locals.user.id,
+      marcadoEm
+    );
+    if (r.error) return fail(400, { erro: r.error });
+    return {
+      ok: true,
+      quadraConcluida: r.quadraConcluida,
+      msg: r.quadraConcluida ? 'Último lado — quadra concluída' : `Lado "${rotulo}" marcado`
+    };
+  },
+
+  desfazerLado: async ({ request, locals, params }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin' });
+    }
+    const fd = await request.formData();
+    const chave = String(fd.get('lado_chave') ?? '').trim();
+    if (!chave) return fail(400, { erro: 'lado obrigatório' });
+    const { error: err } = await desfazerConclusaoLado(locals.supabase, params.id, chave);
+    if (err) return fail(400, { erro: err });
+    return { ok: true, msg: 'Marca do lado removida' };
+  },
+
+  // SUGESTÃO de ponto de referência, a partir de um lugar que o app
+  // achou em campo. O cadastro de verdade mora em /admin/poligonos: o
+  // ponto de encontro é característica do TERRITÓRIO (às vezes de
+  // vários), não da quadra — por isso aqui o dirigente só sugere e o
+  // admin valida. Admin sugerindo já entra validado.
+  sugerirPontoReferencia: async ({ request, locals }) => {
+    if (!locals.user) return fail(401, { erro: 'Não autenticado' });
+    if (!['dirigente', 'admin'].includes(locals.profile?.role ?? '')) {
+      return fail(403, { erro: 'Só dirigente/admin pode sugerir ponto' });
+    }
+    const fd = await request.formData();
+    const { error: err } = await criarPontoReferencia(locals.supabase, {
+      nome: String(fd.get('nome') ?? ''),
+      tipo: fd.get('tipo'),
+      lat: fd.get('lat'),
+      lng: fd.get('lng'),
+      notas: String(fd.get('notas') ?? '') || null,
+      endereco: String(fd.get('endereco') ?? '') || null,
+      osmId: String(fd.get('osm_id') ?? '') || null,
+      status: locals.profile?.role === 'admin' ? 'validado' : 'sugerido',
+      criadoPor: locals.user.id
+    });
+    if (err) return fail(400, { erro: err });
+    return {
+      ok: true,
+      msg: locals.profile?.role === 'admin' ? 'Ponto salvo' : 'Sugestão enviada pro servo de território'
+    };
+  },
+
+  // A autorização da conclusão integral vive em
+  // pode_concluir_quadra()/registrar_conclusao_quadra(): dirigente/admin
+  // têm escopo global e líder/participante de uma designação pessoal ativa
+  // concluem somente as próprias quadras.
   concluirQuadra: async ({ request, locals, params }) => {
     if (!locals.user) return fail(401, { erro: 'Não autenticado' });
     const fd = await request.formData();

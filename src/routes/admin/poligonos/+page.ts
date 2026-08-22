@@ -41,6 +41,22 @@ interface LocalDaView {
   geo_geojson: { coordinates: [number, number] } | null;
 }
 
+export interface PontoAdmin {
+  id: number;
+  nome: string;
+  tipo: string;
+  notas: string | null;
+  endereco: string | null;
+  maps_url: string | null;
+  /** 'sugerido' = veio do dirigente e espera validação do admin */
+  status: string;
+  ativo: boolean;
+  criado_por_nome: string | null;
+  lat: number;
+  lng: number;
+  territorios: string[];
+}
+
 export interface CuradoriaLinha {
   id: number;
   local_id: number | null;
@@ -292,7 +308,47 @@ async function carregar() {
       );
     }
   }
-  const curadoria: CuradoriaLinha[] = curadoriaRows.map((c: any) => ({
+  // Pontos de referência (catálogo global, migration 091/094) — a
+  // gestão vive aqui porque o ponto de encontro é característica do
+  // TERRITÓRIO (às vezes de vários), não da quadra.
+  const [pontosRes, vinculosRes] = await Promise.all([
+    supabase
+      .from('pontos_referencia_geo')
+      .select('id, nome, tipo, notas, endereco, maps_url, status, osm_id, ativo, criado_por, criado_em, geo_geojson')
+      .order('status')
+      .order('nome'),
+    supabase.from('ponto_referencia_territorios').select('ponto_id, territorio_id')
+  ]);
+  if (pontosRes.error) throw pontosRes.error;
+  if (vinculosRes.error) throw vinculosRes.error;
+  const territoriosPorPonto = new Map<number, string[]>();
+  for (const v of (vinculosRes.data ?? []) as any[]) {
+    const arr = territoriosPorPonto.get(v.ponto_id) ?? [];
+    arr.push(v.territorio_id);
+    territoriosPorPonto.set(v.ponto_id, arr);
+  }
+  const pontos: PontoAdmin[] = ((pontosRes.data ?? []) as any[])
+    .map((p) => {
+      const c = p.geo_geojson?.coordinates;
+      if (!Array.isArray(c) || c.length < 2) return null;
+      return {
+        id: p.id,
+        nome: p.nome,
+        tipo: p.tipo,
+        notas: p.notas ?? null,
+        endereco: p.endereco ?? null,
+        maps_url: p.maps_url ?? null,
+        status: p.status ?? 'validado',
+        ativo: p.ativo,
+        criado_por_nome: p.criado_por ? (nomePub.get(p.criado_por) ?? null) : null,
+        lat: c[1],
+        lng: c[0],
+        territorios: territoriosPorPonto.get(p.id) ?? []
+      } satisfies PontoAdmin;
+    })
+    .filter((p): p is PontoAdmin => p !== null);
+
+  const curadoria: CuradoriaLinha[] = (curadoriaRows ?? []).map((c: any) => ({
     id: c.id,
     local_id: c.local_id,
     unidade_id: c.unidade_id,
@@ -320,5 +376,6 @@ async function carregar() {
     locaisSemFace,
     quadrasParaRenomear,
     curadoria,
+    pontos
   };
 }

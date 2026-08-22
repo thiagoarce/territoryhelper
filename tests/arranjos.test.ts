@@ -1,5 +1,5 @@
 import { test, assertEq } from './harness';
-import { ocorrenciasEntre, rangeDoPeriodo, type ArranjoBase } from '../src/lib/arranjos';
+import { ocorrenciasEntre, rangeDoPeriodo, rangeEscala, type ArranjoBase } from '../src/lib/arranjos';
 
 function arranjo(overrides: Partial<ArranjoBase>): ArranjoBase {
   return {
@@ -59,4 +59,43 @@ test('rangeDoPeriodo semana cobre 7 dias', () => {
   const ini = new Date(r.isoIni + 'T12:00:00').getTime();
   const fim = new Date(r.isoFim + 'T12:00:00').getTime();
   assertEq(Math.round((fim - ini) / 86400000), 6);
+});
+
+// --- rangeEscala: janela navegável da escala imprimível (E-arranjos) ---
+
+test('rangeEscala semana: segunda→domingo da semana da data base', () => {
+  // 2026-08-05 é uma quarta-feira → semana 03/08 (seg) a 09/08 (dom)
+  const r = rangeEscala('semana', 0, '2026-08-05');
+  assertEq(r.isoIni, '2026-08-03');
+  assertEq(r.isoFim, '2026-08-09');
+});
+
+test('rangeEscala semana: domingo pertence à semana que COMEÇOU na segunda', () => {
+  // 2026-08-09 é domingo — não pode abrir uma semana nova
+  const r = rangeEscala('semana', 0, '2026-08-09');
+  assertEq(r.isoIni, '2026-08-03');
+  assertEq(r.isoFim, '2026-08-09');
+});
+
+test('rangeEscala semana: offset anda 7 dias pra cada lado', () => {
+  assertEq(rangeEscala('semana', -1, '2026-08-05').isoIni, '2026-07-27');
+  assertEq(rangeEscala('semana', 1, '2026-08-05').isoIni, '2026-08-10');
+});
+
+test('rangeEscala mês: dia 1 ao último dia, com virada de ano no offset', () => {
+  const ago = rangeEscala('mes', 0, '2026-08-05');
+  assertEq(ago.isoIni, '2026-08-01');
+  assertEq(ago.isoFim, '2026-08-31');
+  assertEq(ago.label, 'Agosto de 2026');
+  // fevereiro de 2028 é bissexto (29 dias) — e o offset atravessa o ano
+  const fev = rangeEscala('mes', 6, '2027-08-15');
+  assertEq(fev.isoIni, '2028-02-01');
+  assertEq(fev.isoFim, '2028-02-29');
+});
+
+test('rangeEscala mês: offset negativo volta pro ano anterior', () => {
+  const dez = rangeEscala('mes', -1, '2027-01-10');
+  assertEq(dez.isoIni, '2026-12-01');
+  assertEq(dez.isoFim, '2026-12-31');
+  assertEq(dez.label, 'Dezembro de 2026');
 });

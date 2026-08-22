@@ -17,10 +17,16 @@
 -- pontos de TP, necessidade de revistas, preferência/disponibilidade
 -- fixa dos publicadores).
 --
+-- `pontos_referencia` (migration 091) também FICA: é conhecimento da
+-- congregação sobre a cidade ("Banco do Brasil da Fernando"), não dado
+-- de uma rodada de teste — apagar obrigaria a recadastrar tudo à mão.
+--
 -- MANTÉM TAMBÉM o registro de quadras feitas (decisão do usuário):
 -- `quadras_conclusoes` (histórico de conclusões) e
 -- `quadras.data_conclusao` NÃO são tocados — o ciclo do casa em casa
--- (última conclusão da quadra) sobrevive ao reset.
+-- (última conclusão da quadra) sobrevive ao reset. `quadra_lados_conclusoes`
+-- (migration 092) segue a MESMA regra: apagar só os lados deixaria uma
+-- quadra concluída mostrando "0 de 5 lados feitos", um estado incoerente.
 --
 -- APAGA histórico de trabalho de campo + designações/arranjos/TP de
 -- teste (cascata cuida das tabelas filhas — arranjo_partes,

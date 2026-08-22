@@ -19,9 +19,19 @@ export const actions: Actions = {
     if (errA || !arr) return fail(404, { erro: 'Arranjo não encontrado' });
     if (arr.dirigente_id === locals.user.id) return fail(400, { erro: 'Você já é o dirigente' });
 
-    const { error: errUp } = await locals.supabase
-      .from('arranjos').update({ dirigente_id: locals.user.id }).eq('id', arranjoId);
+    // count exact: RLS que barra UPDATE devolve sucesso com 0 linhas —
+    // "Assumir dirigência" também nunca funcionou pro dirigente antes da
+    // migration 095, e dava toast verde do mesmo jeito.
+    const { error: errUp, count } = await locals.supabase
+      .from('arranjos')
+      .update({ dirigente_id: locals.user.id }, { count: 'exact' })
+      .eq('id', arranjoId);
     if (errUp) return fail(400, { erro: errUp.message });
+    if (count === 0) {
+      return fail(403, {
+        erro: 'Não consegui assumir (sem permissão no banco). Avise o servo de território: falta rodar a migration 095.'
+      });
+    }
 
     if (arr.nome && arr.dirigente_id) {
       await locals.supabase

@@ -27,5 +27,5 @@ create table if not exists public.import_runs (
 );
 
 insert into public.schema_versions(version, description)
-values ('1.0.0', 'Baseline limpa para novas instalações')
+values ('1.1.0', 'Baseline limpa com instalador visual e orientação em campo')
 on conflict (version) do update set description = excluded.description;

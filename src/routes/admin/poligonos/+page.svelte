@@ -10,7 +10,9 @@
   import type { QuadraGeo } from '$lib/queries';
   import { page } from '$app/stores';
   import type { LocalComGeo } from './+page';
-  import type { CuradoriaLinha } from './+page';
+  import type { CuradoriaLinha, PontoAdmin } from './+page';
+  import { ehLinkGoogleMaps, urlCompartilhavel } from '$lib/maps-link';
+  import { TIPOS_PONTO } from '$lib/pontos-referencia';
 
   let { data, form }: {
     data: {
@@ -33,6 +35,7 @@
       locaisSemFace: { id: number; endereco: string; quadra_id: string | null }[];
       quadrasParaRenomear: { id: string; color: string; status: string }[];
       curadoria: CuradoriaLinha[];
+      pontos: PontoAdmin[];
       profile?: import('$lib/types').Profile | null;
       cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
@@ -40,7 +43,7 @@
   } = $props();
 
   // null = mapa limpo (nenhum modo). Endereços só aparecem em 'vincular'/'tce'.
-  type Modo = 'vincular' | 'quadras' | 'territorios' | 'tce' | 'auditar' | 'curadoria' | null;
+  type Modo = 'vincular' | 'quadras' | 'territorios' | 'tce' | 'auditar' | 'curadoria' | 'pontos' | null;
   let modo = $state<Modo>($page.url.searchParams.get('modo') === 'curadoria' ? 'curadoria' : null);
   let resolvendoCuradoriaId = $state<number | null>(null);
 
@@ -390,13 +393,164 @@
     data.quadrasMultiCluster.length + data.quadrasVazias.length + data.quadrasOrfas.length + data.locaisSemFace.length
   );
 
+  // ── Modo Pontos (catálogo de locais de encontro/referência) ────────
+  // Fica aqui, e não na tela da quadra: o ponto de encontro é
+  // característica do TERRITÓRIO — e um bom ponto costuma servir a
+  // VÁRIOS territórios (encontro de territórios).
+  let pontoEdit = $state<{
+    id: number | null;
+    nome: string;
+    tipo: string;
+    notas: string;
+    endereco: string;
+    maps_url: string;
+    lat: number | null;
+    lng: number | null;
+    territorios: string[];
+  } | null>(null);
+  let linkMaps = $state('');
+  let resolvendoLink = $state(false);
+  let confiancaLink = $state<'exata' | 'aproximada' | null>(null);
+  let salvandoPonto = $state(false);
+  let sheetPonto = $state(false);
+  // fechar o sheet limpa o rascunho (senão o próximo "Novo ponto"
+  // nasceria com o texto do anterior)
+  $effect(() => {
+    if (!sheetPonto) pontoEdit = null;
+  });
+
+  const pontosSugeridos = $derived(data.pontos.filter((p) => p.status === 'sugerido'));
+  const pontosValidados = $derived(data.pontos.filter((p) => p.status !== 'sugerido'));
+
+  function novoPonto(lat: number | null = null, lng: number | null = null) {
+    pontoEdit = { id: null, nome: '', tipo: 'estacionamento', notas: '', endereco: '', maps_url: '', lat, lng, territorios: [] };
+    linkMaps = '';
+    confiancaLink = null;
+    sheetPonto = true;
+  }
+  function editarPonto(p: PontoAdmin) {
+    pontoEdit = {
+      id: p.id,
+      nome: p.nome,
+      tipo: p.tipo,
+      notas: p.notas ?? '',
+      endereco: p.endereco ?? '',
+      maps_url: p.maps_url ?? '',
+      lat: p.lat,
+      lng: p.lng,
+      territorios: [...p.territorios]
+    };
+    linkMaps = p.maps_url ?? '';
+    confiancaLink = null;
+    sheetPonto = true;
+  }
+
+  // Link do WhatsApp → local. O link CURTO só entrega o destino num
+  // redirect, que o browser não segue (CORS) — por isso passa pelo
+  // /api/maps-link. E o link resolvido nem sempre traz coordenada: aí o
+  // servidor geocodifica pelo nome e devolve 'aproximada', pra tela
+  // avisar que o pino precisa de conferência.
+  async function resolverLinkMaps() {
+    const url = linkMaps.trim();
+    if (!url || !pontoEdit) return;
+    if (!ehLinkGoogleMaps(url)) return toast.error('Isso não parece um link do Google Maps');
+    resolvendoLink = true;
+    confiancaLink = null;
+    try {
+      const resp = await fetch('/api/maps-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).message ?? 'Falhou');
+      const r = await resp.json();
+      pontoEdit.maps_url = url;
+      if (r.nome && !pontoEdit.nome.trim()) pontoEdit.nome = r.nome;
+      if (r.endereco) pontoEdit.endereco = r.endereco;
+      if (r.lat != null && r.lng != null) {
+        pontoEdit.lat = r.lat;
+        pontoEdit.lng = r.lng;
+        confiancaLink = r.confianca === 'exata' ? 'exata' : 'aproximada';
+        toast.success(r.confianca === 'exata' ? 'Local do link' : 'Local aproximado — confira o pino');
+      } else {
+        toast.info('O link não trouxe coordenada. Clique no mapa pra marcar o ponto.');
+      }
+    } catch {
+      toast.error('Não consegui ler esse link agora.');
+    } finally {
+      resolvendoLink = false;
+    }
+  }
+
+  async function salvarPonto() {
+    if (!pontoEdit) return;
+    salvandoPonto = true;
+    const fd = new FormData();
+    if (pontoEdit.id) fd.append('id', String(pontoEdit.id));
+    fd.append('nome', pontoEdit.nome);
+    fd.append('tipo', pontoEdit.tipo);
+    fd.append('lat', String(pontoEdit.lat ?? ''));
+    fd.append('lng', String(pontoEdit.lng ?? ''));
+    fd.append('notas', pontoEdit.notas);
+    fd.append('endereco', pontoEdit.endereco);
+    fd.append('maps_url', pontoEdit.maps_url);
+    for (const t of pontoEdit.territorios) fd.append('territorios', t);
+    const res = await fetch('?/salvarPonto', { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    salvandoPonto = false;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg ?? 'Ponto salvo'));
+      sheetPonto = false;
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro ?? 'Falhou'));
+    }
+  }
+
+  // Mandar o ponto no WhatsApp: usa o link ORIGINAL do Maps quando ele
+  // existe — é o que a congregação já reconhece — e cai num link
+  // montado pela coordenada quando o ponto nasceu de um clique no mapa.
+  async function compartilharPonto(p: PontoAdmin) {
+    const url = urlCompartilhavel({ maps_url: p.maps_url, lat: p.lat, lng: p.lng });
+    const texto = `${p.nome}${p.endereco ? ' — ' + p.endereco : ''}`;
+    const nav: any = navigator;
+    if (nav.share) {
+      try {
+        await nav.share({ title: p.nome, text: texto, url });
+        return;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(`${texto}\n${url}`);
+      toast.success('Link copiado');
+    } catch {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
+  async function acaoPonto(acao: 'validarPonto' | 'excluirPonto', id: number) {
+    const fd = new FormData();
+    fd.append('id', String(id));
+    const res = await fetch(`?/${acao}`, { method: 'POST', body: fd });
+    const parsed = deserialize(await res.text()) as any;
+    if (parsed.type === 'success') {
+      toast.success(String(parsed.data?.msg ?? 'Feito'));
+      await invalidateAll();
+    } else {
+      toast.error(String(parsed.data?.erro ?? 'Falhou'));
+    }
+  }
+
   const MODOS: { k: Exclude<Modo, null>; label: string }[] = [
     { k: 'vincular', label: 'Vincular' },
     { k: 'quadras', label: 'Quadras' },
     { k: 'territorios', label: 'Territórios' },
     { k: 'tce', label: 'TCE' },
     { k: 'auditar', label: 'Auditar' },
-    { k: 'curadoria', label: 'Curadoria' }
+    { k: 'curadoria', label: 'Curadoria' },
+    { k: 'pontos', label: 'Pontos' }
   ];
 
   const TIPO_LABEL: Record<CuradoriaLinha['tipo'], string> = {
@@ -628,6 +782,180 @@
   {/if}
 
   <!-- Painel Curadoria (T12/A6) -->
+<BottomSheet bind:open={sheetPonto} title={pontoEdit?.id ? 'Editar ponto' : 'Novo ponto'}>
+  {#if pontoEdit}
+    <!-- Link do WhatsApp → local. É o caminho mais comum: alguém manda
+         o link do Maps no grupo e o servo quer virar ponto do sistema. -->
+    <label for="ponto-link" class="block text-sm font-medium mb-1">Link do Google Maps (opcional)</label>
+    <div class="flex gap-2 mb-1">
+      <input
+        id="ponto-link"
+        bind:value={linkMaps}
+        placeholder="https://maps.app.goo.gl/..."
+        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      />
+      <Button variant="secondary" size="sm" loading={resolvendoLink} onclick={resolverLinkMaps}>Ler</Button>
+    </div>
+    {#if confiancaLink === 'aproximada'}
+      <p class="text-xs text-amber-700 mb-2">
+        O link não trazia coordenada — este pino veio de busca pelo nome. Confira no mapa e clique pra ajustar.
+      </p>
+    {:else if confiancaLink === 'exata'}
+      <p class="text-xs text-green-700 mb-2">Coordenada exata do link.</p>
+    {/if}
+
+    <label for="ponto-nome-admin" class="block text-sm font-medium mb-1">Nome</label>
+    <input
+      id="ponto-nome-admin"
+      bind:value={pontoEdit.nome}
+      maxlength="80"
+      placeholder="Ex: Banco do Brasil da Fernando"
+      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm mb-3"
+    />
+
+    <span class="block text-sm font-medium mb-1">Tipo</span>
+    <div class="flex flex-wrap gap-2 mb-3">
+      {#each TIPOS_PONTO as t}
+        <button
+          type="button"
+          onclick={() => pontoEdit && (pontoEdit.tipo = t.valor)}
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border {pontoEdit.tipo === t.valor
+            ? 'bg-primary-600 text-white border-primary-600'
+            : 'border-slate-300 text-slate-600 hover:bg-slate-50'}"
+        >
+          <Icon nome={t.icone as any} size={14} /> {t.label}
+        </button>
+      {/each}
+    </div>
+
+    <span class="block text-sm font-medium mb-1">
+      Territórios que usam este ponto
+      <span class="font-normal text-slate-400">(encontro de territórios costuma compartilhar o mesmo)</span>
+    </span>
+    <div class="flex flex-wrap gap-1.5 mb-3 max-h-32 overflow-y-auto">
+      {#each data.territorios as t}
+        {@const marcado = pontoEdit.territorios.includes(t.id)}
+        <button
+          type="button"
+          onclick={() => {
+            if (!pontoEdit) return;
+            pontoEdit.territorios = marcado
+              ? pontoEdit.territorios.filter((x) => x !== t.id)
+              : [...pontoEdit.territorios, t.id];
+          }}
+          class="px-2 py-1 rounded-full text-xs border {marcado
+            ? 'bg-primary-600 text-white border-primary-600'
+            : 'border-slate-300 text-slate-600'}"
+        >{t.nome || t.id}</button>
+      {/each}
+    </div>
+
+    <label for="ponto-notas-admin" class="block text-sm font-medium mb-1">Notas (opcional)</label>
+    <input
+      id="ponto-notas-admin"
+      bind:value={pontoEdit.notas}
+      placeholder="Ex: cabem 3 carros, sombra de manhã"
+      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm mb-3"
+    />
+
+    <div class="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 mb-3">
+      {#if pontoEdit.lat != null && pontoEdit.lng != null}
+        Coordenada: {pontoEdit.lat.toFixed(5)}, {pontoEdit.lng.toFixed(5)}
+        {#if pontoEdit.endereco}<div class="mt-0.5 text-slate-500">{pontoEdit.endereco}</div>{/if}
+      {:else}
+        <span class="text-amber-700">Sem coordenada — clique no mapa pra marcar, ou cole um link do Maps.</span>
+      {/if}
+    </div>
+
+    <Button variant="primary" class="w-full" loading={salvandoPonto} onclick={salvarPonto}>
+      <Icon nome="check" size={14} /> Salvar ponto
+    </Button>
+  {/if}
+</BottomSheet>
+
+  {#if modo === 'pontos'}
+    <div class="space-y-3">
+      <div class="flex items-center gap-2 flex-wrap">
+        <Button variant="primary" size="sm" onclick={() => novoPonto()}>
+          <Icon nome="plus" size={14} /> Novo ponto
+        </Button>
+        <span class="text-xs text-slate-500">
+          Clique no mapa pra marcar a coordenada de um ponto novo.
+          Colar o link do Maps também preenche a coordenada.
+        </span>
+      </div>
+
+      {#if pontosSugeridos.length > 0}
+        <div>
+          <h3 class="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">
+            Sugestões dos dirigentes ({pontosSugeridos.length})
+          </h3>
+          <div class="space-y-2">
+            {#each pontosSugeridos as p (p.id)}
+              <div class="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-medium flex-1 min-w-0 truncate">{p.nome}</span>
+                  <span class="text-xs text-slate-500">{p.criado_por_nome ?? '?'}</span>
+                </div>
+                {#if p.endereco}<div class="text-xs text-slate-500 truncate">{p.endereco}</div>{/if}
+                <div class="flex gap-2 mt-2">
+                  <button type="button" class="text-xs px-2 py-1 rounded bg-green-600 text-white" onclick={() => acaoPonto('validarPonto', p.id)}>
+                    Validar
+                  </button>
+                  <button type="button" class="text-xs px-2 py-1 rounded border border-slate-300" onclick={() => editarPonto(p)}>
+                    Editar antes
+                  </button>
+                  <button type="button" class="text-xs px-2 py-1 rounded border border-red-200 text-red-600" onclick={() => acaoPonto('excluirPonto', p.id)}>
+                    Recusar
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <div>
+        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+          Pontos validados ({pontosValidados.length})
+        </h3>
+        {#if pontosValidados.length === 0}
+          <p class="text-sm text-slate-400">Nenhum ponto cadastrado ainda.</p>
+        {:else}
+          <div class="space-y-1.5 max-h-96 overflow-y-auto">
+            {#each pontosValidados as p (p.id)}
+              <div class="rounded-lg border border-slate-200 p-2.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <Icon nome="estrela" size={14} class="text-amber-600 shrink-0" />
+                  <span class="font-medium flex-1 min-w-0 truncate">{p.nome}</span>
+                  {#each p.territorios as t}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-primary-100 text-primary-800">T{t}</span>
+                  {/each}
+                </div>
+                {#if p.endereco}<div class="text-xs text-slate-500 truncate">{p.endereco}</div>{/if}
+                <div class="flex gap-2 mt-1.5 flex-wrap">
+                  <button type="button" class="text-xs text-primary-700 underline" onclick={() => editarPonto(p)}>Editar</button>
+                  <a
+                    href={urlCompartilhavel({ maps_url: p.maps_url, lat: p.lat, lng: p.lng })}
+                    target="_blank"
+                    rel="noopener"
+                    class="text-xs text-primary-700 underline"
+                  >Abrir no Maps</a>
+                  <button
+                    type="button"
+                    class="text-xs text-primary-700 underline"
+                    onclick={() => compartilharPonto(p)}
+                  >Compartilhar</button>
+                  <button type="button" class="text-xs text-red-600 underline ml-auto" onclick={() => acaoPonto('excluirPonto', p.id)}>Excluir</button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
   {#if modo === 'curadoria'}
     {#if data.curadoria.length === 0}
       <div class="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
@@ -845,6 +1173,18 @@
     basemap={data.profile?.pref_basemap ?? 'bright'}
     {onClickLocal}
     {onClickQuadra}
+    onClickMapa={modo === 'pontos'
+      ? (ll) => {
+          if (pontoEdit && sheetPonto) {
+            pontoEdit.lat = ll.lat;
+            pontoEdit.lng = ll.lng;
+            confiancaLink = null;
+            toast.success('Coordenada marcada');
+          } else {
+            novoPonto(ll.lat, ll.lng);
+          }
+        }
+      : undefined}
     {onClickFace}
     {onDesenhoPronto}
   />

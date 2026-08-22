@@ -111,7 +111,7 @@ Não aprove automaticamente nenhuma dessas áreas sem decisão visual do usuári
 
 ## Estado publicado
 
-### Assistente visual local — em implementação no worktree (2026-08-22)
+### Assistente visual local — implementado (2026-08-22)
 
 Foi criada a primeira versão do onboarding para uma pessoa não técnica:
 
@@ -129,9 +129,14 @@ Foi criada a primeira versão do onboarding para uma pessoa não técnica:
 
 Arquivos centrais: `scripts/installer-wizard.ts`,
 `src/lib/installer/wizard-ui.html`, `src/lib/installer/initial-admin.ts` e
-`tests/installer-initial-admin.test.ts`. Ainda é necessário integrar as 12
-atualizações atuais de `origin/main` e refletir as migrations 091–094 na
-baseline antes de declarar paridade com o app principal.
+`tests/installer-initial-admin.test.ts`.
+
+Em 22/08/2026, `origin/main` até `3096715` foi integrado ao branch. As
+migrations 091–095 foram consolidadas no módulo idempotente
+`supabase/baseline/075_field_guidance.sql`: pontos de referência N:N,
+conclusão por lado da quadra, payload público completo e a correção para o
+dirigente finalizar/assumir arranjos. Uma instalação nova não deve executar o
+histórico de migrations; o assistente aplica a baseline curta completa.
 
 ### Carregamento do censo por região visível — publicado em 2026-08-22
 
@@ -288,11 +293,14 @@ No sandbox Codex, `npm run check`/`npm test` pode falhar com `Cannot read direct
 
 ## Cuidados ao continuar
 
-- Não criar migrations `091+`; a instalação nova usa `supabase/baseline`.
+- Mudanças novas da `main` podem continuar chegando como migrations, mas toda
+  função necessária numa instalação limpa também precisa ser consolidada na
+  sequência curta de `supabase/baseline`; o Installer não executa o histórico.
 - `CREATE OR REPLACE VIEW` só pode acrescentar colunas ao final. A ordem em `quadras_geo` já foi ajustada para reaplicação.
 - `supabase/baseline/070_rls.sql` remove apenas os nomes exatos das policies conhecidas antes de recriá-las; preserve policies personalizadas.
 - Sugestões nascem inativas; aprovação é o momento que torna a área ativa.
 - O vínculo automático considera somente regular + aprovada + ativa; nunca `language-census`.
 - CNEFE/IBGE é fonte apenas para território regular e rural. Endereço de idioma nasce de cadastro explícito do publicador e precisa manter essa origem/finalidade identificável.
 - Não versionar CSVs/KML reais, caches, pacotes gerados ou credenciais.
-- Não fazer commit amplo sem separar a colisão `README.md`/`readme.md` e revisar o diff; nenhum commit novo foi criado neste handoff.
+- Não incluir a colisão local `README.md`/`readme.md` nem
+  `.claude/settings.local.json` em commits do Installer sem revisão explícita.
