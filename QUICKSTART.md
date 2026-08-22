@@ -1,4 +1,4 @@
-# Quickstart — piloto guiado
+# Quickstart — instalação guiada
 
 Este guia instala uma **nova congregação** num projeto Supabase vazio. Não use este procedimento para atualizar a instância original.
 
@@ -13,6 +13,30 @@ Você precisa de:
 - conta Cloudflare para o deploy final.
 
 O piloto ainda é acompanhado: mantenha um responsável técnico disponível e use primeiro um projeto Supabase descartável.
+
+## Caminho recomendado: assistente visual
+
+No Windows, depois de baixar e extrair o projeto, dê dois cliques em
+`INICIAR-INSTALADOR.cmd`. Ele instala as dependências na primeira execução e
+abre uma página local com todas as etapas.
+
+Quem já usa o terminal pode abrir a mesma interface com:
+
+```bash
+npm install
+npm run installer:wizard
+```
+
+O assistente conduz a conexão das contas, criação do banco, leitura do KML,
+descoberta dos municípios, download do CNEFE/IBGE, geração das áreas,
+preparação e publicação dos dados, criação do primeiro administrador e deploy
+na Cloudflare. As credenciais sensíveis ficam somente na memória do processo;
+se o assistente for encerrado, será necessário digitá-las novamente. Os
+arquivos não sensíveis e o progresso ficam em `.territory-installer/wizard/`,
+permitindo retomar as etapas demoradas.
+
+As instruções abaixo documentam o modo avançado por comandos e continuam úteis
+para diagnóstico ou automação técnica.
 
 ## 1. Preparar o projeto
 

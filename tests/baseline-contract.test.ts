@@ -56,6 +56,15 @@ test('baseline isola a malha de idioma das operações de território', () => {
   assertTrue(sql.includes('não é possível juntar áreas de finalidades diferentes'));
 });
 
+test('baseline consulta a malha de idioma pela região visível', () => {
+  assertTrue(sql.includes('function public.resumo_censo_idioma'));
+  assertTrue(sql.includes('function public.areas_censo_viewport'));
+  assertTrue(sql.includes("q.finalidade = 'language-census'"));
+  assertTrue(sql.includes('q.poly && st_makeenvelope'));
+  assertTrue(sql.includes('st_intersects(q.poly, st_makeenvelope'));
+  assertTrue(sql.includes('limit greatest(1, least(coalesce(p_limite, 1500), 2000))'));
+});
+
 test('baseline registra versão, configuração e importações idempotentes', () => {
   assertTrue(sql.includes('create table if not exists public.schema_versions'));
   assertTrue(sql.includes('create table if not exists public.installation_config'));

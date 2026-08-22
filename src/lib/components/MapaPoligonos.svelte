@@ -33,10 +33,12 @@
     selecionadosLocais = $bindable(new Set<number>()),
     selecionadasQuadras = $bindable(new Set<string>()),
     basemap = $bindable<Basemap>('bright'),
+    boundsIniciais = null,
     onClickQuadra,
     onClickLocal,
     onClickFace,
-    onDesenhoPronto
+    onDesenhoPronto,
+    onViewportChange
   }: {
     quadras: QuadraGeo[];
     locais: LocalComGeo[];
@@ -53,10 +55,14 @@
     selecionadosLocais?: Set<number>;
     selecionadasQuadras?: Set<string>;
     basemap?: Basemap;
+    boundsIniciais?: [[number, number], [number, number]] | null;
     onClickQuadra?: (q: QuadraGeo) => void;
     onClickLocal?: (l: LocalComGeo) => void;
     onClickFace?: (key: string) => void;
     onDesenhoPronto?: () => void;
+    onViewportChange?: (viewport: {
+      west: number; south: number; east: number; north: number; zoom: number;
+    }) => void;
   } = $props();
 
   let container: HTMLDivElement;
@@ -424,6 +430,16 @@
     mapa.on('load', () => {
       setupCamadas();
 
+      const publicarViewport = () => {
+        if (!onViewportChange) return;
+        const b = mapa.getBounds();
+        onViewportChange({
+          west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(),
+          zoom: mapa.getZoom()
+        });
+      };
+      mapa.on('moveend', publicarViewport);
+
       mapa.on('click', 'locais-points', (e: any) => {
         const props = e.features?.[0]?.properties;
         if (!props) return;
@@ -474,12 +490,16 @@
             else bounds.extend(coordinate);
           }
         }
+        if (!bounds && boundsIniciais) {
+          bounds = new maplibre.LngLatBounds(boundsIniciais[0], boundsIniciais[1]);
+        }
         if (bounds)
           mapa.fitBounds(bounds, {
             padding: 30,
             maxZoom: 17,
             duration: 0,
           });
+        else publicarViewport();
       } catch {}
 
       // Inicializa terra-draw (lazy) pra desenho/edição de polígonos

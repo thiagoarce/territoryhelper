@@ -83,6 +83,90 @@ begin
 end;
 $$;
 
+-- A malha de censo de idioma pode cobrir uma cidade inteira e conter milhares
+-- de polígonos. O resumo enquadra o mapa sem enviar todas as geometrias; a
+-- segunda função usa o índice GiST de quadras.poly para devolver somente a
+-- região que o usuário está vendo.
+create or replace function public.resumo_censo_idioma()
+returns jsonb language sql stable set search_path = public as $$
+  with resumo as (
+    select
+      count(*)::int as total,
+      count(*) filter (where revisao_status = 'approved')::int as aprovadas,
+      count(*) filter (where revisao_status = 'suggested')::int as sugeridas,
+      count(*) filter (
+        where revisao_status = 'suggested' and confianca = 'high'
+      )::int as confiaveis,
+      count(*) filter (
+        where revisao_status = 'suggested' and confianca is distinct from 'high'
+      )::int as manual,
+      ST_Extent(poly)::box3d as extensao
+    from public.quadras
+    where finalidade = 'language-census'
+  )
+  select jsonb_build_object(
+    'total', total,
+    'aprovadas', aprovadas,
+    'sugeridas', sugeridas,
+    'confiaveis', confiaveis,
+    'manual', manual,
+    'bounds', case when extensao is null then null else jsonb_build_array(
+      ST_XMin(extensao), ST_YMin(extensao), ST_XMax(extensao), ST_YMax(extensao)
+    ) end
+  )
+  from resumo;
+$$;
+
+create or replace function public.areas_censo_viewport(
+  p_west double precision,
+  p_south double precision,
+  p_east double precision,
+  p_north double precision,
+  p_filtro text default 'pendentes',
+  p_limite integer default 1500
+) returns table (
+  id text,
+  color text,
+  territorio_id text,
+  status text,
+  ativa boolean,
+  data_conclusao date,
+  notas text,
+  reservada_campanha_id bigint,
+  tipo_area text,
+  finalidade text,
+  origem_geografica text,
+  revisao_status text,
+  confianca text,
+  poly_geojson jsonb,
+  total_viewport bigint
+) language sql stable set search_path = public as $$
+  with candidatas as (
+    select q.*
+    from public.quadras q
+    where q.finalidade = 'language-census'
+      and q.poly && ST_MakeEnvelope(p_west, p_south, p_east, p_north, 4326)
+      and ST_Intersects(q.poly, ST_MakeEnvelope(p_west, p_south, p_east, p_north, 4326))
+      and case
+        when p_filtro = 'manual' then
+          q.revisao_status = 'suggested' and q.confianca is distinct from 'high'
+        when p_filtro = 'todas' then true
+        else q.revisao_status = 'suggested'
+      end
+  ), paginadas as (
+    select c.*, count(*) over () as total_viewport
+    from candidatas c
+    order by c.id
+    limit greatest(1, least(coalesce(p_limite, 1500), 2000))
+  )
+  select p.id, p.color, p.territorio_id, p.status, p.ativa,
+    p.data_conclusao, p.notas, p.reservada_campanha_id,
+    p.tipo_area, p.finalidade, p.origem_geografica, p.revisao_status,
+    p.confianca, ST_AsGeoJSON(p.poly)::jsonb, p.total_viewport
+  from paginadas p
+  order by p.id;
+$$;
+
 create or replace function public.quadras_join(p_ids text[])
 returns text language plpgsql security definer set search_path = public as $$
 declare v_keep text; v_others text[]; v_poly geometry;
@@ -249,6 +333,8 @@ $$;
 revoke execute on function public.auto_vincular_enderecos() from public;
 revoke execute on function public.criar_tce(text, text, bigint[]) from public;
 revoke execute on function public.salvar_quadra_poligono(text, jsonb, text, text, boolean) from public;
+revoke execute on function public.resumo_censo_idioma() from public;
+revoke execute on function public.areas_censo_viewport(double precision, double precision, double precision, double precision, text, integer) from public;
 revoke execute on function public.quadras_join(text[]) from public;
 revoke execute on function public.dividir_quadra(text, jsonb, text) from public;
 revoke execute on function public.reportar_posicao_incorreta(bigint, jsonb, text) from public;
@@ -258,6 +344,9 @@ revoke execute on function public.territorio_publico(uuid) from public;
 grant execute on function public.auto_vincular_enderecos(), public.criar_tce(text, text, bigint[]),
   public.salvar_quadra_poligono(text, jsonb, text, text, boolean), public.quadras_join(text[]),
   public.dividir_quadra(text, jsonb, text), public.reportar_posicao_incorreta(bigint, jsonb, text)
+  to authenticated;
+grant execute on function public.resumo_censo_idioma(),
+  public.areas_censo_viewport(double precision, double precision, double precision, double precision, text, integer)
   to authenticated;
 grant execute on function public.buscar_locais_proximos(double precision, double precision, integer, integer) to authenticated;
 grant execute on function public.carta_publica_dados(uuid), public.carta_publica_toggle(uuid, bigint, text),

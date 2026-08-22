@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Instalar Territórios</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f4f7fb; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      header { background: linear-gradient(135deg, #173b67, #2563a9); color: white; padding: 34px 20px 54px; }
+      header > div, main { width: min(920px, calc(100% - 28px)); margin: 0 auto; }
+      h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 5vw, 2.5rem); }
+      header p { max-width: 680px; margin: 0; color: #dbeafe; line-height: 1.55; }
+      main { margin-top: -30px; padding-bottom: 80px; }
+      .intro, .step, .console { background: white; border: 1px solid #dbe3ef; border-radius: 16px; box-shadow: 0 8px 30px #183b6510; }
+      .intro { padding: 18px; margin-bottom: 14px; display: flex; gap: 12px; align-items: flex-start; }
+      .intro strong { display: block; margin-bottom: 4px; }
+      .lock { font-size: 1.45rem; }
+      .step { margin: 14px 0; overflow: hidden; }
+      .step-head { display: grid; grid-template-columns: 38px 1fr auto; gap: 12px; align-items: center; padding: 18px; border-bottom: 1px solid #edf1f7; }
+      .number { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: #eaf2fc; color: #1d5c9f; font-weight: 800; }
+      .step h2 { font-size: 1.05rem; margin: 0 0 3px; }
+      .step-head p { margin: 0; color: #637083; font-size: .88rem; }
+      .badge { border-radius: 999px; padding: 5px 10px; background: #eef2f7; color: #64748b; font-size: .75rem; font-weight: 700; white-space: nowrap; }
+      .badge.done { background: #dcfce7; color: #166534; }
+      .badge.running { background: #fef3c7; color: #92400e; }
+      .step-body { padding: 18px; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      .full { grid-column: 1 / -1; }
+      label { display: block; font-size: .82rem; color: #4b5870; font-weight: 650; }
+      input, select { width: 100%; margin-top: 6px; padding: 11px 12px; border: 1px solid #cbd5e1; border-radius: 9px; background: white; color: #172033; font: inherit; }
+      input:focus, select:focus { outline: 3px solid #bfdbfe; border-color: #3b82f6; }
+      small, .hint { color: #68758a; line-height: 1.45; }
+      .hint { font-size: .83rem; margin: 0 0 14px; }
+      button { border: 0; border-radius: 9px; padding: 11px 16px; background: #1768ad; color: white; font: inherit; font-weight: 750; cursor: pointer; }
+      button:hover { background: #11568f; }
+      button:disabled { opacity: .45; cursor: not-allowed; }
+      button.secondary { background: #e9f1fa; color: #174d80; }
+      .actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .notice { border-radius: 10px; padding: 12px; background: #eff6ff; color: #214f7d; font-size: .86rem; line-height: 1.45; }
+      .warning { background: #fff7ed; color: #9a4312; }
+      .error { background: #fef2f2; color: #991b1b; }
+      .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; margin: 14px 0; }
+      .metric { padding: 12px; border-radius: 10px; background: #f6f8fb; }
+      .metric b { display: block; font-size: 1.25rem; color: #173b67; }
+      .metric span { font-size: .75rem; color: #68758a; }
+      .components { margin: 12px 0 0; padding-left: 20px; color: #4b5870; font-size: .86rem; }
+      .console { position: sticky; bottom: 12px; margin-top: 18px; padding: 14px; background: #101828; color: #d8e4f4; z-index: 5; }
+      .console-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; font-size: .82rem; }
+      .console-head button { margin-left: auto; padding: 4px 8px; background: #26354d; font-size: .72rem; }
+      .console.collapsed pre { display: none; }
+      .console.collapsed { width: fit-content; margin-left: auto; }
+      pre { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .final { display: none; margin-top: 16px; padding: 22px; border-radius: 14px; background: #ecfdf5; border: 1px solid #a7f3d0; text-align: center; }
+      .final a { display: inline-block; margin-top: 12px; padding: 11px 16px; border-radius: 9px; background: #047857; color: white; text-decoration: none; font-weight: 750; }
+      .checkline { display: flex; align-items: flex-start; gap: 9px; font-weight: 500; }
+      .checkline input { width: auto; margin-top: 3px; }
+      details { margin: 12px 0; border: 1px solid #dbe3ef; border-radius: 10px; padding: 11px 13px; background: #fbfdff; }
+      summary { cursor: pointer; color: #174d80; font-weight: 750; }
+      details ol { margin: 10px 0 4px; padding-left: 22px; color: #526076; font-size: .85rem; line-height: 1.55; }
+      a.help { color: #1768ad; font-weight: 700; }
+      @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .full { grid-column: auto; } .step-head { grid-template-columns: 38px 1fr; } .badge { grid-column: 2; justify-self: start; } }
+    </style>
+  </head>
+  <body>
+    <header><div>
+      <h1>Instalar o aplicativo de territórios</h1>
+      <p>Este assistente prepara uma congregação nova usando as contas próprias do Supabase e da Cloudflare. Faça uma etapa por vez; você pode fechar a página e continuar enquanto esta janela do instalador permanecer aberta.</p>
+    </div></header>
+    <main>
+      <div class="intro"><span class="lock">🔒</span><div><strong>Suas chaves ficam neste computador</strong><span class="hint">Senhas, chaves administrativas e o token da Cloudflare ficam somente na memória durante a instalação. Eles não são colocados no aplicativo nem gravados no relatório.</span></div></div>
+
+      <section class="step">
+        <div class="step-head"><span class="number">✓</span><div><h2>Antes de começar</h2><p>Separe três itens. A criação das contas continua sendo feita nos sites oficiais.</p></div><span class="badge">Preparação</span></div>
+        <div class="step-body">
+          <ol class="components">
+            <li>Um <a class="help" href="https://supabase.com/dashboard/projects" target="_blank" rel="noreferrer">projeto Supabase novo</a> e a senha do banco guardada.</li>
+            <li>Uma conta Cloudflare e um token limitado a <strong>Workers Scripts: Edit</strong>.</li>
+            <li>O arquivo KML do território baixado pelo responsável da congregação.</li>
+          </ol>
+          <div class="notice warning" style="margin-top:12px">Use primeiro contas e projetos de teste. Não aponte este assistente para o banco de uma congregação que já esteja em uso.</div>
+        </div>
+      </section>
+
+      <section class="step" data-step="configure">
+        <div class="step-head"><span class="number">1</span><div><h2>Conectar as contas</h2><p>Informe os dados do projeto Supabase vazio e da conta Cloudflare.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body">
+          <form id="infra-form" class="grid">
+            <label class="full">URL do projeto Supabase<input name="supabaseUrl" placeholder="https://seu-projeto.supabase.co" required /></label>
+            <label>Chave pública<input type="password" name="supabasePublicKey" placeholder="sb_publishable_..." required /></label>
+            <label>Chave administrativa<input type="password" name="supabaseAdminKey" placeholder="sb_secret_..." required /></label>
+            <label class="full">Connection string do banco<input type="password" name="databaseUrl" placeholder="postgresql://postgres..." required /></label>
+            <label>Account ID da Cloudflare<input name="cloudflareAccountId" maxlength="32" required /></label>
+            <label>API Token da Cloudflare<input type="password" name="cloudflareApiToken" required /></label>
+            <label class="full">Nome do aplicativo na Cloudflare<input name="workerName" value="territorios-congregacao" pattern="[a-z0-9][a-z0-9-]*[a-z0-9]" required /></label>
+            <div class="full notice">O token da Cloudflare precisa da permissão <strong>Workers Scripts: Edit</strong>. O assistente também gera automaticamente as chaves de notificação.</div>
+            <details class="full"><summary>Onde encontro cada informação?</summary><ol><li>No projeto Supabase, use <strong>Connect</strong> para copiar a connection string e trocar o espaço da senha pela senha que você criou.</li><li>Em configurações/API do Supabase, copie a Project URL, a Publishable key e a Secret key. A Secret key é administrativa e nunca deve ser compartilhada.</li><li>No painel Cloudflare, copie o Account ID da conta. Em API Tokens, crie um token personalizado restrito a essa conta com <strong>Workers Scripts: Edit</strong>.</li></ol></details>
+            <div class="full actions"><button type="submit">Testar e conectar</button><span id="secrets-note" class="hint"></span></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="step" data-step="baseline">
+        <div class="step-head"><span class="number">2</span><div><h2>Criar a estrutura do banco</h2><p>Prepara tabelas, segurança, funções e armazenamento no projeto vazio.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><p class="hint">A operação é repetível e não apaga dados existentes, mas este fluxo foi feito para um projeto novo.</p><div class="actions"><button data-action="baseline">Criar estrutura</button></div></div>
+      </section>
+
+      <section class="step" data-step="territory">
+        <div class="step-head"><span class="number">3</span><div><h2>Informar a congregação e o território</h2><p>Escolha o KML baixado e confirme os dados básicos.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body">
+          <form id="territory-form" class="grid">
+            <label class="full">Arquivo KML do território<input type="file" name="kmlFile" accept=".kml,application/vnd.google-earth.kml+xml" required /></label>
+            <label>Nome da congregação<input name="congregationName" placeholder="Congregação Mangabeira" required /></label>
+            <label>Fuso horário<input name="timezone" value="America/Sao_Paulo" required /></label>
+            <label>Tipo principal<select name="mode"><option value="territorial">Território regular/rural</option><option value="language">Congregação de idioma</option></select></label>
+            <label>Identificador curto<input name="territoryId" value="principal" required /></label>
+            <label>Nome do território<input name="territoryName" value="Território da congregação" required /></label>
+            <label>Cor no mapa<input type="color" name="color" value="#3388ff" /></label>
+            <label>Tolerância da borda (metros)<input type="number" name="tolerance" value="15" min="0" max="100" /></label>
+            <label class="full">Edição do CNEFE<input name="cnefeEdition" value="CNEFE-2022" required /></label>
+            <div class="full actions"><button type="submit">Ler o KML</button></div>
+          </form>
+          <ul id="components" class="components"></ul>
+        </div>
+      </section>
+
+      <section class="step" data-step="discover">
+        <div class="step-head"><span class="number">4</span><div><h2>Localizar os municípios</h2><p>Descobre automaticamente todos os CSVs do IBGE necessários.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><p class="hint">Um território rural pode atravessar mais de um município. O assistente confere o KML contra a malha municipal oficial.</p><div class="actions"><button data-action="discover">Descobrir municípios</button></div></div>
+      </section>
+
+      <section class="step" data-step="generate">
+        <div class="step-head"><span class="number">5</span><div><h2>Gerar as áreas clicáveis</h2><p>Consulta as ruas do OpenStreetMap e propõe quadras urbanas, rurais e de censo.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><div class="notice warning">As áreas geradas são sugestões. Elas não entram no trabalho normal até um administrador revisá-las e aprová-las.</div><div class="actions"><button data-action="generate">Gerar áreas</button><span id="areas-count" class="hint"></span></div></div>
+      </section>
+
+      <section class="step" data-step="prepare">
+        <div class="step-head"><span class="number">6</span><div><h2>Baixar e preparar os endereços do IBGE</h2><p>Baixa o CNEFE, filtra pelo território e organiza locais e unidades.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><p class="hint">Arquivos grandes podem levar alguns minutos. O download fica em cache para não precisar recomeçar.</p><div class="actions"><button data-action="prepare">Preparar dados</button></div><div id="package-summary" class="summary"></div></div>
+      </section>
+
+      <section class="step" data-step="approve">
+        <div class="step-head"><span class="number">7</span><div><h2>Conferir o pacote</h2><p>Revise as contagens antes de liberar a publicação.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><div class="notice">A aprovação aqui sela os arquivos preparados. As quadras continuam sugeridas e serão revisadas visualmente no aplicativo.</div><label class="checkline" style="margin-top:14px"><input type="checkbox" id="review-confirm" /> Conferi as contagens e entendi que as áreas ainda precisarão de revisão visual.</label><div class="actions"><button data-action="approve" id="approve-button" disabled>Aprovar pacote</button></div></div>
+      </section>
+
+      <section class="step" data-step="publish">
+        <div class="step-head"><span class="number">8</span><div><h2>Enviar os territórios e endereços</h2><p>Publica o pacote aprovado no Supabase da congregação.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><div class="actions"><button data-action="publish">Publicar dados</button></div></div>
+      </section>
+
+      <section class="step" data-step="admin">
+        <div class="step-head"><span class="number">9</span><div><h2>Criar o primeiro administrador</h2><p>Esta será a conta usada para entrar e terminar a revisão.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><form id="admin-form" class="grid"><label>Nome<input name="name" required /></label><label>Email<input type="email" name="email" required /></label><label class="full">Senha inicial<input type="password" name="password" minlength="8" required /></label><div class="full actions"><button type="submit">Criar administrador</button></div></form></div>
+      </section>
+
+      <section class="step" data-step="deploy">
+        <div class="step-head"><span class="number">10</span><div><h2>Colocar o aplicativo no ar</h2><p>Gera a versão final, publica na Cloudflare e testa o endereço.</p></div><span class="badge">Pendente</span></div>
+        <div class="step-body"><p class="hint">Esta costuma ser a etapa mais demorada. Não feche a janela enquanto ela estiver executando.</p><div class="actions"><button data-action="deploy">Publicar aplicativo</button></div><div id="final" class="final"><strong>Aplicativo publicado!</strong><div>Entre como administrador e revise as áreas regulares antes de iniciar o trabalho.</div><a id="app-link" href="#" target="_blank" rel="noreferrer">Abrir aplicativo</a></div></div>
+      </section>
+
+      <div id="page-error" class="notice error" hidden></div>
+      <aside class="console" id="console"><div class="console-head"><strong id="task-title">Aguardando uma etapa</strong><span id="task-status"></span><button type="button" id="console-toggle">Recolher</button></div><pre id="logs">Os detalhes da etapa aparecerão aqui.</pre></aside>
+    </main>
+
+    <script>
+      const TOKEN = "__WIZARD_TOKEN__";
+      const labels = { configure:'Contas', baseline:'Banco', territory:'Território', discover:'Municípios', generate:'Áreas', prepare:'Endereços', approve:'Pacote', publish:'Dados', admin:'Administrador', deploy:'Aplicativo' };
+      const requirements = { baseline:['configure'], discover:['territory'], generate:['territory','discover'], prepare:['generate'], approve:['prepare'], publish:['baseline','approve'], admin:['baseline'], deploy:['publish','admin'] };
+      let latest = null;
+
+      async function api(path, options={}) {
+        const response = await fetch(path, { ...options, headers: { 'Content-Type':'application/json', 'X-Wizard-Token':TOKEN, ...(options.headers||{}) } });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'Não foi possível concluir esta operação.');
+        return body;
+      }
+      function showError(error) { const box=document.querySelector('#page-error'); box.textContent=error.message||String(error); box.hidden=false; box.scrollIntoView({behavior:'smooth',block:'center'}); }
+      function clearError() { document.querySelector('#page-error').hidden=true; }
+      function completed(name) { return latest?.completed?.includes(name); }
+      function metric(value, label) { const div=document.createElement('div'); div.className='metric'; const b=document.createElement('b'); b.textContent=Number(value||0).toLocaleString('pt-BR'); const span=document.createElement('span'); span.textContent=label; div.append(b,span); return div; }
+
+      function render(state) {
+        latest=state; const running=state.task?.status==='running';
+        document.querySelectorAll('.step').forEach(section=>{ const name=section.dataset.step; const badge=section.querySelector('.badge'); const isRunning=running&&state.task.action===name; badge.textContent=completed(name)?'Concluído':isRunning?'Executando':'Pendente'; badge.className='badge '+(completed(name)?'done':isRunning?'running':''); });
+        document.querySelectorAll('[data-action]').forEach(button=>{ const name=button.dataset.action; const req=requirements[name]||[]; button.disabled=running || !state.secretsReady || req.some(item=>!completed(item)) || completed(name); });
+        const approve=document.querySelector('#approve-button'); approve.disabled=approve.disabled || !document.querySelector('#review-confirm').checked;
+        document.querySelector('#infra-form button').disabled=running;
+        document.querySelector('#territory-form button').disabled=running;
+        document.querySelector('#admin-form button').disabled=running || !state.secretsReady || !completed('publish') || completed('admin');
+        document.querySelector('#secrets-note').textContent=state.secretsReady?'Credenciais disponíveis somente nesta sessão.':(completed('configure')?'Digite novamente as credenciais para continuar nesta sessão.':'');
+        const components=document.querySelector('#components'); components.replaceChildren(); for(const item of state.territory?.components||[]){ const li=document.createElement('li'); li.textContent=`${item.name} — ${item.environment}, ${item.purpose}${item.special?' (especial)':''}`; components.append(li); }
+        document.querySelector('#areas-count').textContent=state.generatedAreas!=null?`${state.generatedAreas.toLocaleString('pt-BR')} áreas sugeridas`:'';
+        const summary=document.querySelector('#package-summary'); summary.replaceChildren(); if(state.package){ const c=state.package.counts; summary.append(metric(c.localGroups,'locais'),metric(c.units,'unidades'),metric(c.workAreas,'áreas'),metric(c.unassignedLocals,'locais sem área'),metric(c.ambiguousLocals,'vínculos ambíguos'),metric(c.rejectedRows,'linhas rejeitadas')); }
+        const task=state.task; document.querySelector('#task-title').textContent=task?`${labels[task.action]||task.action}: ${task.status==='running'?'em andamento':task.status==='success'?'concluído':'atenção necessária'}`:'Aguardando uma etapa'; document.querySelector('#task-status').textContent=task?.status==='running'?'Não feche esta janela':''; const logs=document.querySelector('#logs'); logs.textContent=task?.logs?.join('\n') || task?.error || 'Os detalhes da etapa aparecerão aqui.'; logs.scrollTop=logs.scrollHeight;
+        const final=document.querySelector('#final'); if(state.deployment?.url){ final.style.display='block'; const link=document.querySelector('#app-link'); link.href=state.deployment.url+'/login'; } else final.style.display='none';
+      }
+      async function refresh() { try { render(await api('/api/state')); } catch(error) { showError(error); } }
+      async function start(action,payload={}) { clearError(); try { await api('/api/action/'+action,{method:'POST',body:JSON.stringify(payload)}); await refresh(); } catch(error){ showError(error); } }
+
+      document.querySelector('#infra-form').addEventListener('submit',event=>{ event.preventDefault(); start('configure',Object.fromEntries(new FormData(event.currentTarget))); });
+      document.querySelector('#territory-form').addEventListener('submit',async event=>{ event.preventDefault(); clearError(); try { const form=new FormData(event.currentTarget); const file=form.get('kmlFile'); if(!(file instanceof File)||!file.size) throw new Error('Escolha o arquivo KML.'); const payload=Object.fromEntries(form); delete payload.kmlFile; payload.kml=await file.text(); render(await api('/api/territory',{method:'POST',body:JSON.stringify(payload)})); } catch(error){ showError(error); } });
+      document.querySelector('#admin-form').addEventListener('submit',event=>{ event.preventDefault(); start('admin',Object.fromEntries(new FormData(event.currentTarget))); });
+      document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>start(button.dataset.action)));
+      document.querySelector('#review-confirm').addEventListener('change',()=>render(latest));
+      document.querySelector('#console-toggle').addEventListener('click',()=>{ const consoleBox=document.querySelector('#console'); consoleBox.classList.toggle('collapsed'); document.querySelector('#console-toggle').textContent=consoleBox.classList.contains('collapsed')?'Detalhes':'Recolher'; });
+      refresh(); setInterval(refresh,1000);
+    </script>
+  </body>
+</html>

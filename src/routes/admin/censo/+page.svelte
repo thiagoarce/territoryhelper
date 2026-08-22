@@ -7,11 +7,18 @@
   import BottomSheet from '$lib/ui/BottomSheet.svelte';
   import Button from '$lib/ui/Button.svelte';
   import { toast } from '$lib/ui/toast.svelte';
-  import type { QuadraGeo } from '$lib/queries';
+  import { supabaseBrowser } from '$lib/supabase-browser';
+  import {
+    listarAreasCensoViewport,
+    type FiltroCenso,
+    type QuadraGeo,
+    type ResumoCensoIdioma,
+    type ViewportMapa
+  } from '$lib/queries';
 
   let { data }: {
     data: {
-      quadras: QuadraGeo[];
+      resumo: ResumoCensoIdioma;
       profile?: import('$lib/types').Profile | null;
       cacheInfo?: { deCache: boolean; gravadoEm: number };
     };
@@ -19,29 +26,61 @@
 
   // A malha de idioma pode ter milhares de áreas. O filtro é o jeito de o
   // revisor achar o que ainda depende dele sem varrer o mapa inteiro.
-  type Filtro = 'todas' | 'pendentes' | 'manual';
-  let filtro = $state<Filtro>('pendentes');
+  let filtro = $state<FiltroCenso>('manual');
   // Rótulo por área custa caro com milhares de polígonos — fica opcional.
   let mostrarRotulos = $state(false);
   let aprovandoLote = $state(false);
   let sheetArea = $state(false);
   let areaSel = $state<QuadraGeo | null>(null);
+  let quadras = $state<QuadraGeo[]>([]);
+  let viewport = $state<ViewportMapa | null>(null);
+  let carregandoAreas = $state(false);
+  let erroAreas = $state<string | null>(null);
+  let totalViewport = $state(0);
+  let consultaAtual = 0;
+  const stats = $derived(data.resumo);
+  const zoomMinimo = 12;
 
-  const stats = $derived.by(() => {
-    const sugeridas = data.quadras.filter((q) => q.revisao_status === 'suggested');
-    return {
-      total: data.quadras.length,
-      aprovadas: data.quadras.length - sugeridas.length,
-      sugeridas: sugeridas.length,
-      confiaveis: sugeridas.filter((q) => q.confianca === 'high').length,
-      manual: sugeridas.filter((q) => q.confianca !== 'high').length
-    };
+  const boundsIniciais = $derived.by(() => {
+    const b = data.resumo.bounds;
+    return b ? ([[b[0], b[1]], [b[2], b[3]]] as [[number, number], [number, number]]) : null;
   });
 
-  const quadrasVisiveis = $derived.by(() => {
-    if (filtro === 'todas') return data.quadras;
-    const sugeridas = data.quadras.filter((q) => q.revisao_status === 'suggested');
-    return filtro === 'manual' ? sugeridas.filter((q) => q.confianca !== 'high') : sugeridas;
+  async function carregarAreas() {
+    const v = viewport;
+    const f = filtro;
+    const id = ++consultaAtual;
+    erroAreas = null;
+    if (!v || (f !== 'manual' && v.zoom < zoomMinimo)) {
+      quadras = [];
+      totalViewport = 0;
+      carregandoAreas = false;
+      return;
+    }
+    carregandoAreas = true;
+    try {
+      const resultado = await listarAreasCensoViewport(supabaseBrowser(), v, f);
+      if (id !== consultaAtual) return;
+      quadras = resultado.quadras;
+      totalViewport = resultado.total;
+    } catch (e) {
+      if (id !== consultaAtual) return;
+      quadras = [];
+      totalViewport = 0;
+      erroAreas = e instanceof Error ? e.message : 'Não foi possível carregar esta região';
+    } finally {
+      if (id === consultaAtual) carregandoAreas = false;
+    }
+  }
+
+  function onViewportChange(novo: ViewportMapa) {
+    viewport = novo;
+  }
+
+  $effect(() => {
+    void viewport;
+    void filtro;
+    void carregarAreas();
   });
 
   function onClickQuadra(q: QuadraGeo) {
@@ -87,9 +126,9 @@
 
     <div class="flex flex-wrap items-center gap-2">
       {#each [
-        { v: 'pendentes' as Filtro, rotulo: `Pendentes (${stats.sugeridas})` },
-        { v: 'manual' as Filtro, rotulo: `Revisão manual (${stats.manual})` },
-        { v: 'todas' as Filtro, rotulo: `Todas (${stats.total})` }
+        { v: 'manual' as FiltroCenso, rotulo: `Revisão manual (${stats.manual})` },
+        { v: 'pendentes' as FiltroCenso, rotulo: `Pendentes (${stats.sugeridas})` },
+        { v: 'todas' as FiltroCenso, rotulo: `Todas (${stats.total})` }
       ] as opcao}
         <button
           onclick={() => (filtro = opcao.v)}
@@ -138,18 +177,31 @@
       {/if}
     </div>
 
-    <p class="text-xs text-slate-500">
-      Click numa área para ver os metadados e aprovar ou reabrir a revisão.
-    </p>
+    {#if filtro !== 'manual' && viewport && viewport.zoom < zoomMinimo}
+      <p class="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
+        Aproxime o mapa para carregar as áreas desta região. Assim a tela não baixa milhares de
+        polígonos de uma vez.
+      </p>
+    {:else if erroAreas}
+      <p class="rounded-lg bg-red-50 p-3 text-xs text-red-800">{erroAreas}</p>
+    {:else}
+      <p class="text-xs text-slate-500">
+        {carregandoAreas ? 'Carregando a região visível…' : `${totalViewport} área(s) nesta região.`}
+        Clique numa área para ver os metadados e aprovar ou reabrir a revisão.
+        {#if totalViewport > quadras.length} Aproxime mais para ver todas.{/if}
+      </p>
+    {/if}
 
     <MapaPoligonos
-      quadras={quadrasVisiveis}
+      {quadras}
       locais={[]}
       altura={500}
       {mostrarRotulos}
       mostrarEnderecos={false}
       basemap={data.profile?.pref_basemap ?? 'bright'}
+      {boundsIniciais}
       {onClickQuadra}
+      {onViewportChange}
     />
   {/if}
 </div>

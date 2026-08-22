@@ -140,6 +140,86 @@ export interface QuadraGeo extends QuadraEnriquecida {
   poly_geojson: unknown | null;
 }
 
+export interface ResumoCensoIdioma {
+  total: number;
+  aprovadas: number;
+  sugeridas: number;
+  confiaveis: number;
+  manual: number;
+  /** [oeste, sul, leste, norte] */
+  bounds: [number, number, number, number] | null;
+}
+
+export interface ViewportMapa {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  zoom: number;
+}
+
+export type FiltroCenso = "todas" | "pendentes" | "manual";
+
+export async function resumoCensoIdioma(
+  supabase: SupabaseClient,
+): Promise<ResumoCensoIdioma> {
+  const { data, error } = await supabase.rpc("resumo_censo_idioma");
+  if (error) throw error;
+  const r = (data ?? {}) as Partial<ResumoCensoIdioma>;
+  return {
+    total: Number(r.total ?? 0),
+    aprovadas: Number(r.aprovadas ?? 0),
+    sugeridas: Number(r.sugeridas ?? 0),
+    confiaveis: Number(r.confiaveis ?? 0),
+    manual: Number(r.manual ?? 0),
+    bounds:
+      Array.isArray(r.bounds) && r.bounds.length === 4
+        ? (r.bounds.map(Number) as [number, number, number, number])
+        : null,
+  };
+}
+
+export async function listarAreasCensoViewport(
+  supabase: SupabaseClient,
+  viewport: ViewportMapa,
+  filtro: FiltroCenso,
+  limite = 1500,
+): Promise<{ quadras: QuadraGeo[]; total: number }> {
+  const coordenadas = [
+    viewport.west,
+    viewport.south,
+    viewport.east,
+    viewport.north,
+  ];
+  if (
+    coordenadas.some((n) => !Number.isFinite(n)) ||
+    viewport.west >= viewport.east ||
+    viewport.south >= viewport.north
+  ) {
+    throw new Error("Região visível do mapa inválida");
+  }
+  const { data, error } = await supabase.rpc("areas_censo_viewport", {
+    p_west: viewport.west,
+    p_south: viewport.south,
+    p_east: viewport.east,
+    p_north: viewport.north,
+    p_filtro: filtro,
+    p_limite: limite,
+  });
+  if (error) throw error;
+  const linhas = (data ?? []) as any[];
+  return {
+    quadras: linhas.map(({ total_viewport: _total, ...q }) => ({
+      ...q,
+      poly: null,
+      territorio_nome: null,
+      qtd_locais: 0,
+      qtd_unidades: 0,
+    })) as QuadraGeo[],
+    total: Number(linhas[0]?.total_viewport ?? 0),
+  };
+}
+
 // A malha de idioma (`language-census`) é um domínio SEPARADO: existe só
 // pra dar contexto visual/censo ao grupo daquele idioma e nunca participa
 // da pregação regular. Misturar as duas finalidades numa consulta só é

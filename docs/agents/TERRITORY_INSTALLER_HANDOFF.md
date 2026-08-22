@@ -102,14 +102,62 @@ Dados locais fora do repositório, em `C:\Users\Thiag\Downloads\IBGE`:
 Resultado publicado no Supabase do usuário:
 
 - 4.911 locais e 9.853 unidades;
-- 7.124 áreas sugeridas e inativas;
-- 361 regulares, das quais 358 têm confiança alta;
+- 361 regulares: 358 aprovadas e 3 sugeridas/inativas para revisão manual;
 - 6.763 de censo de idioma, das quais 6.726 têm confiança alta;
+- as 6.763 áreas de censo continuam sugeridas e inativas;
 - 40 áreas exigem revisão manual.
 
 Não aprove automaticamente nenhuma dessas áreas sem decisão visual do usuário.
 
-## Estado publicado e correção local pendente
+## Estado publicado
+
+### Assistente visual local — em implementação no worktree (2026-08-22)
+
+Foi criada a primeira versão do onboarding para uma pessoa não técnica:
+
+- `INICIAR-INSTALADOR.cmd` instala dependências e abre o assistente com dois cliques no Windows;
+- `npm run installer:wizard` inicia um servidor restrito a `127.0.0.1`;
+- a UI conduz dez etapas, das credenciais próprias até o link publicado;
+- KML, configuração e progresso retomável ficam em `.territory-installer/wizard/`;
+- service key, connection string, token Cloudflare, senha do primeiro admin e
+  chave VAPID privada não entram no estado devolvido ao navegador;
+- as chaves VAPID são geradas automaticamente;
+- o primeiro administrador é criado e promovido sem SQL Editor;
+- cada operação reaproveita o CLI existente, com logs acompanháveis e
+  pré-requisitos entre etapas;
+- a revisão visual das áreas continua deliberadamente humana no app publicado.
+
+Arquivos centrais: `scripts/installer-wizard.ts`,
+`src/lib/installer/wizard-ui.html`, `src/lib/installer/initial-admin.ts` e
+`tests/installer-initial-admin.test.ts`. Ainda é necessário integrar as 12
+atualizações atuais de `origin/main` e refletir as migrations 091–094 na
+baseline antes de declarar paridade com o app principal.
+
+### Carregamento do censo por região visível — publicado em 2026-08-22
+
+O gargalo restante de `/admin/censo` foi resolvido e validado no piloto:
+
+- a abertura baixa apenas `resumo_censo_idioma()` (contagens e limites globais), sem as 6.763 geometrias;
+- o filtro inicial é **Revisão manual**, que consulta somente as 37 áreas que exigem decisão humana;
+- **Pendentes** e **Todas** só consultam `areas_censo_viewport(...)` a partir do zoom 12;
+- a consulta usa o índice espacial de `quadras.poly`, tem teto de 1.500 áreas e avisa para aproximar mais quando a janela excede esse teto;
+- `MapaPoligonos` passou a informar a região visível depois de cada movimento e aceita os limites globais para o enquadramento inicial;
+- sugestões de censo também entram nas consultas, mesmo ainda inativas — aprovação é que as torna ativas.
+
+Baseline e Worker foram publicados em 22/08/2026. Na validação autenticada real,
+a tela exibiu as contagens corretas em aproximadamente **2,9 s**, mostrou as
+37 revisões manuais e, após selecionar Pendentes e aproximar o mapa, trouxe
+somente 90 áreas daquela região. Nenhum erro funcional apareceu no navegador;
+resta apenas o aviso preexistente do MapLibre ao reconstruir o estilo.
+
+Verificação desta entrega: `npm test` 179 passaram / 0 falharam;
+`npm run check` 0 erros e 20 avisos preexistentes; `npm run build` OK.
+
+Arquivos centrais: `src/routes/admin/censo/+page.ts`,
+`src/routes/admin/censo/+page.svelte`, `src/lib/components/MapaPoligonos.svelte`,
+`src/lib/queries.ts` e `supabase/baseline/065_spatial_and_public_functions.sql`.
+
+## Histórico: separação das malhas
 
 Foi encontrado e corrigido um corte silencioso de 1.000 linhas do PostgREST em `src/lib/queries.ts`. A correção pagina `quadras_geo`, `quadras_contagens` e a lista operacional. Ela já foi publicada e validada: a tela mostra 358 regulares confiáveis, 6.726 de censo confiáveis e 40 para revisão manual.
 
@@ -127,13 +175,13 @@ Não é necessário nem desejável carregar a malha de idioma na tela territoria
 
 Portanto, não tentar resolver a lentidão mantendo as 7.124 geometrias na abertura de `/admin/poligonos`. Primeiro separar as finalidades nas consultas e na navegação. O paralelismo local continua útil para os dados regulares, mas não substitui essa separação.
 
-Essa última otimização passou em `npm run check` (0 erros, 20 avisos preexistentes), mas ainda não teve `npm test` repetido, ainda não foi publicada e ainda não teve o tempo real medido.
+Esse registro descreve o diagnóstico histórico; a publicação e a medição final
+estão documentadas no início desta seção.
 
-## Separação de finalidades — implementada (2026-08-02, ainda não publicada)
+## Separação de finalidades — implementada e publicada em 2026-08-02
 
-Os passos 5 e 6 do plano acima estão feitos no worktree. O passo 2/3/4
-(deploy e medição do tempo real) continua pendente e agora deve ser medido
-já com a separação, não com o paralelismo sozinho.
+Os passos do plano foram concluídos. O registro abaixo preserva o contexto da
+implementação original.
 
 O que mudou:
 
@@ -208,19 +256,17 @@ O módulo `languageCensus` ainda NÃO está em `installation_config.modules`
 de descoberta por `limit(1)` do root layout. Republicar o pacote grava a
 chave e dispensa essa query.
 
-### Próximo passo imediato
+### Validação que já foi concluída em 2026-08-22
 
-Falta a medição com sessão real (exige login do usuário):
+Foi feita a medição com sessão real:
 
-1. abrir `/admin/poligonos`, medir o tempo até o mapa ficar utilizável e
-   conferir na aba de rede que **nenhuma** geometria `language-census`
-   trafega;
-2. conferir os números do editor territorial: 361 áreas regulares e o
-   aviso de revisão manual contando só as 3 regulares (não mais 40);
-3. abrir `/admin/censo` (entrada nova no drawer) e conferir 6.763 áreas,
-   6.726 confiáveis. Se a abertura dessa tela for lenta demais no
-   celular, a otimização é dela — carregamento por viewport/tiles. Não
-   voltar a limitar silenciosamente a 1.000 linhas;
+1. `/admin/poligonos` foi aberto e confirmou que nenhuma geometria
+   `language-census` aparece no editor territorial;
+2. o editor confirmou 361 áreas regulares e o aviso de revisão manual
+   contando só as 3 regulares (não mais 40);
+3. `/admin/censo` conferido com 6.763 áreas e 6.726 confiáveis; o
+   carregamento por viewport foi implementado conforme descrito no topo deste
+   handoff;
 4. não aprovar nada em lote sem decisão visual do usuário.
 
 As duas malhas seguem revisáveis, mas em módulos independentes: território

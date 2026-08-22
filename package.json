@@ -11,6 +11,7 @@
     "test": "svelte-kit sync && tsx tests/run.ts",
     "test:db": "npx --yes supabase@2.110.0 test db",
     "installer": "tsx scripts/installer.ts",
+    "installer:wizard": "tsx scripts/installer-wizard.ts",
     "installer:check": "tsx scripts/installer.ts check",
     "db:start": "npx --yes supabase@2.110.0 start",
     "db:stop": "npx --yes supabase@2.110.0 stop",
