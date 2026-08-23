@@ -135,7 +135,16 @@ function adminKeyType(key: string): "secret" | "legacy" {
 }
 
 async function requireOk(response: Response, message: string): Promise<void> {
-  if (!response.ok) throw new Error(message);
+  const ok = response.ok;
+  // Drena a resposta antes da próxima chamada. No Node/undici, deixar o
+  // corpo aberto pode ocupar a conexão HTTP e fazer a segunda validação
+  // aguardar indefinidamente (especialmente no Auth do Supabase).
+  try {
+    await response.arrayBuffer();
+  } catch {
+    // O status HTTP continua sendo a fonte da mensagem amigável abaixo.
+  }
+  if (!ok) throw new Error(message);
 }
 
 async function fetchOrExplain(
@@ -145,7 +154,11 @@ async function fetchOrExplain(
   message: string,
 ): Promise<Response> {
   try {
-    return await fetchImplementation(input, init);
+    const timeout = AbortSignal.timeout(30_000);
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, timeout])
+      : timeout;
+    return await fetchImplementation(input, { ...init, signal });
   } catch {
     throw new Error(message);
   }
@@ -222,7 +235,10 @@ export async function verifyCloudflareToken(
       request,
       "Não foi possível conectar à Cloudflare. Confira sua conexão com a internet.",
     );
-    if (!response.ok) continue;
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      continue;
+    }
     const payload = (await response.json()) as {
       success?: boolean;
       result?: { status?: string };

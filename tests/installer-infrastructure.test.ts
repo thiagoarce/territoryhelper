@@ -62,6 +62,26 @@ test("pré-voo valida Supabase, banco e token Cloudflare sem devolver segredos",
   assertFalse(serialized.includes("postgresql://"));
 });
 
+test("pré-voo encerra respostas do Supabase antes da próxima validação", async () => {
+  const supabaseResponses: Response[] = [];
+  const fetchImplementation = async (input: string | URL | Request) => {
+    if (String(input).includes("cloudflare.com"))
+      return new Response(
+        JSON.stringify({ success: true, result: { status: "active" } }),
+        { status: 200 },
+      );
+    const response = new Response("{}", { status: 200 });
+    supabaseResponses.push(response);
+    return response;
+  };
+  await runInfrastructurePreflight(credentials, {
+    fetch: fetchImplementation as typeof fetch,
+    databaseProbe: async () => database,
+  });
+  assertEq(supabaseResponses.length, 2);
+  assertTrue(supabaseResponses.every((response) => response.bodyUsed));
+});
+
 test("token de usuário Cloudflare é validado no endpoint correto e na conta escolhida", async () => {
   const requests: string[] = [];
   const fetchImplementation = async (input: string | URL | Request) => {

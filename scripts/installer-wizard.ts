@@ -334,7 +334,7 @@ async function executeAction(action: ActionName, payload: any, task: WizardTask)
   } else if (action === "admin") {
     requireCompleted("baseline", "publish");
     if (!secrets) throw new Error("Conecte novamente as contas antes de continuar.");
-    appendLog(task, "Criando e promovendo o primeiro administrador…");
+    appendLog(task, "Criando ou confirmando o primeiro administrador…");
     const result = await createInitialAdmin({
       supabaseUrl: secrets.supabaseUrl,
       serviceRoleKey: secrets.supabaseAdminKey,
@@ -343,7 +343,10 @@ async function executeAction(action: ActionName, payload: any, task: WizardTask)
       password: String(payload.password ?? ""),
     });
     state.admin = { email: result.email };
-    appendLog(task, `✓ Administrador ${result.email} criado.`);
+    appendLog(
+      task,
+      `✓ Administrador ${result.email} ${result.created ? "criado" : "existente atualizado"}.`,
+    );
   } else if (action === "deploy") {
     requireCompleted("publish", "admin");
     await runInstaller(["deploy", "--directory", INFRA_DIRECTORY, "--confirm"], task);

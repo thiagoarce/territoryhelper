@@ -152,7 +152,7 @@
 
       <section class="step" data-step="admin">
         <div class="step-head"><span class="number">9</span><div><h2>Criar o primeiro administrador</h2><p>Esta será a conta usada para entrar e terminar a revisão.</p></div><span class="badge">Pendente</span></div>
-        <div class="step-body"><form id="admin-form" class="grid"><label>Nome<input name="name" required /></label><label>Email<input type="email" name="email" required /></label><label class="full">Senha inicial<input type="password" name="password" minlength="8" required /></label><div class="full actions"><button type="submit">Criar administrador</button></div></form></div>
+        <div class="step-body"><form id="admin-form" class="grid"><label>Nome<input name="name" required /></label><label>Email<input type="email" name="email" required /></label><label class="full">Senha inicial (somente para conta nova)<input type="password" name="password" minlength="8" /><small>Se este email já existe no Supabase, deixe em branco para manter a senha atual.</small></label><div class="full actions"><button type="submit">Criar ou reutilizar administrador</button></div></form></div>
       </section>
 
       <section class="step" data-step="deploy">
