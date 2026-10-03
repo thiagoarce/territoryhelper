@@ -9,13 +9,20 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "svelte-kit sync && tsx tests/run.ts",
+    "test:db": "npx --yes supabase@2.110.0 test db",
+    "installer": "tsx scripts/installer.ts",
+    "installer:wizard": "tsx scripts/installer-wizard.ts",
+    "installer:check": "tsx scripts/installer.ts check",
+    "db:start": "npx --yes supabase@2.110.0 start",
+    "db:stop": "npx --yes supabase@2.110.0 stop",
+    "db:reset": "npx --yes supabase@2.110.0 db reset",
     "format": "prettier --write .",
     "lint": "prettier --check .",
     "migrate": "tsx scripts/migrate-from-csv.ts",
     "fill-complementos": "tsx scripts/fill-complementos.ts"
   },
   "devDependencies": {
-    "@sveltejs/adapter-cloudflare": "^4.7.2",
+    "@sveltejs/adapter-cloudflare": "^7.2.9",
     "@sveltejs/kit": "^2.8.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@types/node": "^22.9.0",
@@ -30,15 +37,24 @@
     "tailwindcss": "^3.4.15",
     "tsx": "^4.22.4",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "wrangler": "^4.102.0"
   },
   "dependencies": {
     "@protomaps/basemaps": "^5.7.2",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
+    "@turf/area": "^7.3.5",
+    "@turf/bbox": "^7.3.5",
+    "@turf/boolean-point-in-polygon": "^7.3.5",
+    "@turf/helpers": "^7.3.5",
+    "@turf/intersect": "^7.3.5",
+    "@turf/polygonize": "^7.3.5",
+    "fflate": "^0.8.3",
     "lucide-svelte": "^1.0.1",
     "maplibre-gl": "^5.24.0",
     "pmtiles": "^4.4.1",
+    "postgres": "^3.4.7",
     "terra-draw": "^1.31.2",
     "terra-draw-maplibre-gl-adapter": "^1.4.1"
   }

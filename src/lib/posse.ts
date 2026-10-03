@@ -38,3 +38,18 @@ export function podeTrabalharQuadra(input: PosseQuadraInput): boolean {
     input.quadraEmArranjoAtivo
   );
 }
+
+export interface ConclusaoQuadraInput {
+  ehAdminOuDirigente: boolean;
+  ehLiderDeDesignacaoPessoalAtiva: boolean;
+  ehParticipanteDeDesignacaoPessoalAtiva: boolean;
+}
+
+/** Conclusão é global para dirigente/admin e contextual para território pessoal. */
+export function podeConcluirQuadra(input: ConclusaoQuadraInput): boolean {
+  return (
+    input.ehAdminOuDirigente
+    || input.ehLiderDeDesignacaoPessoalAtiva
+    || input.ehParticipanteDeDesignacaoPessoalAtiva
+  );
+}

@@ -81,7 +81,7 @@
     };
   });
 
-  let { data, children }: { data: { profile: any; temCasaACasa?: boolean }; children: Snippet } = $props();
+  let { data, children }: { data: { profile: any; temCasaACasa?: boolean; modules?: Record<string, boolean> }; children: Snippet } = $props();
 
   // Etiqueta de usuário da fila offline (aparelho compartilhado): a fila
   // só enfileira/replaya itens do uid gravado aqui. Atualiza a cada troca
@@ -115,7 +115,7 @@
   const podeDirigir = $derived(['dirigente', 'admin'].includes(role ?? ''));
   // TP só aparece pra quem tem profiles.tp_aprovado — admin vê mesmo sem
   // aprovação (é quem aprova os outros).
-  const vePodeTp = $derived(role === 'admin' || !!data.profile?.tp_aprovado);
+  const vePodeTp = $derived(data.modules?.publicWitnessing !== false && (role === 'admin' || !!data.profile?.tp_aprovado));
   // Casa a casa só aparece se tiver ALGO pra mostrar ali (arranjo que
   // dirige, parte, território pessoal ou TCE pessoal) — mesmo padrão do
   // TP. Sem isso, dirigente designado a um arranjo ainda sem quadras
@@ -132,7 +132,7 @@
   // Drawer admin
   let drawerAberto = $state(false);
 
-  const drawerGrupos: { titulo: string; items: { href: string; label: string; icon: NomeIcone }[] }[] = [
+  const drawerGrupos = $derived<{ titulo: string; items: { href: string; label: string; icon: NomeIcone }[] }[]>([
     {
       titulo: 'Administrar',
       items: [
@@ -140,11 +140,14 @@
         { href: '/admin/dashboard', label: 'Dashboard', icon: 'zap' },
         { href: '/admin/designacoes', label: 'Designações', icon: 'clipboard' },
         { href: '/admin/poligonos', label: 'Polígonos', icon: 'shapes' },
+        // Malha de idioma: domínio separado da pregação regular, só aparece
+        // pra instalação que tem grupo/congregação de idioma.
+        ...(data.modules?.languageCensus ? [{ href: '/admin/censo', label: 'Censo de idioma', icon: 'users' as NomeIcone }] : []),
         { href: '/admin/predios', label: 'Prédios', icon: 'building' },
-        { href: '/admin/campanha', label: 'Campanha', icon: 'chart' },
+        ...(data.modules?.campaigns === false ? [] : [{ href: '/admin/campanha', label: 'Campanha', icon: 'chart' as NomeIcone }]),
         { href: '/admin/arranjos', label: 'Arranjos', icon: 'calendar' },
-        { href: '/admin/tp', label: 'Testemunho público', icon: 'megaphone' },
-        { href: '/publicacoes', label: 'Publicações', icon: 'inbox' }
+        ...(data.modules?.publicWitnessing === false ? [] : [{ href: '/admin/tp', label: 'Testemunho público', icon: 'megaphone' as NomeIcone }]),
+        ...(data.modules?.publications === false ? [] : [{ href: '/publicacoes', label: 'Publicações', icon: 'inbox' as NomeIcone }])
       ]
     },
     {
@@ -159,7 +162,7 @@
         { href: '/admin/dev/erros', label: 'Erros do client', icon: 'alert' }
       ]
     }
-  ];
+  ]);
 
   function ativo(href: string): boolean {
     const p = $page.url.pathname;

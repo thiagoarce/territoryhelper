@@ -1,5 +1,53 @@
 # CLAUDE.md — Guia para agentes IA neste repo
 
+> **Territory Installer — agora no `main`** (a branch
+> `feat/territory-installer` foi unificada em 2026-10). Antes de mexer no
+> instalador, leia `docs/agents/TERRITORY_INSTALLER_HANDOFF.md` (estado do
+> piloto Monte Castelo e próximos passos).
+
+## Um código, dois tipos de banco — LER antes de mexer em schema
+
+O MESMO app (este repo, branch `main`) roda em:
+
+1. **Instância original** (a congregação de quem mantém o projeto):
+   banco montado pelo histórico `supabase/migrations/001…NNN`, deploy
+   automático do `main` no Cloudflare.
+2. **Instalações novas** (Territory Installer, ex.: piloto Monte
+   Castelo): banco montado pela sequência curta `supabase/baseline/`
+   (o Installer NUNCA roda o histórico), deploy pelo próprio Installer
+   (`npm run installer -- baseline --confirm` e `-- deploy --confirm`,
+   comandos separados).
+
+Regra: **toda mudança de schema que o app consome entra nos DOIS
+lugares** — uma migration numerada nova (pra instância original, rodada
+à mão no `/admin/dev/sql`) E o arquivo correspondente da baseline
+(idempotente, reaplicável). `tests/schema-paridade.test.ts` falha se uma
+RPC/tabela/view usada em `src/` (fora `src/lib/installer`) faltar em
+qualquer um dos dois (exceções documentadas no teste: `exec_sql` e os
+módulos TP/publicações/campanha, que a baseline ainda não traz — o
+Installer publica com esses módulos DESLIGADOS em
+`installation_config.modules` e o root layout bloqueia as rotas).
+
+A **migration 096** é a ponte que tornou isso possível: trouxe pra
+instância original só o que o código consulta e só existia na baseline
+(colunas de área em `quadras` + `quadras_geo`, `installation_config`
+com a linha preenchida, RPCs `pode_concluir_quadra`/
+`registrar_conclusao_quadra`/`participa_designacao`, censo, curadoria de
+exclusão com FKs `SET NULL`). NÃO aplicou a baseline inteira: nomes de
+policies e o resto do modelo de autorização da baseline continuam
+diferentes na instância original — de propósito. Validada num Postgres
+16 + PostGIS local com dublê do Supabase (`auth.uid()` via
+`request.jwt.claim.sub`, roles, GRANTs padrão), simulando cada papel.
+`dividir_quadra`/`quadras_join` da instância original continuam as
+versões antigas (sem propagar `finalidade`) — inofensivo enquanto ela só
+tiver a malha regular.
+
+`supabase-admin.ts` lê a chave de serviço do runtime (`$env/dynamic`,
+como o Installer configura) com fallback pro valor de build
+(`$env/static` por import de namespace, como o deploy original sempre
+fez) e só falha no PRIMEIRO USO — `hooks.server.ts → lembretes.ts`
+importa esse arquivo, então um throw no import derrubava o app inteiro.
+
 App PWA de gestão de territórios JW. **SvelteKit 2 + Svelte 5 (runes)**,
 **Tailwind 3**, **Supabase** (Postgres + Auth + RLS + Storage + Realtime),
 **MapLibre GL + OpenFreeMap** (tiles vetoriais grátis), deploy em
@@ -467,6 +515,45 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   agora"/"limpar dados offline" — só mexe no cache de LEITURA,
   NUNCA na fila de escrita).
 
+### Duas malhas de área (`quadras.finalidade`) — domínios separados
+
+`quadras` guarda DUAS malhas que nunca se misturam (metadados na baseline
+`035_work_area_metadata.sql`, tipos em `$lib/types.ts::FinalidadeArea`):
+
+- **`regular-preaching`** — território operacional, urbano (`tipo_area=
+  'urban-block'`) E rural (`'rural-area'`). Único que o CNEFE/IBGE
+  alimenta, único que aparece em designação/arranjo/carteira/mapa e o
+  único que `auto_vincular_enderecos()` enxerga (o filtro é no SQL).
+- **`language-census`** — malha do grupo/congregação de idioma. Existe pra
+  dar contexto visual e registrar o censo; pode se sobrepor livremente às
+  áreas regulares. **Endereço do CNEFE nunca é vinculado, copiado ou
+  atribuído a ela** — dentro do idioma só entra endereço criado
+  explicitamente pelo publicador do idioma, e idioma não se infere pela
+  localização do imóvel. Aprovar uma área de censo não a torna
+  operacional: só a torna visível na própria malha de censo.
+
+Consequências práticas:
+
+- `listarQuadrasComGeo(supabase, { finalidade, incluirSugeridas,
+  comContagens })` filtra por finalidade EXPLÍCITA — o default é
+  `regular-preaching` + só aprovadas. Não existe mais "trazer todas as
+  finalidades": `/admin/poligonos` pede regular (com sugestões),
+  `/admin/censo` pede idioma. Regressão coberta por
+  `tests/areas-finalidade.test.ts`.
+- Revisão (`revisao_status`) é a MESMA regra pras duas malhas, então mora
+  em `$lib/server/revisao-areas.ts`; cada tela passa a sua finalidade e o
+  helper filtra por ela no UPDATE (`count:'exact'` — UPDATE que não casa
+  o filtro responde sucesso com 0 linhas). É o que impede o editor
+  territorial de aprovar área de idioma e vice-versa.
+- Isso também é a correção de DESEMPENHO: no piloto Monte Castelo são 361
+  áreas regulares contra 6.763 de censo. Carregar as duas juntas fazia
+  `/admin/poligonos` levar ~37s pra abrir no celular.
+- `dividir_quadra` propaga `tipo_area`/`finalidade`/origem/revisão/
+  confiança pra metade nova (senão ela nasce urbana+regular pelos
+  defaults da coluna — dividir área de censo criava área de pregação que
+  o auto-vínculo passaria a encher de endereços). `quadras_join` recusa
+  unir finalidades diferentes.
+
 ### Backend (`+page.server.ts`)
 - `locals.supabase` = client com sessão; **RLS** faz o controle de acesso.
   Guards em `$lib/server/guards.ts` — usar **`exigirQuadraDesignada`** em
@@ -569,6 +656,21 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
     setor/quadra_ibge pro cluster majoritário — + aponta quadras que já
     têm esse mesmo cluster minoritário, candidatas a "dono de verdade"),
     quadras órfãs sem território
+  - Carrega **só `finalidade='regular-preaching'`** (urbana E rural),
+    aprovadas + sugeridas — a malha de idioma nunca é baixada aqui (ver
+    "Duas malhas de área" em Convenções). Sugestões do Installer aparecem
+    em laranja; aprovar em lote só alta confiança, média/baixa é olho
+    humano no mapa.
+- **Censo de idioma** (`/admin/censo`) — consumidor EXCLUSIVO da malha
+  `finalidade='language-census'`: mapa + filtro (pendentes/revisão
+  manual/todas) + aprovar uma área ou o lote de alta confiança. Reusa
+  `MapaPoligonos` com `locais={[]}` (endereço do CNEFE não entra nessa
+  malha). Só aparece no drawer se `installation_config.modules
+  .languageCensus` — o Installer liga quando o KML traz malha de idioma;
+  instalação publicada antes dessa chave existir cai num `limit(1)` em
+  `quadras` pra descobrir (root layout, só admin). Se um dia essa tela
+  ficar pesada, a otimização é dela (viewport/tiles) — nunca voltar a
+  limitar silenciosamente a 1.000 linhas.
 - **Prédios** (`/admin/predios`) — lista + filtros + modal inline + WhatsApp +
   **📍 Proximidade GPS** + ▶ trabalhar (→ `/predio/[id]`) +
   ⏳ **Validar pendente** + 🎯 **Designar cartas** + 📅 Anexar arranjo
@@ -743,11 +845,20 @@ lógica pura de `$lib` (posse de quadra, status de campanha, expansão de
 ocorrências de arranjo/TP, `diasDesde`). Não há integração contra Supabase
 real (precisaria de projeto de teste com seed). Ver `tests/README.md`.
 
-`npm run check` (svelte-check): baseline são só **10 erros**, todos
-`Cannot find module '$env/...'` — o módulo está corretamente declarado
-em `.svelte-kit/ambient.d.ts` (confirmado lendo o arquivo direto) e o
-`npm run build` resolve sem problema; é uma limitação do svelte-check
-num ambiente sem `.env` real completo, não um bug de código. **Nunca
-"consertar" isso trocando `$env/static/*` por `$env/dynamic/*`** — já
-quebrou o deploy inteiro uma vez por isso (ver seção Deploy). Qualquer
-erro NOVO além desses 10 é regressão de verdade.
+`npm run check` (svelte-check): baseline é **0 erros** (20 avisos
+preexistentes). Até 2026-10 eram 10 erros `Cannot find module '$env/...'`
+— sumiram quando o `tsconfig.json` parou de excluir `.svelte-kit` (onde
+mora o `ambient.d.ts`), mudança que veio com a unificação do Installer.
+**Nunca "consertar" erro de `$env` trocando `$env/static/*` por
+`$env/dynamic/*`** sem fallback — já quebrou o deploy inteiro uma vez
+(ver seção Deploy e o `supabase-admin.ts`). Qualquer erro é regressão.
+
+Teste de banco de verdade (sem Docker/Supabase CLI): Postgres 16 +
+`postgresql-16-postgis-3` via apt, `initdb` num diretório próprio, um
+dublê mínimo do Supabase (schemas `auth`/`storage`, roles `anon`/
+`authenticated`/`service_role`, `auth.uid()` lendo
+`request.jwt.claim.sub`, e os GRANTs que o Supabase dá por padrão —
+sem eles tudo vira "permission denied" em vez de testar a RLS). O
+histórico 001–095 NÃO aplica limpo num banco vazio (020/034 falham na
+`quadras_geo`, aplicadas à mão em produção); aplicar sem parar no erro dá
+uma aproximação boa da instância original.

@@ -10,6 +10,7 @@ import type { PageLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import { comCache } from '$lib/offline/cache-leitura';
 import { chaveQuadraCampo, carregarQuadraCampo, verificarPosseQuadra } from '$lib/campo-fetchers';
+import { supabaseBrowser } from '$lib/supabase-browser';
 
 export const ssr = false;
 
@@ -20,7 +21,19 @@ export const load: PageLoad = async ({ params, parent }) => {
   const r = await comCache(chaveQuadraCampo(params.id, profile.id), async () => {
     const pode = await verificarPosseQuadra(params.id, profile.id, profile.role ?? '');
     if (!pode) throw error(403, 'Você não tem essa quadra designada.');
-    return carregarQuadraCampo(params.id);
+    const dados = await carregarQuadraCampo(params.id);
+    const { data: podeConcluir, error: erroPermissao } = await supabaseBrowser().rpc('pode_concluir_quadra', {
+      p_quadra_id: params.id,
+      p_user_id: profile.id
+    });
+    // A RPC existe na baseline nova. Na instância legada, a ausência dela
+    // preserva o comportamento global de dirigente/admin até uma atualização explícita.
+    return {
+      ...dados,
+      podeConcluirQuadra: erroPermissao
+        ? ['dirigente', 'admin'].includes(profile.role ?? '')
+        : !!podeConcluir
+    };
   });
 
   return { ...r.valor, minhaRole: profile.role, cacheInfo: { deCache: r.deCache, gravadoEm: r.gravadoEm } };

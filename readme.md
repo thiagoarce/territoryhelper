@@ -1,87 +1,60 @@
-# 📂 Gestor de Territórios Inteligente
+# Territory Helper
 
-Uma aplicação web baseada em **Google Apps Script** e **Leaflet.js** para gestão geográfica de pregação, permitindo o mapeamento de endereços, organização de quadras e territórios, e acompanhamento de registros de campo em tempo real.
+Plataforma web self-hosted para organizar territórios, endereços, designações e trabalho de campo de uma congregação. Cada congregação mantém sua própria instância, seu próprio Supabase e seu próprio deploy.
 
-> 💡 Para devs/agentes IA contribuindo: leia [CLAUDE.md](./CLAUDE.md) para convenções de código e arquitetura.
+> **Estado atual:** o aplicativo operacional é estável na instância original. A instalação reutilizável está em **piloto técnico guiado** no branch `feat/territory-installer`; ainda exige familiaridade básica com terminal, Supabase e Cloudflare.
 
----
+## O que o piloto já oferece
 
-## 🚀 Funcionalidades Principais
+- baseline curta e separada para um Supabase vazio;
+- transformação versionada de CSVs do CNEFE, preservando dados brutos;
+- leitura de KML, incluindo multipolígonos e áreas internas;
+- filtro de endereços dentro do território, com pontos de fronteira incluídos;
+- pacote intermediário revisável antes de qualquer publicação;
+- publicação em lotes, retomável e protegida contra duplicação do mesmo pacote;
+- autorização orientada à usabilidade e curadoria posterior;
+- módulos ainda não instalados ocultos por configuração, sem menus vazios.
 
-### 1. 🏃 Visão de Campo (Pregação)
-* **Visualização Consolidada:** Mapa unificado com polígonos de quadras, territórios e pontos de endereços (heatmap).
-* **Geolocalização (GPS):** Identificação em tempo real da posição do usuário (bolinha azul) para facilitar a orientação nas ruas.
-* **Rotas Inteligentes:** Botão dedicado para traçar rotas automáticas do ponto atual até a quadra ou endereço selecionado via Google Maps.
+O piloto **não** promete geração automática perfeita das quadras, instalador Windows ou deploy Cloudflare totalmente automático. Quadras podem ser importadas/ajustadas com as ferramentas atuais enquanto o gerador OSM evolui.
 
-### 2. ✍️ Editor de Territórios (Escritório)
-* **Gestão de Polígonos:** Criação, edição e exclusão de quadras diretamente no mapa.
-* **Rótulos Fixos:** Visualização imediata do nome das quadras de forma permanente (sem precisar clicar).
-* **Seleção Múltipla & Fusão:** Ferramenta para selecionar várias quadras e "juntá-las" em uma única quadra maior ou agrupar em um território.
-* **Estilo CSV Limpo:** Identificadores de território com badges circulares de alta visibilidade e contraste.
+## Começar
 
-### 3. 📊 Registro e Gestão Visual
-* **Status por Cores:** Sistema visual que identifica quadras concluídas recentemente (Verde), quadras em progresso (Cinza) e áreas que precisam de atenção (Vermelho).
-* **Histórico Automático:** Registro de datas de conclusão integrando automaticamente com as planilhas do Google.
-* **Filtros de Visualização:** Alternância rápida entre visão de quadras, territórios ou camadas híbridas.
+Leia o [Quickstart](QUICKSTART.md). O caminho novo é:
 
----
-
-## 🛠️ Tecnologias Utilizadas
-
-* **Backend:** [Google Apps Script](https://developers.google.com/apps-script) (Google Sheets como Banco de Dados).
-* **Frontend:** HTML5, CSS3 (Bootstrap 5).
-* **Mapas:** [Leaflet.js](https://leafletjs.com/) & [Leaflet Geoman](https://geoman.io/) (para edição geométrica).
-* **Processamento Geográfico:** [Turf.js](https://turfjs.org/) (para cálculos de união e fusão de polígonos).
-* **Ícones:** Font Awesome 6.
-
----
-
-## 📋 Estrutura da Planilha Google
-
-Para o funcionamento correto, a planilha vinculada deve possuir as seguintes abas:
-
-1.  **Dados Brutos:** Contendo coordenadas lat/lng e nomes das faces/quadras.
-2.  **Quadras:** Onde são armazenados os polígonos individuais.
-3.  **Territorios:** Onde são armazenados os agrupamentos de quadras.
-
----
-
-## 📖 Instalação e Configuração
-
-1.  No Google Sheets, vá em **Extensões** > **Apps Script**.
-2.  Crie os arquivos conforme a estrutura do projeto: `Code.gs`, `Index.html`, `Styles.html`, `JS-Mapas.html` e `JS-App.html`.
-3.  No menu superior, clique em **Implantar** > **Nova Implantação**.
-4.  Escolha **App da Web** e defina o acesso para "Qualquer pessoa" (ou conforme sua política de privacidade).
-5.  Copie a URL gerada e acesse pelo navegador do seu smartphone ou PC.
-
----
-
-## 📝 Licença
-
-Este projeto está sob a licença MIT. Sinta-se à vontade para clonar e adaptar para as necessidades da sua comunidade ou congregação local.
-
----
-**Desenvolvido para otimizar a organização e o zelo no trabalho de campo.** 🌍
-
----
-
-## 🧪 Testes
-
-Testes automatizados (Node sem deps externas) cobrem validações, regras
-de negócio e sintaxe de todos os arquivos.
-
-```bash
-node tests/run.js
+```text
+Supabase vazio
+→ supabase/baseline/000–080
+→ KML + CSVs CNEFE
+→ pacote local para revisão
+→ aprovação explícita
+→ publicação
+→ deploy Cloudflare
 ```
 
-CI: GitHub Actions roda o suite a cada push/PR em `main`.
+As migrations históricas `supabase/migrations/001–090` pertencem à evolução da instância original. **Não as execute numa instalação nova.**
 
-## 🔗 Rotas (parâmetro `?v=`)
+## Princípios do produto
 
-| URL                             | Tela                                     |
-|---------------------------------|------------------------------------------|
-| `/`                             | App de gestão (servo de território)      |
-| `/?v=publico&ids=Q1,Q2`         | Endereços para o publicador              |
-| `/?v=dirigente&ids=Q1,Q2`       | Painel do dirigente (conclui/designa)    |
-| `/?v=campanha`                  | Tela pública motivacional da campanha    |
+- uma infraestrutura independente por congregação;
+- usabilidade acima de restrições excessivas;
+- publicadores podem registrar e corrigir o trabalho operacional imediatamente;
+- alterações relevantes entram em curadoria, sem bloquear o campo;
+- designações pessoais ativas autorizam seus líderes e participantes a concluir as respectivas quadras;
+- dirigente e admin possuem escopo global;
+- geometria, privilégios e operações em massa continuam protegidos;
+- mensagens SQL, nomes de policies e erros HTTP crus não chegam ao usuário.
 
+## Desenvolvimento
+
+```bash
+npm install
+npm test
+npm run check
+npm run build
+```
+
+A documentação canônica começa em [docs/README.md](docs/README.md). Para contribuir, leia [CONTRIBUTING.md](CONTRIBUTING.md). Problemas de segurança seguem [SECURITY.md](SECURITY.md).
+
+## Licença
+
+GNU Affero General Public License v3.0 ou posterior. Consulte [LICENSE](LICENSE).

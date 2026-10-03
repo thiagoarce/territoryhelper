@@ -1,0 +1,18 @@
+{
+  "congregation": {
+    "name": "Congregação Exemplo",
+    "timezone": "America/Sao_Paulo",
+    "mode": "territorial"
+  },
+  "territory": {
+    "id": "principal",
+    "name": "Território da congregação",
+    "color": "#3388ff",
+    "areaBoundaryToleranceMeters": 15
+  },
+  "cnefe": {
+    "edition": "CNEFE-2022",
+    "encoding": "windows-1252",
+    "outsideSampleLimit": 100
+  }
+}

@@ -4,6 +4,18 @@ Mudanças relevantes do app. O app antigo em Google Apps Script (Jan–Jun
 2026) foi **arquivado** na tag/branch `v1-google-apps-script` — este
 changelog cobre a reescrita como PWA (SvelteKit + Supabase).
 
+## 2026-08 — piloto self-hosted para novas congregações
+
+- Baseline curta e separada para Supabase vazio; o histórico `001–090`
+  permanece exclusivo da instância original.
+- Primeiro Installer por linha de comando, com preparação, aprovação e
+  publicação retomável de KML + CNEFE.
+- Transformação CNEFE versionada, preservação dos valores brutos, filtro
+  territorial inclusivo na borda e pacote intermediário revisável.
+- Autorização contextual para conclusão de quadras pessoais, curadoria
+  reversível e mensagens de domínio no lugar de erros HTTP/SQL crus.
+- Documentação pública, licença AGPL-3.0 e workflow de smoke test da baseline.
+
 ## 2026-07 — v2.1: exportáveis (cartão S-12, relatório S-13, dashboard, mapa offline)
 
 Rodada Exportáveis (E1–E5; specs em `docs/specs-exportaveis.md`).

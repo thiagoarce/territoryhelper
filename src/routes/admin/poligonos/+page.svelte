@@ -55,6 +55,7 @@
   let selecionadasQuadras = $state<Set<string>>(new Set());
   let quadraDestaque = $state<string | null>(null);
   let salvando = $state(false);
+  let aprovandoLote = $state(false);
 
   // TCE (designar é no Visão Geral; aqui só cria/conclui/deleta)
   let sheetCriarTce = $state(false);
@@ -92,6 +93,12 @@
   const colorirPorTerritorio = $derived(modo === 'territorios');
   // No TCE o filtro é sempre comércio
   const filtroTipoEfetivo = $derived(modo === 'tce' ? 'com' : filtroTipo);
+  // Só pregação regular: o load desta tela não traz mais `language-census`
+  // (essa malha se revisa em /admin/censo).
+  const areasSugeridasStats = $derived.by(() => ({
+    regulares: data.quadras.filter((q) => q.revisao_status === 'suggested' && q.confianca === 'high').length,
+    revisaoManual: data.quadras.filter((q) => q.revisao_status === 'suggested' && q.confianca !== 'high').length
+  }));
 
   function setModo(m: Modo) {
     if (desenhoAtivo !== 'off') cancelarDesenho();
@@ -1011,6 +1018,7 @@
       <div class="text-xs text-slate-500">
         {data.territorios.length} território(s). Click numa quadra pra selecionar; click num território abaixo pra editar.
       </div>
+
       <Button variant="primary" size="sm" onclick={() => { novoTerrNome = ''; novoTerrCor = '#3388ff'; sheetCriarTerr = true; }}>+ Novo território</Button>
     </div>
     <div class="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
@@ -1104,7 +1112,7 @@
 
   <!-- Sub-toolbar do modo Quadras: desenhar / juntar -->
   {#if modo === 'quadras' && desenhoAtivo === 'off'}
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
       <Button variant="secondary" size="sm" onclick={iniciarNova}><Icon nome="pencil" size={14} /> Desenhar nova quadra</Button>
       <button
         onclick={() => { juntarAtivo = !juntarAtivo; selecionadasQuadras = new Set(); }}
@@ -1114,6 +1122,35 @@
         class:text-primary-700={juntarAtivo}
         class:border-slate-300={!juntarAtivo}
       ><Icon nome="link" size={14} /> Juntar quadras</button>
+      {#if areasSugeridasStats.regulares > 0}
+        <form
+          method="POST"
+          action="?/aprovarAreasConfiaveis"
+          use:enhance={() => {
+            aprovandoLote = true;
+            return async ({ result, update }) => {
+              await update();
+              aprovandoLote = false;
+              if (result.type === 'success') {
+                toast.success((result.data as any)?.msg || 'Áreas aprovadas');
+                await invalidateAll();
+              } else if (result.type === 'failure') {
+                toast.error(String((result.data as any)?.erro || 'Falhou'));
+              }
+            };
+          }}
+          onsubmit={(e) => {
+            if (!confirm(`Aprovar ${areasSugeridasStats.regulares} áreas de alta confiança?`)) e.preventDefault();
+          }}
+        >
+          <Button variant="secondary" size="sm" type="submit" loading={aprovandoLote}>
+            Aprovar regulares confiáveis ({areasSugeridasStats.regulares})
+          </Button>
+        </form>
+      {/if}
+      {#if areasSugeridasStats.revisaoManual > 0}
+        <span class="text-xs font-medium text-amber-700">{areasSugeridasStats.revisaoManual} área(s) exigem revisão manual</span>
+      {/if}
     </div>
   {/if}
 
@@ -1485,6 +1522,36 @@
         {quadraSel.ativa ? 'ativa' : 'inativa'} ·
         {quadraSel.qtd_locais} endereço(s)
       </div>
+
+      <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+        <div><strong>Tipo:</strong> {quadraSel.tipo_area}</div>
+        <div><strong>Finalidade:</strong> {quadraSel.finalidade === 'language-census' ? 'censo de idioma' : 'pregação regular'}</div>
+        <div><strong>Origem:</strong> {quadraSel.origem_geografica} · confiança {quadraSel.confianca}</div>
+        <div><strong>Revisão:</strong> {quadraSel.revisao_status === 'approved' ? 'aprovada' : 'sugerida'}</div>
+      </div>
+
+      {#if quadraSel.origem_geografica !== 'manual'}
+        <form
+          method="POST"
+          action="?/alterarRevisaoArea"
+          use:enhance={() => async ({ result, update }) => {
+            await update();
+            if (result.type === 'success') {
+              toast.success((result.data as any)?.msg || 'Revisão atualizada');
+              sheetQuadra = false;
+              await invalidateAll();
+            } else if (result.type === 'failure') {
+              toast.error(String((result.data as any)?.erro || 'Falhou'));
+            }
+          }}
+        >
+          <input type="hidden" name="id" value={quadraSel.id} />
+          <input type="hidden" name="revisao_status" value={quadraSel.revisao_status === 'approved' ? 'suggested' : 'approved'} />
+          <Button variant={quadraSel.revisao_status === 'approved' ? 'secondary' : 'primary'} type="submit" class="w-full">
+            {quadraSel.revisao_status === 'approved' ? 'Reabrir revisão' : 'Aprovar esta área'}
+          </Button>
+        </form>
+      {/if}
 
       <!-- Território -->
       <form
