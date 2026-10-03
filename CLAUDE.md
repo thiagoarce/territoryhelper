@@ -217,6 +217,15 @@ e arquivado (tag/branch `v1-google-apps-script` no git).
   sem isso a abertura com rede lenta parecia "mapa quebrado" em vez de
   "carregando"). Cada componente ainda é dono das PRÓPRIAS camadas
   (fill/line/source) — só a criação da instância é compartilhada.
+  Todo mapa criado por ela ganha o botão de **tela cheia**
+  (`$lib/mapa-tela-cheia.ts`, opção `telaCheia:false` desliga). NÃO é o
+  `FullscreenControl` do MapLibre (ele isola o canvas e esconde sheet/
+  toast/barra de seleção): o PAI do container vira `fixed` em z-index 25
+  (abaixo das barras z-30, sheets z-40/50, toasts), header/bottom nav do
+  layout somem via `.esconde-em-tela-cheia` + classe no `<html>`, e se
+  der pede tela cheia nativa da PÁGINA (some a barra do sistema no
+  Android; iPhone fica só no CSS). Por isso o wrapper `relative` de cada
+  componente de mapa precisa continuar sendo o pai direto do container.
 - `src/lib/mapa-estilos.ts` — `BASEMAPS`/`urlBasemap`/`trocarBasemap` num
   lugar só (a constante estava duplicada em 4 componentes + literal no
   QuadraMap). `BASEMAP_CAMPO = 'liberty'`: as telas de campo nascem com

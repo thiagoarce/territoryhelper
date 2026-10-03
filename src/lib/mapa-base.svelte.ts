@@ -6,6 +6,7 @@
 // lenta/instável na abertura parecia "mapa quebrado" (tela cinza muda)
 // em vez de "carregando".
 import { estiloDoMapa } from '$lib/mapa-offline';
+import { ControleTelaCheia } from '$lib/mapa-tela-cheia';
 
 export interface OpcoesMapaBase {
   container: HTMLDivElement;
@@ -15,6 +16,8 @@ export interface OpcoesMapaBase {
   extra?: Record<string, unknown>;
   /** false pra não adicionar NavigationControl; objeto = opções dele */
   navControl?: false | Record<string, unknown>;
+  /** false pra não ter o botão de tela cheia (default: tem) */
+  telaCheia?: boolean;
 }
 
 export async function criarMapaBase(
@@ -32,6 +35,12 @@ export async function criarMapaBase(
   });
   if (opts.navControl !== false) {
     mapa.addControl(new maplibre.NavigationControl(opts.navControl ?? {}), 'top-right');
+  }
+  // Usa o PAI do container como área de tela cheia — é onde moram a
+  // legenda e o MapaCarregando de todos os componentes (ver
+  // $lib/mapa-tela-cheia.ts pro porquê de não ser o FullscreenControl).
+  if (opts.telaCheia !== false && opts.container.parentElement) {
+    mapa.addControl(new ControleTelaCheia(), 'top-right');
   }
   return { maplibre, mapa };
 }

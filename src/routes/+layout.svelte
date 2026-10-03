@@ -226,7 +226,7 @@
   {@render children()}
 {:else}
   <!-- Header global comum -->
-  <header class="sticky top-0 z-30 bg-white border-b border-slate-200 px-3 py-2.5 flex items-center gap-2">
+  <header class="esconde-em-tela-cheia sticky top-0 z-30 bg-white border-b border-slate-200 px-3 py-2.5 flex items-center gap-2">
     {#if modoAtual === 'admin'}
       <button
         type="button"
@@ -328,7 +328,7 @@
 
   <!-- Bottom nav (publicador/dirigente) -->
   {#if modoAtual !== 'admin'}
-    <nav class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 flex">
+    <nav class="esconde-em-tela-cheia fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 flex">
       {#each bottomNav as t}
         {@const isAtivo = ativo(t.href)}
         <a

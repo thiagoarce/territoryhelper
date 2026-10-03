@@ -11,3 +11,30 @@
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   padding: 0.625rem 0.75rem;
 }
+
+/* Tela cheia dos mapas ($lib/mapa-tela-cheia.ts). z-index 25: ACIMA do
+   conteúdo da página e ABAIXO das barras fixas de ação (z-30 — seleção
+   em massa do /admin, Polígonos), sheets (z-40/50) e toasts (z-50):
+   tocar numa quadra em tela cheia continua abrindo o painel por cima.
+   Header e bottom nav (também z-30) somem pela classe no <html>. */
+.mapa-tela-cheia {
+  position: fixed !important;
+  inset: 0;
+  z-index: 25;
+  background: #fff;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+.mapa-tela-cheia > .maplibregl-map {
+  /* o componente fixa a altura por style inline */
+  height: 100% !important;
+  border-radius: 0;
+  border: 0;
+}
+html.mapa-em-tela-cheia,
+html.mapa-em-tela-cheia body {
+  overflow: hidden;
+}
+html.mapa-em-tela-cheia .esconde-em-tela-cheia {
+  display: none !important;
+}
