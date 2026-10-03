@@ -758,7 +758,25 @@ Consequências práticas:
 
 ## Deploy
 
-- Branch `main` → Cloudflare Workers auto-deploy.
+- Branch `main` → Cloudflare Workers auto-deploy. O MESMO push publica
+  DOIS Workers (Workers Builds, ambos ligados ao repo):
+  - **instância original** (`territoryhelper`): usa o `wrangler.toml` do
+    repo como está;
+  - **piloto Monte Castelo** (`territorios-congregacao`): o Deploy command
+    reescreve o toml só durante o build dele —
+    `sed -i -e 's/^name = .*/name = "territorios-congregacao"/' -e '/^PUBLIC_VAPID_PUBLIC_KEY/d' wrangler.toml && npx wrangler deploy --keep-vars`.
+    O nome é trocado pra cair no Worker certo; a linha VAPID sai porque o
+    piloto NÃO tem push configurado (herdar a chave pública da
+    congregação faria o `/perfil` "ativar" push que nunca chega).
+    `PUBLIC_SUPABASE_URL`/`PUBLIC_SUPABASE_ANON_KEY` do piloto ficam
+    como **build variables** no painel (são `$env/static`, lidas no
+    build); a chave de serviço é secret de runtime do Worker.
+  - A Cloudflare sugere (e pode abrir PR) mudar o `name` do
+    `wrangler.toml` pro do piloto: **nunca aceitar** — o arquivo é o da
+    instância original.
+  - Banco do piloto NÃO recebe migration numerada: mudança de schema vai
+    pra `supabase/baseline/` e é colada no SQL Editor do Supabase do
+    piloto (ou `npm run installer -- baseline --confirm`).
 - `pwa-rewrite` era a branch de desenvolvimento (já mergeada).
 - Migrations novas: rodar SQL no `/admin/dev/sql` (cola o conteúdo do arquivo
   `supabase/migrations/0XX_*.sql`).
