@@ -1,7 +1,7 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import { criarMapaBase, estadoCarregamentoMapa } from '$lib/mapa-base.svelte';
-  import { urlBasemap, trocarBasemap, type Basemap } from '$lib/mapa-estilos';
+  import { urlBasemap, trocarBasemap, ancoraAbaixoDosRotulos, type Basemap } from '$lib/mapa-estilos';
   import MapaCarregando from '$lib/components/MapaCarregando.svelte';
   import { onMount, onDestroy } from 'svelte';
   import type { QuadraGeo } from '$lib/server/queries';
@@ -21,7 +21,8 @@
     selecionadas = $bindable(new Set<string>()),
     basemap = $bindable<Basemap>('bright'),
     onClick,
-    onLongPress
+    onLongPress,
+    modoRuas = false
   }: {
     quadras: QuadraGeo[];
     altura?: number;
@@ -35,7 +36,20 @@
     basemap?: Basemap;
     onClick?: (q: QuadraGeo, multi: boolean) => void;
     onLongPress?: (q: QuadraGeo) => void;
+    /** "Modo ruas": preenchimento quase transparente e contorno fino,
+     *  pra ler o nome das ruas (pedido de dirigente: "às vezes fica
+     *  difícil ver o nome da rua com essas linhas coloridas na frente") */
+    modoRuas?: boolean;
   } = $props();
+
+  // Pintura das quadras nos dois modos. No modo ruas a cor de status
+  // continua lá, só bem fraca — dá pra saber o que está feito sem
+  // esconder o mapa de fundo.
+  function pinturaQuadras(ruas: boolean) {
+    return ruas
+      ? { fill: 0.12, halo: 0, linha: 1.2 }
+      : { fill: 0.5, halo: 0.6, linha: 2.5 };
+  }
 
   let container: HTMLDivElement;
   let mapa = $state<any>(null);
@@ -73,6 +87,14 @@
     const v = mostrarRotulos; // tracking explícito
     if (!mapa || !mapa.getLayer('quadras-label')) return;
     mapa.setLayoutProperty('quadras-label', 'visibility', v ? 'visible' : 'none');
+  });
+
+  $effect(() => {
+    const p = pinturaQuadras(modoRuas); // tracking ANTES do guard
+    if (!mapa || !mapa.getLayer('quadras-fill')) return;
+    mapa.setPaintProperty('quadras-fill', 'fill-opacity', p.fill);
+    mapa.setPaintProperty('quadras-line-halo', 'line-opacity', p.halo);
+    mapa.setPaintProperty('quadras-line', 'line-width', p.linha);
   });
 
   let basemapAtual: Basemap | null = null;
@@ -264,41 +286,61 @@
         data: { type: 'FeatureCollection', features } as any
       });
 
-      mapa.addLayer({
-        id: 'quadras-fill',
-        type: 'fill',
-        source: 'quadras',
-        paint: {
-          'fill-color': buildFillExpr(colorirPor, selecionadas, new Set(quadrasAlocadas)),
-          'fill-opacity': 0.5
-        }
-      });
+      // Preenchimento e contornos entram ABAIXO dos rótulos do mapa de
+      // fundo — nome de rua e de comércio ficam sempre por cima das
+      // quadras. Antes eram empilhados no topo e o laranja a 50% + a
+      // borda de 2,5px apagavam justamente o nome das ruas (queixa real
+      // de dirigente). Os NOSSOS rótulos (id da quadra, cadeado,
+      // tracejado de campanha) continuam no topo. Ver
+      // ancoraAbaixoDosRotulos: não é "antes do primeiro texto" (no
+      // Liberty isso jogaria as quadras pra baixo dos prédios).
+      const primeiroRotuloDoFundo = ancoraAbaixoDosRotulos(mapa.getStyle()?.layers);
+      const pint = pinturaQuadras(modoRuas);
+
+      mapa.addLayer(
+        {
+          id: 'quadras-fill',
+          type: 'fill',
+          source: 'quadras',
+          paint: {
+            'fill-color': buildFillExpr(colorirPor, selecionadas, new Set(quadrasAlocadas)),
+            'fill-opacity': pint.fill
+          }
+        },
+        primeiroRotuloDoFundo
+      );
 
       // Halo neutro por baixo da borda colorida: como quadras.color já é
       // sincronizado com a cor do território (poligonos/+page.server.ts),
       // essa borda JÁ diferencia território — só que 2px fino se perde
       // contra preenchimentos fortes (recência/densidade). O halo dá
       // contraste sem mudar a cor em si.
-      mapa.addLayer({
-        id: 'quadras-line-halo',
-        type: 'line',
-        source: 'quadras',
-        paint: {
-          'line-color': '#ffffff',
-          'line-width': 4.5,
-          'line-opacity': 0.6
-        }
-      });
+      mapa.addLayer(
+        {
+          id: 'quadras-line-halo',
+          type: 'line',
+          source: 'quadras',
+          paint: {
+            'line-color': '#ffffff',
+            'line-width': 4.5,
+            'line-opacity': pint.halo
+          }
+        },
+        primeiroRotuloDoFundo
+      );
 
-      mapa.addLayer({
-        id: 'quadras-line',
-        type: 'line',
-        source: 'quadras',
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-width': 2.5
-        }
-      });
+      mapa.addLayer(
+        {
+          id: 'quadras-line',
+          type: 'line',
+          source: 'quadras',
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': pint.linha
+          }
+        },
+        primeiroRotuloDoFundo
+      );
 
       mapa.addLayer({
         id: 'quadras-label',
@@ -376,45 +418,63 @@
       let pressStart: number | null = null;
       let pressTimer: any = null;
       let pressTarget: string | null = null;
+      let pressPonto: { x: number; y: number } | null = null;
 
-      mapa.on('mousedown', 'quadras-fill', (e: any) => {
+      // QUEIXA REAL de dirigente: "quando mexe no mapa sobe muito rápido
+      // essa janela". O timer era armado no touchstart sobre a quadra e
+      // só cancelado no touchend DA CAMADA — arrastar o mapa com o dedo
+      // começando em cima de uma quadra deixava o timer correndo (e, se o
+      // dedo saísse da quadra, o touchend da camada nem disparava), então
+      // o painel abria no meio do arrasto. Agora QUALQUER movimento
+      // cancela: dedo andando mais de 10px, e os eventos do próprio mapa
+      // (movestart/dragstart/zoomstart/rotatestart cobrem pinça e
+      // inércia). E sem onLongPress (painel desligado na toolbar) o
+      // timer nem é armado.
+      const cancelarPress = () => {
+        if (pressTimer) clearTimeout(pressTimer);
+        pressTimer = null;
+        pressPonto = null;
+      };
+      const armarPress = (e: any) => {
         pressStart = Date.now();
+        if (!onLongPress) return;
         pressTarget = e.features?.[0]?.properties?.id;
+        pressPonto = e.point ? { x: e.point.x, y: e.point.y } : null;
+        if (pressTimer) clearTimeout(pressTimer);
         pressTimer = setTimeout(() => {
+          pressTimer = null;
+          pressPonto = null;
           if (pressTarget && onLongPress) {
             const q = quadras.find((x) => x.id === pressTarget);
             if (q) onLongPress(q);
           }
-          pressTimer = null;
-          pressStart = null;
         }, 600);
-      });
-      mapa.on('mouseup', 'quadras-fill', () => {
-        if (pressTimer) clearTimeout(pressTimer);
-        pressTimer = null;
-        pressStart = null;
-      });
-      mapa.on('touchstart', 'quadras-fill', (e: any) => {
-        pressStart = Date.now();
-        pressTarget = e.features?.[0]?.properties?.id;
-        pressTimer = setTimeout(() => {
-          if (pressTarget && onLongPress) {
-            const q = quadras.find((x) => x.id === pressTarget);
-            if (q) onLongPress(q);
-          }
-          pressTimer = null;
+      };
+      const cancelarSeMoveu = (e: any) => {
+        if (!pressTimer || !pressPonto || !e.point) return;
+        if (Math.hypot(e.point.x - pressPonto.x, e.point.y - pressPonto.y) > 10) {
+          cancelarPress();
+          pressStart = null; // arrasto não é clique nem toque longo
+        }
+      };
+
+      mapa.on('mousedown', 'quadras-fill', armarPress);
+      mapa.on('touchstart', 'quadras-fill', armarPress);
+      // Fim do toque/clique em QUALQUER lugar (não só sobre a quadra)
+      mapa.on('mouseup', cancelarPress);
+      mapa.on('touchend', cancelarPress);
+      mapa.on('touchcancel', cancelarPress);
+      mapa.on('mousemove', cancelarSeMoveu);
+      mapa.on('touchmove', cancelarSeMoveu);
+      for (const ev of ['movestart', 'dragstart', 'zoomstart', 'rotatestart']) {
+        mapa.on(ev, () => {
+          cancelarPress();
           pressStart = null;
-        }, 600);
-      });
-      mapa.on('touchend', 'quadras-fill', () => {
-        if (pressTimer) clearTimeout(pressTimer);
-        pressTimer = null;
-        pressStart = null;
-      });
+        });
+      }
 
       mapa.on('click', 'quadras-fill', (e: any) => {
-        if (pressTimer) clearTimeout(pressTimer);
-        pressTimer = null;
+        cancelarPress();
         if (pressStart && Date.now() - pressStart > 500) return; // long-press handled
         const props = e.features?.[0]?.properties;
         if (!props) return;

@@ -40,3 +40,29 @@ export async function trocarBasemap(mapa: any, b: string | null | undefined): Pr
   const { estiloDoMapa } = await import('$lib/mapa-offline');
   mapa.setStyle(await estiloDoMapa(urlBasemap(b)));
 }
+
+/**
+ * Id da camada do fundo ANTES da qual as camadas das quadras devem
+ * entrar, pra que os nomes de rua/comércio fiquem por cima delas.
+ *
+ * Não é "a primeira camada de texto": verificado nos estilos reais do
+ * OpenFreeMap, no Liberty a 1ª camada de texto é a seta de mão única
+ * (#61) e DEPOIS dela ainda vêm pontes, `building` e `building-3d` —
+ * ancorar ali deixaria os prédios por cima da cor das quadras. A âncora
+ * certa é o começo do BLOCO FINAL de textos: a camada logo depois da
+ * última camada que não é texto. No Bright e no Positron as duas regras
+ * coincidem.
+ *
+ * `undefined` = não há bloco final de texto (estilo sem rótulos, ex.
+ * fallback offline cru) → empilha no topo, como antes.
+ */
+export function ancoraAbaixoDosRotulos(
+  camadas: { id: string; type: string }[] | null | undefined
+): string | undefined {
+  if (!camadas || camadas.length === 0) return undefined;
+  let ultimaNaoTexto = -1;
+  camadas.forEach((c, i) => {
+    if (c.type !== 'symbol') ultimaNaoTexto = i;
+  });
+  return camadas[ultimaNaoTexto + 1]?.id;
+}

@@ -517,7 +517,18 @@ U5/U6 estava errada e causou snapshot/restore quebrados). Regras:
   mapa (a tela principal) não disputar espaço com eles no mobile: os 2
   toggles (TCEs/Rótulos) viraram botões ícone numa linha só com o select,
   e os 6 números (quadras/território) colapsam num resumo de 1 linha por
-  padrão, expansível.
+  padrão, expansível. Mais 2 botões ícone (preferência em localStorage):
+  **Modo ruas** (quadras só com contorno fino, sem preenchimento forte)
+  e **Painel ao segurar** (desliga o sheet do long-press — dirigente
+  reclamou que ele "subia" ao mexer no mapa). O long-press do
+  `MapaAdmin` cancela em qualquer movimento (>10px, move/drag/zoom/
+  rotate, soltar o dedo FORA da camada). Camadas fill/line das quadras
+  entram ABAIXO do bloco final de rótulos do fundo
+  (`mapa-estilos.ts::ancoraAbaixoDosRotulos` — NÃO é "a 1ª camada
+  symbol": no Liberty ela vem antes de `building`; teste usa a ordem
+  real dos estilos em `tests/fixtures-camadas-openfreemap.json`), então
+  nome de rua fica legível por cima da cor. Os outros mapas
+  (`AdminMapa`, `QuadraMap`…) ainda empilham no topo.
   **Concluir quadra** fundido aqui (long-press abre histórico +
   reverter + limpar conclusão + conflito de data anterior — era a tela
   `/admin/registro`, removida). **Filtro "TCEs"** (A21-f1): esconde o

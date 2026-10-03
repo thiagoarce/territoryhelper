@@ -38,6 +38,45 @@
   // Estado
   let colorirPor = $state<'conclusao' | 'territorio' | 'densidade_enderecos' | 'densidade_residencias' | 'campanha'>('conclusao');
   let mostrarRotulos = $state(true);
+
+  // Dois pedidos de dirigente sobre este mapa, ambos persistidos por
+  // aparelho (é preferência de quem usa, não do território):
+  //  - "checkbox pra bloquear o aparecimento deste menu enorme na frente
+  //    do mapa": desligado, o toque longo nem é armado no MapaAdmin.
+  //  - "modo de visualização sem as linhas coloridas, facilitando ver o
+  //    nome das ruas": preenchimento quase transparente + contorno fino.
+  const CHAVE_PAINEL = 'th:admin-painel-ao-segurar';
+  const CHAVE_RUAS = 'th:admin-modo-ruas';
+  function lerPref(chave: string, padrao: boolean): boolean {
+    try {
+      const v = localStorage.getItem(chave);
+      return v === null ? padrao : v === '1';
+    } catch {
+      return padrao; // modo privado / storage bloqueado
+    }
+  }
+  function gravarPref(chave: string, v: boolean) {
+    try { localStorage.setItem(chave, v ? '1' : '0'); } catch {}
+  }
+  // ssr=false nesta rota (load universal), então localStorage existe aqui
+  let painelAoSegurar = $state(lerPref(CHAVE_PAINEL, true));
+  let modoRuas = $state(lerPref(CHAVE_RUAS, false));
+
+  function alternarPainel() {
+    painelAoSegurar = !painelAoSegurar;
+    gravarPref(CHAVE_PAINEL, painelAoSegurar);
+    if (!painelAoSegurar) sheetDetalheQuadra = false;
+    toast.info(
+      painelAoSegurar
+        ? 'Painel da quadra LIGADO: segure o dedo numa quadra pra abrir'
+        : 'Painel da quadra DESLIGADO: pode mexer no mapa à vontade'
+    );
+  }
+  function alternarModoRuas() {
+    modoRuas = !modoRuas;
+    gravarPref(CHAVE_RUAS, modoRuas);
+    toast.info(modoRuas ? 'Modo ruas: cores bem fracas pra ler os nomes' : 'Cores normais');
+  }
   let selecionadas = $state<Set<string>>(new Set());
   let busca = $state('');
   // Painel de números (quadras ativas/designadas/... + territórios) fica
@@ -334,6 +373,36 @@
     >
       <Icon nome="tag" size={14} />
     </button>
+
+    <button
+      type="button"
+      onclick={alternarModoRuas}
+      class="flex items-center justify-center w-9 h-9 rounded-lg border shrink-0"
+      class:bg-primary-100={modoRuas}
+      class:border-primary-300={modoRuas}
+      class:text-primary-700={modoRuas}
+      class:border-slate-300={!modoRuas}
+      aria-pressed={modoRuas}
+      aria-label="Modo ruas: deixar as cores das quadras fracas pra ler o nome das ruas"
+      title="Modo ruas"
+    >
+      <Icon nome="map" size={14} />
+    </button>
+
+    <button
+      type="button"
+      onclick={alternarPainel}
+      class="flex items-center justify-center w-9 h-9 rounded-lg border shrink-0"
+      class:bg-primary-100={painelAoSegurar}
+      class:border-primary-300={painelAoSegurar}
+      class:text-primary-700={painelAoSegurar}
+      class:border-slate-300={!painelAoSegurar}
+      aria-pressed={painelAoSegurar}
+      aria-label="Abrir o painel da quadra ao segurar o dedo"
+      title="Painel ao segurar"
+    >
+      <Icon nome="hand" size={14} />
+    </button>
   </div>
 
   <!-- Resumo de números: colapsado por padrão (mapa é a estrela da tela;
@@ -405,6 +474,7 @@
             bind:selecionadas
             basemap={data.profile?.pref_basemap ?? 'bright'}
             onClick={onClickQuadra}
+            {modoRuas}
           />
           <p class="text-xs text-slate-400 text-center mt-1">
             Quadras que contêm ao menos 1 unidade do TCE {tceSelecionado ? `"${data.tces.find((t) => t.id === tceSelecionado)?.nome}"` : 'selecionado'}.
@@ -480,14 +550,21 @@
       bind:selecionadas
       basemap={data.profile?.pref_basemap ?? 'bright'}
       onClick={onClickQuadra}
-      onLongPress={onLongPressQuadra}
+      onLongPress={painelAoSegurar ? onLongPressQuadra : undefined}
+      {modoRuas}
     />
     {#if data.reservadasIds.length > 0}
       <p class="text-xs text-purple-700 text-center -mt-2">
         <Icon nome="hourglass" size={12} /> Contorno tracejado roxo = reservada pra "{data.campanhaAtiva?.nome}"
       </p>
     {/if}
-    <p class="text-xs text-slate-400 text-center">Long-press numa quadra abre histórico de conclusões.</p>
+    <p class="text-xs text-slate-400 text-center">
+      {#if painelAoSegurar}
+        Segure o dedo numa quadra pra abrir o painel (histórico e lados). O botão <Icon nome="hand" size={11} /> desliga.
+      {:else}
+        Painel da quadra desligado — toque em <Icon nome="hand" size={11} /> pra voltar a abrir segurando o dedo.
+      {/if}
+    </p>
   {/if}
 
   <p class="text-xs text-slate-500 text-center">
